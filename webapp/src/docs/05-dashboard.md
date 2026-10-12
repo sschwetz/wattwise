@@ -1,0 +1,141 @@
+# 5. The dashboard
+
+[Contents](index.md) · Previous: [Sources](04-sources.md) · Next: [Billing](06-billing.md)
+
+The dashboard is the first page of every site. It has four parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing) and the [history and cost chart](#history-and-cost).
+
+![The full dashboard: live tiles, weather, today's pricing chart and the history chart](images/dashboard-overview.png)
+
+Everything on the page refreshes by itself every 60 seconds. You do not need to reload.
+
+## Live tiles
+
+![Live tiles showing production, consumption, grid, battery, cost and weather](images/dashboard-live-tiles.png)
+
+The large tile at the top is **Production**. Below it are the other tiles. A tile appears only when WattWise has a reading for it, so a site without a battery has no battery tiles.
+
+| Tile | Meaning |
+|------|---------|
+| **Production** | Power your solar panels are generating now, in watts. |
+| **Consumption** | Power your home is using now. |
+| **Grid import** | Power you are drawing from the grid now. |
+| **Grid export** | Power you are sending to the grid now. |
+| **Battery charge** / **Battery discharge** | Power flowing into or out of the battery. |
+| **Battery** | The battery's charge level, as a percentage. |
+| **Today's cost** / **Today's credit** | What you have spent, or earned, since local midnight. |
+| **Grid import price** / **Grid export price** | The price per kWh that applies right now. |
+| **Billing period cost** / **Billing period credit** | The running total since your current billing period began. |
+
+### Reading the colors
+
+Color shows the direction of the energy, not decoration.
+
+| Color | Meaning |
+|-------|---------|
+| Amber | The sun is producing. |
+| Green | Something that benefits you: exporting to the grid, charging the battery, or a net credit. |
+| Red | Something that costs you: importing from the grid, discharging the battery, or a net cost. |
+
+A tile glows softly while its flow is active. The glow stops when the value drops to zero.
+
+The **Battery** tile changes its background from red through amber to green as the charge level rises. The percentage is always printed on the tile, so you never have to rely on color alone.
+
+### Rounding and small values
+
+- Power tiles are rounded to the nearest watt.
+- Production and battery charge or discharge below 100 W show as `0 W`. Readings that small are inverter standby draw, not real activity.
+- Import and export are never both shown. WattWise shows whichever was reported most recently.
+
+### Cost and credit
+
+**Today's cost**, **Billing period cost** and the history chart all use one sign rule:
+
+- A positive amount is money you owe. It shows in red and the tile says **cost**.
+- A negative amount is money you earn. It shows in green and the tile says **credit**. The minus sign is dropped because the color and word already say it.
+
+**Billing period cost** appears only after you [add a billing cycle](06-billing.md#billing-cycles). Without one the tile is hidden, which is normal.
+
+Fixed daily and monthly fees are included in proportion to how much of the day has passed, so the figure rises smoothly instead of jumping at midnight. The monthly fee needs a billing cycle. See [How the cost is calculated](06-billing.md#how-the-cost-is-calculated).
+
+## Weather tiles
+
+Under the live tiles, **Weather** shows the latest reading from your WeatherLink station: **Temperature** (°C), **Humidity**, **Rain**, **Solar radiation** (W/m²), **Barometric pressure** (hPa) and **Wind speed** with a compass direction, for example `12.3 km/h NE`. These tiles need a [weather source](04-sources.md#connecting-a-weatherlink-live-station).
+
+## Demand window notice
+
+![The dashboard heading with a red DEMAND WINDOW ACTIVE notice](images/dashboard-demand-window.png)
+
+When one of your [demand windows](06-billing.md#demand-windows) is in effect, the heading reads **Dashboard - DEMAND WINDOW ACTIVE** in red. While it shows, the power you import counts toward your peak-demand charge, so shifting heavy loads such as the oven, dryer or EV charger to another time lowers that charge.
+
+## Today's Pricing
+
+![Step chart of import and export prices across today, solid for actual and dashed for predicted](images/dashboard-today-pricing.png)
+
+This chart shows Amber's price for every 5 minutes of today, in cents per kWh.
+
+| Line | Meaning |
+|------|---------|
+| Red solid | **Import actual**: what buying power cost in intervals that have finished. |
+| Red dashed | **Import predicted**: Amber's forecast for the rest of today. |
+| Green solid | **Export actual**: what you were paid for exporting. |
+| Green dashed | **Export predicted**: the forecast export price. |
+
+Hover over a point for the exact price. The chart always shows today and ignores the controls in the history card below. It needs an [Amber pricing source](04-sources.md#connecting-amber-electric).
+
+Prices are shown as plain positive rates. Amber publishes the sell price as a negative number when you are being paid, and WattWise shows its size instead.
+
+## History and cost
+
+![The history card with a range selector, Net and Gross options, a cost total and a chart](images/dashboard-history.png)
+
+The bottom card shows grid energy and cost over a period you choose.
+
+### Choosing a period
+
+Use the **Date range** list:
+
+| Option | Period |
+|--------|--------|
+| **Today** | From midnight to midnight, today |
+| **Yesterday** | The previous full day |
+| **7 days** | The last 6 days plus today |
+| **30 days** | The last 29 days plus today |
+| **Custom range** | Two date and time pickers appear. Pick a start and an end (15-minute steps). |
+
+Days start at midnight on the device you are using.
+
+The bars get wider as the period grows, so the chart stays readable:
+
+| Period length | Each bar covers |
+|---------------|-----------------|
+| Under 7 days | 15 minutes |
+| 7 to under 30 days | 1 hour |
+| 30 days or more | 6 hours |
+
+### Reading the chart
+
+- **Bars** show grid energy in kWh (left axis). Red bars are import, green bars are export.
+- **The amber line** shows cost in dollars (right axis). It covers energy and demand charges only, so daily and monthly fees do not appear as spikes.
+- **The Cost tile** above the chart is the total for the chosen period, including daily and monthly fees.
+- Hover over a bar for the time, the grid energy and the cost for that bar.
+
+### Net and gross cost
+
+The **Net** and **Gross** options change how the **Cost** total and cost line are calculated. The bars always show real grid flow.
+
+| Method | Import is priced from | Export is priced from | Use it to see |
+|--------|----------------------|----------------------|---------------|
+| **Net** | Energy actually drawn from the grid | Energy actually sent to the grid | What your bill will say |
+| **Gross** | All the energy your home consumed | All the energy your panels produced | What the same usage would cost without solar and battery offsetting each other |
+
+Net is the default and matches your retailer's bill. Gross is useful for comparing, for example, how much your solar saves.
+
+### Missing prices
+
+If a minute has energy but no price (for example, before the pricing source was added), WattWise leaves that minute out of the cost instead of guessing. Totals for such periods will be lower than your real bill. See [Troubleshooting](08-troubleshooting.md#costs-look-too-low-or-are-missing).
+
+## Next
+
+- [Billing](06-billing.md): tariffs and cycles that feed the cost figures
+- [Troubleshooting](08-troubleshooting.md) when something looks wrong
+- [Glossary](09-glossary.md) for terms such as demand window and export adjustment
