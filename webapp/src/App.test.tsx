@@ -80,7 +80,7 @@ describe("App routing", () => {
 
   it("renders the account page at /account", async () => {
     localStorage.setItem("access_token", "a-token");
-    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false });
+    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", has_avatar: false, has_amber_api_key: false });
     renderAt("/account");
     expect(await screen.findByRole("heading", { name: "Account" })).toBeInTheDocument();
   });
@@ -88,7 +88,7 @@ describe("App routing", () => {
   it("lets a logged-in user reach Account from the header dropdown", async () => {
     localStorage.setItem("access_token", "a-token");
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false })
       .mockResolvedValue([]);
     renderAt("/sites/7");
     await screen.findByRole("heading", { name: "Dashboard" });

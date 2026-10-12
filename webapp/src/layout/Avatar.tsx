@@ -30,11 +30,23 @@ function initialsFromEmail(email: string): string {
 export interface AvatarProps {
   name: string | null;
   email: string;
+  imageUrl?: string | null;
 }
 
-/** Initials-only avatar -- there is no uploaded-image support yet (see
- * sub-project 4 in docs/superpowers/specs/2026-10-12-header-account-menu-design.md). */
-export function Avatar({ name, email }: AvatarProps) {
+/** Initials-only fallback when no image has been uploaded yet; see
+ * useAvatarImage for how imageUrl is produced. */
+export function Avatar({ name, email, imageUrl }: AvatarProps) {
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt=""
+        aria-hidden="true"
+        className="h-9 w-9 shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+
   const trimmedName = name?.trim();
   const hasName = !!trimmedName;
   const initials = hasName ? initialsFromName(trimmedName) : initialsFromEmail(email);

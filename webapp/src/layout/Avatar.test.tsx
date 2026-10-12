@@ -43,4 +43,16 @@ describe("Avatar", () => {
     render(<Avatar name={null} email="bob@example.com" />);
     expect(screen.getByText("B").className).not.toContain("text-white");
   });
+
+  it("renders the uploaded photo instead of initials when an image URL is given", () => {
+    render(<Avatar name="Ada Lovelace" email="ada@example.com" imageUrl="blob:mock-url" />);
+    expect(screen.queryByText("AL")).not.toBeInTheDocument();
+    expect(screen.getByAltText("")).toHaveAttribute("src", "blob:mock-url");
+  });
+
+  it("falls back to initials when imageUrl is null", () => {
+    render(<Avatar name="Ada Lovelace" email="ada@example.com" imageUrl={null} />);
+    expect(screen.getByText("AL")).toBeInTheDocument();
+    expect(screen.queryByAltText("")).not.toBeInTheDocument();
+  });
 });

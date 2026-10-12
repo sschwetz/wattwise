@@ -3,13 +3,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch } from "../api/client";
+import { apiFetch, apiFetchBlob } from "../api/client";
 import { AuthProvider } from "../auth/AuthContext";
 import { Header } from "./Header";
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
-  return { ...actual, apiFetch: vi.fn() };
+  return { ...actual, apiFetch: vi.fn(), apiFetchBlob: vi.fn() };
 });
 
 function renderHeader() {
@@ -32,6 +32,7 @@ function renderHeader() {
 describe("Header", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
+    vi.mocked(apiFetchBlob).mockReset();
     localStorage.clear();
     localStorage.setItem("access_token", "fake-token");
   });
@@ -41,7 +42,7 @@ describe("Header", () => {
       id: 1,
       email: "ada@example.com",
       display_name: "Ada Lovelace",
-      has_amber_api_key: false,
+      has_avatar: false, has_amber_api_key: false,
     });
     renderHeader();
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
@@ -52,7 +53,7 @@ describe("Header", () => {
       id: 1,
       email: "ada@example.com",
       display_name: "A Very Long Display Name That Should Not Push The Avatar Off Screen",
-      has_amber_api_key: false,
+      has_avatar: false, has_amber_api_key: false,
     });
     renderHeader();
     const label = await screen.findByText("A Very Long Display Name That Should Not Push The Avatar Off Screen");
@@ -65,7 +66,7 @@ describe("Header", () => {
       id: 1,
       email: "ada@example.com",
       display_name: null,
-      has_amber_api_key: false,
+      has_avatar: false, has_amber_api_key: false,
     });
     renderHeader();
     expect(await screen.findByText("ada@example.com")).toBeInTheDocument();
@@ -76,7 +77,7 @@ describe("Header", () => {
       id: 1,
       email: "ada@example.com",
       display_name: "Ada Lovelace",
-      has_amber_api_key: false,
+      has_avatar: false, has_amber_api_key: false,
     });
     renderHeader();
     await screen.findByText("Ada Lovelace");
@@ -91,7 +92,7 @@ describe("Header", () => {
       id: 1,
       email: "ada@example.com",
       display_name: "Ada Lovelace",
-      has_amber_api_key: false,
+      has_avatar: false, has_amber_api_key: false,
     });
     renderHeader();
     await screen.findByText("Ada Lovelace");
@@ -108,7 +109,7 @@ describe("Header", () => {
       id: 1,
       email: "ada@example.com",
       display_name: "Ada Lovelace",
-      has_amber_api_key: false,
+      has_avatar: false, has_amber_api_key: false,
     });
     renderHeader();
     await screen.findByText("Ada Lovelace");
@@ -125,7 +126,7 @@ describe("Header", () => {
       id: 1,
       email: "ada@example.com",
       display_name: "Ada Lovelace",
-      has_amber_api_key: false,
+      has_avatar: false, has_amber_api_key: false,
     });
     renderHeader();
     await screen.findByText("Ada Lovelace");
@@ -134,5 +135,22 @@ describe("Header", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: "Log off" }));
 
     expect(localStorage.getItem("access_token")).toBeNull();
+  });
+
+  it("shows the uploaded avatar image when one is set", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      id: 1,
+      email: "ada@example.com",
+      display_name: "Ada Lovelace",
+      has_avatar: true,
+      has_amber_api_key: false,
+    });
+    vi.mocked(apiFetchBlob).mockResolvedValueOnce(new Blob(["fake-bytes"]));
+    URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    URL.revokeObjectURL = vi.fn();
+
+    renderHeader();
+    await screen.findByText("Ada Lovelace");
+    expect(await screen.findByAltText("")).toHaveAttribute("src", "blob:mock-url");
   });
 });

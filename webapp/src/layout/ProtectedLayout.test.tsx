@@ -23,7 +23,7 @@ describe("ProtectedLayout", () => {
       id: 1,
       email: "ada@example.com",
       display_name: "Ada Lovelace",
-      has_amber_api_key: false,
+      has_avatar: false, has_amber_api_key: false,
     });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(

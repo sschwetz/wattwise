@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useMe } from "../account/useAccount";
+import { useAvatarImage } from "../account/useAvatarImage";
 import { useAuth } from "../auth/AuthContext";
 import { Avatar } from "./Avatar";
 
@@ -14,6 +15,7 @@ function ChevronIcon() {
 
 export function Header() {
   const { data: me } = useMe();
+  const avatarUrl = useAvatarImage(me?.has_avatar ?? false);
   const { logout } = useAuth();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,7 +53,7 @@ export function Header() {
           aria-label={label}
           className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-ink hover:bg-surface-2"
         >
-          <Avatar name={displayName} email={email} />
+          <Avatar name={displayName} email={email} imageUrl={avatarUrl} />
           <span className="max-w-[12rem] truncate text-sm font-medium sm:max-w-xs">{label}</span>
           <ChevronIcon />
         </button>
