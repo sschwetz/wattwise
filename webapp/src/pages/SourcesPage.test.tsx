@@ -39,6 +39,13 @@ describe("SourcesPage", () => {
     expect(await within(screen.getByRole("list")).findByText("envoy")).toBeInTheDocument();
   });
 
+  it("links back to the site's dashboard", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    renderPage();
+    await screen.findByText("No sources yet.");
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sites/7");
+  });
+
   it("creates a source and confirms it without a collector key", async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce([])

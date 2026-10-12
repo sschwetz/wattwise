@@ -28,6 +28,19 @@ function emptyListsFetch(_path: string) {
   return Promise.resolve([]);
 }
 
+describe("BillingPage back link", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  it("links back to the site's dashboard", async () => {
+    vi.mocked(apiFetch).mockImplementation(emptyListsFetch as never);
+    renderPage();
+    await screen.findByText("Billing");
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sites/7");
+  });
+});
+
 const ACTIVE_TARIFF = {
   id: 1,
   site_id: 7,

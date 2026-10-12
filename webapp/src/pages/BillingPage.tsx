@@ -1,5 +1,6 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { BackLink } from "../layout/BackLink";
 import {
   useBillingCycles,
   useCreateBillingCycle,
@@ -634,7 +635,10 @@ export function BillingPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
-      <h1 className="font-display text-2xl font-semibold text-ink">Billing</h1>
+      <div className="flex items-center gap-2">
+        <BackLink to={`/sites/${siteId}`} />
+        <h1 className="font-display text-2xl font-semibold text-ink">Billing</h1>
+      </div>
       <TariffSection siteId={parsedSiteId} />
       <BillingCycleSection siteId={parsedSiteId} />
       <DemandChargesSection siteId={parsedSiteId} />

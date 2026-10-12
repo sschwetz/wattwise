@@ -1,6 +1,7 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import QRCode from "qrcode";
 import { Avatar } from "../layout/Avatar";
+import { BackLink } from "../layout/BackLink";
 import {
   useChangePassword,
   useConfirmTotpReenroll,
@@ -522,7 +523,10 @@ function ManageTotpSection() {
 export function AccountPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
-      <h1 className="font-display text-2xl font-semibold text-ink">Account</h1>
+      <div className="flex items-center gap-2">
+        <BackLink to="/sites" />
+        <h1 className="font-display text-2xl font-semibold text-ink">Account</h1>
+      </div>
       <ProfileSection />
       <ChangePasswordSection />
       <ChangeEmailSection />

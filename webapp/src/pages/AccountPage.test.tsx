@@ -30,6 +30,13 @@ describe("AccountPage", () => {
     vi.mocked(apiFetchBlob).mockReset();
   });
 
+  it("links back to the site picker", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false });
+    renderPage();
+    await screen.findByText(/no amber api key set yet/i);
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sites");
+  });
+
   it("shows no key set yet when none is configured", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false });
     renderPage();

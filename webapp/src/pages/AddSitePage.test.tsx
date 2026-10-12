@@ -18,6 +18,7 @@ function renderPage() {
       <MemoryRouter initialEntries={["/sites/new"]}>
         <Routes>
           <Route path="/sites/new" element={<AddSitePage />} />
+          <Route path="/sites" element={<div>Site picker</div>} />
           <Route path="/sites/:siteId" element={<div>Dashboard for site</div>} />
         </Routes>
       </MemoryRouter>
@@ -33,6 +34,11 @@ describe("AddSitePage", () => {
   it("shows a form to add another site", () => {
     renderPage();
     expect(screen.getByText("Add a new site")).toBeInTheDocument();
+  });
+
+  it("links back to the site picker", () => {
+    renderPage();
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sites");
   });
 
   it("creates the site and navigates to its dashboard", async () => {

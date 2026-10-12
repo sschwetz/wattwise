@@ -1,5 +1,6 @@
 import { type FormEvent, type ReactNode, useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { BackLink } from "../layout/BackLink";
 import { type Source, useCreateSource, useDeleteSource, useSources, useUpdateSource } from "../sources/useSources";
 
 // The only providers with real collector support today -- kept in sync with
@@ -453,7 +454,10 @@ export function SourcesPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
-      <h1 className="font-display text-2xl font-semibold text-ink">Sources</h1>
+      <div className="flex items-center gap-2">
+        <BackLink to={`/sites/${siteId}`} />
+        <h1 className="font-display text-2xl font-semibold text-ink">Sources</h1>
+      </div>
       {updateSource.isError && (
         <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
           {updateSource.error instanceof Error ? updateSource.error.message : "Failed to update source. Please try again."}
