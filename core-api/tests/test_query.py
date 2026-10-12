@@ -270,6 +270,76 @@ def test_get_cost_for_site(client, app_and_db_url):
     assert response.json()["minutes_missing_price"] == 0  # no data at all in range -> nothing to flag
 
 
+def test_get_cost_prorate_fees_false_includes_the_full_service_charge_immediately(client, app_and_db_url):
+    """The live tiles opt out of proration (dashboard's Today's cost) --
+    `prorate_fees=false` must charge a day barely started its full service
+    fee, not a sliver of it."""
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="cost-no-prorate-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    now = datetime.datetime.now(UTC)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    session.add(
+        SiteTariff(site_id=site.id, effective_from=start_of_day, service_availability_c_per_day=decimal.Decimal("100.0"))
+    )
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/cost",
+        params={
+            "start": start_of_day.isoformat(),
+            "end": (start_of_day + datetime.timedelta(days=1)).isoformat(),
+            "method": "net",
+            "prorate_fees": "false",
+        },
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    assert decimal.Decimal(response.json()["total_cost_c"]) == decimal.Decimal("100.0")
+
+
+def test_get_cost_prorates_the_service_charge_by_default(client, app_and_db_url):
+    """Without prorate_fees, the chart card's "Cost" figure must not jump
+    to the full day's service charge the instant a new day starts."""
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="cost-default-prorate-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    now = datetime.datetime.now(UTC)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    session.add(
+        SiteTariff(site_id=site.id, effective_from=start_of_day, service_availability_c_per_day=decimal.Decimal("100.0"))
+    )
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/cost",
+        params={
+            "start": start_of_day.isoformat(),
+            "end": (start_of_day + datetime.timedelta(days=1)).isoformat(),
+            "method": "net",
+        },
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    assert decimal.Decimal(response.json()["total_cost_c"]) < decimal.Decimal("100.0")
+
+
 def test_get_cost_series_for_site(client, app_and_db_url):
     _, db_url = app_and_db_url
     engine = make_engine(db_url)
@@ -355,6 +425,41 @@ def test_get_billing_period_cost_for_site(client, app_and_db_url):
     )
     assert response.status_code == 200, response.text
     assert response.json()["minutes_missing_price"] == 0  # no data at all in range -> nothing to flag
+
+
+def test_get_billing_period_cost_includes_the_full_service_charge_for_a_day_just_started(client, app_and_db_url):
+    """The billing-period live tile must show the committed service charge
+    in full, unlike /cost's own default proration (see
+    test_get_cost_prorates_the_service_charge_by_default) -- it's meant to
+    read as "what's due", not a smoothly ticking total."""
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="bp-cost-full-fee@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    now = datetime.datetime.now(UTC)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    session.add(
+        BillingCycle(site_id=site.id, effective_from=start_of_day, cycle_months=1, anchor_day=start_of_day.day)
+    )
+    session.add(
+        SiteTariff(site_id=site.id, effective_from=start_of_day, service_availability_c_per_day=decimal.Decimal("100.0"))
+    )
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/cost/billing-period",
+        params={"method": "net"},
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    assert decimal.Decimal(response.json()["total_cost_c"]) == decimal.Decimal("100.0")
 
 
 def test_get_billing_period_cost_404s_with_no_active_cycle(client, app_and_db_url):

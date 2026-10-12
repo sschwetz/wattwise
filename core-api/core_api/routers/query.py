@@ -148,10 +148,16 @@ def get_cost(
     start: UtcDatetime,
     end: UtcDatetime,
     method: Literal["net", "gross"],
+    prorate_fees: bool = True,
     site: Site = Depends(require_site_access),
     db: Session = Depends(get_db_session),
 ) -> CostOut:
-    result = compute_cost(db, site.id, start, end, method, site.timezone)
+    """`prorate_fees` (default True) spreads a day's service/monthly fee
+    across its elapsed time instead of charging it in full the instant its
+    midnight passes -- see compute_cost. The dashboard's chart-card "Cost"
+    figure wants that (a smoothly ticking total); its live tiles ask for
+    prorate_fees=false instead, via useTodayCost."""
+    result = compute_cost(db, site.id, start, end, method, site.timezone, prorate_fees=prorate_fees)
     return CostOut(**dataclasses.asdict(result))
 
 
@@ -166,13 +172,17 @@ def get_billing_period_cost(
     "today's cost" live tile. Falls back to the active cycle's own
     effective_from when its first anchor day hasn't arrived yet (see
     current_billing_period_start), so a freshly-configured cycle still shows
-    a running total instead of 404ing until that first anchor day."""
+    a running total instead of 404ing until that first anchor day.
+
+    A live tile, like get_cost's own prorate_fees=false callers -- shows
+    the committed service/monthly fee for today in full right away rather
+    than prorating it by elapsed time."""
     now = datetime.datetime.now(datetime.timezone.utc)
     cycles = effective_billing_cycles_for_site(db, site.id)
     start = current_billing_period_start(cycles, site.timezone, now)
     if start is None:
         raise AppError(404, "no_active_billing_cycle", "No billing cycle is currently active for this site")
-    result = compute_cost(db, site.id, start, now, method, site.timezone, now=now)
+    result = compute_cost(db, site.id, start, now, method, site.timezone, prorate_fees=False)
     return CostOut(**dataclasses.asdict(result))
 
 

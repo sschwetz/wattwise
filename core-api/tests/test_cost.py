@@ -761,6 +761,50 @@ def test_compute_cost_service_charge_is_full_once_the_day_has_fully_elapsed(db, 
     assert result.total_cost_c == decimal.Decimal("96.0")
 
 
+def test_compute_cost_service_charge_is_full_immediately_when_proration_is_disabled(db, site):
+    """prorate_fees=False is the live tiles' escape hatch (dashboard's
+    Today's cost / Billing period cost): they want to read as "what's
+    committed today", not a smoothly ticking total, so a day barely
+    started must still show its full service charge."""
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="96.0")
+    midnight = sydney_local(2026, 1, 1)
+    one_minute_in = midnight + datetime.timedelta(minutes=1)
+
+    result = compute_cost(
+        db,
+        site.id,
+        midnight,
+        midnight + datetime.timedelta(days=1),
+        method="net",
+        site_timezone=site.timezone,
+        now=one_minute_in,
+        prorate_fees=False,
+    )
+
+    assert result.total_cost_c == decimal.Decimal("96.0")
+
+
+def test_compute_cost_monthly_fee_is_full_immediately_when_proration_is_disabled(db, site):
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")
+    midnight = sydney_local(2026, 1, 1)
+    one_minute_in = midnight + datetime.timedelta(minutes=1)
+
+    result = compute_cost(
+        db,
+        site.id,
+        midnight,
+        midnight + datetime.timedelta(days=1),
+        method="net",
+        site_timezone=site.timezone,
+        now=one_minute_in,
+        prorate_fees=False,
+    )
+
+    # 310c / 31 days = 10c/day, in full despite `now` being 1 minute in.
+    assert result.total_cost_c == decimal.Decimal("10.0")
+
+
 def test_compute_cost_monthly_fee_prorates_for_a_day_still_in_progress(db, site):
     _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
     _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")

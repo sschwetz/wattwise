@@ -51,6 +51,11 @@ export function useCost(siteId: number, range: DateRange, method: "net" | "gross
  * to be showing. Like the live readings hooks, "now" is computed fresh inside
  * the queryFn on every poll (not passed in as a prop), so the window grows
  * over the course of the day instead of freezing at mount time.
+ *
+ * Requests prorate_fees=false: a live tile is meant to read as "what's
+ * committed today", so it shows the day's service/monthly fee in full right
+ * away rather than core-api's default smoothly-ticking proration (which the
+ * history card's own "Cost" figure uses instead, via useCost below).
  */
 export function useTodayCost(siteId: number, method: "net" | "gross") {
   return useQuery({
@@ -59,7 +64,12 @@ export function useTodayCost(siteId: number, method: "net" | "gross") {
       const end = new Date();
       const start = new Date(end);
       start.setHours(0, 0, 0, 0);
-      const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), method });
+      const params = new URLSearchParams({
+        start: start.toISOString(),
+        end: end.toISOString(),
+        method,
+        prorate_fees: "false",
+      });
       return apiFetch<CostSummary>(`/api/v1/sites/${siteId}/cost?${params}`);
     },
     refetchInterval: LIVE_POLL_MS,

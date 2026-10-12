@@ -389,6 +389,19 @@ describe("DashboardPage live tiles", () => {
     expect(netCostRequests.length).toBeGreaterThan(0);
   });
 
+  it("requests today's cost with proration disabled, so the live tile shows the full service charge immediately", async () => {
+    mockApi({}, { total_cost_c: 150, total_import_kwh: 10, total_export_kwh: 4, minutes_missing_price: 0 });
+    renderPage();
+    await within(await screen.findByTestId("live-tiles")).findByText("Today's cost");
+
+    const todayCostRequest = vi
+      .mocked(apiFetch)
+      .mock.calls.map(([path]) => path as string)
+      .find((path) => path.includes("/cost") && !path.includes("/cost/series") && !path.includes("/cost/billing-period"));
+    expect(todayCostRequest).toBeDefined();
+    expect(queryParams(todayCostRequest!).get("prorate_fees")).toBe("false");
+  });
+
   it("does not round battery state of charge", async () => {
     mockApi({
       battery_soc_pct: [{ ts: "2026-10-01T00:00:00Z", metric: "battery_soc_pct", value: 72.5 }],
