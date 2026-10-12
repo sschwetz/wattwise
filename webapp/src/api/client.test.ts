@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiFetch, configureApiClient, errorMessage } from "./client";
+import { ApiError, apiFetch, apiFetchBlob, configureApiClient, errorMessage } from "./client";
 
-function mockFetchOnce(status: number, body: unknown) {
+function mockFetchOnce(status: number, body: unknown, blobContent: BlobPart = "") {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
       ok: status >= 200 && status < 300,
       status,
       json: async () => body,
+      blob: async () => new Blob([blobContent]),
     }),
   );
 }
@@ -76,6 +77,16 @@ describe("apiFetch", () => {
     expect(headers.get("Authorization")).toBe("Bearer explicit-scoped-token");
   });
 
+  it("does not force a JSON content-type when the body is FormData", async () => {
+    mockFetchOnce(200, {});
+    const formData = new FormData();
+    formData.append("file", new Blob(["x"]), "avatar.png");
+    await apiFetch("/api/v1/users/me/avatar", { method: "POST", body: formData });
+    const [, requestInit] = vi.mocked(fetch).mock.calls[0];
+    const headers = requestInit!.headers as Headers;
+    expect(headers.has("Content-Type")).toBe(false);
+  });
+
   it("calls onUnauthorized on a 401 without attaching a previous token forever", async () => {
     const onUnauthorized = vi.fn();
     configureApiClient(() => "stale-token", onUnauthorized);
@@ -134,6 +145,47 @@ describe("apiFetch", () => {
       apiFetch("/api/v1/users/me/email/change/request", { method: "POST" }),
     ).rejects.toThrow("Current password is incorrect");
     expect(loggedOut).toBe(false);
+  });
+});
+
+describe("apiFetchBlob", () => {
+  beforeEach(() => {
+    configureApiClient(() => null, () => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the blob body on success", async () => {
+    mockFetchOnce(200, null, "fake-image-bytes");
+    const result = await apiFetchBlob("/api/v1/users/me/avatar");
+    expect(result).toBeInstanceOf(Blob);
+    expect(await result.text()).toBe("fake-image-bytes");
+  });
+
+  it("throws ApiError with the structured error body on failure", async () => {
+    mockFetchOnce(404, { code: "no_avatar", message: "No avatar is set", detail: null });
+    await expect(apiFetchBlob("/api/v1/users/me/avatar")).rejects.toMatchObject(
+      new ApiError(404, "no_avatar", "No avatar is set", null),
+    );
+  });
+
+  it("attaches the Authorization header when a token is configured", async () => {
+    configureApiClient(() => "the-token", () => {});
+    mockFetchOnce(200, null);
+    await apiFetchBlob("/api/v1/users/me/avatar");
+    const [, requestInit] = vi.mocked(fetch).mock.calls[0];
+    const headers = requestInit!.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer the-token");
+  });
+
+  it("calls onUnauthorized on a 401 with a dead-session code", async () => {
+    const onUnauthorized = vi.fn();
+    configureApiClient(() => "stale-token", onUnauthorized);
+    mockFetchOnce(401, { code: "invalid_token", message: "Invalid or expired token", detail: null });
+    await expect(apiFetchBlob("/api/v1/users/me/avatar")).rejects.toBeInstanceOf(ApiError);
+    expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 });
 
