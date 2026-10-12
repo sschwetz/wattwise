@@ -67,6 +67,24 @@ export function useTodayCost(siteId: number, method: "net" | "gross") {
 }
 
 /**
+ * The running cost/credit for the billing period "now" falls inside, from its
+ * start up to now -- the billing-cycle analogue of useTodayCost above. The
+ * backend 404s (code "no_active_billing_cycle") when no billing cycle is
+ * currently active for the site; callers treat that as "nothing to show",
+ * not an error.
+ */
+export function useBillingPeriodCost(siteId: number, method: "net" | "gross") {
+  return useQuery({
+    queryKey: ["cost", siteId, "billing-period", method],
+    queryFn: () => {
+      const params = new URLSearchParams({ method });
+      return apiFetch<CostSummary>(`/api/v1/sites/${siteId}/cost/billing-period?${params}`);
+    },
+    refetchInterval: LIVE_POLL_MS,
+  });
+}
+
+/**
  * Today's buy/sell price readings, actual and forecast together, independent
  * of the history chart's own date-range selector -- same "always today, not
  * whatever the selector shows" reasoning as useTodayCost above. The backend

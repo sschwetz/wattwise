@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 
-from core_api.jobs.billing_periods import billing_periods_for_site
+from core_api.jobs.billing_periods import billing_periods_for_site, current_billing_period_start
 from core_api.models.billing import BillingCycle
 from tests.conftest import UTC
 
@@ -91,3 +91,40 @@ def test_non_utc_site_timezone_returns_utc_instants_not_local(site):
     # 2026-02-01 00:00 AEDT == 2026-01-31 13:00 UTC.
     assert periods[0].end == datetime.datetime(2026, 1, 31, 13, 0, tzinfo=UTC)
     assert periods[0].end.tzinfo == UTC
+
+
+def test_current_billing_period_start_mid_period(site):
+    cycles = [cycle(site.id, datetime.datetime(2026, 1, 18, tzinfo=UTC), anchor_day=18, cycle_months=1)]
+    start = current_billing_period_start(cycles, "UTC", datetime.datetime(2026, 3, 5, tzinfo=UTC))
+    assert start == datetime.datetime(2026, 2, 18, tzinfo=UTC)
+
+
+def test_current_billing_period_start_no_cycles_configured():
+    assert current_billing_period_start([], "UTC", datetime.datetime(2026, 1, 1, tzinfo=UTC)) is None
+
+
+def test_current_billing_period_start_before_first_cycle_starts(site):
+    cycles = [cycle(site.id, datetime.datetime(2026, 6, 1, tzinfo=UTC), anchor_day=1, cycle_months=1)]
+    assert current_billing_period_start(cycles, "UTC", datetime.datetime(2026, 1, 1, tzinfo=UTC)) is None
+
+
+def test_current_billing_period_start_falls_back_to_cycle_start_before_first_anchor_day(site):
+    """A cycle created mid-month (anchor_day=1) hasn't reached its first
+    anchor day yet -- billing_periods_for_site models no period there at all
+    (by design: a partial period before the first anchor isn't modeled).
+    The running-cost tile should still show something for that stretch,
+    using the cycle's own effective_from rather than 404ing until the
+    anchor day arrives."""
+    cycles = [cycle(site.id, datetime.datetime(2026, 10, 7, 9, 29, 44, tzinfo=UTC), anchor_day=1, cycle_months=1)]
+    start = current_billing_period_start(cycles, "Australia/Sydney", datetime.datetime(2026, 10, 12, tzinfo=UTC))
+    assert start == datetime.datetime(2026, 10, 7, 9, 29, 44, tzinfo=UTC)
+
+
+def test_current_billing_period_start_after_cycle_ends_with_no_successor(site):
+    ended = cycle(
+        site.id, datetime.datetime(2026, 1, 1, tzinfo=UTC), datetime.datetime(2026, 2, 1, tzinfo=UTC), anchor_day=1, cycle_months=1
+    )
+    # The cycle ends exactly on an anchor day, so there's no partial period
+    # straddling the gap -- "now" sits in the gap after it with nothing to cover it.
+    start = current_billing_period_start([ended], "UTC", datetime.datetime(2026, 3, 1, tzinfo=UTC))
+    assert start is None

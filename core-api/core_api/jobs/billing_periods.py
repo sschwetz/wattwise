@@ -52,6 +52,30 @@ def _cycle_effective_at(cycles: list[BillingCycle], at: datetime.datetime) -> Bi
     return None
 
 
+def current_billing_period_start(
+    cycles: list[BillingCycle], site_timezone: str, now: datetime.datetime
+) -> datetime.datetime | None:
+    """The start of whichever billing period `now` falls inside, or -- if a
+    cycle is active but hasn't reached its first anchor day yet (the gap
+    billing_periods_for_site leaves unmodeled between a cycle's
+    effective_from and its first anchor date) -- the active cycle's own
+    effective_from, so there's still a "since" to report the running cost
+    from instead of nothing. None only when no cycle is active at all: none
+    configured yet, the first cycle hasn't started, or a cycle ended without
+    a successor covering `now`. Used for the dashboard's running "billing
+    period cost so far" tile, the billing-cycle analogue of "today's cost so
+    far"."""
+    periods = billing_periods_for_site(cycles, site_timezone, now)
+    if periods:
+        current = periods[-1]
+        if current.start <= now < current.end:
+            return current.start
+    active_cycle = _cycle_effective_at(cycles, now)
+    if active_cycle is not None:
+        return as_utc(active_cycle.effective_from)
+    return None
+
+
 def billing_periods_for_site(
     cycles: list[BillingCycle], site_timezone: str, until: datetime.datetime
 ) -> list[BillingPeriod]:

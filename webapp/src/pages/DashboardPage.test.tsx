@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch } from "../api/client";
+import { ApiError, apiFetch } from "../api/client";
 import { ENERGY_METRICS, WEATHER_METRICS, type Reading } from "../dashboard/useLiveReadings";
 import { DashboardPage } from "./DashboardPage";
 
@@ -40,6 +40,10 @@ function mockApi(
   weatherByMetric?: Record<string, Reading[]>,
   priceReadingsByChannel?: Record<string, Reading[]>,
   costSeries?: Record<string, unknown>[],
+  // null (the default) means "no active billing cycle" -- the real backend's
+  // 404 for that case, modeled here as a resolved null so most tests (which
+  // don't care about the billing-period tile) get a tile that renders nothing.
+  billingPeriodCost: Record<string, unknown> | null = null,
 ) {
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (path.includes("/readings/energy")) {
@@ -56,6 +60,11 @@ function mockApi(
     }
     if (path.includes("/cost/series")) {
       return Promise.resolve(costSeries ?? []);
+    }
+    // Checked before the generic "/cost" branch below, since that path also
+    // includes the substring "/cost".
+    if (path.includes("/cost/billing-period")) {
+      return Promise.resolve(billingPeriodCost);
     }
     if (path.includes("/cost")) {
       return Promise.resolve(cost ?? null);
@@ -296,6 +305,62 @@ describe("DashboardPage live tiles", () => {
     const value = liveTiles.getByText("$1.50");
     expect(value.className).toContain("text-flow");
     expect(value.parentElement?.className).toContain("flow-glow");
+  });
+
+  it("shows the billing period's running cost as a full-width live tile, red with a danger glow for a net cost", async () => {
+    mockApi(
+      {},
+      { total_cost_c: 150, total_import_kwh: 10, total_export_kwh: 4, minutes_missing_price: 0 },
+      undefined,
+      undefined,
+      undefined,
+      { total_cost_c: 300, total_import_kwh: 20, total_export_kwh: 8, minutes_missing_price: 0 },
+    );
+    renderPage();
+    const liveTiles = within(await screen.findByTestId("live-tiles"));
+    expect(await liveTiles.findByText("Billing period cost")).toBeInTheDocument();
+    const value = liveTiles.getByText("$3.00");
+    expect(value.className).toContain("text-danger");
+    expect(value.parentElement?.className).toContain("danger-glow");
+  });
+
+  it("shows the billing period's running cost as a credit tile in green with the sign dropped for a net credit", async () => {
+    mockApi(
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { total_cost_c: -300, total_import_kwh: 8, total_export_kwh: 20, minutes_missing_price: 0 },
+    );
+    renderPage();
+    const liveTiles = within(await screen.findByTestId("live-tiles"));
+    expect(await liveTiles.findByText("Billing period credit")).toBeInTheDocument();
+    const value = liveTiles.getByText("$3.00");
+    expect(value.className).toContain("text-flow");
+    expect(value.parentElement?.className).toContain("flow-glow");
+  });
+
+  it("shows nothing for the billing period tile when there's no active billing cycle", async () => {
+    mockApi({});
+    renderPage();
+    const liveTiles = within(await screen.findByTestId("live-tiles"));
+    await liveTiles.findByText("Weather");
+    expect(liveTiles.queryByText("Billing period cost")).not.toBeInTheDocument();
+    expect(liveTiles.queryByText("Billing period credit")).not.toBeInTheDocument();
+    expect(liveTiles.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows an error alert for the billing period tile when it fails for a reason other than no active cycle", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path.includes("/cost/billing-period")) {
+        return Promise.reject(new ApiError(500, "internal_error", "boom", null));
+      }
+      return Promise.resolve([]);
+    });
+    renderPage();
+    expect(await screen.findByText("Failed to load the billing period cost.")).toBeInTheDocument();
+    expect(screen.getByText("Failed to load the billing period cost.")).toHaveAttribute("role", "alert");
   });
 
   it("keeps requesting today's cost at method=net even after the history card's range/method change", async () => {
@@ -583,10 +648,12 @@ describe("DashboardPage historical chart and cost", () => {
     renderPage();
     await within(screen.getByTestId("history-cost")).findByText("$1.50");
 
+    // Excludes /cost/billing-period: that endpoint computes its own start
+    // from the active billing cycle and takes no start/end of its own.
     const costPaths = vi
       .mocked(apiFetch)
       .mock.calls.map(([path]) => path as string)
-      .filter((path) => path.includes("/cost"));
+      .filter((path) => path.includes("/cost") && !path.includes("/cost/billing-period"));
     expect(costPaths.length).toBeGreaterThan(0);
     for (const path of costPaths) {
       const params = queryParams(path);

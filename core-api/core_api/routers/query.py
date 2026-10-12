@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from core_api.cost import CostBucket, compute_cost, compute_cost_series
 from core_api.deps import get_db_session, require_site_access
+from core_api.errors import AppError
+from core_api.jobs.billing_periods import current_billing_period_start, effective_billing_cycles_for_site
 from core_api.jobs.demand_config import adjusted_export_price, export_adjustment_windows_by_tariff, site_tariffs_for_site
 from core_api.models.billing import DemandCharge
 from core_api.models.identity import Site
@@ -145,6 +147,27 @@ def get_cost(
     db: Session = Depends(get_db_session),
 ) -> CostOut:
     result = compute_cost(db, site.id, start, end, method, site.timezone)
+    return CostOut(**dataclasses.asdict(result))
+
+
+@router.get("/cost/billing-period", response_model=CostOut)
+def get_billing_period_cost(
+    method: Literal["net", "gross"],
+    site: Site = Depends(require_site_access),
+    db: Session = Depends(get_db_session),
+) -> CostOut:
+    """Running cost/credit for the billing period `now` falls inside, from
+    its start up to now -- the billing-cycle analogue of the dashboard's
+    "today's cost" live tile. Falls back to the active cycle's own
+    effective_from when its first anchor day hasn't arrived yet (see
+    current_billing_period_start), so a freshly-configured cycle still shows
+    a running total instead of 404ing until that first anchor day."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cycles = effective_billing_cycles_for_site(db, site.id)
+    start = current_billing_period_start(cycles, site.timezone, now)
+    if start is None:
+        raise AppError(404, "no_active_billing_cycle", "No billing cycle is currently active for this site")
+    result = compute_cost(db, site.id, start, now, method, site.timezone)
     return CostOut(**dataclasses.asdict(result))
 
 

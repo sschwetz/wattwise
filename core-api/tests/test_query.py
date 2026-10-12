@@ -5,7 +5,7 @@ import datetime
 import decimal
 
 from core_api.db import make_engine, make_session_factory
-from core_api.models.billing import DemandCharge, DemandInterval, ExportAdjustmentWindow, SiteTariff
+from core_api.models.billing import BillingCycle, DemandCharge, DemandInterval, ExportAdjustmentWindow, SiteTariff
 from core_api.models.identity import Site, User
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
@@ -315,6 +315,61 @@ def test_get_cost_series_for_site(client, app_and_db_url):
     assert len(body) == 1
     # 0.01 kWh * 30c/kWh = 0.3c
     assert decimal.Decimal(body[0]["cost_c"]) == decimal.Decimal("0.3")
+
+
+def test_get_billing_period_cost_for_site(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="bp-cost-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    now = datetime.datetime.now(UTC)
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    session.add(
+        BillingCycle(
+            site_id=site.id,
+            effective_from=start_of_month,
+            cycle_months=1,
+            anchor_day=1,
+        )
+    )
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/cost/billing-period",
+        params={"method": "net"},
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["minutes_missing_price"] == 0  # no data at all in range -> nothing to flag
+
+
+def test_get_billing_period_cost_404s_with_no_active_cycle(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="bp-cost-no-cycle@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/cost/billing-period",
+        params={"method": "net"},
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "no_active_billing_cycle"
 
 
 def test_get_demand_charges_for_site(client, app_and_db_url):
