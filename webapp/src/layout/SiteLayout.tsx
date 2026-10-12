@@ -16,7 +16,7 @@ export function SiteLayout() {
   const { siteId } = useParams<{ siteId: string }>();
 
   return (
-    <div className="flex min-h-screen flex-col bg-bg sm:flex-row">
+    <div className="flex flex-1 flex-col bg-bg sm:flex-row">
       <nav className="flex shrink-0 flex-row items-center gap-1 overflow-x-auto border-b border-line bg-surface px-3 py-3 sm:w-56 sm:flex-col sm:items-stretch sm:gap-0.5 sm:border-b-0 sm:border-r sm:px-3 sm:py-4">
         <p className="mb-2 hidden font-display text-lg font-semibold text-solar sm:block">WattWise</p>
         <NavLink to={`/sites/${siteId}`} end className={primaryLinkClass}>
@@ -29,9 +29,6 @@ export function SiteLayout() {
           Billing
         </NavLink>
         <div className="sm:mt-auto sm:border-t sm:border-line sm:pt-2">
-          <NavLink to="/account" className={secondaryLinkClass}>
-            Account
-          </NavLink>
           <NavLink to="/sites" className={secondaryLinkClass}>
             Switch site
           </NavLink>

@@ -85,14 +85,15 @@ describe("App routing", () => {
     expect(await screen.findByRole("heading", { name: "Account" })).toBeInTheDocument();
   });
 
-  it("lets a logged-in user reach Account from the dashboard nav", async () => {
+  it("lets a logged-in user reach Account from the header dropdown", async () => {
     localStorage.setItem("access_token", "a-token");
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false });
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
+      .mockResolvedValue([]);
     renderAt("/sites/7");
     await screen.findByRole("heading", { name: "Dashboard" });
-    await userEvent.click(screen.getByRole("link", { name: "Account" }));
+    await userEvent.click(await screen.findByRole("button", { name: "me@example.com" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Account settings" }));
     expect(await screen.findByRole("heading", { name: "Account" })).toBeInTheDocument();
   });
 

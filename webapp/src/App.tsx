@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
+import { ProtectedLayout } from "./layout/ProtectedLayout";
 import { SiteLayout } from "./layout/SiteLayout";
 import { AccountPage } from "./pages/AccountPage";
 import { BillingPage } from "./pages/BillingPage";
@@ -27,13 +28,15 @@ export function App() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/confirm-email-change" element={<ConfirmEmailChangePage />} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<SitePickerPage />} />
-        <Route path="/sites" element={<SitePickerPage />} />
-        <Route path="/account" element={<AccountPage />} />
-        <Route path="/sites/:siteId" element={<SiteLayout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="sources" element={<SourcesPage />} />
-          <Route path="billing" element={<BillingPage />} />
+        <Route element={<ProtectedLayout />}>
+          <Route path="/" element={<SitePickerPage />} />
+          <Route path="/sites" element={<SitePickerPage />} />
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/sites/:siteId" element={<SiteLayout />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="sources" element={<SourcesPage />} />
+            <Route path="billing" element={<BillingPage />} />
+          </Route>
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

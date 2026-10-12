@@ -59,4 +59,11 @@ describe("SiteLayout", () => {
     await userEvent.click(screen.getByRole("link", { name: "Switch site" }));
     expect(await screen.findByText("Site picker")).toBeInTheDocument();
   });
+
+  it("fills its parent's height instead of forcing its own full viewport height", () => {
+    const { container } = renderLayout();
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toContain("flex-1");
+    expect(root.className).not.toContain("min-h-screen");
+  });
 });
