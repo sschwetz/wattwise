@@ -75,7 +75,13 @@ describe("App routing", () => {
     vi.mocked(apiFetch).mockResolvedValue([]);
     renderAt("/sites/7/billing");
     expect(await screen.findByRole("heading", { name: "Billing" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Switch site" })).toHaveAttribute("href", "/sites");
+    expect(screen.getByRole("combobox", { name: "Switch site" })).toBeInTheDocument();
+  });
+
+  it("navigates to the add-site page at /sites/new", async () => {
+    localStorage.setItem("access_token", "a-token");
+    renderAt("/sites/new");
+    expect(await screen.findByText("Add a new site")).toBeInTheDocument();
   });
 
   it("renders the account page at /account", async () => {

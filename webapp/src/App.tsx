@@ -3,6 +3,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { ProtectedLayout } from "./layout/ProtectedLayout";
 import { SiteLayout } from "./layout/SiteLayout";
 import { AccountPage } from "./pages/AccountPage";
+import { AddSitePage } from "./pages/AddSitePage";
 import { BillingPage } from "./pages/BillingPage";
 import { ConfirmEmailChangePage } from "./pages/ConfirmEmailChangePage";
 import { ConfirmRegistrationPage } from "./pages/ConfirmRegistrationPage";
@@ -31,6 +32,7 @@ export function App() {
         <Route element={<ProtectedLayout />}>
           <Route path="/" element={<SitePickerPage />} />
           <Route path="/sites" element={<SitePickerPage />} />
+          <Route path="/sites/new" element={<AddSitePage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/sites/:siteId" element={<SiteLayout />}>
             <Route index element={<DashboardPage />} />

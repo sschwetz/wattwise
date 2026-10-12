@@ -1,25 +1,43 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { apiFetch } from "../api/client";
 import { SiteLayout } from "./SiteLayout";
 
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return { ...actual, apiFetch: vi.fn() };
+});
+
 function renderLayout(initialPath = "/sites/7") {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>
-      <Routes>
-        <Route path="/sites" element={<p>Site picker</p>} />
-        <Route path="/sites/:siteId" element={<SiteLayout />}>
-          <Route index element={<p>Dashboard content</p>} />
-          <Route path="sources" element={<p>Sources content</p>} />
-          <Route path="billing" element={<p>Billing content</p>} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route path="/sites/new" element={<p>Add site page</p>} />
+          <Route path="/sites/:siteId" element={<SiteLayout />}>
+            <Route index element={<p>Dashboard content</p>} />
+            <Route path="sources" element={<p>Sources content</p>} />
+            <Route path="billing" element={<p>Billing content</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
 describe("SiteLayout", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+    vi.mocked(apiFetch).mockResolvedValue([
+      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney" },
+      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart" },
+    ]);
+  });
+
   it("renders the matched child route inside its chrome", () => {
     renderLayout();
     expect(screen.getByText("Dashboard content")).toBeInTheDocument();
@@ -30,7 +48,6 @@ describe("SiteLayout", () => {
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/sites/7");
     expect(screen.getByRole("link", { name: "Sources" })).toHaveAttribute("href", "/sites/7/sources");
     expect(screen.getByRole("link", { name: "Billing" })).toHaveAttribute("href", "/sites/7/billing");
-    expect(screen.getByRole("link", { name: "Switch site" })).toHaveAttribute("href", "/sites");
   });
 
   it("navigates to Sources when its link is clicked", async () => {
@@ -54,10 +71,27 @@ describe("SiteLayout", () => {
     expect(await screen.findByText("Dashboard content")).toBeInTheDocument();
   });
 
-  it("navigates to the site switcher", async () => {
+  it("lists every site plus an option to add a new one in the switcher", async () => {
     renderLayout();
-    await userEvent.click(screen.getByRole("link", { name: "Switch site" }));
-    expect(await screen.findByText("Site picker")).toBeInTheDocument();
+    const select = await screen.findByRole("combobox", { name: "Switch site" });
+    await screen.findByText("Home");
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(["Home", "Cabin", "Add new site"]);
+    expect(select).toHaveValue("7");
+  });
+
+  it("switches to another site when it's picked from the dropdown", async () => {
+    renderLayout();
+    await screen.findByText("Home");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Switch site" }), "Cabin");
+    expect(await screen.findByText("Dashboard content")).toBeInTheDocument();
+  });
+
+  it("navigates to the add-site page when 'Add new site' is picked", async () => {
+    renderLayout();
+    await screen.findByText("Home");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Switch site" }), "Add new site");
+    expect(await screen.findByText("Add site page")).toBeInTheDocument();
   });
 
   it("fills its parent's height instead of forcing its own full viewport height", () => {
