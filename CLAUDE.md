@@ -10,3 +10,7 @@ After completing any implementation, review the code for:
 - Missing error handling on async operations
 
 Run /simplify before presenting code to the user.
+
+## Writing Style
+
+Follow `.claude/rules/avoid-ai-writing.md` for all prose: code comments, docs, commit messages, PR descriptions, and replies.
