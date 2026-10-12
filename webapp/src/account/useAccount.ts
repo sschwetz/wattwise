@@ -6,6 +6,7 @@ export interface Me {
   email: string;
   display_name: string | null;
   has_amber_api_key: boolean;
+  has_avatar: boolean;
 }
 
 export function useMe() {
@@ -39,6 +40,32 @@ export function useUpdateDisplayName() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+export function useUploadAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return apiFetch<Me>("/api/v1/users/me/avatar", { method: "POST", body: formData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["me", "avatar"] });
+    },
+  });
+}
+
+export function useRemoveAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<Me>("/api/v1/users/me/avatar", { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["me", "avatar"] });
     },
   });
 }
