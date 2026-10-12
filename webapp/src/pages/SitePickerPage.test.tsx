@@ -79,4 +79,33 @@ describe("SitePickerPage", () => {
     expect(await screen.findByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Cabin")).toBeInTheDocument();
   });
+
+  it("fills its parent's height instead of forcing its own full viewport height while loading", () => {
+    vi.mocked(apiFetch).mockImplementationOnce(() => new Promise(() => {}));
+    const { container } = renderPage();
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toContain("flex-1");
+    expect(root.className).not.toContain("min-h-screen");
+  });
+
+  it("fills its parent's height instead of forcing its own full viewport height during onboarding", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    const { container } = renderPage();
+    await screen.findByText("Create your first site");
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toContain("flex-1");
+    expect(root.className).not.toContain("min-h-screen");
+  });
+
+  it("fills its parent's height instead of forcing its own full viewport height in the switcher", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([
+      { id: 1, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney" },
+      { id: 2, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart" },
+    ]);
+    const { container } = renderPage();
+    await screen.findByText("Home");
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toContain("flex-1");
+    expect(root.className).not.toContain("min-h-screen");
+  });
 });

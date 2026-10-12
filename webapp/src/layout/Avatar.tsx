@@ -1,7 +1,7 @@
 const PALETTE: { bg: string; text: string }[] = [
   { bg: "bg-solar", text: "text-[#1a1203]" },
-  { bg: "bg-flow", text: "text-white" },
-  { bg: "bg-grid", text: "text-white" },
+  { bg: "bg-flow", text: "text-[#06251c]" },
+  { bg: "bg-grid", text: "text-[#0b1a33]" },
   { bg: "bg-danger", text: "text-white" },
 ];
 

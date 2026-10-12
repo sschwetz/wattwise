@@ -47,6 +47,19 @@ describe("Header", () => {
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
   });
 
+  it("truncates a long label instead of letting it overflow off-screen", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      id: 1,
+      email: "ada@example.com",
+      display_name: "A Very Long Display Name That Should Not Push The Avatar Off Screen",
+      has_amber_api_key: false,
+    });
+    renderHeader();
+    const label = await screen.findByText("A Very Long Display Name That Should Not Push The Avatar Off Screen");
+    expect(label.className).toContain("truncate");
+    expect(screen.getByRole("button", { name: /a very long display name/i }).className).toContain("min-w-0");
+  });
+
   it("falls back to the email when no display name is set", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({
       id: 1,

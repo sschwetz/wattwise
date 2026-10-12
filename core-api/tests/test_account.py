@@ -811,3 +811,38 @@ def test_patch_profile_rejects_empty_display_name(client, app_and_db_url):
 def test_patch_profile_requires_auth(client, app_and_db_url):
     response = client.patch("/api/v1/users/me/profile", json={"display_name": "Ada Lovelace"})
     assert response.status_code in (401, 422)
+
+
+def test_patch_profile_rejects_whitespace_only_display_name(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.patch("/api/v1/users/me/profile", json={"display_name": "   "}, headers=auth(user_id))
+    assert response.status_code == 422
+
+
+def test_patch_profile_strips_surrounding_whitespace(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.patch(
+        "/api/v1/users/me/profile", json={"display_name": "  Ada Lovelace  "}, headers=auth(user_id)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["display_name"] == "Ada Lovelace"
+
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    user = session.get(User, user_id)
+    session.close()
+    assert user.display_name == "Ada Lovelace"
+
+
+def test_patch_profile_rejects_display_name_over_max_length(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.patch(
+        "/api/v1/users/me/profile", json={"display_name": "x" * 101}, headers=auth(user_id)
+    )
+    assert response.status_code == 422

@@ -49,10 +49,10 @@ export function Header() {
           aria-expanded={open}
           aria-haspopup="menu"
           aria-label={label}
-          className="flex items-center gap-2 rounded-md px-2 py-1 text-ink hover:bg-surface-2"
+          className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-ink hover:bg-surface-2"
         >
           <Avatar name={displayName} email={email} />
-          <span className="text-sm font-medium">{label}</span>
+          <span className="max-w-[12rem] truncate text-sm font-medium sm:max-w-xs">{label}</span>
           <ChevronIcon />
         </button>
         {open && (

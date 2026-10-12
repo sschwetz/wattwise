@@ -32,6 +32,17 @@ def _to_utc(value: datetime.datetime) -> datetime.datetime:
 UtcDatetime = Annotated[datetime.datetime, AfterValidator(_to_utc)]
 
 
+def _strip_and_require_nonblank(value: str) -> str:
+    """Reject a name that is blank after trimming surrounding whitespace --
+    bare min_length=1 lets " " through, which then renders as a blank header
+    label with no fallback (display_name is non-null once set, so the email
+    fallback never kicks back in)."""
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("must not be blank")
+    return stripped
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -116,7 +127,7 @@ class UpdateAmberApiKeyIn(BaseModel):
 
 
 class UpdateDisplayNameIn(BaseModel):
-    display_name: str = Field(min_length=1, max_length=100)
+    display_name: Annotated[str, Field(max_length=100), AfterValidator(_strip_and_require_nonblank)]
 
 
 class ChangePasswordIn(BaseModel):

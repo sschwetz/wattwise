@@ -18,7 +18,7 @@ function OnboardingForm() {
   }
 
   return (
-    <AuthCard title="Create your first site">
+    <AuthCard title="Create your first site" fill>
       <form onSubmit={handleSubmit} className="space-y-4">
         {createSite.isError && (
           <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -62,7 +62,7 @@ export function SitePickerPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
+      <div className="flex flex-1 items-center justify-center bg-bg">
         <p className="text-ink-muted">Loading your sites…</p>
       </div>
     );
@@ -74,7 +74,7 @@ export function SitePickerPage() {
     return <Navigate to={`/sites/${sites[0].id}`} replace />;
   }
   return (
-    <AuthCard title="Choose a site">
+    <AuthCard title="Choose a site" fill>
       <ul className="space-y-2">
         {sites.map((site) => (
           <li key={site.id}>
