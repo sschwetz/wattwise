@@ -44,9 +44,16 @@ export function Header() {
   const label = displayName ?? email;
 
   return (
-    <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-2">
-      <Logo />
-      <div ref={containerRef} className="relative">
+    <header className="flex items-center justify-between gap-4 border-b border-line bg-surface px-4 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <Logo />
+        <span className="hidden truncate text-sm text-ink-muted sm:inline">
+          - Built by someone who got <span className="font-bold text-solar">sick</span> of being{" "}
+          <span className="font-bold text-solar">mugged</span> by a{" "}
+          <span className="font-bold text-white">power bill</span>.
+        </span>
+      </div>
+      <div ref={containerRef} className="relative shrink-0">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
