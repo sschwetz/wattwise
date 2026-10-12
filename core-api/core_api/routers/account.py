@@ -4,9 +4,10 @@ import datetime
 import logging
 import os
 import secrets
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -61,6 +62,31 @@ def _to_user_me_out(user: User) -> UserMeOut:
 
 _ALLOWED_AVATAR_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _MAX_AVATAR_BYTES = 2 * 1024 * 1024
+# Slack above _MAX_AVATAR_BYTES for the multipart boundary/field headers
+# surrounding the file's own bytes, so a legitimate ~2MB photo isn't rejected
+# by the Content-Length pre-check below.
+_MULTIPART_OVERHEAD_BYTES = 10 * 1024
+
+
+def _reject_oversized_content_length(request: Request) -> None:
+    """Rejects a request whose declared Content-Length is already too large,
+    before FastAPI resolves the `file: UploadFile` parameter below -- that
+    resolution is what triggers Starlette to buffer the entire multipart body
+    (to a SpooledTemporaryFile, spilling to disk past 1MB) with no size cap of
+    its own. Without this, upload_avatar's own read-and-cap logic only runs
+    *after* an arbitrarily large body has already been fully received and
+    written to the container's temp storage -- the same disk the database
+    lives on. A dependency raising here runs before that body-parsing step, as
+    FastAPI resolves Depends() dependencies before request_body_to_args()."""
+    declared = request.headers.get("content-length")
+    if declared is None:
+        return
+    try:
+        declared_bytes = int(declared)
+    except ValueError:
+        return
+    if declared_bytes > _MAX_AVATAR_BYTES + _MULTIPART_OVERHEAD_BYTES:
+        raise AppError(400, "file_too_large", "Avatar must be 2MB or smaller")
 
 
 def _avatar_path(user_id: int) -> Path:
@@ -132,13 +158,15 @@ async def upload_avatar(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
+    _content_length_guard: None = Depends(_reject_oversized_content_length),
 ) -> UserMeOut:
     if file.content_type not in _ALLOWED_AVATAR_CONTENT_TYPES:
         raise AppError(400, "invalid_file_type", "Avatar must be a JPEG, PNG, or WebP image")
 
-    # Cap the bytes actually read rather than trusting a client-supplied
-    # Content-Length -- the one-past-the-limit read is what makes "too large"
-    # detectable without buffering an arbitrarily huge upload first.
+    # The Content-Length guard above catches a declared size that's already
+    # too large. This second check is the authoritative one -- it does not
+    # trust that header, and catches a body that's merely too large without
+    # lying about it, by capping the bytes actually read.
     content = await file.read(_MAX_AVATAR_BYTES + 1)
     if len(content) > _MAX_AVATAR_BYTES:
         raise AppError(400, "file_too_large", "Avatar must be 2MB or smaller")
@@ -146,10 +174,17 @@ async def upload_avatar(
     path = _avatar_path(current_user.id)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Write-then-replace so a concurrent GET never observes a half-written file,
-    # and so overwriting an existing avatar leaves no stale bytes behind.
-    tmp_path = path.with_name(f".{path.name}.tmp")
-    tmp_path.write_bytes(content)
-    os.replace(tmp_path, path)
+    # and so overwriting an existing avatar leaves no stale bytes behind. The
+    # temp name is unique per request (not just per user) so two concurrent
+    # uploads from the same account can't interleave writes into one shared
+    # temp file; cleaned up on any failure so a crash never leaves it orphaned.
+    tmp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp_path.write_bytes(content)
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
     current_user.avatar_content_type = file.content_type
     db.commit()

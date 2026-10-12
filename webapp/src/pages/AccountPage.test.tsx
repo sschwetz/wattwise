@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -390,6 +390,84 @@ describe("AccountPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Remove" }));
 
+    expect(await screen.findByRole("alert")).toHaveTextContent("An internal error occurred");
+  });
+
+  it("keeps the upload control focusable for keyboard users (not display:none)", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      id: 1,
+      email: "me@example.com",
+      display_name: null,
+      has_avatar: false,
+      has_amber_api_key: false,
+    });
+    renderPage();
+    await screen.findByText(/current name: not set/i);
+
+    const input = screen.getByLabelText("Upload avatar");
+    expect(input.className).not.toContain("hidden");
+    expect(input.className).toContain("sr-only");
+  });
+
+  it("clears the upload error once a later remove succeeds", async () => {
+    const { ApiError } = await import("../api/client");
+    URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    URL.revokeObjectURL = vi.fn();
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: true, has_amber_api_key: false })
+      .mockRejectedValueOnce(new ApiError(400, "invalid_file_type", "Avatar must be a JPEG, PNG, or WebP image", null))
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false });
+    vi.mocked(apiFetchBlob).mockResolvedValueOnce(new Blob(["fake-bytes"]));
+    renderPage();
+    await screen.findByText(/current name: not set/i);
+
+    const file = new File(["fake-bytes"], "avatar.png", { type: "image/png" });
+    await userEvent.upload(screen.getByLabelText("Upload avatar"), file);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Avatar must be a JPEG, PNG, or WebP image");
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("clears the remove error once a later upload succeeds", async () => {
+    const { ApiError } = await import("../api/client");
+    URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    URL.revokeObjectURL = vi.fn();
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: true, has_amber_api_key: false })
+      .mockRejectedValueOnce(new ApiError(500, "internal_error", "An internal error occurred", null))
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: true, has_amber_api_key: false });
+    vi.mocked(apiFetchBlob)
+      .mockResolvedValueOnce(new Blob(["old-bytes"]))
+      .mockResolvedValueOnce(new Blob(["new-bytes"]));
+    renderPage();
+    await screen.findByText(/current name: not set/i);
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("An internal error occurred");
+
+    const file = new File(["fake-bytes"], "avatar.png", { type: "image/png" });
+    await userEvent.upload(screen.getByLabelText("Upload avatar"), file);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("shows the remove error instead of a stale client-side pre-check error", async () => {
+    const { ApiError } = await import("../api/client");
+    URL.createObjectURL = vi.fn(() => "blob:mock-url");
+    URL.revokeObjectURL = vi.fn();
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: true, has_amber_api_key: false })
+      .mockRejectedValueOnce(new ApiError(500, "internal_error", "An internal error occurred", null));
+    vi.mocked(apiFetchBlob).mockResolvedValueOnce(new Blob(["fake-bytes"]));
+    renderPage();
+    await screen.findByText(/current name: not set/i);
+
+    const user = userEvent.setup({ applyAccept: false });
+    const wrongType = new File(["hello"], "notes.txt", { type: "text/plain" });
+    await user.upload(screen.getByLabelText("Upload avatar"), wrongType);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/jpeg, png, or webp/i);
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("An internal error occurred");
   });
 });

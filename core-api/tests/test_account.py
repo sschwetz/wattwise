@@ -6,6 +6,7 @@ import time
 import pyotp
 import pytest
 import re
+from fastapi.testclient import TestClient
 
 from sqlalchemy import select
 
@@ -1030,3 +1031,97 @@ def test_two_different_users_get_independent_avatars(client, app_and_db_url):
     response_b = client.get("/api/v1/users/me/avatar", headers=auth(user_b_id))
     assert response_a.content == b"user-a-bytes"
     assert response_b.content == b"user-b-bytes"
+
+
+def test_upload_avatar_removes_temp_file_if_install_fails(app_and_db_url, monkeypatch):
+    import core_api.routers.account as account_module
+
+    app, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    def failing_replace(_src, _dst):
+        raise OSError("simulated install failure")
+
+    monkeypatch.setattr(account_module.os, "replace", failing_replace)
+
+    # The shared `client` fixture re-raises unhandled exceptions by default
+    # (TestClient's raise_server_exceptions=True) -- this test needs the
+    # structured 500 response itself, same as test_errors.py's precedent.
+    local_client = TestClient(app, raise_server_exceptions=False)
+    response = local_client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("avatar.png", b"fake-png-bytes", "image/png")},
+        headers=auth(user_id),
+    )
+    assert response.status_code == 500
+
+    storage_dir = account_module._avatar_path(user_id).parent
+    leftover_temp_files = list(storage_dir.glob("*.tmp")) if storage_dir.exists() else []
+    assert leftover_temp_files == []
+
+
+def test_upload_avatar_uses_a_unique_temp_filename_per_request(client, app_and_db_url, monkeypatch):
+    """Two concurrent uploads from the same account must not write through the
+    same temp path -- a fixed per-user temp name would let interleaved writes
+    install a corrupted mix of both images."""
+    import core_api.routers.account as account_module
+
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    seen_tmp_names: list[str] = []
+    original_replace = account_module.os.replace
+
+    def recording_replace(src, dst):
+        seen_tmp_names.append(str(src))
+        return original_replace(src, dst)
+
+    monkeypatch.setattr(account_module.os, "replace", recording_replace)
+
+    client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("a.png", b"first-bytes", "image/png")},
+        headers=auth(user_id),
+    )
+    client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("b.png", b"second-bytes", "image/png")},
+        headers=auth(user_id),
+    )
+
+    assert len(seen_tmp_names) == 2
+    assert seen_tmp_names[0] != seen_tmp_names[1]
+
+
+class _FakeHeaders:
+    def __init__(self, content_length: str | None) -> None:
+        self._content_length = content_length
+
+    def get(self, key: str) -> str | None:
+        assert key == "content-length"
+        return self._content_length
+
+
+class _FakeRequest:
+    def __init__(self, content_length: str | None) -> None:
+        self.headers = _FakeHeaders(content_length)
+
+
+def test_reject_oversized_content_length_rejects_a_large_declared_size():
+    from core_api.routers.account import _MAX_AVATAR_BYTES, _reject_oversized_content_length
+
+    with pytest.raises(AppError) as exc_info:
+        _reject_oversized_content_length(_FakeRequest(str(_MAX_AVATAR_BYTES + 1_000_000)))
+    assert exc_info.value.code == "file_too_large"
+
+
+def test_reject_oversized_content_length_allows_a_small_declared_size():
+    from core_api.routers.account import _reject_oversized_content_length
+
+    _reject_oversized_content_length(_FakeRequest("1000"))
+
+
+def test_reject_oversized_content_length_allows_a_missing_header():
+    from core_api.routers.account import _reject_oversized_content_length
+
+    _reject_oversized_content_length(_FakeRequest(None))

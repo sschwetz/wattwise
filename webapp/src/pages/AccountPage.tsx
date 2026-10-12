@@ -79,6 +79,7 @@ function ProfileSection() {
     if (!file) return;
 
     setAvatarClientError(null);
+    removeAvatar.reset();
     if (!ALLOWED_AVATAR_TYPES.has(file.type)) {
       setAvatarClientError("Please choose a JPEG, PNG, or WebP image.");
       return;
@@ -88,6 +89,12 @@ function ProfileSection() {
       return;
     }
     uploadAvatar.mutate(file);
+  }
+
+  function handleRemoveAvatar() {
+    setAvatarClientError(null);
+    uploadAvatar.reset();
+    removeAvatar.mutate();
   }
 
   const avatarError = avatarClientError ?? (
@@ -102,20 +109,20 @@ function ProfileSection() {
       <div className="flex items-center gap-4">
         <Avatar name={me?.display_name ?? null} email={me?.email ?? ""} imageUrl={avatarUrl} />
         <div className="flex items-center gap-2">
-          <label className="cursor-pointer rounded-md border border-line px-3 py-2 text-sm text-ink hover:bg-surface-2">
+          <label className="cursor-pointer rounded-md border border-line px-3 py-2 text-sm text-ink hover:bg-surface-2 focus-within:ring-2 focus-within:ring-solar/60">
             Upload photo
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
               aria-label="Upload avatar"
               onChange={handleAvatarChange}
-              className="hidden"
+              className="sr-only"
             />
           </label>
           {me?.has_avatar && (
             <button
               type="button"
-              onClick={() => removeAvatar.mutate()}
+              onClick={handleRemoveAvatar}
               disabled={removeAvatar.isPending}
               className="rounded-md border border-line px-3 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
             >
