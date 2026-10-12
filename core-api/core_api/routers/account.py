@@ -25,6 +25,7 @@ from core_api.schemas import (
     TotpReenrollConfirmOut,
     TotpReenrollStartOut,
     UpdateAmberApiKeyIn,
+    UpdateDisplayNameIn,
     UserMeOut,
 )
 from core_api.security import (
@@ -46,7 +47,12 @@ _EMAIL_CHANGE_TOKEN_EXPIRY = datetime.timedelta(hours=1)
 
 
 def _to_user_me_out(user: User) -> UserMeOut:
-    return UserMeOut(id=user.id, email=user.email, has_amber_api_key=user.amber_api_key is not None)
+    return UserMeOut(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        has_amber_api_key=user.amber_api_key is not None,
+    )
 
 
 def _verify_step_up(db: Session, user: User, current_password: str, totp_code: str) -> None:
@@ -89,6 +95,18 @@ def update_amber_api_key(
     db: Session = Depends(get_db_session),
 ) -> UserMeOut:
     current_user.amber_api_key = payload.amber_api_key
+    db.commit()
+    db.refresh(current_user)
+    return _to_user_me_out(current_user)
+
+
+@router.patch("/profile", response_model=UserMeOut)
+def update_display_name(
+    payload: UpdateDisplayNameIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> UserMeOut:
+    current_user.display_name = payload.display_name
     db.commit()
     db.refresh(current_user)
     return _to_user_me_out(current_user)

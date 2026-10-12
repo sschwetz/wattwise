@@ -772,3 +772,42 @@ def test_step_up_still_requires_the_password_alongside_a_recovery_code(client, a
 
     # The rejected attempt must not have spent the code.
     assert len(_unused_recovery_codes(db_url, user_id)) == 10
+
+
+def test_get_me_reports_null_display_name_when_unset(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.get("/api/v1/users/me", headers=auth(user_id))
+    assert response.status_code == 200, response.text
+    assert response.json()["display_name"] is None
+
+
+def test_patch_profile_sets_display_name(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.patch(
+        "/api/v1/users/me/profile", json={"display_name": "Ada Lovelace"}, headers=auth(user_id)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["display_name"] == "Ada Lovelace"
+
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    user = session.get(User, user_id)
+    session.close()
+    assert user.display_name == "Ada Lovelace"
+
+
+def test_patch_profile_rejects_empty_display_name(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.patch("/api/v1/users/me/profile", json={"display_name": ""}, headers=auth(user_id))
+    assert response.status_code == 422
+
+
+def test_patch_profile_requires_auth(client, app_and_db_url):
+    response = client.patch("/api/v1/users/me/profile", json={"display_name": "Ada Lovelace"})
+    assert response.status_code in (401, 422)

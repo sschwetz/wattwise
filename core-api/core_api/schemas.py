@@ -105,6 +105,7 @@ class PasswordResetConfirmIn(BaseModel):
 class UserMeOut(BaseModel):
     id: int
     email: str
+    display_name: str | None
     # Never the raw key -- just whether one is on file, so the UI can show
     # "configured" without ever having the secret pass back through a response.
     has_amber_api_key: bool
@@ -112,6 +113,10 @@ class UserMeOut(BaseModel):
 
 class UpdateAmberApiKeyIn(BaseModel):
     amber_api_key: str = Field(min_length=1)
+
+
+class UpdateDisplayNameIn(BaseModel):
+    display_name: str = Field(min_length=1, max_length=100)
 
 
 class ChangePasswordIn(BaseModel):
