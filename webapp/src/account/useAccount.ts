@@ -4,6 +4,7 @@ import { apiFetch } from "../api/client";
 export interface Me {
   id: number;
   email: string;
+  display_name: string | null;
   has_amber_api_key: boolean;
 }
 
