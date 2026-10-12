@@ -17,7 +17,9 @@ export function Logo({ className = "" }: { className?: string }) {
         <rect width="120" height="120" rx="28" fill="#16304f" stroke="#2a4a72" strokeWidth="2" />
         <path d="M68 14 L30 68 H58 L48 106 L92 46 H62 Z" fill={`url(#${gradientId})`} />
       </svg>
-      <span className="font-display text-lg font-semibold text-solar">WattWise</span>
+      <span className="font-display text-lg font-semibold text-solar">
+        Watt<span className="text-ink">Wise</span>
+      </span>
     </div>
   );
 }
