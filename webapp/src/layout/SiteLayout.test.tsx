@@ -22,6 +22,7 @@ function renderLayout(initialPath = "/sites/7") {
             <Route index element={<p>Dashboard content</p>} />
             <Route path="sources" element={<p>Sources content</p>} />
             <Route path="billing" element={<p>Billing content</p>} />
+            <Route path="help/:slug?" element={<p>Help content</p>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -92,6 +93,14 @@ describe("SiteLayout", () => {
     await screen.findByText("Home");
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Switch site" }), "Add new site");
     expect(await screen.findByText("Add site page")).toBeInTheDocument();
+  });
+
+  it("keeps the sidebar on a help route and highlights none of its links", () => {
+    renderLayout("/sites/7/help/06-billing");
+    expect(screen.getByText("Help content")).toBeInTheDocument();
+    for (const name of ["Dashboard", "Sources", "Billing"]) {
+      expect(screen.getByRole("link", { name })).not.toHaveAttribute("aria-current");
+    }
   });
 
   it("fills its parent's height instead of forcing its own full viewport height", () => {

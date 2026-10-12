@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useMatch } from "react-router-dom";
 import { useMe } from "../account/useAccount";
 import { useAvatarImage } from "../account/useAvatarImage";
 import { useAuth } from "../auth/AuthContext";
+import { useSites } from "../sites/useSites";
 import { Avatar } from "./Avatar";
 import { Logo } from "./Logo";
 
@@ -11,6 +12,29 @@ function ChevronIcon() {
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
       <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+const menuItemClass = "block px-3 py-2 text-sm text-ink hover:bg-surface-2";
+
+/**
+ * Help opens inside the site sidebar when there is a site to show. Header sits
+ * outside the :siteId route, so the current site comes from matching the URL.
+ * Falls back to the user's first site, then to the header-only /help route.
+ */
+function HelpMenuItem({ onSelect }: { onSelect: () => void }) {
+  const currentSiteId = useMatch("/sites/:siteId/*")?.params.siteId;
+  const { data: sites } = useSites();
+  const siteId = currentSiteId && /^\d+$/.test(currentSiteId) ? currentSiteId : sites?.[0]?.id;
+  return (
+    <NavLink
+      to={siteId === undefined ? "/help" : `/sites/${siteId}/help`}
+      role="menuitem"
+      onClick={onSelect}
+      className={menuItemClass}
+    >
+      Help
+    </NavLink>
   );
 }
 
@@ -72,10 +96,11 @@ export function Header() {
               to="/account"
               role="menuitem"
               onClick={() => setOpen(false)}
-              className="block px-3 py-2 text-sm text-ink hover:bg-surface-2"
+              className={menuItemClass}
             >
               Account settings
             </NavLink>
+            <HelpMenuItem onSelect={() => setOpen(false)} />
             <button
               type="button"
               role="menuitem"

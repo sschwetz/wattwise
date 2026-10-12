@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,15 +12,17 @@ vi.mock("../api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn(), apiFetchBlob: vi.fn() };
 });
 
-function renderHeader() {
+function renderHeader(path = "/sites/7") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={["/sites/7"]}>
+        <MemoryRouter initialEntries={[path]}>
           <Routes>
-            <Route path="/sites/7" element={<Header />} />
-            <Route path="/account" element={<p>Account page</p>} />
+            <Route path="/sites/:siteId/*" element={<Header />} />
+            <Route path="/sites/new" element={<Header />} />
+            <Route path="/account" element={<Header />} />
+            <Route path="/help" element={<Header />} />
             <Route path="/login" element={<p>Login page</p>} />
           </Routes>
         </MemoryRouter>
@@ -152,5 +154,65 @@ describe("Header", () => {
     renderHeader();
     await screen.findByText("Ada Lovelace");
     expect(await screen.findByAltText("")).toHaveAttribute("src", "blob:mock-url");
+  });
+
+  describe("Help menu item", () => {
+    const sites = [
+      { id: 4, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney" },
+      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart" },
+    ];
+
+    function mockApi(siteList: typeof sites) {
+      vi.mocked(apiFetch).mockImplementation((path: string) =>
+        Promise.resolve(
+          path === "/api/v1/sites"
+            ? siteList
+            : { id: 1, email: "ada@example.com", display_name: "Ada Lovelace", has_avatar: false, has_amber_api_key: false },
+        ),
+      );
+    }
+
+    async function openMenu(path: string, siteList = sites) {
+      mockApi(siteList);
+      renderHeader(path);
+      await userEvent.click(await screen.findByRole("button", { name: /ada lovelace/i }));
+    }
+
+    it("sits between Account settings and Log off", async () => {
+      await openMenu("/sites/7");
+      const labels = screen.getAllByRole("menuitem").map((item) => item.textContent);
+      expect(labels).toEqual(["Account settings", "Help", "Log off"]);
+    });
+
+    it("targets the current site on a site route", async () => {
+      await openMenu("/sites/7/billing");
+      expect(screen.getByRole("menuitem", { name: "Help" })).toHaveAttribute("href", "/sites/7/help");
+    });
+
+    it("targets the first site on /account", async () => {
+      await openMenu("/account");
+      await waitFor(() =>
+        expect(screen.getByRole("menuitem", { name: "Help" })).toHaveAttribute("href", "/sites/4/help"),
+      );
+    });
+
+    it("does not mistake /sites/new for a site id", async () => {
+      await openMenu("/sites/new");
+      await waitFor(() =>
+        expect(screen.getByRole("menuitem", { name: "Help" })).toHaveAttribute("href", "/sites/4/help"),
+      );
+    });
+
+    it("falls back to /help when the user has no sites", async () => {
+      await openMenu("/account", []);
+      await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/v1/sites"));
+      expect(screen.getByRole("menuitem", { name: "Help" })).toHaveAttribute("href", "/help");
+    });
+
+    it("closes the menu when clicked", async () => {
+      await openMenu("/sites/7");
+      await userEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+      expect(screen.queryByRole("menuitem", { name: "Log off" })).not.toBeInTheDocument();
+    });
   });
 });

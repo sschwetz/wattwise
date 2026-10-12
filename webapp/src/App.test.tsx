@@ -119,4 +119,28 @@ describe("App routing", () => {
     await userEvent.click(screen.getByRole("link", { name: "Sources" }));
     expect(await screen.findByRole("heading", { name: "Sources" })).toBeInTheDocument();
   });
+
+  it("opens Help from the header menu inside the site layout, without a reload", async () => {
+    localStorage.setItem("access_token", "a-token");
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      path === "/api/v1/users/me"
+        ? Promise.resolve({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false })
+        : resolveEmpty(path),
+    );
+    renderAt("/sites/7");
+    await screen.findByRole("heading", { name: "Dashboard" });
+    await userEvent.click(await screen.findByRole("button", { name: "me@example.com" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "WattWise User Guide" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sources" })).toHaveAttribute("href", "/sites/7/sources");
+    expect(screen.getByRole("button", { name: "me@example.com" })).toBeInTheDocument();
+  });
+
+  it("shows the help guide with the header only at /help", async () => {
+    localStorage.setItem("access_token", "a-token");
+    vi.mocked(apiFetch).mockResolvedValue([]);
+    renderAt("/help");
+    expect(await screen.findByRole("heading", { level: 1, name: "WattWise User Guide" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sources" })).not.toBeInTheDocument();
+  });
 });

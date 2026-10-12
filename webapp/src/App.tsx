@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { HelpPage } from "./help/HelpPage";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { ProtectedLayout } from "./layout/ProtectedLayout";
 import { SiteLayout } from "./layout/SiteLayout";
@@ -34,10 +35,12 @@ export function App() {
           <Route path="/sites" element={<SitePickerPage />} />
           <Route path="/sites/new" element={<AddSitePage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/help/:slug?" element={<HelpPage />} />
           <Route path="/sites/:siteId" element={<SiteLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="billing" element={<BillingPage />} />
+            <Route path="help/:slug?" element={<HelpPage />} />
           </Route>
         </Route>
       </Route>
