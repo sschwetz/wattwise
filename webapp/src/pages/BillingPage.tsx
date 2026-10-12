@@ -390,6 +390,7 @@ function MonthlyFeeDiscountWindowForm({ siteId, tariffId }: { siteId: number; ta
           className={inputClass}
           required
         />
+        <div className="basis-full" />
         <button type="submit" disabled={createWindow.isPending} className={primaryButtonClass}>
           Add fee discount
         </button>
