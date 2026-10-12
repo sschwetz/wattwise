@@ -172,7 +172,7 @@ def get_billing_period_cost(
     start = current_billing_period_start(cycles, site.timezone, now)
     if start is None:
         raise AppError(404, "no_active_billing_cycle", "No billing cycle is currently active for this site")
-    result = compute_cost(db, site.id, start, now, method, site.timezone)
+    result = compute_cost(db, site.id, start, now, method, site.timezone, now=now)
     return CostOut(**dataclasses.asdict(result))
 
 

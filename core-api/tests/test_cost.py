@@ -699,6 +699,88 @@ def test_compute_cost_total_still_includes_the_daily_service_charge_over_the_sam
     assert result.total_cost_c == decimal.Decimal("95.3")
 
 
+def test_compute_cost_service_charge_prorates_for_a_day_still_in_progress(db, site):
+    """A day that hasn't finished yet -- `now` falls before its local
+    midnight rollover -- must not have its full day's service charge
+    stamped on the instant the day starts; only the fraction of the day
+    that has actually elapsed so far."""
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="96.0")
+    midnight = sydney_local(2026, 1, 1)
+    six_hours_in = midnight + datetime.timedelta(hours=6)
+
+    result = compute_cost(
+        db,
+        site.id,
+        midnight,
+        midnight + datetime.timedelta(days=1),
+        method="net",
+        site_timezone=site.timezone,
+        now=six_hours_in,
+    )
+
+    # 6 of 24 hours elapsed -> a quarter of the 96c daily fee.
+    assert result.total_cost_c == decimal.Decimal("24.0")
+
+
+def test_compute_cost_service_charge_is_zero_the_instant_a_new_day_starts(db, site):
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="96.0")
+    midnight = sydney_local(2026, 1, 1)
+
+    result = compute_cost(
+        db,
+        site.id,
+        midnight,
+        midnight + datetime.timedelta(days=1),
+        method="net",
+        site_timezone=site.timezone,
+        now=midnight,
+    )
+
+    assert result.total_cost_c == decimal.Decimal("0")
+
+
+def test_compute_cost_service_charge_is_full_once_the_day_has_fully_elapsed(db, site):
+    """`now` on or after the day's own rollover (even if `end` extends
+    further into the future, as the dashboard's fixed-span "today" query
+    does) still charges the full day -- proration only holds back the
+    in-progress day, not ones that have already finished."""
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="96.0")
+    midnight = sydney_local(2026, 1, 1)
+    next_midnight = midnight + datetime.timedelta(days=1)
+
+    result = compute_cost(
+        db,
+        site.id,
+        midnight,
+        next_midnight,
+        method="net",
+        site_timezone=site.timezone,
+        now=next_midnight,
+    )
+
+    assert result.total_cost_c == decimal.Decimal("96.0")
+
+
+def test_compute_cost_monthly_fee_prorates_for_a_day_still_in_progress(db, site):
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")
+    midnight = sydney_local(2026, 1, 1)
+    six_hours_in = midnight + datetime.timedelta(hours=6)
+
+    result = compute_cost(
+        db,
+        site.id,
+        midnight,
+        midnight + datetime.timedelta(days=1),
+        method="net",
+        site_timezone=site.timezone,
+        now=six_hours_in,
+    )
+
+    # 310c / 31 days = 10c/day; a quarter of today elapsed -> 2.5c.
+    assert result.total_cost_c == decimal.Decimal("2.5")
+
+
 def test_compute_cost_amortizes_monthly_fee_across_the_billing_cycle(db, site):
     """310c/month over January's 31-day calendar-month billing cycle ->
     exactly 10c/day, charged at local midnight like the service charge."""

@@ -84,47 +84,77 @@ def _price_by_ts(
     return {ts: value for ts, value in db.execute(stmt)}
 
 
-def _local_midnights_in_range(
+def _local_days_in_range(
     start: datetime.datetime, end: datetime.datetime, site_timezone: str
-) -> list[datetime.datetime]:
-    """Every local-midnight instant (as UTC) for [start, end)'s calendar days,
-    in the site's own timezone -- a day whose midnight falls before `start`
-    (a range starting mid-day) is excluded, same half-open-interval handling
-    as the rest of this module."""
+) -> list[tuple[datetime.datetime, datetime.datetime]]:
+    """Every local calendar day for [start, end)'s span, in the site's own
+    timezone, as (midnight_utc, next_midnight_utc) pairs -- a day whose
+    midnight falls before `start` (a range starting mid-day) is excluded,
+    same half-open-interval handling as the rest of this module. The pair's
+    actual (DST-aware) length is what _day_elapsed_fraction below divides
+    by, rather than assuming a fixed 24h."""
     tz = site_tz(site_timezone)
     start_utc = as_utc(start)
     end_utc = as_utc(end)
     local_date = start_utc.astimezone(tz).date()
 
-    midnights = []
+    days = []
     while True:
         midnight_utc = local_midnight(local_date, tz).astimezone(datetime.timezone.utc)
         if midnight_utc >= end_utc:
             break
+        next_midnight_utc = local_midnight(local_date + datetime.timedelta(days=1), tz).astimezone(datetime.timezone.utc)
         if midnight_utc >= start_utc:
-            midnights.append(midnight_utc)
+            days.append((midnight_utc, next_midnight_utc))
         local_date += datetime.timedelta(days=1)
-    return midnights
+    return days
 
 
-def _service_charge_rows(midnights: list[datetime.datetime], tariffs: list[SiteTariff]) -> list[_MinuteCost]:
+def _day_elapsed_fraction(
+    midnight_utc: datetime.datetime, next_midnight_utc: datetime.datetime, now_utc: datetime.datetime
+) -> decimal.Decimal:
+    """How much of a local calendar day has actually happened yet, as a
+    fraction in [0, 1] -- 1 once the day has fully rolled over into the
+    next, 0 before it's started (shouldn't normally occur: callers only
+    pass days already known to be <= `end`), and the real elapsed share
+    while it's still in progress. A day's own flat service/monthly fee is
+    charged in proportion to this, rather than in full the instant its
+    midnight passes -- see _service_charge_rows and _monthly_fee_rows."""
+    if now_utc >= next_midnight_utc:
+        return decimal.Decimal(1)
+    if now_utc <= midnight_utc:
+        return decimal.Decimal(0)
+    elapsed = (now_utc - midnight_utc).total_seconds()
+    total = (next_midnight_utc - midnight_utc).total_seconds()
+    return decimal.Decimal(elapsed) / decimal.Decimal(total)
+
+
+def _service_charge_rows(
+    days: list[tuple[datetime.datetime, datetime.datetime]], tariffs: list[SiteTariff], now_utc: datetime.datetime
+) -> list[_MinuteCost]:
     """One row per local calendar day (already resolved by the caller, and
     shared with _monthly_fee_rows -- both amortize a flat per-day amount for
     the same days), for whichever SiteTariff was effective at that instant --
-    same non-retroactive lookup the demand-charge job already uses. `tariffs`
-    is loaded once by the caller and shared with _minute_costs, rather than
-    each querying it separately. Used only by compute_cost's total (never
-    compute_cost_series -- see its own docstring). Zero kWh so these rows
-    add to the cost total without skewing import/export totals."""
+    same non-retroactive lookup the demand-charge job already uses. Prorated
+    by _day_elapsed_fraction: a day still in progress (the common case for
+    "today") contributes only its elapsed share, not the full day's charge
+    the instant its midnight passes -- a day that's already finished (every
+    earlier day in a multi-day range) still gets the full amount, since its
+    fraction is 1. `tariffs` is loaded once by the caller and shared with
+    _minute_costs, rather than each querying it separately. Used only by
+    compute_cost's total (never compute_cost_series -- see its own
+    docstring). Zero kWh so these rows add to the cost total without
+    skewing import/export totals."""
     rows = []
-    for midnight in midnights:
+    for midnight, next_midnight in days:
         tariff = tariff_effective_at(tariffs, midnight)
         if tariff is None:
             continue
+        fraction = _day_elapsed_fraction(midnight, next_midnight, now_utc)
         rows.append(
             _MinuteCost(
                 ts=midnight,
-                cost_c=tariff.service_availability_c_per_day,
+                cost_c=tariff.service_availability_c_per_day * fraction,
                 import_kwh=decimal.Decimal("0"),
                 export_kwh=decimal.Decimal("0"),
             )
@@ -135,9 +165,10 @@ def _service_charge_rows(midnights: list[datetime.datetime], tariffs: list[SiteT
 def _monthly_fee_rows(
     db: Session,
     site_id: int,
-    midnights: list[datetime.datetime],
+    days: list[tuple[datetime.datetime, datetime.datetime]],
     site_timezone: str,
     tariffs: list[SiteTariff],
+    now_utc: datetime.datetime,
 ) -> list[_MinuteCost]:
     """One row per local calendar day (already resolved by the caller -- see
     _service_charge_rows), at that day's local midnight -- whichever
@@ -146,8 +177,10 @@ def _monthly_fee_rows(
     real length of that day's billing cycle (BillingCycle's
     anchor_day/cycle_months -- the same per-cycle-day divisor
     demand_charge_job.py already uses for demand charges, via
-    billing_period_days). No row for a day with no BillingCycle configured
-    to divide by, or whose effective tariff has no monthly_fee_c set. Used
+    billing_period_days) and then, like the service charge, prorated by
+    _day_elapsed_fraction so a day still in progress only contributes its
+    elapsed share. No row for a day with no BillingCycle configured to
+    divide by, or whose effective tariff has no monthly_fee_c set. Used
     only by compute_cost's total (never compute_cost_series -- see
     _service_charge_rows). Zero kWh so these rows add to the cost total
     without skewing import/export totals.
@@ -156,23 +189,23 @@ def _monthly_fee_rows(
     site has a monthly_fee_c set at all -- the common case while the
     feature is unused -- rather than regenerating the site's whole billing
     period history just to find nothing to charge."""
-    if not midnights or not any(tariff.monthly_fee_c is not None for tariff in tariffs):
+    if not days or not any(tariff.monthly_fee_c is not None for tariff in tariffs):
         return []
 
     cycles = effective_billing_cycles_for_site(db, site_id)
     if not cycles:
         return []
-    periods = billing_periods_for_site(cycles, site_timezone, midnights[-1] + datetime.timedelta(days=1))
+    periods = billing_periods_for_site(cycles, site_timezone, days[-1][1])
     windows_by_tariff = monthly_fee_discount_windows_by_tariff(db, site_id)
 
     rows = []
     period_idx = 0
-    for midnight in midnights:
+    for midnight, next_midnight in days:
         tariff = tariff_effective_at(tariffs, midnight)
         if tariff is None:
             continue
-        # Both midnights and periods are already sorted ascending, so a
-        # single forward-advancing pointer finds each midnight's period in
+        # Both days and periods are already sorted ascending, so a single
+        # forward-advancing pointer finds each midnight's period in
         # O(days + periods) total rather than rescanning all periods per day.
         while period_idx < len(periods) and periods[period_idx].end <= midnight:
             period_idx += 1
@@ -183,10 +216,11 @@ def _monthly_fee_rows(
         fee_c = monthly_fee_c_for_day(tariff, windows, midnight)
         if fee_c is None:
             continue
+        fraction = _day_elapsed_fraction(midnight, next_midnight, now_utc)
         rows.append(
             _MinuteCost(
                 ts=midnight,
-                cost_c=fee_c / billing_period_days(period),
+                cost_c=(fee_c / billing_period_days(period)) * fraction,
                 import_kwh=decimal.Decimal("0"),
                 export_kwh=decimal.Decimal("0"),
             )
@@ -301,7 +335,18 @@ def compute_cost(
     end: datetime.datetime,
     method: Literal["net", "gross"],
     site_timezone: str,
+    now: datetime.datetime | None = None,
 ) -> CostResult:
+    """`now` is the real wall-clock instant used to prorate the service and
+    monthly fees for a day still in progress (see _day_elapsed_fraction) --
+    distinct from `end`, which may itself reach into the future (the
+    dashboard's "today" query runs its range through next local midnight
+    regardless of the actual time, so its chart always covers a fixed
+    calendar span -- see DashboardPage's rangeForMode). Defaults to the
+    real current time; callers pass it explicitly only to get a
+    reproducible result (tests) or to reuse an instant already computed
+    for other purposes (get_billing_period_cost)."""
+    now_utc = as_utc(now) if now is not None else datetime.datetime.now(datetime.timezone.utc)
     tariffs = site_tariffs_for_site(db, site_id)
     rows, minutes_missing_price = _minute_costs(db, site_id, start, end, method, site_timezone, tariffs)
 
@@ -313,12 +358,12 @@ def compute_cost(
         total_import_kwh += row.import_kwh
         total_export_kwh += row.export_kwh
 
-    midnights = _local_midnights_in_range(start, end, site_timezone)
+    days = _local_days_in_range(start, end, site_timezone)
 
-    for charge in _service_charge_rows(midnights, tariffs):
+    for charge in _service_charge_rows(days, tariffs, now_utc):
         total_cost_c += charge.cost_c
 
-    for charge in _monthly_fee_rows(db, site_id, midnights, site_timezone, tariffs):
+    for charge in _monthly_fee_rows(db, site_id, days, site_timezone, tariffs, now_utc):
         total_cost_c += charge.cost_c
 
     # Demand charges count toward the total as soon as there's a best
