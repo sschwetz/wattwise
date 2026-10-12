@@ -120,6 +120,9 @@ class UserMeOut(BaseModel):
     # Never the raw key -- just whether one is on file, so the UI can show
     # "configured" without ever having the secret pass back through a response.
     has_amber_api_key: bool
+    # Never the stored content-type -- the UI only ever needs true/false to decide
+    # whether to fetch the image at all.
+    has_avatar: bool
 
 
 class UpdateAmberApiKeyIn(BaseModel):

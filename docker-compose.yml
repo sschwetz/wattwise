@@ -13,6 +13,7 @@ services:
       WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weather-collector service below}
       PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the pricing-collector service below}
       DATABASE_URL: sqlite:////data/core_api.db
+      AVATAR_STORAGE_DIR: /data/avatars
       SMTP_HOST: mail-relay
       SMTP_PORT: "25"
       SMTP_FROM: ${SMTP_FROM:-noreply@localhost}

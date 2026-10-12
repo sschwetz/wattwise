@@ -17,6 +17,7 @@ def _require_env(name: str, *, insecure_default_note: str = "") -> str:
 @dataclass(frozen=True)
 class Settings:
     database_url: str
+    avatar_storage_dir: str
     jwt_secret: str
     jwt_expiry_hours: int
     smtp_host: str
@@ -35,6 +36,7 @@ class Settings:
 def get_settings() -> Settings:
     return Settings(
         database_url=os.environ.get("DATABASE_URL", "sqlite:///./core_api.db"),
+        avatar_storage_dir=os.environ.get("AVATAR_STORAGE_DIR", "./data/avatars"),
         jwt_secret=_require_env("JWT_SECRET", insecure_default_note=" (no insecure default is provided)."),
         jwt_expiry_hours=int(os.environ.get("JWT_EXPIRY_HOURS", "24")),
         smtp_host=os.environ.get("SMTP_HOST", "mail-relay"),

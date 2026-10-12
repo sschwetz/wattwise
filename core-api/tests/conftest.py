@@ -57,6 +57,7 @@ def fake_email_sender() -> FakeEmailSender:
 @pytest.fixture()
 def app_and_db_url(tmp_path, monkeypatch, fake_email_sender):
     monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("AVATAR_STORAGE_DIR", str(tmp_path / "avatars"))
     db_url = f"sqlite:///{tmp_path}/app_test.db"
     run_migrations(db_url)
     app = create_app(database_url=db_url, email_sender=fake_email_sender)

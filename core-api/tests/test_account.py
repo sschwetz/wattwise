@@ -846,3 +846,187 @@ def test_patch_profile_rejects_display_name_over_max_length(client, app_and_db_u
         "/api/v1/users/me/profile", json={"display_name": "x" * 101}, headers=auth(user_id)
     )
     assert response.status_code == 422
+
+
+def test_get_me_reports_has_avatar_false_when_unset(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.get("/api/v1/users/me", headers=auth(user_id))
+    assert response.status_code == 200, response.text
+    assert response.json()["has_avatar"] is False
+
+
+def test_upload_avatar_sets_content_type_and_persists_bytes(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("avatar.png", b"fake-png-bytes", "image/png")},
+        headers=auth(user_id),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["has_avatar"] is True
+
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    user = session.get(User, user_id)
+    session.close()
+    assert user.avatar_content_type == "image/png"
+
+
+def test_upload_avatar_rejects_disallowed_content_type(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("notes.txt", b"hello", "text/plain")},
+        headers=auth(user_id),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_file_type"
+
+
+def test_upload_avatar_rejects_oversized_file(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    oversized = b"x" * (2 * 1024 * 1024 + 1)
+    response = client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("avatar.png", oversized, "image/png")},
+        headers=auth(user_id),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "file_too_large"
+
+
+def test_upload_avatar_overwrites_existing_avatar(client, app_and_db_url):
+    from core_api.routers.account import _avatar_path
+
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("avatar.jpg", b"old-jpeg-bytes", "image/jpeg")},
+        headers=auth(user_id),
+    )
+    response = client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("avatar.png", b"new-png-bytes", "image/png")},
+        headers=auth(user_id),
+    )
+    assert response.status_code == 200, response.text
+
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    user = session.get(User, user_id)
+    session.close()
+    assert user.avatar_content_type == "image/png"
+    assert _avatar_path(user_id).read_bytes() == b"new-png-bytes"
+
+
+def test_upload_avatar_requires_auth(client, app_and_db_url):
+    response = client.post(
+        "/api/v1/users/me/avatar", files={"file": ("avatar.png", b"bytes", "image/png")}
+    )
+    assert response.status_code in (401, 422)
+
+
+def test_remove_avatar_clears_content_type_and_deletes_file(client, app_and_db_url):
+    from core_api.routers.account import _avatar_path
+
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+    client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("avatar.png", b"bytes", "image/png")},
+        headers=auth(user_id),
+    )
+
+    response = client.delete("/api/v1/users/me/avatar", headers=auth(user_id))
+    assert response.status_code == 200, response.text
+    assert response.json()["has_avatar"] is False
+
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    user = session.get(User, user_id)
+    session.close()
+    assert user.avatar_content_type is None
+    assert not _avatar_path(user_id).exists()
+
+
+def test_remove_avatar_is_idempotent_when_none_exists(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.delete("/api/v1/users/me/avatar", headers=auth(user_id))
+    assert response.status_code == 200, response.text
+    assert response.json()["has_avatar"] is False
+
+
+def test_remove_avatar_requires_auth(client, app_and_db_url):
+    response = client.delete("/api/v1/users/me/avatar")
+    assert response.status_code in (401, 422)
+
+
+def test_get_avatar_streams_bytes_and_content_type(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+    client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("avatar.png", b"fake-png-bytes", "image/png")},
+        headers=auth(user_id),
+    )
+
+    response = client.get("/api/v1/users/me/avatar", headers=auth(user_id))
+    assert response.status_code == 200
+    assert response.content == b"fake-png-bytes"
+    assert response.headers["content-type"] == "image/png"
+
+
+def test_get_avatar_404s_when_unset(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    user_id = make_user(db_url)
+
+    response = client.get("/api/v1/users/me/avatar", headers=auth(user_id))
+    assert response.status_code == 404
+    assert response.json()["code"] == "no_avatar"
+
+
+def test_get_avatar_requires_auth(client, app_and_db_url):
+    response = client.get("/api/v1/users/me/avatar")
+    assert response.status_code in (401, 422)
+
+
+def test_two_different_users_get_independent_avatars(client, app_and_db_url):
+    """Pins the Review Focus item: there is no path by which uploading or
+    fetching an avatar can touch another account's file or row."""
+    _, db_url = app_and_db_url
+    user_a = make_user(db_url)
+    user_b = User(email="second-user@example.com", password_hash="x")
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    session.add(user_b)
+    session.commit()
+    user_b_id = user_b.id
+    session.close()
+
+    client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("a.png", b"user-a-bytes", "image/png")},
+        headers=auth(user_a),
+    )
+    client.post(
+        "/api/v1/users/me/avatar",
+        files={"file": ("b.jpg", b"user-b-bytes", "image/jpeg")},
+        headers=auth(user_b_id),
+    )
+
+    response_a = client.get("/api/v1/users/me/avatar", headers=auth(user_a))
+    response_b = client.get("/api/v1/users/me/avatar", headers=auth(user_b_id))
+    assert response_a.content == b"user-a-bytes"
+    assert response_b.content == b"user-b-bytes"

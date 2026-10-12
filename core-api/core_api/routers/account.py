@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import secrets
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -52,7 +55,19 @@ def _to_user_me_out(user: User) -> UserMeOut:
         email=user.email,
         display_name=user.display_name,
         has_amber_api_key=user.amber_api_key is not None,
+        has_avatar=user.avatar_content_type is not None,
     )
+
+
+_ALLOWED_AVATAR_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_MAX_AVATAR_BYTES = 2 * 1024 * 1024
+
+
+def _avatar_path(user_id: int) -> Path:
+    """The caller's own avatar file, keyed only by the id already proven by
+    get_current_user -- no route in this feature accepts a user id as input,
+    so there is no way to name another account's file through this API."""
+    return Path(get_settings().avatar_storage_dir) / str(user_id)
 
 
 def _verify_step_up(db: Session, user: User, current_password: str, totp_code: str) -> None:
@@ -110,6 +125,56 @@ def update_display_name(
     db.commit()
     db.refresh(current_user)
     return _to_user_me_out(current_user)
+
+
+@router.post("/avatar", response_model=UserMeOut)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> UserMeOut:
+    if file.content_type not in _ALLOWED_AVATAR_CONTENT_TYPES:
+        raise AppError(400, "invalid_file_type", "Avatar must be a JPEG, PNG, or WebP image")
+
+    # Cap the bytes actually read rather than trusting a client-supplied
+    # Content-Length -- the one-past-the-limit read is what makes "too large"
+    # detectable without buffering an arbitrarily huge upload first.
+    content = await file.read(_MAX_AVATAR_BYTES + 1)
+    if len(content) > _MAX_AVATAR_BYTES:
+        raise AppError(400, "file_too_large", "Avatar must be 2MB or smaller")
+
+    path = _avatar_path(current_user.id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Write-then-replace so a concurrent GET never observes a half-written file,
+    # and so overwriting an existing avatar leaves no stale bytes behind.
+    tmp_path = path.with_name(f".{path.name}.tmp")
+    tmp_path.write_bytes(content)
+    os.replace(tmp_path, path)
+
+    current_user.avatar_content_type = file.content_type
+    db.commit()
+    db.refresh(current_user)
+    return _to_user_me_out(current_user)
+
+
+@router.delete("/avatar", response_model=UserMeOut)
+def remove_avatar(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> UserMeOut:
+    _avatar_path(current_user.id).unlink(missing_ok=True)
+    current_user.avatar_content_type = None
+    db.commit()
+    db.refresh(current_user)
+    return _to_user_me_out(current_user)
+
+
+@router.get("/avatar")
+def get_avatar(current_user: User = Depends(get_current_user)) -> Response:
+    if current_user.avatar_content_type is None:
+        raise AppError(404, "no_avatar", "No avatar is set")
+    content = _avatar_path(current_user.id).read_bytes()
+    return Response(content=content, media_type=current_user.avatar_content_type)
 
 
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
