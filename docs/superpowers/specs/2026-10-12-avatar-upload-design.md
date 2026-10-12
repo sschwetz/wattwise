@@ -106,13 +106,25 @@ unauthenticated endpoints today, and avatar images are not an exception.**
   - Client-side pre-check of type/size before the request, mirroring the server's
     rules, so the common rejection cases show instantly rather than round-tripping —
     server-side validation stays authoritative regardless.
+  - **A failed upload or remove must never fail silently.** Both buttons show the same
+    dismissible error-banner pattern every other section on this page already uses
+    (`updateDisplayName.isError` in this same file is the template): on `isError`, a
+    `role="alert"` banner with the server's message (`invalid_file_type`/
+    `file_too_large`/network failure), using `errorMessage()` as the fallback for a
+    non-`ApiError` failure. This applies to the client-side pre-check too — a
+    rejected-before-upload file shows the same banner, not a disabled button with no
+    explanation.
 
 ## Error handling
 
 Two new error codes, both via the existing `AppError` structured-error convention:
-`invalid_file_type`, `file_too_large`. `no_avatar` on the `GET` is the third, used only
-to let the frontend degrade silently (it is not surfaced as a banner anywhere — a
-missing avatar is not a user-facing error state, just "show initials instead").
+`invalid_file_type`, `file_too_large`. `no_avatar` on the `GET` is the third, and is the
+only one of the three that degrades silently (it is not surfaced as a banner anywhere —
+a missing avatar is not a user-facing error state, just "show initials instead"). The
+other two, and any network/5xx failure from `POST`/`DELETE`, **must** reach the user:
+the Account page's upload and remove actions always show their failure in a banner (see
+Frontend above) — a save that silently didn't happen is worse than no save button at
+all, since the user has no way to tell their photo didn't stick.
 
 ## Testing
 
@@ -123,7 +135,9 @@ missing avatar is not a user-facing error state, just "show initials instead").
 - Vitest + RTL: `apiFetch`'s FormData content-type fix; `apiFetchBlob`; `useAvatarImage`
   (fetches when enabled, skips when not, revokes the previous object URL on change and
   on unmount — mock `URL.createObjectURL`/`revokeObjectURL`, not provided by jsdom by
-  default); `Avatar`'s new `imageUrl` branch; `Header` rendering the real image when
+  default); `Avatar`'s new `imageUrl` branch; a rejected upload (wrong type, too large,
+  or a server error) shows an alert banner and does not silently leave the old avatar
+  in place; a failed remove shows an alert banner too; `Header` rendering the real image when
   `has_avatar` is true; `AccountPage`'s upload/remove flow, including the client-side
   pre-check rejecting an oversized/wrong-type file without calling the API.
 
