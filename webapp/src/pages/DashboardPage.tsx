@@ -4,6 +4,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { useParams } from "react-router-dom";
 import { Bar, Cell, ComposedChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ApiError } from "../api/client";
+import { useActiveDemandWindow } from "../billing/useBilling";
 import { compassDirection } from "../dashboard/compass";
 import {
   buildAxisTickPlan,
@@ -976,13 +977,31 @@ function HistoryAndCost({ siteId }: { siteId: number }) {
   );
 }
 
+/**
+ * " - DEMAND WINDOW ACTIVE", shown only while a DemandWindow currently
+ * matches -- a sibling of the heading rather than text inside it, so the
+ * heading's own accessible name stays plain "Dashboard" regardless of
+ * whether a window is active. A 404 (no window active) or any other
+ * failure both just mean nothing to show here.
+ */
+function DemandWindowNotice({ siteId }: { siteId: number }) {
+  const { data } = useActiveDemandWindow(siteId);
+  if (!data) {
+    return null;
+  }
+  return <span className="font-display text-2xl font-semibold text-danger"> - DEMAND WINDOW ACTIVE</span>;
+}
+
 export function DashboardPage() {
   const { siteId } = useParams<{ siteId: string }>();
   const parsedSiteId = Number(siteId);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
-      <h1 className="font-display text-2xl font-semibold text-ink">Dashboard</h1>
+      <div className="flex flex-wrap items-baseline">
+        <h1 className="font-display text-2xl font-semibold text-ink">Dashboard</h1>
+        <DemandWindowNotice siteId={parsedSiteId} />
+      </div>
       <LiveTiles siteId={parsedSiteId} />
       <TodayPriceChart siteId={parsedSiteId} />
       <HistoryAndCost siteId={parsedSiteId} />

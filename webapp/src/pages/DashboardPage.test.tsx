@@ -44,6 +44,9 @@ function mockApi(
   // 404 for that case, modeled here as a resolved null so most tests (which
   // don't care about the billing-period tile) get a tile that renders nothing.
   billingPeriodCost: Record<string, unknown> | null = null,
+  // Same "null means 404 / nothing active" modeling as billingPeriodCost
+  // above, for the dashboard heading's demand-window notice.
+  activeDemandWindow: Record<string, unknown> | null = null,
 ) {
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (path.includes("/readings/energy")) {
@@ -68,6 +71,9 @@ function mockApi(
     }
     if (path.includes("/cost")) {
       return Promise.resolve(cost ?? null);
+    }
+    if (path.includes("/demand-window/active")) {
+      return Promise.resolve(activeDemandWindow);
     }
     return Promise.resolve([]);
   });
@@ -899,5 +905,38 @@ describe("DashboardPage today's pricing chart", () => {
       expect(end - start).toBe(24 * 60 * 60_000);
       expect(end).toBeGreaterThan(beforeNow);
     }
+  });
+});
+
+describe("DashboardPage demand window notice", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  it("shows a red 'DEMAND WINDOW ACTIVE' notice after the heading when a window is active", async () => {
+    mockApi({}, undefined, undefined, undefined, undefined, undefined, {
+      id: 1,
+      site_tariff_id: 1,
+      label: "Peak",
+      months: [1],
+      days_of_week: [0],
+      start_time: "00:00:00",
+      end_time: "23:59:00",
+      rate_c_per_kw_per_day: "45.0",
+      measurement_interval_minutes: 30,
+    });
+    renderPage();
+    const notice = await screen.findByText("- DEMAND WINDOW ACTIVE");
+    expect(notice.className).toContain("text-danger");
+    // The heading's own accessible name stays plain, unaffected by the
+    // adjacent notice.
+    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+  });
+
+  it("shows no notice when no demand window is currently active", async () => {
+    mockApi({});
+    renderPage();
+    await screen.findByRole("heading", { name: "Dashboard" });
+    expect(screen.queryByText(/DEMAND WINDOW ACTIVE/)).not.toBeInTheDocument();
   });
 });

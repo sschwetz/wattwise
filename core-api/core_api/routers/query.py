@@ -13,8 +13,13 @@ from core_api.cost import CostBucket, compute_cost, compute_cost_series
 from core_api.deps import get_db_session, require_site_access
 from core_api.errors import AppError
 from core_api.jobs.billing_periods import current_billing_period_start, effective_billing_cycles_for_site
-from core_api.jobs.demand_config import adjusted_export_price, export_adjustment_windows_by_tariff, site_tariffs_for_site
-from core_api.models.billing import DemandCharge
+from core_api.jobs.demand_config import (
+    adjusted_export_price,
+    export_adjustment_windows_by_tariff,
+    first_matching_demand_window,
+    site_tariffs_for_site,
+)
+from core_api.models.billing import DemandCharge, DemandWindow
 from core_api.models.identity import Site
 from core_api.models.pricing import PriceChannel, PriceReading, PriceReadingRollup5m
 from core_api.models.readings import (
@@ -27,7 +32,7 @@ from core_api.models.readings import (
 )
 from core_api.models.sources import Source, SourceKind
 from core_api.readings_query import query_readings
-from core_api.schemas import CostOut, CostSeriesPointOut, DemandChargeOut, ReadingOut, UtcDatetime
+from core_api.schemas import CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, ReadingOut, UtcDatetime
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["query"])
 
@@ -190,3 +195,18 @@ def get_demand_charges(
 ) -> list[DemandCharge]:
     stmt = select(DemandCharge).where(DemandCharge.site_id == site.id).order_by(DemandCharge.billing_period_start)
     return db.execute(stmt).scalars().all()
+
+
+@router.get("/demand-window/active", response_model=DemandWindowOut)
+def get_active_demand_window(
+    site: Site = Depends(require_site_access), db: Session = Depends(get_db_session)
+) -> DemandWindow:
+    """The DemandWindow active right now, if any -- the same 'first match
+    wins' resolution the demand-charge job itself uses. 404s (code
+    "no_active_demand_window") when none matches, the same "nothing to show,
+    not an error" convention as /cost/billing-period."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    window = first_matching_demand_window(db, site.id, now, site.timezone)
+    if window is None:
+        raise AppError(404, "no_active_demand_window", "No demand window is currently active for this site")
+    return window

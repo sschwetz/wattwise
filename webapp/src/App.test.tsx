@@ -12,6 +12,14 @@ vi.mock("./api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
+// Matches every endpoint with an empty/absent result except
+// /demand-window/active, whose real 404-for-"none active" contract a bare
+// [] would misrepresent as an active window (truthy), wrongly appending
+// " - DEMAND WINDOW ACTIVE" to the dashboard heading these tests assert on.
+function resolveEmpty(path: string): Promise<unknown> {
+  return Promise.resolve(path.includes("/demand-window/active") ? null : []);
+}
+
 function renderAt(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -55,7 +63,7 @@ describe("App routing", () => {
 
   it("renders the dashboard inside the site layout at /sites/:siteId", async () => {
     localStorage.setItem("access_token", "a-token");
-    vi.mocked(apiFetch).mockResolvedValue([]);
+    vi.mocked(apiFetch).mockImplementation(resolveEmpty);
     renderAt("/sites/7");
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sources" })).toHaveAttribute("href", "/sites/7/sources");
@@ -95,7 +103,7 @@ describe("App routing", () => {
     localStorage.setItem("access_token", "a-token");
     vi.mocked(apiFetch)
       .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false })
-      .mockResolvedValue([]);
+      .mockImplementation(resolveEmpty);
     renderAt("/sites/7");
     await screen.findByRole("heading", { name: "Dashboard" });
     await userEvent.click(await screen.findByRole("button", { name: "me@example.com" }));
@@ -105,7 +113,7 @@ describe("App routing", () => {
 
   it("lets a logged-in user reach Sources from the dashboard nav", async () => {
     localStorage.setItem("access_token", "a-token");
-    vi.mocked(apiFetch).mockResolvedValue([]);
+    vi.mocked(apiFetch).mockImplementation(resolveEmpty);
     renderAt("/sites/7");
     await screen.findByRole("heading", { name: "Dashboard" });
     await userEvent.click(screen.getByRole("link", { name: "Sources" }));

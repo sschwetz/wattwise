@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
+import { LIVE_POLL_MS } from "../dashboard/useLiveReadings";
 
 export interface SiteTariff {
   id: number;
@@ -243,5 +244,20 @@ export function useDemandCharges(siteId: number) {
   return useQuery({
     queryKey: ["demand-charges", siteId],
     queryFn: () => apiFetch<DemandCharge[]>(`/api/v1/sites/${siteId}/demand-charges`),
+  });
+}
+
+/**
+ * The DemandWindow active right now, if any -- polled like the dashboard's
+ * other live tiles so the dashboard's "DEMAND WINDOW ACTIVE" notice tracks
+ * a window starting/ending without a page reload. The backend 404s (code
+ * "no_active_demand_window") when none matches; callers treat that as
+ * "nothing active", not an error.
+ */
+export function useActiveDemandWindow(siteId: number) {
+  return useQuery({
+    queryKey: ["demand-window", siteId, "active"],
+    queryFn: () => apiFetch<DemandWindow>(`/api/v1/sites/${siteId}/demand-window/active`),
+    refetchInterval: LIVE_POLL_MS,
   });
 }

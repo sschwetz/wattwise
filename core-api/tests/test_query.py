@@ -5,7 +5,14 @@ import datetime
 import decimal
 
 from core_api.db import make_engine, make_session_factory
-from core_api.models.billing import BillingCycle, DemandCharge, DemandInterval, ExportAdjustmentWindow, SiteTariff
+from core_api.models.billing import (
+    BillingCycle,
+    DemandCharge,
+    DemandInterval,
+    DemandWindow,
+    ExportAdjustmentWindow,
+    SiteTariff,
+)
 from core_api.models.identity import Site, User
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
@@ -415,3 +422,65 @@ def test_get_demand_charges_for_site(client, app_and_db_url):
     assert response.status_code == 200, response.text
     assert len(response.json()) == 1
     assert response.json()[0]["charge_amount"] == "450.0000"
+
+
+def test_get_active_demand_window_when_one_currently_matches(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="dw-active-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    tariff = SiteTariff(
+        site_id=site.id,
+        effective_from=datetime.datetime(2020, 1, 1, tzinfo=UTC),
+        service_availability_c_per_day=decimal.Decimal("95.0"),
+    )
+    session.add(tariff)
+    session.commit()
+    session.add(
+        DemandWindow(
+            site_tariff_id=tariff.id,
+            label="Peak",
+            months=list(range(1, 13)),
+            days_of_week=[0, 1, 2, 3, 4, 5, 6],
+            start_time=datetime.time(0, 0),
+            end_time=datetime.time(23, 59),
+            rate_c_per_kw_per_day=decimal.Decimal("45.0"),
+            measurement_interval_minutes=30,
+        )
+    )
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/demand-window/active",
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["label"] == "Peak"
+
+
+def test_get_active_demand_window_404s_with_no_match(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="dw-inactive-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/demand-window/active",
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "no_active_demand_window"
