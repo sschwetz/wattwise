@@ -4,6 +4,7 @@ import { useMe } from "../account/useAccount";
 import { useAvatarImage } from "../account/useAvatarImage";
 import { useAuth } from "../auth/AuthContext";
 import { Avatar } from "./Avatar";
+import { Logo } from "./Logo";
 
 function ChevronIcon() {
   return (
@@ -43,7 +44,8 @@ export function Header() {
   const label = displayName ?? email;
 
   return (
-    <header className="flex items-center justify-end border-b border-line bg-surface px-4 py-2">
+    <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-2">
+      <Logo />
       <div ref={containerRef} className="relative">
         <button
           type="button"
