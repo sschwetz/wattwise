@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+  /* Surfaces & text: adapt to the OS color scheme via light-dark(), no dark: variants needed. */
+  --color-bg: light-dark(#f6f7fb, #0b1222);
+  --color-surface: light-dark(#ffffff, #141b2e);
+  --color-surface-2: light-dark(#eef0f7, #1b2438);
+  --color-line: light-dark(#e2e5ec, #243049);
+  --color-ink: light-dark(#141b2e, #e7ecf5);
+  --color-ink-muted: light-dark(#5c6579, #8691a8);
+
+  /* Accent palette: color encodes the actual energy flow, not brand decoration. */
+  --color-solar: #ffb020;
+  --color-solar-soft: light-dark(#fff4dc, #3a2a0e);
+  --color-flow: #22d3a6;
+  --color-flow-soft: light-dark(#dff8f0, #0e3b33);
+  --color-grid: #5b8def;
+  --color-grid-soft: light-dark(#e7eefc, #16233f);
+  --color-danger: #e5484d;
+  --color-danger-soft: light-dark(#fde8e8, #3a1317);
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* The deliberate motion moments: a slow ambient glow on a live tile while its
+   flow is actually active (production, battery charge/discharge). Everything
+   else is still, and a tile loses its glow entirely once its flow floors to
+   zero -- the glow means "something is happening right now", not decoration. */
+@keyframes tile-glow {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.solar-glow,
+.flow-glow,
+.danger-glow {
+  background-size: 200% 200%;
+  animation: tile-glow 10s ease-in-out infinite;
+}
+
+.solar-glow {
+  background-image: linear-gradient(120deg, var(--color-solar-soft), var(--color-surface) 45%, var(--color-solar-soft) 90%);
+}
+
+.flow-glow {
+  background-image: linear-gradient(120deg, var(--color-flow-soft), var(--color-surface) 45%, var(--color-flow-soft) 90%);
+}
+
+.danger-glow {
+  background-image: linear-gradient(120deg, var(--color-danger-soft), var(--color-surface) 45%, var(--color-danger-soft) 90%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .solar-glow,
+  .flow-glow,
+  .danger-glow {
+    animation: none;
+  }
+}
+
+/* react-datepicker ships a light-themed calendar by default; these overrides
+   fold it into the same surface/ink/line tokens as the rest of the app so it
+   doesn't flash a white popup over a dark page. */
+.react-datepicker {
+  background-color: var(--color-surface);
+  border-color: var(--color-line);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+.react-datepicker__header {
+  background-color: var(--color-surface-2);
+  border-color: var(--color-line);
+}
+
+.react-datepicker__current-month,
+.react-datepicker__day-name,
+.react-datepicker__day,
+.react-datepicker-time__header,
+.react-datepicker-time__caption,
+.react-datepicker__time-name {
+  color: var(--color-ink);
+}
+
+.react-datepicker__day:hover,
+.react-datepicker__time-list-item:hover {
+  background-color: var(--color-surface-2) !important;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected,
+.react-datepicker__time-list-item--selected {
+  background-color: var(--color-solar) !important;
+  color: var(--color-bg) !important;
+}
+
+.react-datepicker__day--disabled {
+  color: var(--color-ink-muted);
+}
+
+.react-datepicker__triangle {
+  fill: var(--color-surface);
+  color: var(--color-surface);
+  stroke: var(--color-line);
+}
+
+.react-datepicker__time-container,
+.react-datepicker__time,
+.react-datepicker__time-box {
+  background-color: var(--color-surface);
+  border-color: var(--color-line);
+}
+
+.react-datepicker__navigation-icon::before {
+  border-color: var(--color-ink-muted);
+}

@@ -1,0 +1,793 @@
+# tests/test_cost.py
+from __future__ import annotations
+
+import datetime
+import decimal
+
+from core_api.models.billing import (
+    BillingCycle,
+    DemandCharge,
+    DemandInterval,
+    DemandWindow,
+    ExportAdjustmentWindow,
+    MonthlyFeeDiscountWindow,
+    SiteTariff,
+)
+from core_api.models.identity import Site, User
+from core_api.models.pricing import PriceChannel, PriceReading
+from core_api.models.readings import EnergyMetric, EnergyReading
+from core_api.models.sources import Source, SourceKind
+from core_api.cost import compute_cost, compute_cost_series
+from tests.conftest import sydney_local
+
+UTC = datetime.timezone.utc
+
+
+def _make_tariff(
+    db, site, effective_from, effective_to=None, service_c_per_day="95.0", monthly_fee_c=None
+) -> SiteTariff:
+    tariff = SiteTariff(
+        site_id=site.id,
+        effective_from=effective_from,
+        effective_to=effective_to,
+        service_availability_c_per_day=decimal.Decimal(service_c_per_day),
+        monthly_fee_c=decimal.Decimal(monthly_fee_c) if monthly_fee_c is not None else None,
+    )
+    db.add(tariff)
+    db.commit()
+    return tariff
+
+
+def _make_billing_cycle(db, site, effective_from, cycle_months=1, anchor_day=1) -> BillingCycle:
+    cycle = BillingCycle(
+        site_id=site.id,
+        effective_from=effective_from,
+        cycle_months=cycle_months,
+        anchor_day=anchor_day,
+    )
+    db.add(cycle)
+    db.commit()
+    return cycle
+
+
+def _make_monthly_fee_discount(db, tariff, starts_at, ends_at, discounted_fee_c, label="Promo") -> MonthlyFeeDiscountWindow:
+    window = MonthlyFeeDiscountWindow(
+        site_tariff_id=tariff.id,
+        label=label,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        discounted_fee_c=decimal.Decimal(discounted_fee_c),
+    )
+    db.add(window)
+    db.commit()
+    return window
+
+
+def _make_export_adjustment(
+    db, tariff, adjustment_c_per_kwh="5.0", months=None, days_of_week=None, start="00:00", end="23:59"
+) -> ExportAdjustmentWindow:
+    window = ExportAdjustmentWindow(
+        site_tariff_id=tariff.id,
+        label="Test adjustment",
+        months=months or list(range(1, 13)),
+        days_of_week=days_of_week if days_of_week is not None else [0, 1, 2, 3, 4, 5, 6],
+        start_time=datetime.time.fromisoformat(start),
+        end_time=datetime.time.fromisoformat(end),
+        adjustment_c_per_kwh=decimal.Decimal(adjustment_c_per_kwh),
+    )
+    db.add(window)
+    db.commit()
+    return window
+
+
+def _make_demand_window(
+    db, tariff, label="Test demand window", months=None, days_of_week=None, start="00:00", end="23:59", rate="45.0"
+) -> DemandWindow:
+    window = DemandWindow(
+        site_tariff_id=tariff.id,
+        label=label,
+        months=months or list(range(1, 13)),
+        days_of_week=days_of_week if days_of_week is not None else [0, 1, 2, 3, 4, 5, 6],
+        start_time=datetime.time.fromisoformat(start),
+        end_time=datetime.time.fromisoformat(end),
+        rate_c_per_kw_per_day=decimal.Decimal(rate),
+        measurement_interval_minutes=30,
+    )
+    db.add(window)
+    db.commit()
+    return window
+
+
+def _make_demand_charge(
+    db,
+    site,
+    billing_period_start,
+    billing_period_end,
+    peak_interval_start=None,
+    charge_amount="24.0",
+    is_estimated=False,
+) -> DemandCharge:
+    peak_start = peak_interval_start or billing_period_start
+    db.add(
+        DemandInterval(
+            site_id=site.id,
+            interval_start=peak_start,
+            interval_end=peak_start + datetime.timedelta(minutes=5),
+            rolling_sum_w=1000.0,
+            is_demand_window=True,
+            rate_applied=decimal.Decimal("45.0"),
+        )
+    )
+    db.commit()
+    charge = DemandCharge(
+        site_id=site.id,
+        billing_period_start=billing_period_start,
+        billing_period_end=billing_period_end,
+        peak_interval_start=peak_start,
+        peak_avg_import_w=1000.0,
+        rate_applied=decimal.Decimal("45.0"),
+        charge_amount=decimal.Decimal(charge_amount),
+        is_estimated=is_estimated,
+    )
+    db.add(charge)
+    db.commit()
+    return charge
+
+
+def _make_energy_source(db, site, kind_metrics_ok=True) -> Source:
+    source = Source(
+        site_id=site.id,
+        kind=SourceKind.ENERGY,
+        provider="envoy",
+        config={},
+        effective_from=datetime.datetime(2020, 1, 1, tzinfo=UTC),
+    )
+    db.add(source)
+    db.commit()
+    return source
+
+
+def _make_pricing_source(db, site) -> Source:
+    source = Source(
+        site_id=site.id,
+        kind=SourceKind.PRICING,
+        provider="amber",
+        config={},
+        effective_from=datetime.datetime(2020, 1, 1, tzinfo=UTC),
+    )
+    db.add(source)
+    db.commit()
+    return source
+
+
+def test_compute_cost_net_method(db, site):
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    # 1 minute at 600W import (0.01 kWh) and 300W export (0.005 kWh).
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=300.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+    # Amber's raw feed-in sign: negative means the customer is paid 10c/kWh.
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-10.0")))
+    db.commit()
+
+    result = compute_cost(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", site_timezone=site.timezone
+    )
+
+    # import cost = 0.01 kWh * 30 c/kWh = 0.3c; export revenue = 0.005 kWh * 10 c/kWh = 0.05c
+    assert result.total_cost_c == decimal.Decimal("0.25")
+    assert result.minutes_missing_price == 0
+
+
+def test_compute_cost_is_negative_when_net_exporting_with_realistic_sell_price(db, site):
+    """Regression: Amber stores the feed-in (sell) price with its raw sign --
+    negative in the normal case, since the customer is paid to export (see
+    webapp's CurrentPriceLine comment on this same convention). A site mostly
+    exporting must show net-negative cost (revenue), not positive."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    # Barely importing 60W (0.001 kWh) while exporting 6000W (0.1 kWh).
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=60.0))
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=6000.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+    # Normal Amber feed-in: raw value is negative -- the customer is paid 8c/kWh.
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-8.0")))
+    db.commit()
+
+    result = compute_cost(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", site_timezone=site.timezone
+    )
+
+    # import cost = 0.001 kWh * 30c/kWh = 0.03c; export revenue = 0.1 kWh * 8c/kWh = 0.8c paid to the customer.
+    assert result.total_cost_c == decimal.Decimal("-0.77")
+
+
+def test_compute_cost_flags_minutes_missing_price(db, site):
+    energy_source = _make_energy_source(db, site)
+    _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+    db.commit()
+    # No PriceReading at all for this minute.
+
+    result = compute_cost(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", site_timezone=site.timezone
+    )
+    assert result.minutes_missing_price == 1
+    assert result.total_cost_c == decimal.Decimal("0")
+
+
+def test_compute_cost_gross_method_uses_production_and_consumption(db, site):
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.CONSUMPTION_W, value=1200.0))
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.PRODUCTION_W, value=900.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal("20.0")))
+    # Amber's raw feed-in sign: negative means the customer is paid 8c/kWh.
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-8.0")))
+    db.commit()
+
+    result = compute_cost(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="gross", site_timezone=site.timezone
+    )
+
+    # consumption cost = (1200/60000)*20 = 0.4c; production revenue = (900/60000)*8 = 0.12c
+    assert result.total_cost_c == decimal.Decimal("0.28")
+
+
+def test_compute_cost_matches_prices_fanned_out_from_staggered_interval(db, site):
+    """Final review Critical finding: the price side is built by pushing a real
+    provider-shaped PriceInterval (staggered :01 interval_start) through the actual
+    ingestion fan-out, while the energy side is written at independently-chosen whole
+    minutes. The existing cost tests copy the same `ts` object into both sides, so they
+    cannot catch a systematic offset between the two."""
+    from core_api.routers.ingestion import _fan_out_price_readings, _upsert_price_interval
+    from core_api.schemas import PriceIntervalIn
+
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+
+    # Price side: exactly what Amber publishes -- a 5-minute interval starting at :01s.
+    # The feed-in (sell) price is negative, Amber's raw sign for "customer is paid".
+    for channel, price in ((PriceChannel.BUY, "30.0"), (PriceChannel.SELL, "-10.0")):
+        interval = PriceIntervalIn(
+            channel=channel,
+            interval_start=datetime.datetime(2026, 1, 1, 23, 55, 1, tzinfo=UTC),
+            interval_end=datetime.datetime(2026, 1, 2, 0, 0, 0, tzinfo=UTC),
+            price=decimal.Decimal(price),
+        )
+        _upsert_price_interval(db, pricing_source.id, interval)
+        assert _fan_out_price_readings(db, pricing_source.id, interval) == 5
+    db.commit()
+
+    # Energy side: whole-minute timestamps written independently of the price interval.
+    for minute in (55, 56):
+        ts = datetime.datetime(2026, 1, 1, 23, minute, tzinfo=UTC)
+        db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+        db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=300.0))
+    db.commit()
+
+    result = compute_cost(
+        db,
+        site.id,
+        datetime.datetime(2026, 1, 1, 23, 55, tzinfo=UTC),
+        datetime.datetime(2026, 1, 2, 0, 0, tzinfo=UTC),
+        method="net",
+        site_timezone=site.timezone,
+    )
+
+    assert result.minutes_missing_price == 0
+    # Per minute: 0.01 kWh * 30c - 0.005 kWh * 10c = 0.25c, over two minutes.
+    assert result.total_cost_c == decimal.Decimal("0.50")
+
+
+def test_compute_cost_export_incentive_increases_export_revenue(db, site):
+    """A positive adjustment_c_per_kwh is an export incentive -- it must make
+    a matching minute's export revenue bigger (more negative cost_c), not
+    smaller, honoring Amber's raw sell-price sign convention."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=6000.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-8.0")))
+    db.commit()
+
+    tariff = _make_tariff(db, site, effective_from=datetime.datetime(2026, 1, 1, tzinfo=UTC), service_c_per_day="0.0")
+    _make_export_adjustment(db, tariff, adjustment_c_per_kwh="5.0")
+
+    result = compute_cost(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", site_timezone=site.timezone
+    )
+
+    # 0.1 kWh exported at (8 + 5)c/kWh paid -> -1.3c (revenue).
+    assert result.total_cost_c == decimal.Decimal("-1.3")
+
+
+def test_compute_cost_export_disincentive_reduces_export_revenue(db, site):
+    """A negative adjustment_c_per_kwh is an export disincentive -- it must
+    shrink export revenue."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=6000.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-8.0")))
+    db.commit()
+
+    tariff = _make_tariff(db, site, effective_from=datetime.datetime(2026, 1, 1, tzinfo=UTC), service_c_per_day="0.0")
+    _make_export_adjustment(db, tariff, adjustment_c_per_kwh="-5.0")
+
+    result = compute_cost(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", site_timezone=site.timezone
+    )
+
+    # 0.1 kWh exported at (8 - 5)c/kWh paid -> -0.3c (revenue).
+    assert result.total_cost_c == decimal.Decimal("-0.3")
+
+
+def test_compute_cost_export_adjustment_only_applies_within_its_pattern(db, site):
+    """The site fixture is Australia/Sydney (AEDT, UTC+11 in January) -- this
+    minute is 23:00 local, outside the adjustment's 06:00-10:00 window, so no
+    adjustment should apply."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=6000.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-8.0")))
+    db.commit()
+
+    tariff = _make_tariff(db, site, effective_from=datetime.datetime(2026, 1, 1, tzinfo=UTC), service_c_per_day="0.0")
+    _make_export_adjustment(db, tariff, adjustment_c_per_kwh="5.0", start="06:00", end="10:00")
+
+    result = compute_cost(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", site_timezone=site.timezone
+    )
+
+    # No adjustment applied: 0.1 kWh exported at 8c/kWh paid -> -0.8c.
+    assert result.total_cost_c == decimal.Decimal("-0.8")
+
+
+def test_compute_cost_series_includes_export_adjustment(db, site):
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=6000.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-8.0")))
+    db.commit()
+
+    tariff = _make_tariff(db, site, effective_from=datetime.datetime(2026, 1, 1, tzinfo=UTC), service_c_per_day="0.0")
+    _make_export_adjustment(db, tariff, adjustment_c_per_kwh="5.0")
+
+    points = compute_cost_series(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", bucket="hour", site_timezone=site.timezone
+    )
+
+    assert [p.cost_c for p in points] == [decimal.Decimal("-1.3")]
+
+
+def test_compute_cost_includes_prorated_share_of_estimated_demand_charge(db, site):
+    """The total must include a demand charge's best-known amount even
+    before it's finalized -- prorated to the queried sub-range, not dumped
+    in full, since the charge covers the whole billing period."""
+    tariff = _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0")
+    _make_demand_window(db, tariff)  # matches every moment
+    period_start = sydney_local(2026, 1, 1, 0, 0)
+    period_end = sydney_local(2026, 1, 1, 1, 0)  # 1 hour = twelve 5-minute slots
+    _make_demand_charge(db, site, period_start, period_end, charge_amount="12.0", is_estimated=True)
+
+    result = compute_cost(
+        db,
+        site.id,
+        period_start,
+        period_start + datetime.timedelta(minutes=30),  # six of the twelve slots
+        method="net",
+        site_timezone=site.timezone,
+    )
+
+    # 12c spread over 12 slots = 1c/slot; six slots in range = 6c.
+    assert result.total_cost_c == decimal.Decimal("6.0")
+
+
+def test_compute_cost_demand_charge_contribution_prorates_to_query_subrange(db, site):
+    tariff = _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0")
+    _make_demand_window(db, tariff)
+    period_start = sydney_local(2026, 1, 1, 0, 0)
+    period_end = sydney_local(2026, 1, 1, 2, 0)  # 2 hours = twenty-four 5-minute slots
+    _make_demand_charge(db, site, period_start, period_end, charge_amount="24.0", is_estimated=False)
+
+    result = compute_cost(db, site.id, period_start, period_end, method="net", site_timezone=site.timezone)
+    assert result.total_cost_c == decimal.Decimal("24.0")
+
+    half_range_result = compute_cost(
+        db, site.id, period_start, period_start + datetime.timedelta(hours=1), method="net", site_timezone=site.timezone
+    )
+    assert half_range_result.total_cost_c == decimal.Decimal("12.0")
+
+
+def test_compute_cost_series_includes_finalized_demand_charge_share_in_matching_buckets(db, site):
+    tariff = _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0")
+    _make_demand_window(db, tariff)  # matches every moment
+    period_start = sydney_local(2026, 1, 1, 0, 0)
+    period_end = sydney_local(2026, 1, 1, 2, 0)  # 2 hours = twenty-four 5-minute slots
+    _make_demand_charge(db, site, period_start, period_end, charge_amount="24.0", is_estimated=False)
+
+    points = compute_cost_series(
+        db, site.id, period_start, period_end, method="net", bucket="hour", site_timezone=site.timezone
+    )
+
+    # 24c over 24 slots = 1c/slot; twelve slots per hour-bucket = 12c/bucket.
+    assert [(p.bucket_start, p.cost_c) for p in points] == [
+        (period_start, decimal.Decimal("12.0")),
+        (period_start + datetime.timedelta(hours=1), decimal.Decimal("12.0")),
+    ]
+
+
+def test_compute_cost_series_excludes_estimated_demand_charge(db, site):
+    tariff = _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0")
+    _make_demand_window(db, tariff)
+    period_start = sydney_local(2026, 1, 1, 0, 0)
+    period_end = sydney_local(2026, 1, 1, 2, 0)
+    _make_demand_charge(db, site, period_start, period_end, charge_amount="24.0", is_estimated=True)
+
+    points = compute_cost_series(
+        db, site.id, period_start, period_end, method="net", bucket="hour", site_timezone=site.timezone
+    )
+
+    assert points == []
+
+
+def test_compute_cost_series_demand_charge_only_spreads_across_window_matching_buckets(db, site):
+    """A demand charge must be spread only across the buckets that fall
+    inside the DemandWindow's own pattern, not evenly across the whole
+    billing period -- the charge was earned by peak demand during that
+    window specifically."""
+    tariff = _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0")
+    _make_demand_window(db, tariff, start="01:00", end="01:59")
+    period_start = sydney_local(2026, 1, 1, 0, 0)
+    period_end = sydney_local(2026, 1, 1, 2, 0)  # 2 hours, only the second hour matches
+    _make_demand_charge(
+        db, site, period_start, period_end, peak_interval_start=sydney_local(2026, 1, 1, 1, 0),
+        charge_amount="12.0", is_estimated=False,
+    )
+
+    points = compute_cost_series(
+        db, site.id, period_start, period_end, method="net", bucket="hour", site_timezone=site.timezone
+    )
+
+    # Only the 01:00-01:59 hour-bucket matches the window pattern.
+    assert [(p.bucket_start, p.cost_c) for p in points] == [
+        (period_start + datetime.timedelta(hours=1), decimal.Decimal("12.0")),
+    ]
+
+
+def test_compute_cost_series_buckets_by_hour(db, site):
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+
+    # Two minutes in the 12:00 hour, one minute in the 13:00 hour, same flow each minute:
+    # 600W import (0.01 kWh) at 30c/kWh = 0.3c; 300W export (0.005 kWh) at 10c/kWh = 0.05c
+    # revenue (Amber's raw feed-in sign is negative -- the customer is paid).
+    # Net cost per minute = 0.25c.
+    for hour, minute in ((12, 0), (12, 30), (13, 0)):
+        ts = datetime.datetime(2026, 1, 1, hour, minute, tzinfo=UTC)
+        db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+        db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=300.0))
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-10.0")))
+    db.commit()
+
+    points = compute_cost_series(
+        db,
+        site.id,
+        datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        datetime.datetime(2026, 1, 1, 14, 0, tzinfo=UTC),
+        method="net",
+        bucket="hour",
+        site_timezone=site.timezone,
+    )
+
+    assert [(p.bucket_start, p.cost_c) for p in points] == [
+        (datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC), decimal.Decimal("0.50")),
+        (datetime.datetime(2026, 1, 1, 13, 0, tzinfo=UTC), decimal.Decimal("0.25")),
+    ]
+
+
+def test_compute_cost_series_buckets_by_15min(db, site):
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+
+    # One minute in the :00-:14 quarter-hour, one in the :15-:29 quarter-hour.
+    for minute in (5, 20):
+        ts = datetime.datetime(2026, 1, 1, 12, minute, tzinfo=UTC)
+        db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-10.0")))
+    db.commit()
+
+    points = compute_cost_series(
+        db,
+        site.id,
+        datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        datetime.datetime(2026, 1, 1, 12, 30, tzinfo=UTC),
+        method="net",
+        bucket="15min",
+        site_timezone=site.timezone,
+    )
+
+    assert [p.bucket_start for p in points] == [
+        datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        datetime.datetime(2026, 1, 1, 12, 15, tzinfo=UTC),
+    ]
+    # 0.01 kWh * 30c/kWh = 0.3c each, one minute per quarter-hour.
+    assert [p.cost_c for p in points] == [decimal.Decimal("0.3"), decimal.Decimal("0.3")]
+
+
+def test_compute_cost_series_buckets_by_6hour(db, site):
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+
+    # One minute in the 00:00-05:59 window, one in the 06:00-11:59 window.
+    for hour in (1, 7):
+        ts = datetime.datetime(2026, 1, 1, hour, 0, tzinfo=UTC)
+        db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-10.0")))
+    db.commit()
+
+    points = compute_cost_series(
+        db,
+        site.id,
+        datetime.datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+        datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        method="net",
+        bucket="6hour",
+        site_timezone=site.timezone,
+    )
+
+    assert [p.bucket_start for p in points] == [
+        datetime.datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+        datetime.datetime(2026, 1, 1, 6, 0, tzinfo=UTC),
+    ]
+    # 0.01 kWh * 30c/kWh = 0.3c each, one minute per 6-hour window.
+    assert [p.cost_c for p in points] == [decimal.Decimal("0.3"), decimal.Decimal("0.3")]
+
+
+def test_compute_cost_series_skips_minutes_missing_price(db, site):
+    energy_source = _make_energy_source(db, site)
+    _make_pricing_source(db, site)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+    db.commit()
+    # No PriceReading at all for this minute.
+
+    points = compute_cost_series(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", bucket="hour", site_timezone=site.timezone
+    )
+    assert points == []
+
+
+def test_compute_cost_adds_daily_service_charge_once_for_a_full_local_day(db, site):
+    """site's timezone is Australia/Sydney (conftest) -- a day runs from
+    local midnight to local midnight, not UTC midnight to UTC midnight."""
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="95.0")
+
+    result = compute_cost(
+        db,
+        site.id,
+        sydney_local(2026, 1, 1),
+        sydney_local(2026, 1, 2),
+        method="net",
+        site_timezone=site.timezone,
+    )
+
+    assert result.total_cost_c == decimal.Decimal("95.0")
+
+
+def test_compute_cost_charges_once_per_local_day_over_a_multi_day_range(db, site):
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="95.0")
+
+    result = compute_cost(
+        db,
+        site.id,
+        sydney_local(2026, 1, 1),
+        sydney_local(2026, 1, 3),
+        method="net",
+        site_timezone=site.timezone,
+    )
+
+    assert result.total_cost_c == decimal.Decimal("190.0")
+
+
+def test_compute_cost_omits_service_charge_with_no_tariff_configured(db, site):
+    result = compute_cost(
+        db,
+        site.id,
+        sydney_local(2026, 1, 1),
+        sydney_local(2026, 1, 2),
+        method="net",
+        site_timezone=site.timezone,
+    )
+
+    assert result.total_cost_c == decimal.Decimal("0")
+
+
+def test_compute_cost_service_charge_is_non_retroactive_past_a_tariff_change(db, site):
+    """A tariff ending exactly at a day's local midnight must not cover that
+    day -- same non-retroactive rule effective_site_tariff_at already
+    enforces for demand charges."""
+    _make_tariff(
+        db, site, effective_from=sydney_local(2026, 1, 1), effective_to=sydney_local(2026, 1, 2), service_c_per_day="95.0"
+    )
+
+    result = compute_cost(
+        db,
+        site.id,
+        sydney_local(2026, 1, 1),
+        sydney_local(2026, 1, 3),
+        method="net",
+        site_timezone=site.timezone,
+    )
+
+    # Jan 1 is charged (tariff in force); Jan 2 is not (no tariff covers it).
+    assert result.total_cost_c == decimal.Decimal("95.0")
+
+
+def test_compute_cost_series_excludes_the_daily_service_charge(db, site):
+    """The history chart (fed by compute_cost_series) must show usage-driven
+    cost only -- a flat per-day fee spiking one bucket would skew its y-axis
+    for the rest of the range. compute_cost's total (the figure above the
+    chart) still includes it (see the test below)."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    midnight = sydney_local(2026, 1, 2)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=midnight, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=midnight, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+    db.commit()
+
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="95.0")
+
+    points = compute_cost_series(
+        db,
+        site.id,
+        sydney_local(2026, 1, 1, 23, 0),
+        sydney_local(2026, 1, 2, 1, 0),
+        method="net",
+        bucket="hour",
+        site_timezone=site.timezone,
+    )
+
+    # 0.01 kWh * 30c/kWh = 0.3c energy cost only -- no 95c service charge mixed in.
+    assert [(p.bucket_start, p.cost_c) for p in points] == [(midnight, decimal.Decimal("0.3"))]
+
+
+def test_compute_cost_total_still_includes_the_daily_service_charge_over_the_same_window(db, site):
+    """Same data/window as the series test above -- compute_cost's total (the
+    dashboard's top-line cost figure) must still include the charge the
+    chart deliberately omits."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    midnight = sydney_local(2026, 1, 2)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=midnight, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=midnight, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+    db.commit()
+
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="95.0")
+
+    result = compute_cost(
+        db,
+        site.id,
+        sydney_local(2026, 1, 1, 23, 0),
+        sydney_local(2026, 1, 2, 1, 0),
+        method="net",
+        site_timezone=site.timezone,
+    )
+
+    assert result.total_cost_c == decimal.Decimal("95.3")
+
+
+def test_compute_cost_amortizes_monthly_fee_across_the_billing_cycle(db, site):
+    """310c/month over January's 31-day calendar-month billing cycle ->
+    exactly 10c/day, charged at local midnight like the service charge."""
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 2), method="net", site_timezone=site.timezone
+    )
+
+    assert result.total_cost_c == decimal.Decimal("10.0")
+
+
+def test_compute_cost_monthly_fee_amortizes_over_multiple_days(db, site):
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 4), method="net", site_timezone=site.timezone
+    )
+
+    assert result.total_cost_c == decimal.Decimal("30.0")
+
+
+def test_compute_cost_omits_monthly_fee_when_tariff_has_none_set(db, site):
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0")
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 2), method="net", site_timezone=site.timezone
+    )
+
+    assert result.total_cost_c == decimal.Decimal("0")
+
+
+def test_compute_cost_omits_monthly_fee_when_no_billing_cycle_configured(db, site):
+    """A monthly_fee_c with no BillingCycle configured has nothing to
+    amortize over, so it's omitted entirely rather than guessing a divisor."""
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 2), method="net", site_timezone=site.timezone
+    )
+
+    assert result.total_cost_c == decimal.Decimal("0")
+
+
+def test_compute_cost_monthly_fee_discount_window_reduces_the_daily_rate(db, site):
+    """93c/month discounted rate over the same 31-day cycle -> 3c/day for
+    any day the discount window covers."""
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    tariff = _make_tariff(
+        db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0"
+    )
+    _make_monthly_fee_discount(
+        db, tariff, starts_at=sydney_local(2026, 1, 10), ends_at=sydney_local(2026, 1, 11), discounted_fee_c="93.0"
+    )
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 10), sydney_local(2026, 1, 11), method="net", site_timezone=site.timezone
+    )
+
+    assert result.total_cost_c == decimal.Decimal("3.0")
+
+
+def test_compute_cost_monthly_fee_discount_window_does_not_apply_outside_its_dates(db, site):
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    tariff = _make_tariff(
+        db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0"
+    )
+    _make_monthly_fee_discount(
+        db, tariff, starts_at=sydney_local(2026, 1, 10), ends_at=sydney_local(2026, 1, 11), discounted_fee_c="93.0"
+    )
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 2), method="net", site_timezone=site.timezone
+    )
+
+    assert result.total_cost_c == decimal.Decimal("10.0")
+
+
+def test_compute_cost_series_excludes_the_monthly_fee(db, site):
+    """The usage chart must not show a lump-sum spike for the monthly fee,
+    same reasoning as the daily service charge."""
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")
+
+    points = compute_cost_series(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 2), method="net", bucket="hour", site_timezone=site.timezone
+    )
+
+    assert points == []

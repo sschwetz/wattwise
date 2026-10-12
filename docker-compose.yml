@@ -1,0 +1,117 @@
+# Compose ignores top-level keys starting with "x-"; this one exists only to
+# be aliased below, so the 4 services that just need the app network don't
+# each retype the same one-item list.
+x-app-network: &app-network
+  - app
+
+services:
+  core-api:
+    build: ./core-api
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?set a long random secret}
+      ENVOY_COLLECTOR_KEY: ${ENVOY_COLLECTOR_KEY:?set a long random secret, shared with the envoy-collector service below}
+      WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weather-collector service below}
+      PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the pricing-collector service below}
+      DATABASE_URL: sqlite:////data/core_api.db
+      SMTP_HOST: mail-relay
+      SMTP_PORT: "25"
+      SMTP_FROM: ${SMTP_FROM:-noreply@localhost}
+      # Also doubles as the CORS-allowed origin for the webapp below.
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost}
+    volumes:
+      - core_api_data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mail-relay
+    # docker-entrypoint.sh runs migrations + admin-user bootstrap BEFORE
+    # starting uvicorn, so "uvicorn is answering /health" is equivalent to
+    # "the database is migrated and ready". Without this, `depends_on`
+    # alone only waits for the container to start, not for that to finish --
+    # webapp/the collectors below were hitting core-api while it was still
+    # migrating.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app
+      - mail
+
+  webapp:
+    build: ./webapp
+    environment:
+      # The browser's own view of core-api's address, not a Docker-network
+      # hostname — the SPA calls this directly from the client, not
+      # server-side.
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "80:80"
+    depends_on:
+      core-api:
+        condition: service_healthy
+    networks: *app-network
+
+  mail-relay:
+    build: ./mail-relay
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?the domain this relay sends mail as, e.g. example.com}
+      RELAY_SMARTHOST: ${RELAY_SMARTHOST:?e.g. [smtp.yourprovider.example]:587}
+      RELAY_USERNAME: ${RELAY_USERNAME:-}
+      RELAY_PASSWORD: ${RELAY_PASSWORD:-}
+    # Deliberately NOT on the `app` network: mail-relay's own mynetworks
+    # config trusts its whole subnet to relay mail unauthenticated, so
+    # putting it on the same network as webapp/the collectors would let any
+    # of them relay mail too, not just core-api. The `mail` network is
+    # core-api and mail-relay only.
+    networks:
+      - mail
+
+  # The three collectors below each discover their own sites' sources from
+  # Core API using one shared key per collector kind -- create sites and
+  # sources for them in the webapp any time; no compose/.env edit or
+  # restart is needed when adding a new site of an existing kind.
+
+  envoy-collector:
+    build: ./envoy-collector
+    environment:
+      CORE_API_URL: http://core-api:8000
+      COLLECTOR_KEY: ${ENVOY_COLLECTOR_KEY:?set a long random secret, shared with core-api's own ENVOY_COLLECTOR_KEY}
+    depends_on:
+      core-api:
+        condition: service_healthy
+    networks: *app-network
+
+  weather-collector:
+    build: ./weather-collector
+    environment:
+      CORE_API_URL: http://core-api:8000
+      COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with core-api's own WEATHER_COLLECTOR_KEY}
+    depends_on:
+      core-api:
+        condition: service_healthy
+    networks: *app-network
+
+  pricing-collector:
+    build: ./pricing-collector
+    environment:
+      CORE_API_URL: http://core-api:8000
+      COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with core-api's own PRICING_COLLECTOR_KEY}
+    depends_on:
+      core-api:
+        condition: service_healthy
+    networks: *app-network
+
+volumes:
+  core_api_data:
+
+networks:
+  app:
+  # Fixed subnet so mail-relay's own mynetworks (entrypoint.sh) can trust
+  # this specific range instead of Docker's entire bridge-allocation pool.
+  mail:
+    ipam:
+      config:
+        - subnet: 172.28.238.0/24

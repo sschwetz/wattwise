@@ -1,0 +1,111 @@
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "../api/client";
+import { LIVE_POLL_MS, type EnergyMetric, type PriceChannel, type Reading } from "./useLiveReadings";
+
+export interface CostSummary {
+  total_cost_c: number;
+  total_import_kwh: number;
+  total_export_kwh: number;
+  minutes_missing_price: number;
+}
+
+export interface DateRange {
+  from: Date;
+  to: Date;
+}
+
+export function useHistoricalEnergyReadings(siteId: number, range: DateRange, metric: EnergyMetric) {
+  const params = new URLSearchParams({
+    metric,
+    start: range.from.toISOString(),
+    end: range.to.toISOString(),
+  });
+  return useQuery({
+    queryKey: [
+      "energy-readings",
+      siteId,
+      "history",
+      metric,
+      range.from.toISOString(),
+      range.to.toISOString(),
+    ],
+    queryFn: () => apiFetch<Reading[]>(`/api/v1/sites/${siteId}/readings/energy?${params}`),
+  });
+}
+
+export function useCost(siteId: number, range: DateRange, method: "net" | "gross") {
+  const params = new URLSearchParams({
+    start: range.from.toISOString(),
+    end: range.to.toISOString(),
+    method,
+  });
+  return useQuery({
+    queryKey: ["cost", siteId, range.from.toISOString(), range.to.toISOString(), method],
+    queryFn: () => apiFetch<CostSummary>(`/api/v1/sites/${siteId}/cost?${params}`),
+  });
+}
+
+/**
+ * Today's running cost, independent of the history chart's own date-range
+ * selector -- a live tile, not a view into whatever period the chart happens
+ * to be showing. Like the live readings hooks, "now" is computed fresh inside
+ * the queryFn on every poll (not passed in as a prop), so the window grows
+ * over the course of the day instead of freezing at mount time.
+ */
+export function useTodayCost(siteId: number, method: "net" | "gross") {
+  return useQuery({
+    queryKey: ["cost", siteId, "today", method],
+    queryFn: () => {
+      const end = new Date();
+      const start = new Date(end);
+      start.setHours(0, 0, 0, 0);
+      const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), method });
+      return apiFetch<CostSummary>(`/api/v1/sites/${siteId}/cost?${params}`);
+    },
+    refetchInterval: LIVE_POLL_MS,
+  });
+}
+
+/**
+ * Today's buy/sell price readings, actual and forecast together, independent
+ * of the history chart's own date-range selector -- same "always today, not
+ * whatever the selector shows" reasoning as useTodayCost above. The backend
+ * doesn't flag which rows are forecast-origin (see core-api's PriceReading --
+ * a forecast row is overwritten in place once the real actual value lands),
+ * but that's fine here: a row timestamped later than "now" can only be a
+ * forecast, since nothing else could have produced it yet.
+ */
+export function useTodayPrices(siteId: number, channel: PriceChannel) {
+  return useQuery({
+    queryKey: ["prices", siteId, "today", channel],
+    queryFn: () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      const params = new URLSearchParams({ channel, start: start.toISOString(), end: end.toISOString() });
+      return apiFetch<Reading[]>(`/api/v1/sites/${siteId}/prices?${params}`);
+    },
+    refetchInterval: LIVE_POLL_MS,
+  });
+}
+
+export type CostBucket = "15min" | "hour" | "6hour";
+
+export interface CostSeriesPoint {
+  bucket_start: string;
+  cost_c: number;
+}
+
+export function useCostSeries(siteId: number, range: DateRange, method: "net" | "gross", bucket: CostBucket) {
+  const params = new URLSearchParams({
+    start: range.from.toISOString(),
+    end: range.to.toISOString(),
+    method,
+    bucket,
+  });
+  return useQuery({
+    queryKey: ["cost-series", siteId, range.from.toISOString(), range.to.toISOString(), method, bucket],
+    queryFn: () => apiFetch<CostSeriesPoint[]>(`/api/v1/sites/${siteId}/cost/series?${params}`),
+  });
+}

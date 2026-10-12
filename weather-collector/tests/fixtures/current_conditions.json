@@ -1,0 +1,41 @@
+{
+  "data": {
+    "did": "AABBCCDDEEFF",
+    "ts": 1790652615,
+    "conditions": [
+      {
+        "lsid": 723522,
+        "data_structure_type": 1,
+        "txid": 1,
+        "temp": 72.8,
+        "hum": 57.3,
+        "wind_speed_last": 2.00,
+        "wind_dir_last": 76,
+        "wind_speed_avg_last_1_min": 4.43,
+        "wind_dir_scalar_avg_last_1_min": 41,
+        "rain_size": 2,
+        "rain_rate_last": 0,
+        "rainfall_last_15_min": 0,
+        "rainfall_daily": 0,
+        "rainfall_monthly": 95,
+        "rainfall_year": 6430,
+        "solar_rad": null,
+        "uv_index": null
+      },
+      {
+        "lsid": 723521,
+        "data_structure_type": 4,
+        "temp_in": 73.1,
+        "hum_in": 54.4
+      },
+      {
+        "lsid": 723520,
+        "data_structure_type": 3,
+        "bar_sea_level": 30.422,
+        "bar_trend": -0.072,
+        "bar_absolute": 30.336
+      }
+    ]
+  },
+  "error": null
+}

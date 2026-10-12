@@ -1,0 +1,26 @@
+# Environment files (copy .env.example instead)
+.env
+.env.*
+!.env.example
+
+# Python (core-api, envoy-collector, pricing-collector, weather-collector)
+.venv/
+__pycache__/
+*.pyc
+*.db
+.pytest_cache/
+
+# Node / webapp
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editors / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Git worktrees (superpowers subagent-driven-development)
+.worktrees/
