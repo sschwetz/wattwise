@@ -29,6 +29,20 @@ export function useUpdateAmberApiKey() {
   });
 }
 
+export function useUpdateDisplayName() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (displayName: string) =>
+      apiFetch<Me>("/api/v1/users/me/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ display_name: displayName }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
 interface ChangePasswordPayload {
   current_password: string;
   new_password: string;

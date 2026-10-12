@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import QRCode from "qrcode";
-import { useChangePassword, useConfirmTotpReenroll, useMe, useRequestEmailChange, useStartTotpReenroll, useUpdateAmberApiKey } from "../account/useAccount";
+import { useChangePassword, useConfirmTotpReenroll, useMe, useRequestEmailChange, useStartTotpReenroll, useUpdateAmberApiKey, useUpdateDisplayName } from "../account/useAccount";
 import { errorMessage } from "../api/client";
 
 const cardClass = "space-y-4 rounded-xl border border-line bg-surface p-5";
@@ -39,6 +39,52 @@ function LabeledInput({ label, ariaLabel, value, onChange, type, placeholder, au
         required
       />
     </label>
+  );
+}
+
+function ProfileSection() {
+  const { data: me } = useMe();
+  const [displayName, setDisplayName] = useState("");
+  const updateDisplayName = useUpdateDisplayName();
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    updateDisplayName.mutate(displayName, {
+      onSuccess: () => setDisplayName(""),
+    });
+  }
+
+  return (
+    <section className={cardClass}>
+      <h2 className="font-display text-lg font-semibold text-ink">Profile</h2>
+      {me && <p className="text-sm text-ink-muted">Current name: {me.display_name ?? "Not set"}</p>}
+      {updateDisplayName.isError && (
+        <p role="alert" className={errorClass}>
+          {updateDisplayName.error instanceof Error
+            ? updateDisplayName.error.message
+            : "Failed to save your name. Please try again."}
+        </p>
+      )}
+      {updateDisplayName.isSuccess && <p className={successClass}>Saved.</p>}
+      <form onSubmit={handleSubmit} className="flex items-end gap-2">
+        <label className="flex flex-col text-sm text-ink-muted">
+          Display name
+          <input
+            aria-label="Display name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Your name"
+            autoComplete="name"
+            spellCheck={false}
+            className="rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
+            required
+          />
+        </label>
+        <button type="submit" disabled={updateDisplayName.isPending} className={primaryButtonClass}>
+          Save
+        </button>
+      </form>
+    </section>
   );
 }
 
@@ -398,6 +444,7 @@ export function AccountPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
       <h1 className="font-display text-2xl font-semibold text-ink">Account</h1>
+      <ProfileSection />
       <ChangePasswordSection />
       <ChangeEmailSection />
       <ManageTotpSection />

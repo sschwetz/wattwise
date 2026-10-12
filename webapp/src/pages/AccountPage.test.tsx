@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,19 +30,19 @@ describe("AccountPage", () => {
   });
 
   it("shows no key set yet when none is configured", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false });
+    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false });
     renderPage();
     expect(await screen.findByText(/no amber api key set yet/i)).toBeInTheDocument();
   });
 
   it("shows the key is configured when one already exists", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: true });
+    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: true });
     renderPage();
     expect(await screen.findByText(/amber api key is configured/i)).toBeInTheDocument();
   });
 
   it("masks the Amber API key input", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false });
+    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false });
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
     expect(screen.getByLabelText("Amber API key")).toHaveAttribute("type", "password");
@@ -50,14 +50,15 @@ describe("AccountPage", () => {
 
   it("saves a new Amber API key", async () => {
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false })
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: true })
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: true });
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: true })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: true });
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
 
-    await userEvent.type(screen.getByLabelText("Amber API key"), "psk_my_secret_key");
-    await userEvent.click(screen.getByText("Save"));
+    const amberKeyInput = screen.getByLabelText("Amber API key");
+    await userEvent.type(amberKeyInput, "psk_my_secret_key");
+    await userEvent.click(within(amberKeyInput.closest("form")!).getByText("Save"));
 
     expect(apiFetch).toHaveBeenCalledWith(
       "/api/v1/users/me",
@@ -69,20 +70,21 @@ describe("AccountPage", () => {
   it("shows an error when saving fails", async () => {
     const { ApiError } = await import("../api/client");
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
       .mockRejectedValueOnce(new ApiError(422, "invalid_key", "amber_api_key must not be empty", null));
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
 
-    await userEvent.type(screen.getByLabelText("Amber API key"), "x");
-    await userEvent.click(screen.getByText("Save"));
+    const amberKeyInput = screen.getByLabelText("Amber API key");
+    await userEvent.type(amberKeyInput, "x");
+    await userEvent.click(within(amberKeyInput.closest("form")!).getByText("Save"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("amber_api_key must not be empty");
   });
 
   it("changes the password when current password and TOTP code are correct", async () => {
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
       .mockResolvedValueOnce(undefined);
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
@@ -104,7 +106,7 @@ describe("AccountPage", () => {
   });
 
   it("rejects a mismatched password confirmation without calling the API", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false });
+    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false });
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
 
@@ -121,7 +123,7 @@ describe("AccountPage", () => {
   it("shows the API error when the password change is rejected", async () => {
     const { ApiError } = await import("../api/client");
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
       .mockRejectedValueOnce(new ApiError(401, "invalid_credentials", "Current password is incorrect", null));
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
@@ -137,7 +139,7 @@ describe("AccountPage", () => {
 
   it("requests an email change when current password and TOTP code are correct", async () => {
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
       .mockResolvedValueOnce({ message: "Check your new email address for a confirmation link." });
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
@@ -160,7 +162,7 @@ describe("AccountPage", () => {
   it("shows the API error when the email change request is rejected", async () => {
     const { ApiError } = await import("../api/client");
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
       .mockRejectedValueOnce(new ApiError(409, "email_taken", "An account with this email already exists", null));
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
@@ -175,7 +177,7 @@ describe("AccountPage", () => {
 
   it("walks through replacing the authenticator and shows new recovery codes", async () => {
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
       .mockResolvedValueOnce({ secret: "NEWSECRET234567", otpauth_uri: "otpauth://totp/WattWise:me@example.com?secret=NEWSECRET234567&issuer=WattWise" })
       .mockResolvedValueOnce({ recovery_codes: Array.from({ length: 10 }, (_, i) => `code${i}`) });
     renderPage();
@@ -211,7 +213,7 @@ describe("AccountPage", () => {
   it("shows an error when the authenticator reset start is rejected", async () => {
     const { ApiError } = await import("../api/client");
     vi.mocked(apiFetch)
-      .mockResolvedValueOnce({ id: 1, email: "me@example.com", has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
       .mockRejectedValueOnce(new ApiError(401, "invalid_code", "Incorrect verification code", null));
     renderPage();
     await screen.findByText(/no amber api key set yet/i);
@@ -221,5 +223,46 @@ describe("AccountPage", () => {
     await userEvent.click(screen.getByText("Replace authenticator"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Incorrect verification code");
+  });
+
+  it("shows the current display name", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      id: 1,
+      email: "me@example.com",
+      display_name: "Ada Lovelace",
+      has_amber_api_key: false,
+    });
+    renderPage();
+    expect(await screen.findByText(/current name: ada lovelace/i)).toBeInTheDocument();
+  });
+
+  it("shows a placeholder when no display name is set", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      id: 1,
+      email: "me@example.com",
+      display_name: null,
+      has_amber_api_key: false,
+    });
+    renderPage();
+    expect(await screen.findByText(/current name: not set/i)).toBeInTheDocument();
+  });
+
+  it("saves a new display name", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: "Ada Lovelace", has_amber_api_key: false })
+      .mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: "Ada Lovelace", has_amber_api_key: false });
+    renderPage();
+    await screen.findByText(/current name: not set/i);
+
+    const displayNameInput = screen.getByLabelText("Display name");
+    await userEvent.type(displayNameInput, "Ada Lovelace");
+    await userEvent.click(within(displayNameInput.closest("form")!).getByRole("button", { name: "Save" }));
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/v1/users/me/profile",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ display_name: "Ada Lovelace" }) }),
+    );
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 });
