@@ -1,6 +1,18 @@
-import { type FormEvent, useState } from "react";
+import { type ChangeEvent, type FormEvent, useState } from "react";
 import QRCode from "qrcode";
-import { useChangePassword, useConfirmTotpReenroll, useMe, useRequestEmailChange, useStartTotpReenroll, useUpdateAmberApiKey, useUpdateDisplayName } from "../account/useAccount";
+import { Avatar } from "../layout/Avatar";
+import {
+  useChangePassword,
+  useConfirmTotpReenroll,
+  useMe,
+  useRemoveAvatar,
+  useRequestEmailChange,
+  useStartTotpReenroll,
+  useUpdateAmberApiKey,
+  useUpdateDisplayName,
+  useUploadAvatar,
+} from "../account/useAccount";
+import { useAvatarImage } from "../account/useAvatarImage";
 import { errorMessage } from "../api/client";
 
 const cardClass = "space-y-4 rounded-xl border border-line bg-surface p-5";
@@ -8,6 +20,9 @@ const errorClass = "rounded-md border border-danger/30 bg-danger-soft px-3 py-2 
 const successClass = "text-sm text-flow";
 const primaryButtonClass =
   "rounded-md bg-solar px-3 py-2 text-sm font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
+
+const ALLOWED_AVATAR_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 interface LabeledInputProps {
   label: string;
@@ -46,6 +61,10 @@ function ProfileSection() {
   const { data: me } = useMe();
   const [displayName, setDisplayName] = useState("");
   const updateDisplayName = useUpdateDisplayName();
+  const avatarUrl = useAvatarImage(me?.has_avatar ?? false);
+  const uploadAvatar = useUploadAvatar();
+  const removeAvatar = useRemoveAvatar();
+  const [avatarClientError, setAvatarClientError] = useState<string | null>(null);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -54,9 +73,62 @@ function ProfileSection() {
     });
   }
 
+  function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setAvatarClientError(null);
+    if (!ALLOWED_AVATAR_TYPES.has(file.type)) {
+      setAvatarClientError("Please choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarClientError("Image must be 2MB or smaller.");
+      return;
+    }
+    uploadAvatar.mutate(file);
+  }
+
+  const avatarError = avatarClientError ?? (
+    (uploadAvatar.isError || removeAvatar.isError)
+      ? errorMessage(uploadAvatar.error ?? removeAvatar.error, "Failed to save your avatar. Please try again.")
+      : null
+  );
+
   return (
     <section className={cardClass}>
       <h2 className="font-display text-lg font-semibold text-ink">Profile</h2>
+      <div className="flex items-center gap-4">
+        <Avatar name={me?.display_name ?? null} email={me?.email ?? ""} imageUrl={avatarUrl} />
+        <div className="flex items-center gap-2">
+          <label className="cursor-pointer rounded-md border border-line px-3 py-2 text-sm text-ink hover:bg-surface-2">
+            Upload photo
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              aria-label="Upload avatar"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
+          </label>
+          {me?.has_avatar && (
+            <button
+              type="button"
+              onClick={() => removeAvatar.mutate()}
+              disabled={removeAvatar.isPending}
+              className="rounded-md border border-line px-3 py-2 text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+      {avatarError && (
+        <p role="alert" className={errorClass}>
+          {avatarError}
+        </p>
+      )}
       {me && <p className="text-sm text-ink-muted">Current name: {me.display_name ?? "Not set"}</p>}
       {updateDisplayName.isError && (
         <p role="alert" className={errorClass}>
