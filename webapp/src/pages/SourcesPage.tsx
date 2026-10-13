@@ -104,7 +104,7 @@ function CreateSourceForm({ siteId }: { siteId: number }) {
         )}
         <button
           type="submit"
-          disabled={createSource.isPending}
+          disabled={createSource.isPending || (provider === "local" && !name.trim())}
           className="rounded-md bg-solar px-3 py-2 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50"
         >
           Create source

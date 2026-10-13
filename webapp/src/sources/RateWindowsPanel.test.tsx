@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "../api/client";
@@ -18,6 +18,18 @@ function renderPanel() {
       <RateWindowsPanel siteId={7} sourceId={3} />
     </QueryClientProvider>,
   );
+}
+
+const LIST_PATH = "/api/v1/sites/7/sources/3/rate-windows";
+
+function postBody(): Record<string, unknown> {
+  const post = vi.mocked(apiFetch).mock.calls[1];
+  return JSON.parse((post[1] as RequestInit).body as string);
+}
+
+async function expectRefetch() {
+  await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(3));
+  expect(vi.mocked(apiFetch).mock.calls[2][0]).toBe(LIST_PATH);
 }
 
 function win(overrides: Partial<RateWindow>): RateWindow {
@@ -76,14 +88,12 @@ describe("RateWindowsPanel", () => {
     renderPanel();
 
     await screen.findByRole("heading", { name: "Import" });
-    await user.type(screen.getByLabelText("Label"), "Flat");
+    await user.type(screen.getByLabelText("Window label"), "Flat");
     await user.type(screen.getByLabelText("Rate (c/kWh)"), "32.5");
     await user.click(screen.getByRole("button", { name: "Add window" }));
 
-    const post = vi.mocked(apiFetch).mock.calls[1];
-    expect(post[0]).toBe("/api/v1/sites/7/sources/3/rate-windows");
-    const body = JSON.parse((post[1] as RequestInit).body as string);
-    expect(body).toMatchObject({
+    expect(vi.mocked(apiFetch).mock.calls[1][0]).toBe(LIST_PATH);
+    expect(postBody()).toMatchObject({
       channel: "buy",
       label: "Flat",
       months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
@@ -93,6 +103,53 @@ describe("RateWindowsPanel", () => {
       rate_c_per_kwh: 32.5,
       effective_to: null,
     });
+    await expectRefetch();
+    expect(screen.getByLabelText("Window label")).toHaveValue("");
+    expect(screen.getByLabelText("Rate (c/kWh)")).toHaveValue(null);
+  });
+
+  it("starts a window added for today at the current time, not at midnight", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]).mockResolvedValueOnce(win({})).mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByRole("heading", { name: "Import" });
+    await user.type(screen.getByLabelText("Window label"), "New rate");
+    await user.type(screen.getByLabelText("Rate (c/kWh)"), "30");
+    const before = Date.now();
+    await user.click(screen.getByRole("button", { name: "Add window" }));
+
+    const effectiveFrom = Date.parse(postBody().effective_from as string);
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    expect(effectiveFrom).not.toBe(midnight.getTime());
+    expect(effectiveFrom).toBeGreaterThanOrEqual(before);
+  });
+
+  it("starts a window added for a future date at local midnight", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]).mockResolvedValueOnce(win({})).mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByRole("heading", { name: "Import" });
+    await user.type(screen.getByLabelText("Window label"), "Next year");
+    await user.type(screen.getByLabelText("Rate (c/kWh)"), "30");
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2099-01-15" } });
+    await user.click(screen.getByRole("button", { name: "Add window" }));
+
+    expect(postBody().effective_from).toBe(new Date("2099-01-15T00:00:00").toISOString());
+  });
+
+  it("will not add a window whose label is only spaces", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByRole("heading", { name: "Import" });
+    await user.type(screen.getByLabelText("Window label"), "   ");
+    await user.type(screen.getByLabelText("Rate (c/kWh)"), "30");
+
+    expect(screen.getByRole("button", { name: "Add window" })).toBeDisabled();
   });
 
   it("shows the server's message when a window overlaps", async () => {
@@ -103,7 +160,7 @@ describe("RateWindowsPanel", () => {
     renderPanel();
 
     await screen.findByRole("heading", { name: "Import" });
-    await user.type(screen.getByLabelText("Label"), "Peak");
+    await user.type(screen.getByLabelText("Window label"), "Peak");
     await user.type(screen.getByLabelText("Rate (c/kWh)"), "40");
     await user.click(screen.getByRole("button", { name: "Add window" }));
 
@@ -122,6 +179,32 @@ describe("RateWindowsPanel", () => {
     const body = JSON.parse((patch[1] as RequestInit).body as string);
     expect(body.effective_to).not.toBeNull();
     expect(body.rate_c_per_kwh).toBe(32.5);
+    await expectRefetch();
+  });
+
+  it("offers Delete but not End for a window that has not started", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([win({ effective_from: "2099-01-01T00:00:00Z" })]);
+    renderPanel();
+
+    expect(await screen.findByRole("button", { name: "Delete Peak" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "End Peak" })).not.toBeInTheDocument();
+  });
+
+  it("shows only the latest failure when End and then Delete fail", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([win({})])
+      .mockRejectedValueOnce(new Error("Ending failed"))
+      .mockRejectedValueOnce(new Error("Deleting failed"));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "End Peak" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Ending failed");
+
+    await user.click(screen.getByRole("button", { name: "Delete Peak" }));
+    await screen.findByText("Deleting failed");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toHaveTextContent("Deleting failed");
   });
 
   it("says so when the windows fail to load", async () => {
@@ -141,5 +224,6 @@ describe("RateWindowsPanel", () => {
 
     expect(vi.mocked(apiFetch).mock.calls[1][0]).toBe("/api/v1/sites/7/sources/3/rate-windows/1");
     expect((vi.mocked(apiFetch).mock.calls[1][1] as RequestInit).method).toBe("DELETE");
+    await expectRefetch();
   });
 });

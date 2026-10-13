@@ -38,6 +38,20 @@ function formatRate(rate: string): string {
   return `${Number(rate)}c/kWh`;
 }
 
+function localDateString(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** A window starting today starts now: core-api rejects a start before the end
+ * of a window the user has just ended. The collector prices only from the
+ * current hour on, so a later start today changes no stored price. */
+function effectiveFromFor(dateString: string): string {
+  const now = new Date();
+  if (dateString === localDateString(now)) return now.toISOString();
+  return new Date(`${dateString}T00:00:00`).toISOString();
+}
+
 function toInput(window: RateWindow, overrides: Partial<RateWindowInput>): RateWindowInput {
   return {
     channel: window.channel,
@@ -60,6 +74,9 @@ interface WindowActions {
 }
 
 function ChannelSection({ title, windows, actions }: { title: string; windows: RateWindow[]; actions: WindowActions }) {
+  const [now] = useState(() => Date.now());
+  // A window that has not started yet is removed with Delete, not ended.
+  const canEnd = (window: RateWindow) => window.effective_to === null && Date.parse(window.effective_from) <= now;
   return (
     <section className="space-y-1">
       <h4 className="text-sm font-semibold text-ink">{title}</h4>
@@ -77,7 +94,7 @@ function ChannelSection({ title, windows, actions }: { title: string; windows: R
                 )}
               </span>
               <span className="flex shrink-0 gap-3">
-                {window.effective_to === null && (
+                {canEnd(window) && (
                   <button
                     aria-label={`End ${window.label}`}
                     onClick={() => actions.onEnd(window)}
@@ -131,7 +148,7 @@ function CheckboxGroup({
   );
 }
 
-function AddWindowForm({ onAdd, isPending, error }: { onAdd: (input: RateWindowInput) => void; isPending: boolean; error: string | null }) {
+function AddWindowForm({ onAdd, isPending }: { onAdd: (input: RateWindowInput, onAdded: () => void) => void; isPending: boolean }) {
   const [channel, setChannel] = useState<RateChannel>("buy");
   const [label, setLabel] = useState("");
   const [rate, setRate] = useState("");
@@ -139,30 +156,30 @@ function AddWindowForm({ onAdd, isPending, error }: { onAdd: (input: RateWindowI
   const [days, setDays] = useState(ALL_DAYS);
   const [start, setStart] = useState("00:00");
   const [end, setEnd] = useState("00:00");
-  const [from, setFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  const [from, setFrom] = useState(() => localDateString(new Date()));
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!label.trim()) return;
+    const clear = () => {
+      setLabel("");
+      setRate("");
+    };
     onAdd({
       channel,
       label: label.trim(),
-      effective_from: new Date(`${from}T00:00:00`).toISOString(),
+      effective_from: effectiveFromFor(from),
       effective_to: null,
       months,
       days_of_week: days,
       start_time: `${start}:00`,
       end_time: `${end}:00`,
       rate_c_per_kwh: Number(rate),
-    });
+    }, clear);
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2 border-t border-line pt-3 text-sm">
-      {error && (
-        <p role="alert" className={errorClass}>
-          {error}
-        </p>
-      )}
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col text-ink-muted">
           Direction
@@ -175,8 +192,8 @@ function AddWindowForm({ onAdd, isPending, error }: { onAdd: (input: RateWindowI
           </select>
         </label>
         <label className="flex flex-col text-ink-muted">
-          Label
-          <input aria-label="Label" value={label} onChange={(e) => setLabel(e.target.value)} required autoComplete="off" className={inputClass} />
+          Window label
+          <input aria-label="Window label" value={label} onChange={(e) => setLabel(e.target.value)} required autoComplete="off" className={inputClass} />
         </label>
         <label className="flex flex-col text-ink-muted">
           Rate (c/kWh)
@@ -196,11 +213,12 @@ function AddWindowForm({ onAdd, isPending, error }: { onAdd: (input: RateWindowI
         </label>
       </div>
       <p className="text-xs text-ink-muted">Start and end at the same time cover the whole day. An end before the start runs past midnight.</p>
+      <p className="text-xs text-ink-muted">To change a rate, End the old window, then add the new one starting today or later.</p>
       <CheckboxGroup legend="Months" options={MONTH_NAMES.map((name, i) => ({ value: i + 1, label: name }))} selected={months} onChange={setMonths} />
       <CheckboxGroup legend="Days" options={DAY_NAMES.map((name, i) => ({ value: i, label: name }))} selected={days} onChange={setDays} />
       <button
         type="submit"
-        disabled={isPending || months.length === 0 || days.length === 0}
+        disabled={isPending || !label.trim() || months.length === 0 || days.length === 0}
         className="rounded-md bg-solar px-3 py-1 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50"
       >
         Add window
@@ -216,13 +234,29 @@ export function RateWindowsPanel({ siteId, sourceId }: { siteId: number; sourceI
   const deleteWindow = useDeleteRateWindow(siteId, sourceId);
   const gap = useMemo(() => hasCoverageGap(windows ?? []), [windows]);
 
+  // Each call clears every earlier result, so at most one error is ever shown
+  // and it belongs to the latest change.
+  function resetAll() {
+    createWindow.reset();
+    replaceWindow.reset();
+    deleteWindow.reset();
+  }
   const actions: WindowActions = {
-    onEnd: (window) =>
-      replaceWindow.mutate({ windowId: window.id, input: toInput(window, { effective_to: new Date().toISOString() }) }),
-    onDelete: (window) => deleteWindow.mutate(window.id),
+    onEnd: (window) => {
+      resetAll();
+      replaceWindow.mutate({ windowId: window.id, input: toInput(window, { effective_to: new Date().toISOString() }) });
+    },
+    onDelete: (window) => {
+      resetAll();
+      deleteWindow.mutate(window.id);
+    },
     isPending: replaceWindow.isPending || deleteWindow.isPending,
   };
-  const failure = [createWindow, replaceWindow, deleteWindow].find((m) => m.isError)?.error;
+  const handleAdd = (input: RateWindowInput, onAdded: () => void) => {
+    resetAll();
+    createWindow.mutate(input, { onSuccess: onAdded });
+  };
+  const error = createWindow.error ?? replaceWindow.error ?? deleteWindow.error;
 
   return (
     <div className="space-y-3 border-t border-line p-3">
@@ -242,16 +276,12 @@ export function RateWindowsPanel({ siteId, sourceId }: { siteId: number; sourceI
         CHANNEL_SECTIONS.map(({ channel, title }) => (
           <ChannelSection key={channel} title={title} windows={windows.filter((w) => w.channel === channel)} actions={actions} />
         ))}
-      <AddWindowForm
-        onAdd={(input) => createWindow.mutate(input)}
-        isPending={createWindow.isPending}
-        error={createWindow.isError ? createWindow.error.message : null}
-      />
-      {failure && !createWindow.isError && (
+      {error && (
         <p role="alert" className={errorClass}>
-          {failure instanceof Error ? failure.message : "That change failed. Please try again."}
+          {error.message}
         </p>
       )}
+      <AddWindowForm onAdd={handleAdd} isPending={createWindow.isPending} />
     </div>
   );
 }

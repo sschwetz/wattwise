@@ -516,6 +516,44 @@ describe("SourcesPage", () => {
     expect(screen.queryByLabelText("Label (optional)")).not.toBeInTheDocument();
   });
 
+  it("creates a local pricing source with its tariff name", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ id: 5, site_id: 7, kind: "pricing", provider: "local", name: "Origin Fixed", enabled: true, config: {} })
+      .mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("No sources yet.");
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "pricing");
+    await user.selectOptions(screen.getByLabelText("Provider"), "local");
+    await user.type(screen.getByLabelText("Tariff name"), "Origin Fixed");
+    await user.click(screen.getByRole("button", { name: "Create source" }));
+
+    const postCall = vi
+      .mocked(apiFetch)
+      .mock.calls.find(([path, options]) => path === "/api/v1/sites/7/sources" && options?.method === "POST");
+    expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
+      kind: "pricing",
+      provider: "local",
+      name: "Origin Fixed",
+      config: {},
+    });
+  });
+
+  it("will not create a local source whose tariff name is only spaces", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("No sources yet.");
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "pricing");
+    await user.selectOptions(screen.getByLabelText("Provider"), "local");
+    await user.type(screen.getByLabelText("Tariff name"), "   ");
+
+    expect(screen.getByRole("button", { name: "Create source" })).toBeDisabled();
+  });
+
   it("shows the rate windows panel for a local source instead of a config form", async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce([
