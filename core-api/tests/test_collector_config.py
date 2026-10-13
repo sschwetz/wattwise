@@ -107,6 +107,20 @@ def test_report_discovered_config_can_merge_both_fields_at_once(client, app_and_
     }
 
 
+def test_report_discovered_config_merges_token(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url, {"host": "envoy.local", "token": "old", "username": "u@example.com"})
+    patch = client.patch(
+        f"/api/v1/sources/{source_id}/discovered-config",
+        json={"token": "new"},
+        headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY},
+    )
+    assert patch.status_code == 204, patch.text
+
+    get = client.get(f"/api/v1/sources/{source_id}/config", headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY})
+    assert get.json()["config"] == {"host": "envoy.local", "token": "new", "username": "u@example.com"}
+
+
 def test_report_discovered_config_rejects_extra_fields(client, app_and_db_url):
     _, db_url = app_and_db_url
     source_id = make_energy_source(db_url, {"host": "envoy.local", "token": "abc"})

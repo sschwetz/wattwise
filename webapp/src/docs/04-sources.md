@@ -52,19 +52,26 @@ Choose kind `energy` and provider `envoy`, then open **Edit config**.
 | Field | What to enter |
 |-------|---------------|
 | **Host** | The Envoy's address on your home network, such as `192.168.1.50` or `envoy.local`. A fixed (reserved) address is more reliable than a name. |
-| **Token** | A local-access token for your Envoy. Shown as dots while you type. |
+| **Token** | A local-access token for your Envoy. Shown as dots while you type. Optional when the two Enlighten fields below are filled in. |
+| **Enlighten email** | Optional. The email you use to sign in to Enlighten (enlighten.enphaseenergy.com). |
+| **Enlighten password** | Optional. Shown as dots while you type. |
+| **Serial number** | The Envoy's serial number. The collector fills it in when it can read it from the Envoy; type it yourself if it stays empty. Needed to renew the token. |
 | **My consumption numbers are flipped (importing shows as negative)** | Tick this only if the dashboard's consumption looks upside down. See [Troubleshooting](08-troubleshooting.md#consumption-or-grid-numbers-have-the-wrong-sign). |
 
 ### Getting the token
 
-1. Save the **Host** first and wait a few minutes. The collector contacts the Envoy and reports its **Serial number** back, which then appears at the bottom of the form.
+The simplest route is to fill in **Enlighten email** and **Enlighten password** and leave **Token** empty. The collector needs your Envoy's serial number. It fills **Serial number** in itself when it can read it from the Envoy. If that box is still empty after a few minutes, type the serial number yourself. Then the collector signs in to Enlighten and fetches a token. It renews the token the same way 14 days before it expires. Your email and password are stored in the WattWise database next to the token, and only the site owner can see them.
+
+If you would rather not store your Enlighten password, get the token by hand:
+
+1. Save the **Host** first and wait a few minutes. The collector contacts the Envoy and reports its **Serial number** back, which then appears in **Serial number**. If it does not appear, type the number in yourself; it is printed on the Envoy and shown in Enlighten.
 2. Open this address in a browser, replacing `<serial>` with that number, and sign in with your Enphase Enlighten account:
 
    `https://enlighten.enphaseenergy.com/entrez-auth-token?serial_num=<serial>`
 
 3. Copy the token it gives you into **Token** and click **Save config**.
 
-Tokens last about a year. When one expires, readings stop. Repeat the steps above and paste the new token.
+Tokens last about a year. Without stored credentials, readings stop when one expires, and you repeat the steps above.
 
 ### Certificate pinning
 

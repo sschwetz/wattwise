@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import datetime
+
 import pytest
 
 from envoy_collector import main as main_module
 from envoy_collector.config import Settings
 from envoy_collector.core_api_client import CoreApiError
+from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError
 from envoy_collector.envoy_client import EnvoyAuthError
+from tests.test_enlighten_client import make_jwt
 
 SETTINGS = Settings(
     core_api_url="http://localhost:8000", collector_key="key", poll_interval_seconds=60, discovery_refresh_seconds=300
@@ -553,3 +557,197 @@ def test_refresh_sources_retries_discovery_for_a_known_source_that_still_lacks_a
     main_module._refresh_sources(SETTINGS, known)
 
     assert sync_calls == [1]
+
+
+@pytest.fixture(autouse=True)
+def _clear_renewal_state():
+    main_module._last_renewal_attempt.clear()
+    yield
+    main_module._last_renewal_attempt.clear()
+
+
+CREDS = {"username": "u@example.com", "password": "pw-secret", "serial_num": "123456789012"}
+
+
+def _stub_reporting(monkeypatch):
+    reported = []
+    monkeypatch.setattr(
+        main_module, "report_discovered_config", lambda base_url, source_id, key, **kwargs: reported.append(kwargs)
+    )
+    return reported
+
+
+def _stub_envoy_accepting_only_fresh_token(monkeypatch) -> list[str]:
+    """Envoy answers 401 to every token except "fresh". Returns the list of
+    tokens it was called with."""
+    seen: list[str] = []
+
+    def fake_fetch_production(host, token, cert_fingerprint):
+        seen.append(token)
+        if token != "fresh":
+            raise EnvoyAuthError("nope")
+        return {"production": []}
+
+    monkeypatch.setattr(main_module, "fetch_production", fake_fetch_production)
+    monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
+    monkeypatch.setattr(main_module, "map_production_readings", lambda data, ts, **_kwargs: [])
+    monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
+    return seen
+
+
+def test_renew_token_fetches_and_reports_a_new_token(monkeypatch):
+    reported = _stub_reporting(monkeypatch)
+    monkeypatch.setattr(main_module, "fetch_token", lambda u, p, s: "fresh")
+    config = {"host": "h", "token": "old", **CREDS}
+
+    result = main_module.renew_token(SETTINGS, 1, config)
+
+    assert result["token"] == "fresh"
+    assert config["token"] == "old"  # input not mutated
+    assert reported == [{"token": "fresh"}]
+
+
+@pytest.mark.parametrize("missing", ["username", "password", "serial_num"])
+def test_renew_token_skips_without_credentials_or_serial(monkeypatch, missing):
+    calls = []
+    monkeypatch.setattr(main_module, "fetch_token", lambda *a: calls.append(a) or "fresh")
+    config = {k: v for k, v in CREDS.items() if k != missing}
+
+    assert main_module.renew_token(SETTINGS, 1, config) == config
+    assert calls == []
+    assert 1 not in main_module._last_renewal_attempt  # a skip does not start the wait
+
+
+def test_renew_token_waits_an_hour_after_a_failed_login(monkeypatch, caplog):
+    calls = []
+
+    def reject(u, p, s):
+        calls.append(1)
+        raise EnlightenAuthError("Enlighten rejected the username or password")
+
+    monkeypatch.setattr(main_module, "fetch_token", reject)
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(main_module.time, "monotonic", lambda: clock["now"])
+    config = {"token": "old", **CREDS}
+
+    with caplog.at_level("ERROR"):
+        assert main_module.renew_token(SETTINGS, 1, config) == config
+        clock["now"] += 60
+        assert main_module.renew_token(SETTINGS, 1, config) == config
+        assert len(calls) == 1
+        clock["now"] += 3600
+        main_module.renew_token(SETTINGS, 1, config)
+    assert len(calls) == 2
+    assert not any("pw-secret" in m for m in caplog.messages)
+
+
+def test_renew_token_returns_config_unchanged_on_enlighten_outage(monkeypatch):
+    def down(u, p, s):
+        raise EnlightenError("Enlighten login returned HTTP 503")
+
+    monkeypatch.setattr(main_module, "fetch_token", down)
+    config = {"token": "old", **CREDS}
+    assert main_module.renew_token(SETTINGS, 1, config) == config
+
+
+def test_renew_token_keeps_the_new_token_when_core_api_rejects_the_write(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_token", lambda u, p, s: "fresh")
+
+    def fail(*a, **k):
+        raise CoreApiError("down")
+
+    monkeypatch.setattr(main_module, "report_discovered_config", fail)
+    assert main_module.renew_token(SETTINGS, 1, {"token": "old", **CREDS})["token"] == "fresh"
+
+
+def test_poll_once_renews_after_a_double_401_and_retries(monkeypatch):
+    _stub_reporting(monkeypatch)
+    monkeypatch.setattr(main_module, "fetch_token", lambda u, p, s: "fresh")
+    seen = _stub_envoy_accepting_only_fresh_token(monkeypatch)
+    stored = {"host": "envoy.local", "token": "old", "cert_fingerprint": "pinned", **CREDS}
+    monkeypatch.setattr(main_module, "fetch_source_config", lambda base_url, source_id, key: dict(stored))
+    pushed = []
+    monkeypatch.setattr(main_module, "push_energy_readings", lambda *a, **k: pushed.append(a))
+
+    result = main_module.poll_once(SETTINGS, 1, dict(stored))
+
+    assert result["token"] == "fresh"
+    assert seen == ["old", "old", "fresh"]
+    assert len(pushed) == 1
+
+
+def test_poll_once_renews_a_source_with_no_token_key(monkeypatch):
+    _stub_reporting(monkeypatch)
+    monkeypatch.setattr(main_module, "fetch_token", lambda u, p, s: "fresh")
+    seen = _stub_envoy_accepting_only_fresh_token(monkeypatch)
+    stored = {"host": "envoy.local", "cert_fingerprint": "pinned", **CREDS}  # no "token" key
+    monkeypatch.setattr(main_module, "fetch_source_config", lambda base_url, source_id, key: dict(stored))
+    monkeypatch.setattr(main_module, "push_energy_readings", lambda *a, **k: None)
+
+    result = main_module.poll_once(SETTINGS, 1, dict(stored))
+
+    assert result["token"] == "fresh"
+    assert seen[0] == ""  # first attempt went out with an empty token and got the 401
+
+
+def test_poll_once_falls_back_to_the_manual_message_when_renewal_fails(monkeypatch, caplog):
+    def reject(u, p, s):
+        raise EnlightenAuthError("Enlighten rejected the username or password")
+
+    monkeypatch.setattr(main_module, "fetch_token", reject)
+    monkeypatch.setattr(
+        main_module, "fetch_production", lambda host, token, cert_fingerprint: (_ for _ in ()).throw(EnvoyAuthError("x"))
+    )
+    monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
+    stored = {"host": "envoy.local", "token": "old", "cert_fingerprint": "pinned", **CREDS}
+    monkeypatch.setattr(main_module, "fetch_source_config", lambda base_url, source_id, key: dict(stored))
+
+    with caplog.at_level("ERROR"):
+        result = main_module.poll_once(SETTINGS, 1, dict(stored))
+
+    assert result == stored
+    assert any("entrez-auth-token" in m for m in caplog.messages)
+    assert not any("pw-secret" in m for m in caplog.messages)
+
+
+NOW = datetime.datetime(2026, 10, 13, tzinfo=datetime.timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("days_left", "expected"), [(13, True), (14.5, False), (-1, True), (400, False)]
+)
+def test_token_expiring_uses_a_14_day_window(days_left, expected):
+    exp = (NOW + datetime.timedelta(days=days_left)).timestamp()
+    assert main_module._token_expiring({"token": make_jwt({"exp": exp})}, NOW) is expected
+
+
+@pytest.mark.parametrize("token", [None, "", "opaque-token", make_jwt({"exp": "soon"}), make_jwt({})])
+def test_token_expiring_ignores_unreadable_tokens(token):
+    assert main_module._token_expiring({"token": token}, NOW) is False
+
+
+def test_refresh_sources_renews_a_token_close_to_expiry(monkeypatch):
+    soon = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3)).timestamp()
+    expiring = {"host": "h", "token": make_jwt({"exp": soon}), "cert_fingerprint": "pinned", **CREDS}
+    monkeypatch.setattr(
+        main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": dict(expiring)}]
+    )
+    _stub_reporting(monkeypatch)
+    monkeypatch.setattr(main_module, "fetch_token", lambda u, p, s: "fresh")
+
+    refreshed = main_module._refresh_sources(SETTINGS, {})
+
+    assert refreshed[1]["token"] == "fresh"
+
+
+def test_refresh_sources_leaves_a_healthy_token_alone(monkeypatch):
+    later = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=200)).timestamp()
+    healthy = {"host": "h", "token": make_jwt({"exp": later}), "cert_fingerprint": "pinned", **CREDS}
+    monkeypatch.setattr(
+        main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": dict(healthy)}]
+    )
+    calls = []
+    monkeypatch.setattr(main_module, "fetch_token", lambda *a: calls.append(a) or "fresh")
+
+    assert main_module._refresh_sources(SETTINGS, {})[1]["token"] == healthy["token"]
+    assert calls == []

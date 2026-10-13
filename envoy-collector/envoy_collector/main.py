@@ -12,6 +12,7 @@ from envoy_collector.core_api_client import (
     push_energy_readings,
     report_discovered_config,
 )
+from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError, fetch_token, token_expires_at
 from envoy_collector.envoy_client import (
     EnvoyAuthError,
     EnvoyCertificateMismatch,
@@ -23,6 +24,13 @@ from envoy_collector.envoy_client import (
 from envoy_collector.mapping import battery_net_w, map_battery_readings, map_production_readings
 
 logger = logging.getLogger("envoy_collector")
+
+# Renew when the token has less than this left. Tokens last a year.
+RENEWAL_WINDOW = datetime.timedelta(days=14)
+# Minimum gap between Enlighten calls for one source, so a wrong password
+# can't lock the owner's Enlighten account by retrying every poll.
+RENEWAL_RETRY_SECONDS = 3600
+_last_renewal_attempt: dict[int, float] = {}
 
 
 def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
@@ -72,6 +80,39 @@ def _renewal_message(config: dict) -> str:
     )
 
 
+def renew_token(settings: Settings, source_id: int, config: dict) -> dict:
+    """Gets a new token from Enlighten and reports it to Core API. Returns
+    `config` unchanged when renewal is skipped (missing credentials or serial,
+    or tried within the last hour) or fails."""
+    username, password, serial_num = config.get("username"), config.get("password"), config.get("serial_num")
+    if not (username and password and serial_num):
+        return config
+    now = time.monotonic()
+    last = _last_renewal_attempt.get(source_id)
+    if last is not None and now - last < RENEWAL_RETRY_SECONDS:
+        return config
+    _last_renewal_attempt[source_id] = now
+    try:
+        token = fetch_token(username, password, serial_num)
+    except EnlightenAuthError as exc:
+        logger.error("Could not renew the Envoy token for source %s: %s. Update the Enlighten credentials.", source_id, exc)
+        return config
+    except EnlightenError as exc:
+        logger.error("Could not renew the Envoy token for source %s: %s. Will retry in an hour.", source_id, exc)
+        return config
+    try:
+        report_discovered_config(settings.core_api_url, source_id, settings.collector_key, token=token)
+    except CoreApiError:
+        logger.exception("Renewed the Envoy token for source %s but could not save it to Core API", source_id)
+    logger.info("Renewed the Envoy token for source %s", source_id)
+    return {**config, "token": token}
+
+
+def _token_expiring(config: dict, now: datetime.datetime) -> bool:
+    expires_at = token_expires_at(config.get("token"))
+    return expires_at is not None and expires_at - now < RENEWAL_WINDOW
+
+
 def _fetch_battery_json_or_none(config: dict) -> dict | None:
     """Battery fetch/parse failures (other than an auth failure, which must
     bubble up so poll_once's shared token-refresh logic can handle it) only
@@ -82,7 +123,7 @@ def _fetch_battery_json_or_none(config: dict) -> dict | None:
     which just falls back to Envoy's own (battery-unaware) consumption
     figure for one poll — no worse than before this correction existed."""
     try:
-        return fetch_battery_power(config["host"], config["token"], config["cert_fingerprint"])
+        return fetch_battery_power(config["host"], config.get("token", ""), config["cert_fingerprint"])
     except EnvoyAuthError:
         raise
     except Exception:
@@ -101,7 +142,7 @@ def _fetch_and_map(config: dict, ts: datetime.datetime) -> list[dict]:
     map_production_readings — see that function's docstring for why
     Envoy's own consumption figure needs that correction on a site with a
     battery."""
-    production = fetch_production(config["host"], config["token"], config["cert_fingerprint"])
+    production = fetch_production(config["host"], config.get("token", ""), config["cert_fingerprint"])
     battery_json = _fetch_battery_json_or_none(config)
     battery_readings = map_battery_readings(battery_json, ts) if battery_json is not None else []
     net_w = battery_net_w(battery_json) if battery_json is not None else None
@@ -112,6 +153,38 @@ def _fetch_and_map(config: dict, ts: datetime.datetime) -> list[dict]:
         battery_net_w=net_w,
     )
     return production_readings + battery_readings
+
+
+def _recover_from_auth_failure(
+    settings: Settings, source_id: int, config: dict, ts: datetime.datetime
+) -> tuple[dict, list[dict] | None]:
+    """Runs after the Envoy answered 401: refetch the config (the token may
+    have been edited), then renew from Enlighten if that still fails. Returns
+    (config to use next cycle, readings or None if this cycle failed)."""
+    logger.warning("Envoy rejected our token for source %s; refetching config from Core API", source_id)
+    try:
+        config = fetch_source_config(settings.core_api_url, source_id, settings.collector_key)
+    except CoreApiError:
+        logger.exception("Failed to refetch source config after Envoy auth failure for source %s", source_id)
+        return config, None
+    try:
+        return config, _fetch_and_map(config, ts)
+    except EnvoyAuthError:
+        pass
+    except Exception:
+        logger.exception("Failed to poll Envoy this cycle (after config refetch) for source %s", source_id)
+        return config, None
+    renewed = renew_token(settings, source_id, config)
+    if renewed.get("token") == config.get("token"):
+        logger.error(_renewal_message(config))
+        return config, None
+    try:
+        return renewed, _fetch_and_map(renewed, ts)
+    except EnvoyAuthError:
+        logger.error(_renewal_message(renewed))
+    except Exception:
+        logger.exception("Failed to poll Envoy this cycle (after token renewal) for source %s", source_id)
+    return renewed, None
 
 
 def poll_once(settings: Settings, source_id: int, config: dict) -> dict:
@@ -134,19 +207,8 @@ def poll_once(settings: Settings, source_id: int, config: dict) -> dict:
     try:
         readings = _fetch_and_map(config, ts)
     except EnvoyAuthError:
-        logger.warning("Envoy rejected our token for source %s; refetching config from Core API", source_id)
-        try:
-            config = fetch_source_config(settings.core_api_url, source_id, settings.collector_key)
-        except CoreApiError:
-            logger.exception("Failed to refetch source config after Envoy auth failure for source %s", source_id)
-            return config
-        try:
-            readings = _fetch_and_map(config, ts)
-        except EnvoyAuthError:
-            logger.error(_renewal_message(config))
-            return config
-        except Exception:
-            logger.exception("Failed to poll Envoy this cycle (after config refetch) for source %s", source_id)
+        config, readings = _recover_from_auth_failure(settings, source_id, config, ts)
+        if readings is None:
             return config
     except Exception:
         logger.exception("Failed to poll Envoy this cycle for source %s", source_id)
@@ -181,6 +243,8 @@ def _refresh_sources(settings: Settings, known: dict[int, dict]) -> dict[int, di
         # skipped by poll_once for the rest of the process's life.
         if "cert_fingerprint" not in refreshed[source_id]:
             discover_and_sync_serial(settings, source_id, refreshed[source_id])
+        if _token_expiring(refreshed[source_id], datetime.datetime.now(datetime.timezone.utc)):
+            refreshed[source_id] = renew_token(settings, source_id, refreshed[source_id])
     return refreshed
 
 

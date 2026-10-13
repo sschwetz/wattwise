@@ -407,6 +407,7 @@ class DiscoveredSourceConfig(BaseModel):
 
     serial_num: str | None = None
     cert_fingerprint: str | None = None
+    token: str | None = None
 
 
 class DemandChargeOut(BaseModel):

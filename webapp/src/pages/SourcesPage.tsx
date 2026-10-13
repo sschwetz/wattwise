@@ -171,17 +171,33 @@ function EnvoyConfigForm({
 }) {
   const [host, setHost] = useState((config.host as string) ?? "");
   const [token, setToken] = useState((config.token as string) ?? "");
+  const [username, setUsername] = useState((config.username as string) ?? "");
+  const [password, setPassword] = useState((config.password as string) ?? "");
+  const [serialNum, setSerialNum] = useState((config.serial_num as string) ?? "");
   const [invertConsumptionCt, setInvertConsumptionCt] = useState(Boolean(config.invert_consumption_ct));
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    onSave({ host, token, invert_consumption_ct: invertConsumptionCt });
+    // Sent only when filled in: an empty box means "not known yet", and the
+    // collector fills the serial in itself once it can reach the Envoy.
+    const serial = serialNum.trim();
+    onSave({ host, token, username, password, ...(serial && { serial_num: serial }), invert_consumption_ct: invertConsumptionCt });
   }
 
   return (
     <ConfigFormShell onSubmit={handleSubmit} isPending={isPending}>
       <ConfigField field={{ label: "Host", value: host, onChange: setHost }} />
       <ConfigField field={{ label: "Token", value: token, onChange: setToken, type: "password" }} />
+      <ConfigField field={{ label: "Enlighten email", value: username, onChange: setUsername }} />
+      <ConfigField field={{ label: "Enlighten password", value: password, onChange: setPassword, type: "password" }} />
+      <p className="text-ink-muted">
+        Optional. With both filled in, the collector can renew the token automatically, so Token can stay empty.
+      </p>
+      <ConfigField field={{ label: "Serial number", value: serialNum, onChange: setSerialNum }} />
+      <p className="text-ink-muted">
+        The collector fills this in when it can read it from the Envoy. If it stays empty, enter the serial number
+        printed on the Envoy or shown in Enlighten. The collector needs it to renew the token.
+      </p>
       <label className="flex items-center gap-2 text-ink-muted">
         <input
           type="checkbox"
@@ -190,11 +206,6 @@ function EnvoyConfigForm({
         />
         My consumption numbers are flipped (importing shows as negative)
       </label>
-      {config.serial_num && (
-        <p className="text-ink-muted">
-          Serial number (discovered by the collector): <span>{config.serial_num}</span>
-        </p>
-      )}
     </ConfigFormShell>
   );
 }

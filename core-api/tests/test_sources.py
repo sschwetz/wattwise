@@ -198,6 +198,59 @@ def test_patch_config_clears_pinned_cert_fingerprint_when_host_changes(client, a
     assert patch.json()["config"] == {"host": "new-envoy.local", "token": "abc"}
 
 
+def _create_envoy_source(client, db_url, config):
+    owner_id, site_id = make_owner_and_site(db_url)
+    source_id = client.post(
+        f"/api/v1/sites/{site_id}/sources",
+        json={"kind": "energy", "provider": "envoy", "config": config},
+        headers=auth(owner_id),
+    ).json()["id"]
+    return owner_id, site_id, source_id
+
+
+def test_patch_config_keeps_a_serial_num_entered_together_with_a_host_change(client, app_and_db_url):
+    """The owner can type the serial number by hand (the collector may not be
+    able to discover it yet). A new serial sent in the same save as a new host
+    is the owner's value for the new device, not the stale one to clear."""
+    _, db_url = app_and_db_url
+    owner_id, site_id, source_id = _create_envoy_source(
+        client, db_url, {"host": "old.local", "cert_fingerprint": "old-pin", "serial_num": "111"}
+    )
+    patch = client.patch(
+        f"/api/v1/sites/{site_id}/sources/{source_id}",
+        json={"config": {"host": "new.local", "serial_num": "222"}},
+        headers=auth(owner_id),
+    )
+    assert patch.status_code == 200, patch.text
+    assert patch.json()["config"] == {"host": "new.local", "serial_num": "222"}
+
+
+def test_patch_config_still_clears_the_old_serial_num_when_the_form_resends_it(client, app_and_db_url):
+    """The webapp form resends the stored serial_num on every save. If the host
+    changed and the serial did not, it is still the old device's serial."""
+    _, db_url = app_and_db_url
+    owner_id, site_id, source_id = _create_envoy_source(
+        client, db_url, {"host": "old.local", "cert_fingerprint": "old-pin", "serial_num": "111"}
+    )
+    patch = client.patch(
+        f"/api/v1/sites/{site_id}/sources/{source_id}",
+        json={"config": {"host": "new.local", "serial_num": "111"}},
+        headers=auth(owner_id),
+    )
+    assert patch.json()["config"] == {"host": "new.local"}
+
+
+def test_patch_config_sets_serial_num_without_a_host_change(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id, source_id = _create_envoy_source(client, db_url, {"host": "envoy.local"})
+    patch = client.patch(
+        f"/api/v1/sites/{site_id}/sources/{source_id}",
+        json={"config": {"host": "envoy.local", "serial_num": "333"}},
+        headers=auth(owner_id),
+    )
+    assert patch.json()["config"] == {"host": "envoy.local", "serial_num": "333"}
+
+
 def test_patch_config_keeps_pinned_cert_fingerprint_when_host_is_unchanged(client, app_and_db_url):
     _, db_url = app_and_db_url
     owner_id, site_id = make_owner_and_site(db_url)
@@ -357,6 +410,24 @@ def test_list_sources_redacts_the_token_for_a_non_owner_viewer(client, app_and_d
     response = client.get(f"/api/v1/sites/{site_id}/sources", headers=auth(viewer_id))
     assert response.status_code == 200
     assert response.json()[0]["config"] == {"host": "envoy.local"}
+
+
+def test_get_source_redacts_enlighten_credentials_for_a_non_owner_viewer(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    config = {"host": "envoy.local", "token": "abc", "username": "u@example.com", "password": "pw"}
+    source_id = client.post(
+        f"/api/v1/sites/{site_id}/sources",
+        json={"kind": "energy", "provider": "envoy", "config": config},
+        headers=auth(owner_id),
+    ).json()["id"]
+    viewer_id = _grant_viewer_access(db_url, site_id, "viewer-creds@example.com")
+
+    viewer_view = client.get(f"/api/v1/sites/{site_id}/sources/{source_id}", headers=auth(viewer_id))
+    assert viewer_view.json()["config"] == {"host": "envoy.local"}
+
+    owner_view = client.get(f"/api/v1/sites/{site_id}/sources/{source_id}", headers=auth(owner_id))
+    assert owner_view.json()["config"] == config
 
 
 def test_source_config_never_includes_amber_api_key(client, app_and_db_url):

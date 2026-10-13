@@ -12,10 +12,10 @@ The dashboard shows only what has been collected, so an empty page usually means
 |-------|-----------|
 | Is there an energy source? | Open **Sources**. If no `energy — envoy` row exists, [add one](04-sources.md#connecting-an-enphase-envoy). |
 | Is it enabled? | The row should offer **Disable**, not **Enable**. If it says **Enable**, click it. |
-| Are the Host and Token filled in? | Click **Edit config**. Both must be set. |
+| Are the Host and Token filled in? | Click **Edit config**. Host must be set, and either Token or both Enlighten fields. |
 | Did you wait? | New and edited sources take a few minutes to start. The dashboard refreshes every 60 seconds. |
 | Is the Envoy reachable? | The Envoy must be on the same network as your WattWise server. Try its address in a browser from a computer on that network. |
-| Has the token expired? | Tokens last about a year. [Get a new one](04-sources.md#getting-the-token). |
+| Has the token expired? | Tokens last about a year. If **Enlighten email** and **Enlighten password** are set, the collector renews the token itself. If readings still stop, check the collector log for "Could not renew the Envoy token", usually a wrong Enlighten password. Otherwise [get a new one](04-sources.md#getting-the-token). |
 
 If the live tiles say *Failed to load live readings.*, the web app cannot reach the server. Reload the page, then check that the server is running.
 

@@ -188,7 +188,7 @@ describe("SourcesPage", () => {
     expect(screen.getByText("Disable")).toBeInTheDocument();
   });
 
-  it("shows a guided envoy config form, prefilled, with serial_num read-only, and submits the edited fields", async () => {
+  it("shows a guided envoy config form, prefilled, with an editable serial number, and submits the edited fields", async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce([
         {
@@ -217,7 +217,7 @@ describe("SourcesPage", () => {
     // must never render as plain readable text (screen-share, shoulder-surf,
     // or a support screenshot would otherwise capture a live credential).
     expect(screen.getByLabelText("Token")).toHaveAttribute("type", "password");
-    expect(screen.getByText("123456789012")).toBeInTheDocument();
+    expect(screen.getByLabelText("Serial number")).toHaveValue("123456789012");
 
     await userEvent.clear(screen.getByLabelText("Token"));
     await userEvent.type(screen.getByLabelText("Token"), "new-token");
@@ -227,7 +227,104 @@ describe("SourcesPage", () => {
       "/api/v1/sites/7/sources/1",
       expect.objectContaining({
         method: "PATCH",
-        body: JSON.stringify({ config: { host: "envoy.local", token: "new-token", invert_consumption_ct: false } }),
+        body: JSON.stringify({
+          config: {
+            host: "envoy.local",
+            token: "new-token",
+            username: "",
+            password: "",
+            serial_num: "123456789012",
+            invert_consumption_ct: false,
+          },
+        }),
+      }),
+    );
+  });
+
+  it("lets the owner type the serial number before the collector has discovered it", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        { id: 1, site_id: 7, kind: "energy", provider: "envoy", enabled: true, config: { host: "envoy.local" } },
+      ])
+      .mockResolvedValueOnce({
+        id: 1,
+        site_id: 7,
+        kind: "energy",
+        provider: "envoy",
+        enabled: true,
+        config: { host: "envoy.local", serial_num: "999888777666" },
+      });
+    renderPage();
+    await userEvent.click(await screen.findByText("Edit config"));
+
+    expect(screen.getByLabelText("Serial number")).toHaveValue("");
+    await userEvent.type(screen.getByLabelText("Serial number"), " 999888777666 ");
+    await userEvent.click(screen.getByText("Save config"));
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/v1/sites/7/sources/1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          config: {
+            host: "envoy.local",
+            token: "",
+            username: "",
+            password: "",
+            serial_num: "999888777666",
+            invert_consumption_ct: false,
+          },
+        }),
+      }),
+    );
+  });
+
+  it("lets the owner store Enlighten credentials for automatic token renewal", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        {
+          id: 1,
+          site_id: 7,
+          kind: "energy",
+          provider: "envoy",
+          enabled: true,
+          config: { host: "envoy.local", username: "me@example.com", password: "pw" },
+        },
+      ])
+      .mockResolvedValueOnce({
+        id: 1,
+        site_id: 7,
+        kind: "energy",
+        provider: "envoy",
+        enabled: true,
+        config: { host: "envoy.local", username: "me@example.com", password: "new-pw" },
+      });
+    renderPage();
+    await userEvent.click(await screen.findByText("Edit config"));
+
+    expect(screen.getByLabelText("Enlighten email")).toHaveValue("me@example.com");
+    expect(screen.getByLabelText("Enlighten email")).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("Enlighten password")).toHaveValue("pw");
+    expect(screen.getByLabelText("Enlighten password")).toHaveAttribute("type", "password");
+    expect(screen.getByText(/renew the token automatically/i)).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText("Enlighten password"));
+    await userEvent.type(screen.getByLabelText("Enlighten password"), "new-pw");
+    await userEvent.click(screen.getByText("Save config"));
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/v1/sites/7/sources/1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          config: {
+            host: "envoy.local",
+            token: "",
+            username: "me@example.com",
+            password: "new-pw",
+            invert_consumption_ct: false,
+          },
+        }),
       }),
     );
   });
@@ -266,7 +363,7 @@ describe("SourcesPage", () => {
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({
-          config: { host: "envoy.local", token: "old-token", invert_consumption_ct: true },
+          config: { host: "envoy.local", token: "old-token", username: "", password: "", invert_consumption_ct: true },
         }),
       }),
     );

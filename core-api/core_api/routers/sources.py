@@ -68,11 +68,12 @@ def create_source(
     return _to_source_out(source, include_secrets=True)
 
 
-# Device/provider credentials living in a source's config (currently just an
-# envoy source's local-API token) must only reach the site owner: a read-only
-# collaborator's SiteAccess grant is meant to expose energy data, not a
-# credential that can reach the owner's device directly.
-_SENSITIVE_CONFIG_KEYS = {"token", "api_key", "password", "secret"}
+# Device/provider credentials living in a source's config (an envoy source's
+# local-API token and the Enlighten username/password the collector uses to
+# renew it) must only reach the site owner: a read-only collaborator's
+# SiteAccess grant is meant to expose energy data, not a credential that can
+# reach the owner's device or Enphase account.
+_SENSITIVE_CONFIG_KEYS = {"token", "api_key", "password", "secret", "username"}
 
 
 def _to_source_out(source: Source, *, include_secrets: bool) -> SourceOut:
@@ -156,7 +157,12 @@ def update_source(
             # make it reject (or misattribute) a legitimately repointed
             # device forever instead of re-discovering/re-pinning it.
             merged_config.pop("cert_fingerprint", None)
-            merged_config.pop("serial_num", None)
+            # A serial_num the owner changed in this same save is for the new
+            # device. One that matches the stored value is the webapp form
+            # resending the old device's serial, so it still gets cleared.
+            old_serial = (source.config or {}).get("serial_num")
+            if payload.config.get("serial_num") in (None, old_serial):
+                merged_config.pop("serial_num", None)
         source.config = merged_config
     db.commit()
     db.refresh(source)

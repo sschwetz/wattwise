@@ -48,8 +48,10 @@ def report_discovered_config(
     *,
     serial_num: str | None = None,
     cert_fingerprint: str | None = None,
+    token: str | None = None,
 ) -> None:
-    payload = {k: v for k, v in {"serial_num": serial_num, "cert_fingerprint": cert_fingerprint}.items() if v is not None}
+    fields = {"serial_num": serial_num, "cert_fingerprint": cert_fingerprint, "token": token}
+    payload = {k: v for k, v in fields.items() if v is not None}
     response = _request(
         "PATCH",
         f"{base_url}/api/v1/sources/{source_id}/discovered-config",

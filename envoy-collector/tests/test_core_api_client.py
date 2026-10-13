@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 
 import httpx
 import pytest
@@ -147,3 +148,11 @@ def test_push_energy_readings_raises_core_api_error_on_connection_failure():
     respx.post(f"{BASE_URL}/api/v1/sources/1/readings/energy").mock(side_effect=httpx.ConnectError("boom"))
     with pytest.raises(CoreApiError):
         push_energy_readings(BASE_URL, 1, "my-key", [])
+
+
+@respx.mock
+def test_report_discovered_config_sends_token():
+    route = respx.patch(f"{BASE_URL}/api/v1/sources/1/discovered-config").mock(return_value=httpx.Response(204))
+    report_discovered_config(BASE_URL, 1, "my-key", token="new-token")
+    assert route.calls[0].request.headers["X-Collector-Key"] == "my-key"
+    assert json.loads(route.calls[0].request.content) == {"token": "new-token"}
