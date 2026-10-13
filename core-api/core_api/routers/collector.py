@@ -18,19 +18,21 @@ router = APIRouter(prefix="/collector", tags=["collector-config"])
 @router.get("/sources", response_model=list[CollectorSourceOut])
 def list_collector_sources(
     kind: SourceKind,
+    provider: str | None = None,
     x_collector_key: str = Header(...),
     db: Session = Depends(get_db_session),
 ) -> list[CollectorSourceOut]:
     if not check_collector_key(kind, x_collector_key):
         raise AppError(401, "invalid_collector_key", "Invalid collector key for this kind")
     now = datetime.datetime.now(datetime.timezone.utc)
-    sources = db.execute(
-        select(Source).where(
-            Source.kind == kind,
-            Source.enabled.is_(True),
-            or_(Source.effective_to.is_(None), Source.effective_to > now),
-        )
-    ).scalars().all()
+    query = select(Source).where(
+        Source.kind == kind,
+        Source.enabled.is_(True),
+        or_(Source.effective_to.is_(None), Source.effective_to > now),
+    )
+    if provider is not None:
+        query = query.where(Source.provider == provider)
+    sources = db.execute(query).scalars().all()
     return [
         CollectorSourceOut(source_id=s.id, site_id=s.site_id, config=resolve_source_config(db, s))
         for s in sources

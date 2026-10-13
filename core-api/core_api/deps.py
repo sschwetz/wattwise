@@ -142,12 +142,17 @@ def check_collector_key(kind: SourceKind, x_collector_key: str) -> bool:
 def get_source_by_collector_key(
     source_id: int,
     x_collector_key: str = Header(...),
+    x_collector_provider: str | None = Header(None),
     db: Session = Depends(get_db_session),
 ) -> Source:
     source = db.get(Source, source_id)
     if source is None:
         raise AppError(401, "invalid_collector_key", "Invalid collector key for this source")
     if not check_collector_key(source.kind, x_collector_key):
+        raise AppError(401, "invalid_collector_key", "Invalid collector key for this source")
+    # A collector that names its provider can only reach that provider's
+    # sources, so one vendor's collector cannot touch another's data.
+    if x_collector_provider is not None and x_collector_provider != source.provider:
         raise AppError(401, "invalid_collector_key", "Invalid collector key for this source")
     if not source.enabled:
         raise AppError(403, "source_disabled", "This source is disabled")

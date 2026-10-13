@@ -30,6 +30,8 @@ def test_fetch_collector_sources_sends_kind_and_collector_key():
     result = fetch_collector_sources(BASE_URL, "my-key")
     assert route.calls[0].request.headers["X-Collector-Key"] == "my-key"
     assert route.calls[0].request.url.params["kind"] == "pricing"
+    assert route.calls[0].request.url.params["provider"] == "amber"
+    assert route.calls[0].request.headers["X-Collector-Provider"] == "amber"
     assert result == [PricingSource(source_id=1)]
 
 
@@ -55,6 +57,15 @@ def test_fetch_source_config_sends_collector_key_header():
     result = fetch_source_config(BASE_URL, 1, "my-key")
     assert route.calls[0].request.headers["X-Collector-Key"] == "my-key"
     assert result == {"amber_site_id": "example-site-id"}
+
+
+@respx.mock
+def test_fetch_source_config_sends_provider_header():
+    route = respx.get(f"{BASE_URL}/api/v1/sources/1/config").mock(
+        return_value=httpx.Response(200, json={"config": {"amber_site_id": "example-site-id"}})
+    )
+    fetch_source_config(BASE_URL, 1, "my-key")
+    assert route.calls[0].request.headers["X-Collector-Provider"] == "amber"
 
 
 @respx.mock

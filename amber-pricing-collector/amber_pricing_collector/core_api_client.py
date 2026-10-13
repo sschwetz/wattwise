@@ -13,6 +13,13 @@ class CoreApiError(Exception):
     only ever need to catch this one type, never httpx's own exceptions."""
 
 
+PROVIDER = "amber"
+
+
+def _headers(collector_key: str) -> dict[str, str]:
+    return {"X-Collector-Key": collector_key, "X-Collector-Provider": PROVIDER}
+
+
 def _request(method: str, url: str, **kwargs) -> httpx.Response:
     try:
         return httpx.request(method, url, **kwargs)
@@ -24,8 +31,8 @@ def fetch_collector_sources(base_url: str, collector_key: str) -> list[PricingSo
     response = _request(
         "GET",
         f"{base_url}/api/v1/collector/sources",
-        params={"kind": "pricing"},
-        headers={"X-Collector-Key": collector_key},
+        params={"kind": "pricing", "provider": PROVIDER},
+        headers=_headers(collector_key),
         timeout=10,
     )
     if response.status_code != 200:
@@ -35,7 +42,7 @@ def fetch_collector_sources(base_url: str, collector_key: str) -> list[PricingSo
 
 def fetch_source_config(base_url: str, source_id: int, collector_key: str) -> dict:
     response = _request(
-        "GET", f"{base_url}/api/v1/sources/{source_id}/config", headers={"X-Collector-Key": collector_key}, timeout=10
+        "GET", f"{base_url}/api/v1/sources/{source_id}/config", headers=_headers(collector_key), timeout=10
     )
     if response.status_code != 200:
         raise CoreApiError(f"Failed to fetch source config: {response.status_code} {response.text}")
@@ -52,7 +59,7 @@ def push_price_intervals(
     response = _request(
         "POST",
         f"{base_url}/api/v1/sources/{source_id}/prices",
-        headers={"X-Collector-Key": collector_key},
+        headers=_headers(collector_key),
         json={"intervals": intervals},
         timeout=timeout,
     )
@@ -64,7 +71,7 @@ def fetch_site_data_floor(base_url: str, source_id: int, collector_key: str) -> 
     response = _request(
         "GET",
         f"{base_url}/api/v1/sources/{source_id}/site-data-floor",
-        headers={"X-Collector-Key": collector_key},
+        headers=_headers(collector_key),
         timeout=10,
     )
     if response.status_code != 200:
@@ -78,7 +85,7 @@ def fetch_price_gaps(base_url: str, source_id: int, collector_key: str, since: d
         "GET",
         f"{base_url}/api/v1/sources/{source_id}/prices/gaps",
         params={"since": since.isoformat()},
-        headers={"X-Collector-Key": collector_key},
+        headers=_headers(collector_key),
         timeout=10,
     )
     if response.status_code != 200:
@@ -90,7 +97,7 @@ def report_gap_marker(base_url: str, source_id: int, collector_key: str, channel
     response = _request(
         "POST",
         f"{base_url}/api/v1/sources/{source_id}/prices/gap-markers",
-        headers={"X-Collector-Key": collector_key},
+        headers=_headers(collector_key),
         json={"channel": channel, "gap_date": gap_date.isoformat()},
         timeout=10,
     )
