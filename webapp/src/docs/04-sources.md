@@ -8,6 +8,7 @@ A **source** connects a site to one device or service. WattWise supports three k
 |------|---------------|------------------|-------|
 | `energy` | `envoy` | Production, consumption, grid and battery readings | The Envoy's address and an access token |
 | `pricing` | `amber` | Buy and sell prices, plus the day's forecast | An Amber site ID, and your [Amber API key](07-account-settings.md#amber-api-key) |
+| `pricing` | `local` | Buy, sell and controlled-load prices from rates you type in | A tariff name and its [rate windows](#setting-up-a-fixed-tariff) |
 | `weather` | `weatherlink_live` | Temperature, humidity, wind, rain, solar radiation, pressure | The WeatherLink Live unit's address |
 
 Open the page from the sidebar with **Sources**.
@@ -17,11 +18,11 @@ Open the page from the sidebar with **Sources**.
 ## Adding a source
 
 1. Open **Sources** in the sidebar.
-2. At the bottom of the page, choose a **Kind**. The **Provider** list updates to the provider for that kind.
+2. At the bottom of the page, choose a **Kind**. The **Provider** list updates to the providers for that kind. Kind `pricing` offers `amber` and `local`.
 3. Optionally type a **Label**, for example `Garage Envoy`. Labels help when a site has more than one source of the same kind.
 4. Click **Create source**.
 5. WattWise confirms: *Source created — the matching collector will start collecting for it automatically within a few minutes.*
-6. Click **Edit config** on the new row and fill in its settings. The sections below show what each provider needs.
+6. Click **Edit config** on the new row and fill in its settings. The sections below show what each provider needs. A `local` pricing source has no **Edit config**; see [Setting up a fixed tariff](#setting-up-a-fixed-tariff).
 
 Limits:
 
@@ -91,6 +92,65 @@ Pricing needs two things:
 To add the source, choose kind `pricing` and provider `amber`, open **Edit config**, enter your **Amber site ID** and click **Save config**. The site ID is the identifier Amber assigns to your property. Amber's API returns it when you list your sites with your API key.
 
 Once prices flow, the dashboard shows [Today's Pricing](05-dashboard.md#todays-pricing) and the [grid price tile](05-dashboard.md#live-tiles), and costs can be calculated.
+
+## Setting up a fixed tariff
+
+Use this when your supplier charges fixed or time-of-use rates and has no price API. You type the rates in, and WattWise prices every minute from them.
+
+1. Open **Sources** and choose `pricing` as the **Kind** and `local` as the **Provider**.
+2. Type a **Tariff name**, such as `Origin Fixed`. It must be 1 to 100 characters, and a rename follows the same rule. The [Billing page](06-billing.md#tariffs) uses it as its heading, so this one reads "Origin Fixed Tariffs".
+3. Click **Create source**. A **Rate windows** panel appears under the source. A local source has no **Edit config** button.
+
+A site can have one active pricing source at a time, so remove the Amber source before you add a local one. **Delete** works only while the Amber source has no stored prices. **Disable** does not free the place: WattWise still counts a disabled source as the site's pricing source. To retire an Amber source that has prices, set its end date (`effective_to`) through the API with `PATCH /api/v1/sites/{site_id}/sources/{source_id}`. The Sources page has no control for this.
+
+### Rate windows
+
+Each window is one rate for one direction. The panel lists the windows for each direction separately:
+
+| Direction | What it prices |
+|---|---|
+| **Import** | Energy you buy from the grid. |
+| **Export (feed-in)** | Energy you sell to the grid. Type the rate as a positive number. WattWise stores it the same way it stores Amber's feed-in prices, as a negative number for a payment to you, and the dashboard shows its size. |
+| **Controlled load** | Energy on a separate controlled-load circuit. |
+
+To add a window, fill in the form at the bottom of the panel:
+
+| Field | What to enter |
+|---|---|
+| **Direction** | **Import**, **Export (feed-in)** or **Controlled load**. |
+| **Window label** | A name, for example `Peak`. |
+| **Rate (c/kWh)** | Cents per kWh, zero or more. |
+| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at the beginning of that day. |
+| **Start** / **End** | The times of day the rate applies. |
+| **Months** / **Days** | The months and days of the week it applies to. All are ticked to begin with. |
+
+Then click **Add window**.
+
+How the times work:
+
+- The start time is included and the end time is not, so a window that ends at 07:00 and one that starts at 07:00 do not overlap.
+- Equal start and end times cover the whole day. Use them for a flat rate.
+- An end time before the start time runs past midnight, so 22:00 to 07:00 is an overnight rate.
+- Months and days apply to the minute being priced, in the site's time zone. A 22:00 to 07:00 window ticked only for Monday covers Monday 00:00 to 07:00 and Monday 22:00 to midnight, not the early hours of Tuesday.
+
+Windows on the same direction cannot overlap. If a new window clashes with one already there, WattWise refuses it and names the window in the way.
+
+If a direction that has windows leaves some months, days or times uncovered, the panel shows: *Some months, days or times are not covered by a window. Those minutes will have no price.* You can still save. Minutes without a price are left out of your cost figures.
+
+### Changing a rate
+
+1. Click **End** on the old window. This closes it at that moment. **End** appears only on a window that has started and has not ended.
+2. Add the new window with **From** set to today. It starts at the moment you add it, so the new rate follows straight on from the old one.
+
+Cost for earlier times keeps the old rate. **Delete** removes a window, and it stops new prices from it.
+
+You cannot schedule a rate change for a future date in advance. A window with no end date overlaps any later window on the same direction that shares its months, days and times, so WattWise refuses the new one. End the old window on the day the rate changes.
+
+### When changes take effect
+
+Every 5 minutes, the collector writes prices from the start of the current hour to 48 hours ahead. A new or changed window reaches the dashboard within about 5 minutes.
+
+Prices already written stay as they are after an **End** or **Delete**. That includes the next 48 hours, so minutes that no other window covers keep the old rate until those 48 hours have passed.
 
 ## Connecting a WeatherLink Live station
 

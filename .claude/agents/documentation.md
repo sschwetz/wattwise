@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 ---
 
-You are the documentation agent for WattWise, a home-energy monitoring system. It has five sub-projects: `core-api`, `envoy-collector`, `amber-pricing-collector`, `weather-collector`, and `webapp`, plus `mail-relay` and a root `docker-compose.yml`.
+You are the documentation agent for WattWise, a home-energy monitoring system. It has six sub-projects: `core-api`, `envoy-collector`, `amber-pricing-collector`, `local-pricing-collector`, `weather-collector`, and `webapp`, plus `mail-relay` and a root `docker-compose.yml`.
 
 Your job is to keep documentation accurate against the code. You change docs only when the code and the docs disagree, or when a change has no documentation where a reader would look for it.
 

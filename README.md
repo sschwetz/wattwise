@@ -1,6 +1,6 @@
 # WattWise
 
-WattWise records and displays energy data for a home solar and battery system: production and consumption from an Enphase Envoy, buy and sell prices from Amber, and weather from a Davis WeatherLink Live. It supports several sites and users, net and gross usage, and demand-tariff billing.
+WattWise records and displays energy data for a home solar and battery system: production and consumption from an Enphase Envoy, buy and sell prices from Amber or from fixed rates entered in the webapp, and weather from a Davis WeatherLink Live. It supports several sites and users, net and gross usage, and demand-tariff billing.
 
 ## Services
 
@@ -9,11 +9,16 @@ WattWise records and displays energy data for a home solar and battery system: p
 | `core-api/` | FastAPI + SQLAlchemy + Alembic on SQLite. The only service that touches the database. Serves the REST API under `/api/v1` and runs the periodic jobs (demand intervals, demand charges, retention rollup). |
 | `envoy-collector/` | Polls the Envoy local API every minute and pushes readings to core-api. Renews the Envoy token from stored Enlighten credentials. |
 | `amber-pricing-collector/` | Polls Amber prices, with live polling and backfill. |
+| `local-pricing-collector/` | Turns rate windows entered in the webapp into price intervals, for suppliers with a fixed tariff. Every 5 minutes it pushes prices from the start of the current UTC hour to `LOCAL_HORIZON_HOURS` ahead (default 48, minimum 1). |
 | `weather-collector/` | Polls the WeatherLink Live. |
 | `webapp/` | React single-page app (Vite, Tailwind, TanStack Query, Recharts). Includes an in-app Help viewer. |
 | `mail-relay/` | Postfix relay that sends password-reset and email-confirmation mail for core-api. |
 
 The webapp and the collectors only talk to core-api over HTTP. Each collector kind authenticates with one shared key and discovers its sources from core-api, so adding a site in the webapp needs no collector restart.
+
+Both pricing collectors use `PRICING_COLLECTOR_KEY`. Each one asks for its own provider's sources with `GET /api/v1/collector/sources?kind=pricing&provider=<name>` and sends an `X-Collector-Provider: <name>` header. The filter keeps the Amber collector off local sources and the reverse, and core-api rejects a per-source request whose header names a different provider from the source's. Neither is a security boundary: any process holding the shared key can name another provider.
+
+To add a collector for another supplier, create a directory like `amber-pricing-collector/` and give it its own provider name. Use that name in the discovery request (`provider=<name>`) and in the `X-Collector-Provider` header. Read each source's settings from `GET /api/v1/sources/{id}/config` and push prices to `POST /api/v1/sources/{id}/prices`.
 
 Design specs and implementation plans are in `docs/superpowers/`.
 
@@ -81,7 +86,7 @@ CORE_API_URL=http://localhost:8000 COLLECTOR_KEY=dev-envoy-key \
   uv run python -m envoy_collector.main
 ```
 
-The pricing and weather collectors work the same way, using `PRICING_COLLECTOR_KEY` and `WEATHER_COLLECTOR_KEY`, with `amber_pricing_collector.main` and `weather_collector.main`. The Envoy and weather collectors must run on a machine that can reach the device's LAN address.
+The other collectors work the same way. The Amber and local pricing collectors both take `PRICING_COLLECTOR_KEY` as their `COLLECTOR_KEY` and run as `amber_pricing_collector.main` and `local_pricing_collector.main`. The weather collector takes `WEATHER_COLLECTOR_KEY` and runs as `weather_collector.main`. The Envoy and weather collectors must run on a machine that can reach the device's LAN address.
 
 ## Run the full stack in Docker
 
@@ -104,6 +109,14 @@ docker compose exec core-api cat /data/initial-admin-password.txt
 ```
 
 Data lives in the `core_api_data` volume. `docker compose down -v` deletes it.
+
+### Upgrading from `pricing-collector`
+
+The Compose service `pricing-collector` is now `amber-pricing-collector`. On a host that already runs the stack, `docker compose up -d` leaves the old `pricing-collector` container running, and it keeps polling Amber alongside the new one. Upgrade with:
+
+```sh
+docker compose up -d --build --remove-orphans
+```
 
 ## Tests and lint
 

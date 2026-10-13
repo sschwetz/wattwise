@@ -2,7 +2,7 @@
 
 [Contents](index.md) · Previous: [The dashboard](05-dashboard.md) · Next: [Account settings](07-account-settings.md)
 
-The **Billing** page (sidebar link **Billing**) holds the parts of your electricity bill that are not a per-kWh price: fixed charges, time-of-day rules and the date your bill closes. [Amber prices](04-sources.md#connecting-amber-electric) cover the per-kWh part.
+The **Billing** page (sidebar link **Billing**) holds the parts of your electricity bill that are not a per-kWh price: fixed charges, time-of-day rules and the date your bill closes. [Amber prices](04-sources.md#connecting-amber-electric) or the rates of a [fixed tariff](04-sources.md#setting-up-a-fixed-tariff) cover the per-kWh part.
 
 The page has three cards: [Tariffs](#tariffs), [Billing cycle](#billing-cycles) and [Demand charges](#demand-charges).
 
@@ -33,6 +33,8 @@ The **Cost** total and the billing period tiles include all five parts. The cost
 ## Tariffs
 
 A **tariff** is a set of fixed charges that applies from the moment you add it until you end it.
+
+The section heading names your price supplier: "Amber Tariffs" with an Amber source, "Origin Fixed Tariffs" with a local source called Origin Fixed, and "Tariffs" with neither. The supply charge, monthly fee, billing cycle, demand windows, export adjustments and fee discounts on this page apply to every kind of pricing source. Per-kWh rates for a local source are set in [Sources](04-sources.md#setting-up-a-fixed-tariff).
 
 ### Adding a tariff
 

@@ -31,7 +31,7 @@
 | **Monthly fee discount** | A temporary lower monthly fee for a range of dates. See [Monthly fee discounts](06-billing.md#monthly-fee-discounts). |
 | **Net cost** | Cost based on energy that actually crossed the grid meter. This is what your bill shows. |
 | **Production** | The power your solar panels generate. |
-| **Provider** | The brand or system behind a source: `envoy`, `amber` or `weatherlink_live`. |
+| **Provider** | The brand or system behind a source: `envoy`, `amber`, `local` (rates you type in) or `weatherlink_live`. |
 | **Recovery code** | A single-use code that replaces an authenticator code. See [Recovery codes](02-signing-in.md#recovery-codes). |
 | **Service availability charge** | The daily supply charge on a tariff, in cents per day. |
 | **Site** | One monitored property. See [Sites](03-sites.md). |
