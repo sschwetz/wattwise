@@ -35,7 +35,8 @@ _last_renewal_attempt: dict[int, float] = {}
 # The Envoy regenerates its self-signed certificate once it is within this
 # long of expiring. A changed certificate is only trusted for re-pinning
 # inside this window; earlier than that it is more likely someone else
-# answering on the Envoy's address.
+# answering on the Envoy's address. The webapp's SourcesPage.tsx repeats this
+# value (CERT_REPIN_WINDOW_DAYS) in its certificate expiry text.
 CERT_REPIN_WINDOW = datetime.timedelta(days=100)
 
 

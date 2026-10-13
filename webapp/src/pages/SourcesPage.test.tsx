@@ -241,6 +241,35 @@ describe("SourcesPage", () => {
     );
   });
 
+  describe("envoy certificate expiry", () => {
+    async function openEnvoyForm(config: Record<string, string>) {
+      vi.mocked(apiFetch).mockResolvedValueOnce([
+        { id: 1, site_id: 7, kind: "energy", provider: "envoy", enabled: true, config },
+      ]);
+      renderPage();
+      await userEvent.click(await screen.findByText("Edit config"));
+    }
+    const inDays = (days: number) => new Date(Date.now() + (days * 24 + 1) * 60 * 60 * 1000).toISOString();
+
+    it("shows the expiry date and days left, and says the collector will accept a renewed certificate", async () => {
+      await openEnvoyForm({ host: "envoy.local", cert_expires_at: inDays(40) });
+      expect(screen.getByText("Certificate expires")).toBeInTheDocument();
+      expect(screen.getByText(/40 days left/)).toBeInTheDocument();
+      expect(screen.getByText(/collector will accept the new one/)).toBeInTheDocument();
+    });
+
+    it("says a renewal is not expected yet when more than 100 days remain", async () => {
+      await openEnvoyForm({ host: "envoy.local", cert_expires_at: inDays(250) });
+      expect(screen.getByText(/250 days left/)).toBeInTheDocument();
+      expect(screen.queryByText(/collector will accept the new one/)).not.toBeInTheDocument();
+    });
+
+    it("shows nothing before the collector has recorded an expiry", async () => {
+      await openEnvoyForm({ host: "envoy.local" });
+      expect(screen.queryByText("Certificate expires")).not.toBeInTheDocument();
+    });
+  });
+
   it("lets the owner type the serial number before the collector has discovered it", async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce([
