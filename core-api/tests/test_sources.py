@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import datetime
+import decimal
+
+import sqlalchemy as sa
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import Site, User
+from core_api.models.local_rates import LocalRateWindow
+from core_api.models.pricing import PriceChannel
 from core_api.security import create_access_token
 
 
@@ -549,3 +554,32 @@ def test_patch_config_clears_the_cert_expiry_and_serial_when_host_changes(client
     )
     assert patch.status_code == 200, patch.text
     assert patch.json()["config"] == {"host": "new.local"}
+
+
+def test_delete_local_source_also_deletes_its_rate_windows(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    source = client.post(
+        f"/api/v1/sites/{site_id}/sources",
+        json={"kind": "pricing", "provider": "amber", "config": {}},
+        headers=auth(owner_id),
+    ).json()
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    session.add(
+        LocalRateWindow(
+            source_id=source["id"], channel=PriceChannel.BUY, label="Flat",
+            effective_from=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+            months=[1], days_of_week=[0], start_time=datetime.time(0, 0), end_time=datetime.time(0, 0),
+            rate_c_per_kwh=decimal.Decimal("30"),
+        )
+    )
+    session.commit()
+    session.close()
+
+    response = client.delete(f"/api/v1/sites/{site_id}/sources/{source['id']}", headers=auth(owner_id))
+
+    assert response.status_code == 204, response.text
+    session = make_session_factory(engine)()
+    assert session.execute(sa.select(sa.func.count()).select_from(LocalRateWindow)).scalar_one() == 0
+    session.close()

@@ -1,6 +1,7 @@
 from core_api.models.base import Base
 from core_api.models.billing import BillingCycle, DemandCharge, DemandInterval, DemandWindow, SiteTariff
 from core_api.models.identity import EmailChangeToken, PasswordResetToken, RecoveryCode, Site, SiteAccess, SiteAccessRole, User
+from core_api.models.local_rates import LocalRateWindow
 from core_api.models.pricing import PRICE_CHANNEL_AGGREGATION, PriceChannel, PriceGapMarker, PriceInterval, PriceReading, PriceReadingRollup5m
 from core_api.models.readings import (
     ENERGY_METRIC_AGGREGATION,
@@ -46,4 +47,5 @@ __all__ = [
     "DemandWindow",
     "DemandInterval",
     "DemandCharge",
+    "LocalRateWindow",
 ]
