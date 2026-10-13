@@ -1,6 +1,8 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { BackLink } from "../layout/BackLink";
+import { tariffHeading } from "../billing/tariffHeading";
+import { useSources } from "../sources/useSources";
 import {
   useBillingCycles,
   useCreateBillingCycle,
@@ -402,6 +404,7 @@ function MonthlyFeeDiscountWindowForm({ siteId, tariffId }: { siteId: number; ta
 
 function TariffSection({ siteId }: { siteId: number }) {
   const { data: tariffs } = useTariffs(siteId);
+  const { data: sources } = useSources(siteId);
   const [serviceAvailability, setServiceAvailability] = useState("");
   const [monthlyFee, setMonthlyFee] = useState("");
   const [expandedTariffId, setExpandedTariffId] = useState<number | null>(null);
@@ -428,7 +431,7 @@ function TariffSection({ siteId }: { siteId: number }) {
 
   return (
     <section className="space-y-4 rounded-xl border border-line bg-surface p-5">
-      <h2 className="font-display text-lg font-semibold text-ink">Tariffs</h2>
+      <h2 className="font-display text-lg font-semibold text-ink">{tariffHeading(sources)}</h2>
       {endTariff.isError && (
         <p role="alert" className={errorClass}>
           {endTariff.error instanceof Error ? endTariff.error.message : "Failed to end the tariff. Please try again."}

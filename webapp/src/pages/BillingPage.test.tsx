@@ -616,4 +616,25 @@ describe("BillingPage", () => {
     expect(discountItem.compareDocumentPosition(addDemandButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(discountItem.compareDocumentPosition(addExportButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it("names the tariff section after the site's pricing source", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/api/v1/sites/7/sources") {
+        return Promise.resolve([
+          { id: 5, site_id: 7, kind: "pricing", provider: "local", name: "Origin Fixed", enabled: true, effective_to: null, config: {} },
+        ]);
+      }
+      return emptyListsFetch(path);
+    });
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Origin Fixed Tariffs" })).toBeInTheDocument();
+  });
+
+  it("falls back to Tariffs with no pricing source", async () => {
+    vi.mocked(apiFetch).mockImplementation(emptyListsFetch);
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Tariffs" })).toBeInTheDocument();
+  });
 });
