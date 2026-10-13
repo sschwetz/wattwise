@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 
-from pricing_collector.scheduling import next_aligned_tick
+from amber_pricing_collector.scheduling import next_aligned_tick
 
 UTC = datetime.timezone.utc
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pricing_collector.config import get_settings
+from amber_pricing_collector.config import get_settings
 
 
 def test_get_settings_reads_env_vars(monkeypatch):

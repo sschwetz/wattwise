@@ -5,9 +5,9 @@ import os
 
 import pytest
 
-from pricing_collector import live_poll
-from pricing_collector.config import PricingSource
-from pricing_collector.core_api_client import CoreApiError
+from amber_pricing_collector import live_poll
+from amber_pricing_collector.config import PricingSource
+from amber_pricing_collector.core_api_client import CoreApiError
 
 BASE_URL = "http://localhost:8000"
 

@@ -6,9 +6,9 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY pricing_collector ./pricing_collector
+COPY amber_pricing_collector ./amber_pricing_collector
 RUN uv sync --frozen --no-dev
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["/app/.venv/bin/python", "-m", "pricing_collector.main"]
+CMD ["/app/.venv/bin/python", "-m", "amber_pricing_collector.main"]

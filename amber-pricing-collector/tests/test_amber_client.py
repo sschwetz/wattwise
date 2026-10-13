@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from pricing_collector.amber_client import fetch_current_prices, fetch_historical_prices
+from amber_pricing_collector.amber_client import fetch_current_prices, fetch_historical_prices
 
 AMBER_SITE_ID = "example-site-id"
 AMBER_API_KEY = "psk_example_token"

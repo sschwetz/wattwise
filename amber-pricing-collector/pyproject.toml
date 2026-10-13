@@ -1,5 +1,5 @@
 [project]
-name = "pricing-collector"
+name = "amber-pricing-collector"
 version = "0.1.0"
 description = "Polls Amber Electric's API and pushes prices into Core API (sub-project 3)."
 requires-python = ">=3.11"
@@ -18,4 +18,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["pricing_collector"]
+packages = ["amber_pricing_collector"]

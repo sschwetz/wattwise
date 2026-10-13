@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from pricing_collector.mapping import map_price_intervals
+from amber_pricing_collector.mapping import map_price_intervals
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 

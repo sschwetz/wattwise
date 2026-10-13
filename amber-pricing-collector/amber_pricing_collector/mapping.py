@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger("pricing_collector")
+logger = logging.getLogger("amber_pricing_collector")
 
 CHANNEL_MAP = {"general": "buy", "feedIn": "sell", "controlledLoad": "controlled_load"}
 

@@ -8,7 +8,7 @@ WattWise records and displays energy data for a home solar and battery system: p
 |---|---|
 | `core-api/` | FastAPI + SQLAlchemy + Alembic on SQLite. The only service that touches the database. Serves the REST API under `/api/v1` and runs the periodic jobs (demand intervals, demand charges, retention rollup). |
 | `envoy-collector/` | Polls the Envoy local API every minute and pushes readings to core-api. Renews the Envoy token from stored Enlighten credentials. |
-| `pricing-collector/` | Polls Amber prices, with live polling and backfill. |
+| `amber-pricing-collector/` | Polls Amber prices, with live polling and backfill. |
 | `weather-collector/` | Polls the WeatherLink Live. |
 | `webapp/` | React single-page app (Vite, Tailwind, TanStack Query, Recharts). Includes an in-app Help viewer. |
 | `mail-relay/` | Postfix relay that sends password-reset and email-confirmation mail for core-api. |
@@ -81,7 +81,7 @@ CORE_API_URL=http://localhost:8000 COLLECTOR_KEY=dev-envoy-key \
   uv run python -m envoy_collector.main
 ```
 
-The pricing and weather collectors work the same way, using `PRICING_COLLECTOR_KEY` and `WEATHER_COLLECTOR_KEY`, with `pricing_collector.main` and `weather_collector.main`. The Envoy and weather collectors must run on a machine that can reach the device's LAN address.
+The pricing and weather collectors work the same way, using `PRICING_COLLECTOR_KEY` and `WEATHER_COLLECTOR_KEY`, with `amber_pricing_collector.main` and `weather_collector.main`. The Envoy and weather collectors must run on a machine that can reach the device's LAN address.
 
 ## Run the full stack in Docker
 

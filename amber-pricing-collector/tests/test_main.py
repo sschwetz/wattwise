@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pricing_collector import main as main_module
-from pricing_collector.config import Settings
+from amber_pricing_collector import main as main_module
+from amber_pricing_collector.config import Settings
 
 SETTINGS = Settings(core_api_url="http://localhost:8000", collector_key="shared-key")
 

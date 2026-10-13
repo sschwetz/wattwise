@@ -6,8 +6,8 @@ import httpx
 import pytest
 import respx
 
-from pricing_collector.config import PricingSource
-from pricing_collector.core_api_client import (
+from amber_pricing_collector.config import PricingSource
+from amber_pricing_collector.core_api_client import (
     CoreApiError,
     fetch_collector_sources,
     fetch_price_gaps,

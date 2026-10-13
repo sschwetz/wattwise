@@ -11,7 +11,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set a long random secret}
       ENVOY_COLLECTOR_KEY: ${ENVOY_COLLECTOR_KEY:?set a long random secret, shared with the envoy-collector service below}
       WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weather-collector service below}
-      PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the pricing-collector service below}
+      PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the amber-pricing-collector service below}
       DATABASE_URL: sqlite:////data/core_api.db
       AVATAR_STORAGE_DIR: /data/avatars
       SMTP_HOST: mail-relay
@@ -95,8 +95,8 @@ services:
         condition: service_healthy
     networks: *app-network
 
-  pricing-collector:
-    build: ./pricing-collector
+  amber-pricing-collector:
+    build: ./amber-pricing-collector
     environment:
       CORE_API_URL: http://core-api:8000
       COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with core-api's own PRICING_COLLECTOR_KEY}

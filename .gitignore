@@ -3,7 +3,7 @@
 .env.*
 !.env.example
 
-# Python (core-api, envoy-collector, pricing-collector, weather-collector)
+# Python (core-api, envoy-collector, amber-pricing-collector, weather-collector)
 .venv/
 __pycache__/
 *.pyc

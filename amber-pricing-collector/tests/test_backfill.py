@@ -4,9 +4,9 @@ import datetime
 
 import pytest
 
-from pricing_collector import backfill
-from pricing_collector.config import PricingSource
-from pricing_collector.core_api_client import CoreApiError
+from amber_pricing_collector import backfill
+from amber_pricing_collector.config import PricingSource
+from amber_pricing_collector.core_api_client import CoreApiError
 
 BASE_URL = "http://localhost:8000"
 

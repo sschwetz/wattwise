@@ -6,12 +6,12 @@ import multiprocessing
 import time
 from collections.abc import Callable
 
-from pricing_collector.amber_client import fetch_current_prices
-from pricing_collector.core_api_client import CoreApiError, fetch_collector_sources, fetch_source_config, push_price_intervals
-from pricing_collector.mapping import map_price_intervals
-from pricing_collector.scheduling import next_aligned_tick
+from amber_pricing_collector.amber_client import fetch_current_prices
+from amber_pricing_collector.core_api_client import CoreApiError, fetch_collector_sources, fetch_source_config, push_price_intervals
+from amber_pricing_collector.mapping import map_price_intervals
+from amber_pricing_collector.scheduling import next_aligned_tick
 
-logger = logging.getLogger("pricing_collector")
+logger = logging.getLogger("amber_pricing_collector")
 
 CHILD_JOIN_TIMEOUT_SECONDS = 60
 

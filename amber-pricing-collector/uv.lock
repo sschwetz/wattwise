@@ -107,7 +107,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pricing-collector"
+name = "amber-pricing-collector"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

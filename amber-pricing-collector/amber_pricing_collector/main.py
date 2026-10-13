@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 import multiprocessing
 
-from pricing_collector.backfill import run_backfill_forever
-from pricing_collector.config import get_settings
-from pricing_collector.live_poll import run_live_poll_forever, run_recent_poll_forever
+from amber_pricing_collector.backfill import run_backfill_forever
+from amber_pricing_collector.config import get_settings
+from amber_pricing_collector.live_poll import run_live_poll_forever, run_recent_poll_forever
 
 
 def main() -> None:

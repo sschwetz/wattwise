@@ -4,7 +4,7 @@ import datetime
 
 import httpx
 
-from pricing_collector.config import PricingSource
+from amber_pricing_collector.config import PricingSource
 
 
 class CoreApiError(Exception):

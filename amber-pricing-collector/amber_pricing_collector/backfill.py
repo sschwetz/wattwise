@@ -4,8 +4,8 @@ import datetime
 import logging
 import time
 
-from pricing_collector.amber_client import fetch_historical_prices
-from pricing_collector.core_api_client import (
+from amber_pricing_collector.amber_client import fetch_historical_prices
+from amber_pricing_collector.core_api_client import (
     CoreApiError,
     fetch_collector_sources,
     fetch_price_gaps,
@@ -14,9 +14,9 @@ from pricing_collector.core_api_client import (
     push_price_intervals,
     report_gap_marker,
 )
-from pricing_collector.mapping import CHANNEL_MAP, map_price_intervals
+from amber_pricing_collector.mapping import CHANNEL_MAP, map_price_intervals
 
-logger = logging.getLogger("pricing_collector")
+logger = logging.getLogger("amber_pricing_collector")
 
 MAX_CHUNK_DAYS = 7
 BACKFILL_INTERVAL_SECONDS = 12 * 60 * 60
