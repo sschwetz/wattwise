@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import secrets
+
 import pytest
 
 from core_api.models.sources import SourceKind
 from tests.conftest import PRICING_COLLECTOR_KEY
 from tests.test_billing import auth, make_owner_and_site
 from tests.test_collector_discovery import make_source
+from tests.test_sites import make_user
 
 FLAT = {
     "channel": "buy",
@@ -146,6 +149,38 @@ def test_only_the_site_owner_can_add_windows(client, local_source, app_and_db_ur
     assert response.status_code == 403
 
 
+def test_a_viewer_can_list_windows_but_not_change_them(client, local_source):
+    owner_headers = auth(local_source["owner"])
+    window_id = client.post(_url(local_source), json=_window(), headers=owner_headers).json()["id"]
+    viewer_id = make_user(local_source["db_url"], f"viewer-{secrets.token_hex(4)}@example.com")
+    grant = client.post(
+        f"/api/v1/sites/{local_source['site']}/access", json={"user_id": viewer_id}, headers=owner_headers
+    )
+    assert grant.status_code == 201, grant.text
+    viewer = auth(viewer_id)
+
+    assert client.get(_url(local_source), headers=viewer).status_code == 200
+    assert client.post(_url(local_source), json=_window(), headers=viewer).status_code == 403
+    assert client.patch(_url(local_source, f"/{window_id}"), json=_window(), headers=viewer).status_code == 403
+    assert client.delete(_url(local_source, f"/{window_id}"), headers=viewer).status_code == 403
+
+
+def test_another_sites_source_is_not_found_under_this_site(client, local_source):
+    other_owner, other_site = make_owner_and_site(local_source["db_url"])
+    other_source = client.post(
+        f"/api/v1/sites/{other_site}/sources",
+        json={"kind": "pricing", "provider": "local", "name": "Theirs"},
+        headers=auth(other_owner),
+    ).json()["id"]
+
+    response = client.get(
+        f"/api/v1/sites/{local_source['site']}/sources/{other_source}/rate-windows",
+        headers=auth(local_source["owner"]),
+    )
+
+    assert response.status_code == 404
+
+
 def test_a_local_source_needs_a_name(client, app_and_db_url):
     _, db_url = app_and_db_url
     owner_id, site_id = make_owner_and_site(db_url)
@@ -172,6 +207,43 @@ def test_renaming_a_local_source_to_a_blank_name_is_rejected(client, local_sourc
         headers=auth(local_source["owner"]),
     )
     assert response.status_code == 422
+    assert response.json()["code"] == "name_invalid"
+
+
+def _rename(client, ctx, name):
+    return client.patch(
+        f"/api/v1/sites/{ctx['site']}/sources/{ctx['source']}", json={"name": name}, headers=auth(ctx["owner"])
+    )
+
+
+def test_renaming_a_local_source_to_a_too_long_name_is_rejected(client, local_source):
+    response = _rename(client, local_source, "x" * 101)
+    assert response.status_code == 422
+    assert response.json()["code"] == "name_invalid"
+
+
+def test_renaming_a_local_source_to_a_100_character_name_stores_it_stripped(client, local_source):
+    name = "x" * 100
+    response = _rename(client, local_source, f"  {name}  ")
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == name
+
+
+def test_local_config_ignores_extra_source_config_keys(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    source_id = client.post(
+        f"/api/v1/sites/{site_id}/sources",
+        json={"kind": "pricing", "provider": "local", "name": "Origin", "config": {"foo": 1}},
+        headers=auth(owner_id),
+    ).json()["id"]
+
+    response = client.get(
+        f"/api/v1/sources/{source_id}/config",
+        headers={"X-Collector-Key": PRICING_COLLECTOR_KEY, "X-Collector-Provider": "local"},
+    )
+
+    assert response.json()["config"] == {"timezone": "Australia/Sydney", "rate_windows": []}
 
 
 def test_config_for_a_local_source_with_no_windows_is_empty(client, local_source):

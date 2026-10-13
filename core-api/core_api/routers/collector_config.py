@@ -37,13 +37,17 @@ def _local_config(db: Session, source: Source, config: dict) -> None:
 
 
 def resolve_source_config(db: Session, source: Source) -> dict:
+    if source.provider == "local":
+        # The local collector reads exactly {timezone, rate_windows}, so any
+        # stray keys in source.config are left out.
+        config: dict = {}
+        _local_config(db, source, config)
+        return config
     config = dict(source.config or {})
     if source.provider == "amber":
         site = db.get(Site, source.site_id)
         owner = db.get(User, site.owner_user_id)
         config["amber_api_key"] = owner.amber_api_key
-    elif source.provider == "local":
-        _local_config(db, source, config)
     return config
 
 

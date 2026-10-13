@@ -12,7 +12,7 @@ from core_api.errors import AppError
 from core_api.models.identity import Site, User
 from core_api.models.local_rates import LocalRateWindow
 from core_api.models.sources import Source, SourceKind
-from core_api.schemas import SourceCreate, SourceOut, SourceUpdate
+from core_api.schemas import SourceCreate, SourceOut, SourceUpdate, normalize_tariff_name
 from core_api.time_utils import as_utc
 
 router = APIRouter(prefix="/sites/{site_id}/sources", tags=["sources"])
@@ -129,6 +129,16 @@ def get_source(
     return _to_source_out(source, include_secrets=include_secrets)
 
 
+def _checked_name(source: Source, name: str) -> str:
+    """A local tariff's name follows the same rules on rename as on create."""
+    if source.provider != "local":
+        return name
+    try:
+        return normalize_tariff_name(name)
+    except ValueError as exc:
+        raise AppError(422, "name_invalid", str(exc)) from exc
+
+
 @router.patch("/{source_id}", response_model=SourceOut)
 def update_source(
     source_id: int,
@@ -142,9 +152,7 @@ def update_source(
     if payload.enabled is not None:
         source.enabled = payload.enabled
     if payload.name is not None:
-        if source.provider == "local" and not payload.name.strip():
-            raise AppError(422, "name_required", "A local tariff needs a name")
-        source.name = payload.name.strip() if source.provider == "local" else payload.name
+        source.name = _checked_name(source, payload.name)
     if payload.effective_to is not None:
         if source.kind == SourceKind.PRICING and _pricing_source_overlaps(
             db, source.site_id, source.id, as_utc(source.effective_from), payload.effective_to

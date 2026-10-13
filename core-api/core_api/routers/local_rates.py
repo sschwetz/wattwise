@@ -76,7 +76,7 @@ def list_rate_windows(
         .where(LocalRateWindow.source_id == source.id)
         .order_by(LocalRateWindow.channel, LocalRateWindow.effective_from, LocalRateWindow.start_time)
     )
-    return db.execute(query).scalars().all()
+    return list(db.execute(query).scalars().all())
 
 
 @router.patch("/{window_id}", response_model=LocalRateWindowOut)

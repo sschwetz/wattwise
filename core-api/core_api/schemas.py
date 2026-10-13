@@ -204,6 +204,15 @@ class SiteAccessOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def normalize_tariff_name(name: str | None) -> str:
+    """Strips a local tariff's name and checks it is 1-MAX_TARIFF_NAME_LENGTH
+    characters. Raises ValueError otherwise. Used on create and on rename."""
+    stripped = (name or "").strip()
+    if not stripped or len(stripped) > MAX_TARIFF_NAME_LENGTH:
+        raise ValueError(f"A local tariff needs a name of 1-{MAX_TARIFF_NAME_LENGTH} characters")
+    return stripped
+
+
 class SourceCreate(BaseModel):
     kind: SourceKind
     provider: str
@@ -216,10 +225,7 @@ class SourceCreate(BaseModel):
             return self
         if self.kind != SourceKind.PRICING:
             raise ValueError("The local provider is only available for pricing sources")
-        name = (self.name or "").strip()
-        if not name or len(name) > MAX_TARIFF_NAME_LENGTH:
-            raise ValueError(f"A local tariff needs a name of 1-{MAX_TARIFF_NAME_LENGTH} characters")
-        self.name = name
+        self.name = normalize_tariff_name(self.name)
         return self
 
 
