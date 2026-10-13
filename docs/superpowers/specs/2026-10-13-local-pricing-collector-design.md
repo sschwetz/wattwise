@@ -67,8 +67,10 @@ name, since they record what was true when written.
 | `effective_to` | Nullable. Null means the window is current. |
 | `months` | JSON list of 1-12. |
 | `days_of_week` | JSON list, same encoding as `DemandWindow`. |
-| `start_time`, `end_time` | Site-local time. `end_time` earlier than `start_time` means the window wraps past midnight. |
+| `start_time`, `end_time` | Site-local time. The start is included and the end is excluded, so 00:00-07:00 and 07:00-22:00 do not overlap. `end_time` earlier than `start_time` means the window wraps past midnight. `start_time` equal to `end_time` means all day, which is how a flat tariff is entered. |
 | `rate_c_per_kwh` | `Numeric(12,4)`, entered positive for every channel. |
+
+`months` and `days_of_week` describe the minute being priced, not the day the window started. A 22:00-07:00 window on Monday covers Monday 22:00-24:00 and Monday 00:00-07:00. Days use Python's Monday=0 to Sunday=6, matching `DemandWindow`.
 
 Channel to direction: `buy` is import, `sell` is export (feed-in),
 `controlled_load` is import on the controlled-load circuit. Each channel has its
@@ -82,6 +84,8 @@ own windows and rates.
 - Gaps are allowed. A minute with no window produces no price and is counted by
   the existing `minutes_missing_price`.
 - Only sources with `provider = "local"` accept windows.
+- Deleting a source deletes its windows in the same transaction. The existing
+  rule still blocks deleting a source that has price readings.
 - A local source requires `name` (1-100 characters). For other providers `name`
   stays optional.
 
@@ -100,13 +104,16 @@ collector-facing endpoint.
 
 ## local-pricing-collector
 
-- Lists its sources with `provider=local`, then every minute fetches each
+- Lists its sources with `provider=local`, then every 5 minutes fetches each
   source's config and builds `PriceIntervalIn` rows from the windows, evaluated
   in the site's time zone so a 07:00 peak start holds across daylight-saving
   changes.
-- Pushes from now to `LOCAL_HORIZON_HOURS` ahead (default 48) to
-  `POST /sources/{id}/prices`. The push is an upsert, so repeating it is safe
-  and a window edit shows up within a minute.
+- Pushes from the top of the current UTC hour to `LOCAL_HORIZON_HOURS` ahead
+  (default 48) to `POST /sources/{id}/prices`. Each interval is at most one hour
+  and ends early where the rate changes, so interval start times are the same on
+  every push and the push is an idempotent upsert. A window edit shows up within
+  5 minutes. A push is about 2,900 per-minute rows per channel, which is why it
+  runs every 5 minutes and not every minute.
 - Flips the sign for `sell` before pushing, to match Amber's stored convention
   (negative when the customer is paid, and cost math adds it). `buy` and
   `controlled_load` are pushed as entered.
@@ -115,9 +122,9 @@ collector-facing endpoint.
   collector into its own package.
 - Runs each source in its own process, so one failing source does not stop the
   others.
-- Editing a rate does not change history already pushed, because the collector
-  only generates intervals from now forward. Close the old window with
-  `effective_to` and add a new one.
+- Editing a rate in place re-prices the current hour and everything after it,
+  not earlier hours. To change a price from a given date and keep earlier cost
+  as it was, close the old window with `effective_to` and add a new one.
 
 ## Webapp
 
