@@ -75,7 +75,11 @@ Tokens last about a year. Without stored credentials, readings stop when one exp
 
 ### Certificate pinning
 
-The Envoy uses a self-signed certificate. The first time the collector reaches your Envoy, it records the certificate's fingerprint and checks it on every later connection. It sends your token only after this check is in place. Changing **Host** clears the stored certificate and serial number, so the collector pins the device again. If you replace or reset the Envoy and the collector stops connecting, see [Troubleshooting](08-troubleshooting.md#the-envoy-stopped-reporting-after-a-reset).
+The Envoy uses a self-signed certificate. The first time the collector reaches your Envoy, it records the certificate's fingerprint and checks it on every later connection. It sends your token only after this check is in place. It also stores the certificate's expiry date as `cert_expires_at` in the source's configuration, next to the serial number.
+
+The Envoy replaces its certificate when the old one is within 100 days of expiring. If the collector sees a different certificate, it pins the new one only when the stored expiry is 100 days away or less (or already past) and the Envoy reports the same serial number. Any other certificate change is refused, because it could be another device answering at the Envoy's address.
+
+Changing **Host** clears the stored certificate, its expiry and the serial number, so the collector pins the device again. If you replace or reset the Envoy and the collector stops connecting, see [Troubleshooting](08-troubleshooting.md#the-envoy-stopped-reporting-after-a-reset).
 
 ## Connecting Amber Electric
 

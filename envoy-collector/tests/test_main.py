@@ -8,8 +8,18 @@ from envoy_collector import main as main_module
 from envoy_collector.config import Settings
 from envoy_collector.core_api_client import CoreApiError
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError
-from envoy_collector.envoy_client import EnvoyAuthError
+from envoy_collector.envoy_client import CertificateInfo, EnvoyAuthError, EnvoyCertificateMismatch
 from tests.test_enlighten_client import make_jwt
+
+FAR_EXPIRY = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=300)).isoformat()
+
+
+def _cert(fingerprint: str, days_left: int) -> CertificateInfo:
+    return CertificateInfo(
+        fingerprint=fingerprint,
+        expires_at=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days_left),
+    )
+
 
 SETTINGS = Settings(
     core_api_url="http://localhost:8000", collector_key="key", poll_interval_seconds=60, discovery_refresh_seconds=300
@@ -31,7 +41,7 @@ def test_discover_and_sync_serial_reports_when_changed(monkeypatch):
         lambda base_url, source_id, key, **kwargs: reported.update(kwargs),
     )
 
-    config = {"host": "envoy.local", "serial_num": "old", "cert_fingerprint": "pinned"}
+    config = {"host": "envoy.local", "serial_num": "old", "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY}
     main_module.discover_and_sync_serial(SETTINGS, 1, config)
 
     assert reported == {"serial_num": "new-serial"}
@@ -44,7 +54,7 @@ def test_discover_and_sync_serial_skips_report_when_unchanged(monkeypatch):
         main_module, "report_discovered_config", lambda *a, **k: called.append((a, k))
     )
 
-    config = {"host": "envoy.local", "serial_num": "same", "cert_fingerprint": "pinned"}
+    config = {"host": "envoy.local", "serial_num": "same", "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY}
     main_module.discover_and_sync_serial(SETTINGS, 1, config)
 
     assert called == []
@@ -55,7 +65,7 @@ def test_discover_and_sync_serial_does_not_raise_when_envoy_unreachable(monkeypa
         raise OSError("network unreachable")
 
     monkeypatch.setattr(main_module, "fetch_serial_number", _raise)
-    config = {"host": "envoy.local", "cert_fingerprint": "pinned"}
+    config = {"host": "envoy.local", "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY}
     main_module.discover_and_sync_serial(SETTINGS, 1, config)  # must not raise
 
 
@@ -63,7 +73,7 @@ def test_discover_and_sync_serial_does_not_raise_when_pinning_fails(monkeypatch)
     def _raise(host):
         raise OSError("network unreachable")
 
-    monkeypatch.setattr(main_module, "fetch_certificate_fingerprint", _raise)
+    monkeypatch.setattr(main_module, "fetch_certificate_info", _raise)
     main_module.discover_and_sync_serial(SETTINGS, 1, {"host": "envoy.local"})  # must not raise
 
 
@@ -71,7 +81,7 @@ def test_discover_and_sync_serial_pins_the_certificate_before_fetching_the_seria
     """A brand-new source has no cert_fingerprint yet -- discovery must pin
     one (and persist it to Core API) before it can call fetch_serial_number,
     which now requires a pin to verify against."""
-    monkeypatch.setattr(main_module, "fetch_certificate_fingerprint", lambda host: "new-fingerprint")
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new-fingerprint", 365))
     received_serial_args = []
 
     def fake_fetch_serial_number(host, cert_fingerprint):
@@ -89,7 +99,8 @@ def test_discover_and_sync_serial_pins_the_certificate_before_fetching_the_seria
 
     assert config["cert_fingerprint"] == "new-fingerprint"
     assert received_serial_args == ["new-fingerprint"]
-    assert {"cert_fingerprint": "new-fingerprint"} in reported
+    assert config["cert_expires_at"]
+    assert any(r.get("cert_fingerprint") == "new-fingerprint" and r.get("cert_expires_at") for r in reported)
     assert {"serial_num": "123456789012"} in reported
 
 
@@ -516,7 +527,7 @@ def test_refresh_sources_uses_freshly_discovered_config_for_already_known_source
             {
                 "source_id": 1,
                 "site_id": 10,
-                "config": {"host": "new-host.local", "token": "a", "cert_fingerprint": "pinned"},
+                "config": {"host": "new-host.local", "token": "a", "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY},
             },
         ],
     )
@@ -525,10 +536,10 @@ def test_refresh_sources_uses_freshly_discovered_config_for_already_known_source
         main_module, "discover_and_sync_serial", lambda settings, source_id, config: sync_calls.append(source_id)
     )
 
-    known = {1: {"host": "stale-host.local", "token": "a", "cert_fingerprint": "pinned"}}
+    known = {1: {"host": "stale-host.local", "token": "a", "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY}}
     refreshed = main_module._refresh_sources(SETTINGS, known)
 
-    assert refreshed[1] == {"host": "new-host.local", "token": "a", "cert_fingerprint": "pinned"}
+    assert refreshed[1] == {"host": "new-host.local", "token": "a", "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY}
     # Already pinned -- discovery only needs to re-run while a pin is missing.
     assert sync_calls == []
 
@@ -728,7 +739,7 @@ def test_token_expiring_ignores_unreadable_tokens(token):
 
 def test_refresh_sources_renews_a_token_close_to_expiry(monkeypatch):
     soon = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3)).timestamp()
-    expiring = {"host": "h", "token": make_jwt({"exp": soon}), "cert_fingerprint": "pinned", **CREDS}
+    expiring = {"host": "h", "token": make_jwt({"exp": soon}), "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY, **CREDS}
     monkeypatch.setattr(
         main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": dict(expiring)}]
     )
@@ -742,7 +753,7 @@ def test_refresh_sources_renews_a_token_close_to_expiry(monkeypatch):
 
 def test_refresh_sources_leaves_a_healthy_token_alone(monkeypatch):
     later = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=200)).timestamp()
-    healthy = {"host": "h", "token": make_jwt({"exp": later}), "cert_fingerprint": "pinned", **CREDS}
+    healthy = {"host": "h", "token": make_jwt({"exp": later}), "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY, **CREDS}
     monkeypatch.setattr(
         main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": dict(healthy)}]
     )
@@ -751,3 +762,138 @@ def test_refresh_sources_leaves_a_healthy_token_alone(monkeypatch):
 
     assert main_module._refresh_sources(SETTINGS, {})[1]["token"] == healthy["token"]
     assert calls == []
+
+
+def _reports(monkeypatch) -> list[dict]:
+    reported: list[dict] = []
+    monkeypatch.setattr(
+        main_module, "report_discovered_config", lambda base_url, source_id, key, **kwargs: reported.append(kwargs)
+    )
+    return reported
+
+
+def _mismatch(*_args):
+    raise EnvoyCertificateMismatch("changed")
+
+
+def _expiring_config(days_left: int, **extra) -> dict:
+    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days_left)
+    return {
+        "host": "envoy.local",
+        "token": "abc",
+        "serial_num": "123456789012",
+        "cert_fingerprint": "old",
+        "cert_expires_at": expires.isoformat(),
+        **extra,
+    }
+
+
+def test_discovery_backfills_expiry_for_a_source_pinned_before_expiry_was_tracked(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("pinned", 200))
+    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    reported = _reports(monkeypatch)
+
+    config = {"host": "envoy.local", "serial_num": "123456789012", "cert_fingerprint": "pinned"}
+    main_module.discover_and_sync_serial(SETTINGS, 1, config)
+
+    assert config["cert_expires_at"]
+    assert reported == [{"cert_expires_at": config["cert_expires_at"]}]
+
+
+def test_discovery_does_not_record_expiry_of_a_certificate_that_is_not_the_pinned_one(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("someone-else", 200))
+    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    reported = _reports(monkeypatch)
+
+    config = {"host": "envoy.local", "serial_num": "123456789012", "cert_fingerprint": "pinned"}
+    main_module.discover_and_sync_serial(SETTINGS, 1, config)
+
+    assert "cert_expires_at" not in config
+    assert reported == []
+
+
+def test_poll_once_repins_a_changed_certificate_within_100_days_of_expiry(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_production", _mismatch)
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    reported = _reports(monkeypatch)
+
+    result = main_module.poll_once(SETTINGS, 1, _expiring_config(days_left=100))
+
+    assert result["cert_fingerprint"] == "new"
+    new_expiry = datetime.datetime.fromisoformat(result["cert_expires_at"])
+    assert new_expiry > datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=360)
+    assert reported == [{"cert_fingerprint": "new", "cert_expires_at": result["cert_expires_at"]}]
+
+
+def test_poll_once_repins_when_the_pinned_certificate_has_already_expired(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_production", _mismatch)
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    _reports(monkeypatch)
+
+    result = main_module.poll_once(SETTINGS, 1, _expiring_config(days_left=-3))
+
+    assert result["cert_fingerprint"] == "new"
+
+
+def test_poll_once_refuses_to_repin_a_changed_certificate_with_more_than_100_days_left(monkeypatch, caplog):
+    monkeypatch.setattr(main_module, "fetch_production", _mismatch)
+    fetched = []
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: fetched.append(host))
+    reported = _reports(monkeypatch)
+
+    config = _expiring_config(days_left=101)
+    with caplog.at_level("ERROR"):
+        result = main_module.poll_once(SETTINGS, 1, config)
+
+    assert result == config
+    assert fetched == []
+    assert reported == []
+    assert any("not re-pinning" in m for m in caplog.messages)
+
+
+def test_poll_once_refuses_to_repin_when_the_expiry_is_unknown(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_production", _mismatch)
+    reported = _reports(monkeypatch)
+    config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "old"}
+
+    assert main_module.poll_once(SETTINGS, 1, config) == config
+    assert reported == []
+
+
+def test_repin_refuses_when_the_serial_number_changed(monkeypatch, caplog):
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "999999999999")
+    reported = _reports(monkeypatch)
+
+    config = _expiring_config(days_left=30)
+    with caplog.at_level("ERROR"):
+        result = main_module.repin_certificate(SETTINGS, 1, config)
+
+    assert result == config
+    assert reported == []
+    assert any("serial" in m for m in caplog.messages)
+
+
+def test_repin_stores_the_serial_number_when_none_was_known(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    reported = _reports(monkeypatch)
+
+    config = _expiring_config(days_left=30)
+    del config["serial_num"]
+    result = main_module.repin_certificate(SETTINGS, 1, config)
+
+    assert result["serial_num"] == "123456789012"
+    assert reported[0]["serial_num"] == "123456789012"
+
+
+def test_repin_keeps_the_old_pin_when_the_new_certificate_cannot_be_read(monkeypatch):
+    def _raise(host):
+        raise OSError("unreachable")
+
+    monkeypatch.setattr(main_module, "fetch_certificate_info", _raise)
+    config = _expiring_config(days_left=30)
+
+    assert main_module.repin_certificate(SETTINGS, 1, config) == config

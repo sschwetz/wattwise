@@ -33,6 +33,6 @@ def report_discovered_config(
     source: Source = Depends(get_source_by_collector_key),
     db: Session = Depends(get_db_session),
 ) -> None:
-    discovered = payload.model_dump(exclude_none=True)
+    discovered = payload.model_dump(mode="json", exclude_none=True)
     source.config = {**(source.config or {}), **discovered}
     db.commit()

@@ -21,7 +21,7 @@ If the live tiles say *Failed to load live readings.*, the web app cannot reach 
 
 ## The Envoy stopped reporting after a reset
 
-The collector pins the Envoy's certificate on first contact and refuses a different one. After a factory reset or replacement, change **Host** (for example, between the IP address and `envoy.local`) and click **Save config**. Changing the host clears the stored certificate and serial number, and the collector pins the device again. You may also need a [new token](04-sources.md#getting-the-token) for the new serial number.
+The collector pins the Envoy's certificate on first contact. It accepts a new certificate on its own only when the pinned one is within 100 days of expiry and the serial number is unchanged; otherwise it refuses it. After a factory reset or replacement, change **Host** (for example, between the IP address and `envoy.local`) and click **Save config**. Changing the host clears the stored certificate and serial number, and the collector pins the device again. You may also need a [new token](04-sources.md#getting-the-token) for the new serial number.
 
 ## Consumption or grid numbers have the wrong sign
 

@@ -4,7 +4,7 @@ import datetime
 import decimal
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, EmailStr, Field, model_validator
+from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, model_validator
 
 from core_api.models.identity import SiteAccessRole
 from core_api.models.pricing import PriceChannel
@@ -407,6 +407,7 @@ class DiscoveredSourceConfig(BaseModel):
 
     serial_num: str | None = None
     cert_fingerprint: str | None = None
+    cert_expires_at: AwareDatetime | None = None
     token: str | None = None
 
 

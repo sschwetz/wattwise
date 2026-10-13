@@ -157,6 +157,7 @@ def update_source(
             # make it reject (or misattribute) a legitimately repointed
             # device forever instead of re-discovering/re-pinning it.
             merged_config.pop("cert_fingerprint", None)
+            merged_config.pop("cert_expires_at", None)
             # A serial_num the owner changed in this same save is for the new
             # device. One that matches the stored value is the webapp form
             # resending the old device's serial, so it still gets cleared.

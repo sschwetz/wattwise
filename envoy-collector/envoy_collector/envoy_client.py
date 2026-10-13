@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import datetime
 import hashlib
 import http.client
 import json
 import ssl
+from dataclasses import dataclass
 
 import defusedxml.ElementTree as ET
+from cryptography import x509
 
 
 class EnvoyAuthError(Exception):
@@ -67,6 +70,26 @@ def fetch_certificate_fingerprint(host: str) -> str:
         return _peer_cert_fingerprint(conn)
     finally:
         conn.close()
+
+
+@dataclass(frozen=True)
+class CertificateInfo:
+    fingerprint: str
+    expires_at: datetime.datetime
+
+
+def fetch_certificate_info(host: str) -> CertificateInfo:
+    """Like `fetch_certificate_fingerprint`, but also returns the
+    certificate's expiry (UTC). The Envoy regenerates its certificate once
+    it is within 100 days of expiring, so the expiry tells the collector
+    when a changed certificate is expected rather than suspicious."""
+    conn = _connect(host)
+    try:
+        der = conn.sock.getpeercert(binary_form=True)  # type: ignore[union-attr]
+    finally:
+        conn.close()
+    expires_at = x509.load_der_x509_certificate(der).not_valid_after_utc
+    return CertificateInfo(fingerprint=hashlib.sha256(der).hexdigest(), expires_at=expires_at)
 
 
 def _request(

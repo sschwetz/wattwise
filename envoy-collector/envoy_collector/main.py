@@ -14,10 +14,11 @@ from envoy_collector.core_api_client import (
 )
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError, fetch_token, token_expires_at
 from envoy_collector.envoy_client import (
+    CertificateInfo,
     EnvoyAuthError,
     EnvoyCertificateMismatch,
     fetch_battery_power,
-    fetch_certificate_fingerprint,
+    fetch_certificate_info,
     fetch_production,
     fetch_serial_number,
 )
@@ -31,28 +32,119 @@ RENEWAL_WINDOW = datetime.timedelta(days=14)
 # can't lock the owner's Enlighten account by retrying every poll.
 RENEWAL_RETRY_SECONDS = 3600
 _last_renewal_attempt: dict[int, float] = {}
+# The Envoy regenerates its self-signed certificate once it is within this
+# long of expiring. A changed certificate is only trusted for re-pinning
+# inside this window; earlier than that it is more likely someone else
+# answering on the Envoy's address.
+CERT_REPIN_WINDOW = datetime.timedelta(days=100)
 
 
 def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
     """Trust-on-first-use: pins the Envoy's TLS certificate fingerprint the
     first time this source is seen, so every later request can verify it
-    instead of connecting with verification disabled. Returns whether
-    `config` now has a usable pin -- poll_once must not send the real token
-    to a host that hasn't been pinned yet."""
+    instead of connecting with verification disabled. Also records the
+    certificate's expiry, which decides whether a later certificate change
+    may be re-pinned (see `repin_certificate`). Returns whether `config` now
+    has a usable pin -- poll_once must not send the real token to a host
+    that hasn't been pinned yet."""
     if "cert_fingerprint" in config:
+        _record_cert_expiry(settings, source_id, config)
         return True
     try:
-        fingerprint = fetch_certificate_fingerprint(config["host"])
+        info = fetch_certificate_info(config["host"])
     except Exception:
         logger.exception("Failed to fetch Envoy TLS certificate for source %s; will retry next refresh", source_id)
         return False
-    config["cert_fingerprint"] = fingerprint
+    _store_pin(settings, source_id, config, info)
+    logger.info("Pinned Envoy TLS certificate for source %s", source_id)
+    return True
+
+
+def _store_pin(settings: Settings, source_id: int, config: dict, info: CertificateInfo, **extra: str) -> None:
+    config["cert_fingerprint"] = info.fingerprint
+    config["cert_expires_at"] = info.expires_at.isoformat()
+    config.update(extra)
     try:
-        report_discovered_config(settings.core_api_url, source_id, settings.collector_key, cert_fingerprint=fingerprint)
-        logger.info("Pinned Envoy TLS certificate for source %s", source_id)
+        report_discovered_config(
+            settings.core_api_url,
+            source_id,
+            settings.collector_key,
+            cert_fingerprint=info.fingerprint,
+            cert_expires_at=config["cert_expires_at"],
+            **extra,
+        )
     except CoreApiError:
         logger.exception("Failed to report pinned TLS certificate to Core API for source %s", source_id)
-    return True
+
+
+def _record_cert_expiry(settings: Settings, source_id: int, config: dict) -> None:
+    """Backfills `cert_expires_at` for a source pinned before expiry was
+    tracked. Only records it when the Envoy still presents the pinned
+    certificate, so the stored expiry always belongs to the pinned one."""
+    if "cert_expires_at" in config:
+        return
+    try:
+        info = fetch_certificate_info(config["host"])
+    except Exception:
+        logger.exception("Failed to read the Envoy certificate expiry for source %s; will retry next refresh", source_id)
+        return
+    if info.fingerprint != config["cert_fingerprint"]:
+        return
+    config["cert_expires_at"] = info.expires_at.isoformat()
+    try:
+        report_discovered_config(
+            settings.core_api_url, source_id, settings.collector_key, cert_expires_at=config["cert_expires_at"]
+        )
+    except CoreApiError:
+        logger.exception("Failed to report certificate expiry to Core API for source %s", source_id)
+
+
+def _repin_allowed(config: dict, now: datetime.datetime) -> bool:
+    raw = config.get("cert_expires_at")
+    if not raw:
+        return False
+    try:
+        expires_at = datetime.datetime.fromisoformat(raw)
+    except ValueError:
+        return False
+    return expires_at - now <= CERT_REPIN_WINDOW
+
+
+def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
+    """Called when the Envoy presents a certificate other than the pinned
+    one. Pins the new certificate only if the pinned one is within
+    CERT_REPIN_WINDOW of expiring (the Envoy renews it then) and the device
+    reports the same serial number. Otherwise returns `config` unchanged and
+    the source keeps failing until the owner clears the pin."""
+    if not _repin_allowed(config, datetime.datetime.now(datetime.timezone.utc)):
+        logger.error(
+            "Envoy for source %s presented a different TLS certificate than pinned, and the pinned one "
+            "(expires %s) is not within %s days of expiry; not re-pinning. If the device was replaced, "
+            "clear the source's cert_fingerprint.",
+            source_id,
+            config.get("cert_expires_at", "unknown"),
+            CERT_REPIN_WINDOW.days,
+        )
+        return config
+    try:
+        info = fetch_certificate_info(config["host"])
+        serial = fetch_serial_number(config["host"], info.fingerprint)
+    except Exception:
+        logger.exception("Failed to read the new Envoy certificate for source %s; will retry next cycle", source_id)
+        return config
+    known_serial = config.get("serial_num")
+    if known_serial and serial != known_serial:
+        logger.error(
+            "Envoy for source %s now reports serial %s, not %s; not re-pinning its certificate.",
+            source_id,
+            serial,
+            known_serial,
+        )
+        return config
+    new_config = dict(config)
+    _store_pin(settings, source_id, new_config, info, **({} if known_serial else {"serial_num": serial}))
+    logger.warning("Re-pinned the renewed Envoy TLS certificate for source %s", source_id)
+    return new_config
 
 
 def discover_and_sync_serial(settings: Settings, source_id: int, config: dict) -> None:
@@ -210,6 +302,8 @@ def poll_once(settings: Settings, source_id: int, config: dict) -> dict:
         config, readings = _recover_from_auth_failure(settings, source_id, config, ts)
         if readings is None:
             return config
+    except EnvoyCertificateMismatch:
+        return repin_certificate(settings, source_id, config)
     except Exception:
         logger.exception("Failed to poll Envoy this cycle for source %s", source_id)
         return config
@@ -241,7 +335,7 @@ def _refresh_sources(settings: Settings, known: dict[int, dict]) -> dict[int, di
         # seen) so a source whose host was briefly unreachable -- and so
         # never got pinned -- keeps retrying instead of being silently
         # skipped by poll_once for the rest of the process's life.
-        if "cert_fingerprint" not in refreshed[source_id]:
+        if "cert_fingerprint" not in refreshed[source_id] or "cert_expires_at" not in refreshed[source_id]:
             discover_and_sync_serial(settings, source_id, refreshed[source_id])
         if _token_expiring(refreshed[source_id], datetime.datetime.now(datetime.timezone.utc)):
             refreshed[source_id] = renew_token(settings, source_id, refreshed[source_id])

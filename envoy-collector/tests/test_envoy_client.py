@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import hashlib
 import http.server
 import json
@@ -14,6 +15,7 @@ from envoy_collector.envoy_client import (
     EnvoyCertificateMismatch,
     fetch_battery_power,
     fetch_certificate_fingerprint,
+    fetch_certificate_info,
     fetch_production,
     fetch_serial_number,
 )
@@ -106,6 +108,16 @@ def envoy_server(tmp_path):
 def test_fetch_certificate_fingerprint_matches_the_servers_real_certificate(envoy_server):
     host, expected_fingerprint = envoy_server
     assert fetch_certificate_fingerprint(host) == expected_fingerprint
+
+
+def test_fetch_certificate_info_returns_fingerprint_and_expiry(envoy_server):
+    host, expected_fingerprint = envoy_server
+    info = fetch_certificate_info(host)
+    assert info.fingerprint == expected_fingerprint
+    # The fixture certificate is valid for one day.
+    remaining = info.expires_at - datetime.datetime.now(datetime.timezone.utc)
+    assert datetime.timedelta(hours=23) < remaining <= datetime.timedelta(days=1)
+    assert info.expires_at.tzinfo is not None
 
 
 def test_fetch_production_sends_bearer_token_and_parses_json(envoy_server):

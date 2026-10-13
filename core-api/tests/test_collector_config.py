@@ -181,3 +181,30 @@ def test_get_source_config_merges_null_when_owner_has_no_amber_key(client, app_a
     response = client.get(f"/api/v1/sources/{source_id}/config", headers={"X-Collector-Key": PRICING_COLLECTOR_KEY})
     assert response.status_code == 200, response.text
     assert response.json()["config"]["amber_api_key"] is None
+
+
+def test_report_discovered_config_merges_cert_expires_at_as_an_iso_string(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url, {"host": "envoy.local", "token": "abc"})
+    patch = client.patch(
+        f"/api/v1/sources/{source_id}/discovered-config",
+        json={"cert_fingerprint": "aa:bb:cc", "cert_expires_at": "2027-03-01T10:00:00+10:00"},
+        headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY},
+    )
+    assert patch.status_code == 204, patch.text
+
+    get = client.get(f"/api/v1/sources/{source_id}/config", headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY})
+    config = get.json()["config"]
+    assert config["cert_fingerprint"] == "aa:bb:cc"
+    assert config["cert_expires_at"] == "2027-03-01T10:00:00+10:00"
+
+
+def test_report_discovered_config_rejects_a_cert_expires_at_without_a_timezone(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url, {"host": "envoy.local", "token": "abc"})
+    patch = client.patch(
+        f"/api/v1/sources/{source_id}/discovered-config",
+        json={"cert_expires_at": "2027-03-01T10:00:00"},
+        headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY},
+    )
+    assert patch.status_code == 422
