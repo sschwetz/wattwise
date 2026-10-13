@@ -4,9 +4,10 @@ import datetime
 import decimal
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, model_validator
+from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, field_validator, model_validator
 
 from core_api.models.identity import SiteAccessRole
+from core_api.models.local_rates import LOCAL_RATE_CHANNELS
 from core_api.models.pricing import PriceChannel
 from core_api.models.readings import EnergyMetric, WeatherMetric
 from core_api.models.sources import SourceKind
@@ -15,6 +16,7 @@ from core_api.models.sources import SourceKind
 # minutes) while capping the per-request fan-out cost in
 # ingestion._fan_out_price_readings at 1440 inserts.
 MAX_PRICE_INTERVAL_MINUTES = 1440
+MAX_TARIFF_NAME_LENGTH = 100
 
 
 def _to_utc(value: datetime.datetime) -> datetime.datetime:
@@ -208,6 +210,18 @@ class SourceCreate(BaseModel):
     config: dict = {}
     name: str | None = None
 
+    @model_validator(mode="after")
+    def _local_provider_rules(self) -> SourceCreate:
+        if self.provider != "local":
+            return self
+        if self.kind != SourceKind.PRICING:
+            raise ValueError("The local provider is only available for pricing sources")
+        name = (self.name or "").strip()
+        if not name or len(name) > MAX_TARIFF_NAME_LENGTH:
+            raise ValueError(f"A local tariff needs a name of 1-{MAX_TARIFF_NAME_LENGTH} characters")
+        self.name = name
+        return self
+
 
 class SourceOut(BaseModel):
     id: int
@@ -358,6 +372,47 @@ class MonthlyFeeDiscountWindowCreate(BaseModel):
 class MonthlyFeeDiscountWindowOut(MonthlyFeeDiscountWindowCreate):
     id: int
     site_tariff_id: int
+
+    model_config = {"from_attributes": True}
+
+
+class LocalRateWindowCreate(BaseModel):
+    channel: PriceChannel
+    label: str = Field(min_length=1, max_length=100)
+    effective_from: UtcDatetime
+    effective_to: UtcDatetime | None = None
+    months: list[int] = Field(min_length=1)
+    days_of_week: list[int] = Field(min_length=1)
+    start_time: datetime.time
+    end_time: datetime.time
+    rate_c_per_kwh: decimal.Decimal = Field(ge=0, max_digits=12, decimal_places=4)
+
+    @field_validator("channel")
+    @classmethod
+    def _check_channel(cls, channel: PriceChannel) -> PriceChannel:
+        # The table's CHECK allows only these channels. Rejecting the rest here
+        # makes the API answer 422 instead of a 500 from the database.
+        if channel not in LOCAL_RATE_CHANNELS:
+            allowed = ", ".join(c.value for c in LOCAL_RATE_CHANNELS)
+            raise ValueError(f"channel must be one of {allowed}")
+        return channel
+
+    @model_validator(mode="after")
+    def _check_pattern(self) -> LocalRateWindowCreate:
+        if any(month < 1 or month > 12 for month in self.months):
+            raise ValueError("months must be between 1 and 12")
+        if any(day < 0 or day > 6 for day in self.days_of_week):
+            raise ValueError("days_of_week must be between 0 (Monday) and 6 (Sunday)")
+        if any(t.second or t.microsecond for t in (self.start_time, self.end_time)):
+            raise ValueError("start_time and end_time must be whole minutes")
+        if self.effective_to is not None and self.effective_to <= self.effective_from:
+            raise ValueError("effective_to must be after effective_from")
+        return self
+
+
+class LocalRateWindowOut(LocalRateWindowCreate):
+    id: int
+    source_id: int
 
     model_config = {"from_attributes": True}
 

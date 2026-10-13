@@ -18,6 +18,7 @@ from core_api.routers.billing import router as billing_router
 from core_api.routers.collector import router as collector_router
 from core_api.routers.collector_config import router as collector_config_router
 from core_api.routers.ingestion import router as ingestion_router
+from core_api.routers.local_rates import router as local_rates_router
 from core_api.routers.password_reset import router as password_reset_router
 from core_api.routers.pricing_backfill import router as pricing_backfill_router
 from core_api.routers.pricing_backfill import site_router as pricing_site_data_router
@@ -87,6 +88,7 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
     app.include_router(account_router, prefix=api_prefix)
     app.include_router(sites_router, prefix=api_prefix)
     app.include_router(sources_router, prefix=api_prefix)
+    app.include_router(local_rates_router, prefix=api_prefix)
     app.include_router(billing_router, prefix=api_prefix)
     app.include_router(ingestion_router, prefix=api_prefix)
     app.include_router(query_router, prefix=api_prefix)

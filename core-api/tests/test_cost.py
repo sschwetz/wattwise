@@ -147,11 +147,11 @@ def _make_energy_source(db, site, kind_metrics_ok=True) -> Source:
     return source
 
 
-def _make_pricing_source(db, site) -> Source:
+def _make_pricing_source(db, site, provider="amber") -> Source:
     source = Source(
         site_id=site.id,
         kind=SourceKind.PRICING,
-        provider="amber",
+        provider=provider,
         config={},
         effective_from=datetime.datetime(2020, 1, 1, tzinfo=UTC),
     )
@@ -180,6 +180,26 @@ def test_compute_cost_net_method(db, site):
     # import cost = 0.01 kWh * 30 c/kWh = 0.3c; export revenue = 0.005 kWh * 10 c/kWh = 0.05c
     assert result.total_cost_c == decimal.Decimal("0.25")
     assert result.minutes_missing_price == 0
+
+
+def test_compute_cost_with_a_local_source_adds_the_negative_sell_price(db, site):
+    """The local collector pushes `sell` negative, like Amber, so cost math is
+    identical for both providers."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site, provider="local")
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=300.0))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+    db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-10.0")))
+    db.commit()
+
+    result = compute_cost(
+        db, site.id, ts, ts + datetime.timedelta(minutes=1), method="net", site_timezone=site.timezone
+    )
+
+    assert result.total_cost_c == decimal.Decimal("0.25")
 
 
 def test_compute_cost_is_negative_when_net_exporting_with_realistic_sell_price(db, site):

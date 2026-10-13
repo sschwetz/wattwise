@@ -142,7 +142,9 @@ def update_source(
     if payload.enabled is not None:
         source.enabled = payload.enabled
     if payload.name is not None:
-        source.name = payload.name
+        if source.provider == "local" and not payload.name.strip():
+            raise AppError(422, "name_required", "A local tariff needs a name")
+        source.name = payload.name.strip() if source.provider == "local" else payload.name
     if payload.effective_to is not None:
         if source.kind == SourceKind.PRICING and _pricing_source_overlaps(
             db, source.site_id, source.id, as_utc(source.effective_from), payload.effective_to
