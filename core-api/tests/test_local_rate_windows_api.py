@@ -97,6 +97,14 @@ def test_invalid_windows_are_rejected(client, local_source, bad):
     assert response.status_code == 422
 
 
+def test_a_time_with_a_timezone_offset_is_rejected(client, local_source):
+    # SQLite would drop the offset and store 07:00 as if it were local time.
+    response = client.post(
+        _url(local_source), json=_window(start_time="07:00:00+10:00"), headers=auth(local_source["owner"])
+    )
+    assert response.status_code == 422
+
+
 def test_patch_replaces_a_window_and_ignores_itself_in_the_overlap_check(client, local_source):
     headers = auth(local_source["owner"])
     window_id = client.post(_url(local_source), json=_window(), headers=headers).json()["id"]

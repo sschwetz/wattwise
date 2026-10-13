@@ -45,32 +45,38 @@ export function useRateWindows(siteId: number, sourceId: number) {
   });
 }
 
-export function useCreateRateWindow(siteId: number, sourceId: number) {
+/** Marks the window list stale after a change, so it is fetched again. */
+function useRefetchWindows(siteId: number, sourceId: number) {
   const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: queryKey(siteId, sourceId) });
+}
+
+export function useCreateRateWindow(siteId: number, sourceId: number) {
+  const refetch = useRefetchWindows(siteId, sourceId);
   return useMutation({
     mutationFn: (input: RateWindowInput) =>
       apiFetch<RateWindow>(basePath(siteId, sourceId), { method: "POST", body: JSON.stringify(input) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKey(siteId, sourceId) }),
+    onSuccess: refetch,
   });
 }
 
 export function useReplaceRateWindow(siteId: number, sourceId: number) {
-  const queryClient = useQueryClient();
+  const refetch = useRefetchWindows(siteId, sourceId);
   return useMutation({
     mutationFn: ({ windowId, input }: { windowId: number; input: RateWindowInput }) =>
       apiFetch<RateWindow>(`${basePath(siteId, sourceId)}/${windowId}`, {
         method: "PATCH",
         body: JSON.stringify(input),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKey(siteId, sourceId) }),
+    onSuccess: refetch,
   });
 }
 
 export function useDeleteRateWindow(siteId: number, sourceId: number) {
-  const queryClient = useQueryClient();
+  const refetch = useRefetchWindows(siteId, sourceId);
   return useMutation({
     mutationFn: (windowId: number) =>
       apiFetch<void>(`${basePath(siteId, sourceId)}/${windowId}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKey(siteId, sourceId) }),
+    onSuccess: refetch,
   });
 }

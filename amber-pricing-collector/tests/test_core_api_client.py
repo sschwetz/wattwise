@@ -21,7 +21,7 @@ BASE_URL = "http://localhost:8000"
 
 
 @respx.mock
-def test_fetch_collector_sources_sends_kind_and_collector_key():
+def test_fetch_collector_sources_sends_kind_provider_and_collector_key():
     route = respx.get(f"{BASE_URL}/api/v1/collector/sources").mock(
         return_value=httpx.Response(
             200, json=[{"source_id": 1, "site_id": 10, "config": {"amber_site_id": "abc"}}]

@@ -11,7 +11,7 @@ This guide covers every screen in the web app. Use the contents below, or the **
 | [1. Getting started](01-getting-started.md) | What WattWise is, how data reaches it, and a first-day checklist |
 | [2. Signing in and account security](02-signing-in.md) | Creating an account, two-factor authentication, recovery codes, password reset |
 | [3. Sites](03-sites.md) | Creating sites, switching between them, time zones |
-| [4. Sources](04-sources.md) | Connecting your Envoy, Amber and WeatherLink |
+| [4. Sources](04-sources.md) | Connecting your Envoy, Amber, a fixed tariff and WeatherLink |
 | [5. The dashboard](05-dashboard.md) | Live tiles, the pricing chart, the history chart, net and gross cost |
 | [6. Billing](06-billing.md) | Tariffs, billing cycles, demand windows, export adjustments, fee discounts |
 | [7. Account settings](07-account-settings.md) | Name, photo, password, email, authenticator, Amber API key |

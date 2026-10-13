@@ -516,6 +516,21 @@ describe("SourcesPage", () => {
     expect(screen.queryByLabelText("Label (optional)")).not.toBeInTheDocument();
   });
 
+  it("shows readable names for the pricing providers", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("No sources yet.");
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "pricing");
+
+    const options = within(screen.getByLabelText("Provider")).getAllByRole("option");
+    expect(options.map((o) => [o.getAttribute("value"), o.textContent])).toEqual([
+      ["amber", "Amber"],
+      ["local", "Local tariff"],
+    ]);
+  });
+
   it("creates a local pricing source with its tariff name", async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce([])

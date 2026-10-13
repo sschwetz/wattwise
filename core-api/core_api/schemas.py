@@ -409,6 +409,9 @@ class LocalRateWindowCreate(BaseModel):
             raise ValueError("months must be between 1 and 12")
         if any(day < 0 or day > 6 for day in self.days_of_week):
             raise ValueError("days_of_week must be between 0 (Monday) and 6 (Sunday)")
+        # SQLite stores a time without its offset, so an offset would be lost.
+        if any(t.tzinfo is not None for t in (self.start_time, self.end_time)):
+            raise ValueError("start_time and end_time must not carry a timezone offset")
         if any(t.second or t.microsecond for t in (self.start_time, self.end_time)):
             raise ValueError("start_time and end_time must be whole minutes")
         if self.effective_to is not None and self.effective_to <= self.effective_from:

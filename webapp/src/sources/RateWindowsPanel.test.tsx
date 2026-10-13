@@ -79,7 +79,46 @@ describe("RateWindowsPanel", () => {
     vi.mocked(apiFetch).mockResolvedValueOnce([win({ start_time: "07:00:00", end_time: "22:00:00" })]);
     renderPanel();
 
-    expect(await screen.findByText(/not covered/i)).toBeInTheDocument();
+    expect(await screen.findByText(/not covered/i)).toHaveTextContent(
+      "Not covered: Import (for example Monday 00:00–07:00 in January). Those minutes will have no price.",
+    );
+  });
+
+  it("names every direction with a gap in the warning", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([
+      win({ id: 1, start_time: "07:00:00", end_time: "22:00:00" }),
+      win({ id: 2, channel: "sell", label: "Feed-in", days_of_week: [0, 1, 2, 3, 4, 5] }),
+    ]);
+    renderPanel();
+
+    expect(await screen.findByText(/not covered/i)).toHaveTextContent(
+      "Not covered: Import (for example Monday 00:00–07:00 in January); " +
+        "Export (feed-in) (for example Sunday all day in January). Those minutes will have no price.",
+    );
+  });
+
+  it("still warns when a window that has not started would fill the gap", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([
+      win({ id: 1, start_time: "07:00:00", end_time: "22:00:00" }),
+      win({ id: 2, label: "Next year", effective_from: "2099-01-01T00:00:00Z" }),
+    ]);
+    renderPanel();
+
+    expect(await screen.findByText(/not covered/i)).toHaveTextContent("Import (for example Monday 00:00–07:00 in January)");
+  });
+
+  it("disables every window action while a change is in flight", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([win({})]).mockReturnValueOnce(new Promise(() => {}));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(await screen.findByLabelText("Window label"), "Flat");
+    await user.type(screen.getByLabelText("Rate (c/kWh)"), "30");
+    await user.click(screen.getByRole("button", { name: "End Peak" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add window" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "End Peak" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete Peak" })).toBeDisabled();
   });
 
   it("adds a flat import window with sensible defaults", async () => {

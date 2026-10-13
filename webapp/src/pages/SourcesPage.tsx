@@ -12,6 +12,12 @@ const PROVIDERS_BY_KIND: Record<string, string[]> = {
   weather: ["weatherlink_live"],
 };
 
+// Display names for the Provider list. A provider without one shows its value.
+const PROVIDER_LABELS: Record<string, string> = {
+  amber: "Amber",
+  local: "Local tariff",
+};
+
 function KindAndProviderFields({
   value,
   onChange,
@@ -44,7 +50,7 @@ function KindAndProviderFields({
         >
           {PROVIDERS_BY_KIND[value.kind].map((p) => (
             <option key={p} value={p}>
-              {p}
+              {PROVIDER_LABELS[p] ?? p}
             </option>
           ))}
         </select>
@@ -58,6 +64,9 @@ function CreateSourceForm({ siteId }: { siteId: number }) {
   const [provider, setProvider] = useState(PROVIDERS_BY_KIND.energy[0]);
   const [name, setName] = useState("");
   const createSource = useCreateSource(siteId);
+  // A local tariff has no device to tell it apart, so its name is required.
+  const isLocal = provider === "local";
+  const nameLabel = isLocal ? "Tariff name" : "Label (optional)";
 
   function handleKindChange(newKind: string) {
     setKind(newKind);
@@ -81,30 +90,19 @@ function CreateSourceForm({ siteId }: { siteId: number }) {
           value={{ kind, provider }}
           onChange={{ kind: handleKindChange, provider: setProvider }}
         />
-        {provider === "local" ? (
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Tariff name"
-            aria-label="Tariff name"
-            required
-            maxLength={100}
-            autoComplete="off"
-            className="rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
-          />
-        ) : (
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Label (optional)"
-            aria-label="Label (optional)"
-            autoComplete="off"
-            className="rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
-          />
-        )}
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={nameLabel}
+          aria-label={nameLabel}
+          required={isLocal}
+          maxLength={isLocal ? 100 : undefined}
+          autoComplete="off"
+          className="rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
+        />
         <button
           type="submit"
-          disabled={createSource.isPending || (provider === "local" && !name.trim())}
+          disabled={createSource.isPending || (isLocal && !name.trim())}
           className="rounded-md bg-solar px-3 py-2 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50"
         >
           Create source

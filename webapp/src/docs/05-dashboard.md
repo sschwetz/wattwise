@@ -71,18 +71,18 @@ When one of your [demand windows](06-billing.md#demand-windows) is in effect, th
 
 ![Step chart of import and export prices across today, solid for actual and dashed for predicted](images/dashboard-today-pricing.png)
 
-This chart shows Amber's price for every 5 minutes of today, in cents per kWh.
+This chart shows your import and export price for every 5 minutes of today, in cents per kWh. The prices come from your pricing source: Amber's prices, or the rates in your [fixed tariff](04-sources.md#setting-up-a-fixed-tariff).
 
 | Line | Meaning |
 |------|---------|
 | Red solid | **Import actual**: what buying power cost in intervals that have finished. |
-| Red dashed | **Import predicted**: Amber's forecast for the rest of today. |
+| Red dashed | **Import predicted**: the price for the rest of today. With Amber this is Amber's forecast. With a fixed tariff it is the rate your windows set. |
 | Green solid | **Export actual**: what you were paid for exporting. |
-| Green dashed | **Export predicted**: the forecast export price. |
+| Green dashed | **Export predicted**: the export price for the rest of today, from Amber's forecast or your fixed tariff. |
 
-Hover over a point for the exact price. The chart always shows today and ignores the controls in the history card below. It needs an [Amber pricing source](04-sources.md#connecting-amber-electric).
+Hover over a point for the exact price. The chart always shows today and ignores the controls in the history card below. It needs a pricing source, either [Amber](04-sources.md#connecting-amber-electric) or a [fixed tariff](04-sources.md#setting-up-a-fixed-tariff).
 
-Prices are shown as plain positive rates. Amber publishes the sell price as a negative number when you are being paid, and WattWise shows its size instead.
+Prices are shown as plain positive rates. WattWise stores the sell price as a negative number when you are being paid, as Amber publishes it, and the chart shows its size instead.
 
 ## History and cost
 

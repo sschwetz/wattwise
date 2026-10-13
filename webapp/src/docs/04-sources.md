@@ -18,8 +18,8 @@ Open the page from the sidebar with **Sources**.
 ## Adding a source
 
 1. Open **Sources** in the sidebar.
-2. At the bottom of the page, choose a **Kind**. The **Provider** list updates to the providers for that kind. Kind `pricing` offers `amber` and `local`.
-3. Optionally type a **Label**, for example `Garage Envoy`. Labels help when a site has more than one source of the same kind.
+2. At the bottom of the page, choose a **Kind**. The **Provider** list updates to the providers for that kind. Kind `pricing` offers **Amber** (`amber`) and **Local tariff** (`local`).
+3. Optionally type a **Label**, for example `Garage Envoy`. Labels help when a site has more than one source of the same kind. A `local` pricing source needs a **Tariff name** instead, and the box is required.
 4. Click **Create source**.
 5. WattWise confirms: *Source created — the matching collector will start collecting for it automatically within a few minutes.*
 6. Click **Edit config** on the new row and fill in its settings. The sections below show what each provider needs. A `local` pricing source has no **Edit config**; see [Setting up a fixed tariff](#setting-up-a-fixed-tariff).
@@ -40,7 +40,7 @@ Each source row has these actions:
 | **Delete** | Asks you to click **Confirm delete** (or **Cancel**). |
 | **Label** and **Save label** | Renames the source. The label is only for you. |
 
-> **Warning:** A source that has already stored readings cannot be deleted. WattWise tells you to disable it instead. Disabling is the normal way to retire a source.
+> **Warning:** A source that has already stored readings cannot be deleted. WattWise tells you to disable it instead. Disabling is the normal way to retire a source. The exception is a pricing source you are replacing: a disabled pricing source still holds the site's one pricing place. See [Setting up a fixed tariff](#setting-up-a-fixed-tariff).
 
 Changes reach the collector within a few minutes. You do not restart anything.
 
@@ -89,7 +89,7 @@ Pricing needs two things:
 1. **Your Amber API key**, saved once under [Account settings](07-account-settings.md#amber-api-key). The key belongs to you, not to a site.
 2. **An Amber pricing source** on the site, with the **Amber site ID** filled in.
 
-To add the source, choose kind `pricing` and provider `amber`, open **Edit config**, enter your **Amber site ID** and click **Save config**. The site ID is the identifier Amber assigns to your property. Amber's API returns it when you list your sites with your API key.
+To add the source, choose kind `pricing` and provider **Amber**, open **Edit config**, enter your **Amber site ID** and click **Save config**. The site ID is the identifier Amber assigns to your property. Amber's API returns it when you list your sites with your API key.
 
 Once prices flow, the dashboard shows [Today's Pricing](05-dashboard.md#todays-pricing) and the [grid price tile](05-dashboard.md#live-tiles), and costs can be calculated.
 
@@ -97,7 +97,7 @@ Once prices flow, the dashboard shows [Today's Pricing](05-dashboard.md#todays-p
 
 Use this when your supplier charges fixed or time-of-use rates and has no price API. You type the rates in, and WattWise prices every minute from them.
 
-1. Open **Sources** and choose `pricing` as the **Kind** and `local` as the **Provider**.
+1. Open **Sources** and choose `pricing` as the **Kind** and **Local tariff** as the **Provider**.
 2. Type a **Tariff name**, such as `Origin Fixed`. It must be 1 to 100 characters, and a rename follows the same rule. The [Billing page](06-billing.md#tariffs) uses it as its heading, so this one reads "Origin Fixed Tariffs".
 3. Click **Create source**. A **Rate windows** panel appears under the source. A local source has no **Edit config** button.
 
@@ -120,7 +120,7 @@ To add a window, fill in the form at the bottom of the panel:
 | **Direction** | **Import**, **Export (feed-in)** or **Controlled load**. |
 | **Window label** | A name, for example `Peak`. |
 | **Rate (c/kWh)** | Cents per kWh, zero or more. |
-| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at the beginning of that day. |
+| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at midnight in your browser's time zone. An earlier date does not add prices for past days. |
 | **Start** / **End** | The times of day the rate applies. |
 | **Months** / **Days** | The months and days of the week it applies to. All are ticked to begin with. |
 
@@ -135,7 +135,7 @@ How the times work:
 
 Windows on the same direction cannot overlap. If a new window clashes with one already there, WattWise refuses it and names the window in the way.
 
-If a direction that has windows leaves some months, days or times uncovered, the panel shows: *Some months, days or times are not covered by a window. Those minutes will have no price.* You can still save. Minutes without a price are left out of your cost figures.
+If a direction that has current windows leaves some months, days or times uncovered, the panel names the direction and gives one uncovered time, for example: *Not covered: Import (for example Saturday 00:00–07:00 in January). Those minutes will have no price.* Windows that have ended or have not started yet are left out of this check. You can still save. Minutes without a price are left out of your cost figures.
 
 ### Changing a rate
 
@@ -144,11 +144,11 @@ If a direction that has windows leaves some months, days or times uncovered, the
 
 Cost for earlier times keeps the old rate. **Delete** removes a window, and it stops new prices from it.
 
-You cannot schedule a rate change for a future date in advance. A window with no end date overlaps any later window on the same direction that shares its months, days and times, so WattWise refuses the new one. End the old window on the day the rate changes.
+You cannot schedule a rate change for a future date in advance. Two windows on the same direction overlap if they cover the same minute in any month and day. A window with no end date overlaps every later window like that, so WattWise refuses the new one. End the old window on the day the rate changes.
 
 ### When changes take effect
 
-Every 5 minutes, the collector writes prices from the start of the current hour to 48 hours ahead. A new or changed window reaches the dashboard within about 5 minutes.
+Every 5 minutes, the collector writes prices from the start of the current UTC hour to 48 hours ahead. It never writes prices for earlier times, so a window whose **From** date is in the past adds no prices for the days already gone. A new or changed window reaches the dashboard within about 5 minutes.
 
 Prices already written stay as they are after an **End** or **Delete**. That includes the next 48 hours, so minutes that no other window covers keep the old rate until those 48 hours have passed.
 
