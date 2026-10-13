@@ -105,6 +105,16 @@ services:
         condition: service_healthy
     networks: *app-network
 
+  local-pricing-collector:
+    build: ./local-pricing-collector
+    environment:
+      CORE_API_URL: http://core-api:8000
+      COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with core-api's own PRICING_COLLECTOR_KEY}
+    depends_on:
+      core-api:
+        condition: service_healthy
+    networks: *app-network
+
 volumes:
   core_api_data:
 
