@@ -8,6 +8,8 @@ export interface Source {
   provider: string;
   name: string | null;
   enabled: boolean;
+  effective_from?: string;
+  effective_to?: string | null;
   config: Record<string, string | boolean>;
 }
 

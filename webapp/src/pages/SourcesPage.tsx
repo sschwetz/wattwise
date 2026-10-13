@@ -1,13 +1,14 @@
 import { type FormEvent, type ReactNode, useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { BackLink } from "../layout/BackLink";
+import { RateWindowsPanel } from "../sources/RateWindowsPanel";
 import { type Source, useCreateSource, useDeleteSource, useSources, useUpdateSource } from "../sources/useSources";
 
 // The only providers with real collector support today -- kept in sync with
 // each collector's own kind (envoy-collector polls kind=energy, etc.).
 const PROVIDERS_BY_KIND: Record<string, string[]> = {
   energy: ["envoy"],
-  pricing: ["amber"],
+  pricing: ["amber", "local"],
   weather: ["weatherlink_live"],
 };
 
@@ -80,14 +81,27 @@ function CreateSourceForm({ siteId }: { siteId: number }) {
           value={{ kind, provider }}
           onChange={{ kind: handleKindChange, provider: setProvider }}
         />
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Label (optional)"
-          aria-label="Label (optional)"
-          autoComplete="off"
-          className="rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
-        />
+        {provider === "local" ? (
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Tariff name"
+            aria-label="Tariff name"
+            required
+            maxLength={100}
+            autoComplete="off"
+            className="rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
+          />
+        ) : (
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Label (optional)"
+            aria-label="Label (optional)"
+            autoComplete="off"
+            className="rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
+          />
+        )}
         <button
           type="submit"
           disabled={createSource.isPending}
@@ -402,6 +416,7 @@ function SourceRow({
 }) {
   const [editingConfig, setEditingConfig] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const isLocal = source.provider === "local";
 
   return (
     <li className="rounded-xl border border-line bg-surface p-4">
@@ -411,9 +426,11 @@ function SourceRow({
           {source.name && <span className="text-ink-muted"> — {source.name}</span>}
         </span>
         <span className="flex gap-3 text-sm">
-          <button onClick={() => setEditingConfig((v) => !v)} className="text-ink-muted underline hover:text-ink">
-            Edit config
-          </button>
+          {!isLocal && (
+            <button onClick={() => setEditingConfig((v) => !v)} className="text-ink-muted underline hover:text-ink">
+              Edit config
+            </button>
+          )}
           <button
             onClick={() => actions.onToggle(source)}
             disabled={isPending}
@@ -457,6 +474,7 @@ function SourceRow({
           isPending={isPending}
         />
       )}
+      {isLocal && <RateWindowsPanel siteId={source.site_id} sourceId={source.id} />}
     </li>
   );
 }

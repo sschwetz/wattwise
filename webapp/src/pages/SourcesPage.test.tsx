@@ -502,4 +502,29 @@ describe("SourcesPage", () => {
     await userEvent.click(screen.getByText("Save config"));
     expect(await screen.findByRole("alert")).toHaveTextContent("Config rejected");
   });
+
+  it("offers the local provider for pricing sources and requires a tariff name", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("No sources yet.");
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "pricing");
+    await user.selectOptions(screen.getByLabelText("Provider"), "local");
+
+    expect(screen.getByLabelText("Tariff name")).toBeRequired();
+    expect(screen.queryByLabelText("Label (optional)")).not.toBeInTheDocument();
+  });
+
+  it("shows the rate windows panel for a local source instead of a config form", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        { id: 5, site_id: 7, kind: "pricing", provider: "local", name: "Origin Fixed", enabled: true, config: {} },
+      ])
+      .mockResolvedValue([]);
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Rate windows" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit config" })).not.toBeInTheDocument();
+  });
 });
