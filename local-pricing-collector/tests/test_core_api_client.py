@@ -55,6 +55,27 @@ def test_fetch_source_config_returns_the_config_and_sends_the_provider():
 
 
 @respx.mock
+def test_fetch_source_config_raises_on_a_non_json_body():
+    respx.get(f"{BASE_URL}/api/v1/sources/4/config").mock(return_value=httpx.Response(200, text="<html>"))
+    with pytest.raises(CoreApiError):
+        fetch_source_config(BASE_URL, 4, "k")
+
+
+@respx.mock
+def test_fetch_source_config_raises_when_config_is_missing():
+    respx.get(f"{BASE_URL}/api/v1/sources/4/config").mock(return_value=httpx.Response(200, json={"other": 1}))
+    with pytest.raises(CoreApiError):
+        fetch_source_config(BASE_URL, 4, "k")
+
+
+@respx.mock
+def test_fetch_collector_sources_raises_on_an_unexpected_shape():
+    respx.get(f"{BASE_URL}/api/v1/collector/sources").mock(return_value=httpx.Response(200, json=[{"id": 4}]))
+    with pytest.raises(CoreApiError):
+        fetch_collector_sources(BASE_URL, "k")
+
+
+@respx.mock
 def test_push_price_intervals_posts_the_batch():
     route = respx.post(f"{BASE_URL}/api/v1/sources/4/prices").mock(return_value=httpx.Response(202, json={}))
     intervals = [{"channel": "buy", "interval_start": "a", "interval_end": "b", "price": "1"}]

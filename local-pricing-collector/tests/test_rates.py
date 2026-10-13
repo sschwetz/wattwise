@@ -84,6 +84,22 @@ def test_a_malformed_window_is_skipped_and_logged(caplog):
     assert "Skipping malformed rate window" in caplog.text
 
 
+def test_a_row_with_null_months_is_skipped_and_the_rest_still_priced(caplog):
+    with caplog.at_level(logging.ERROR):
+        windows = parse_windows([window(months=None), window(rate_c_per_kwh="25.0000")])
+    assert len(windows) == 1
+    assert "Skipping malformed rate window" in caplog.text
+    intervals = build_intervals(windows, UTC, at(2026, 6, 15, 10, 0), 1)
+    assert [i["price"] for i in intervals] == ["25.0000"]
+
+
+def test_a_row_with_no_utc_offset_is_skipped_and_logged(caplog):
+    with caplog.at_level(logging.ERROR):
+        windows = parse_windows([window(effective_from="2026-01-01T00:00:00"), window(effective_to="2027-01-01T00:00:00")])
+    assert windows == []
+    assert caplog.text.count("Skipping malformed rate window") == 2
+
+
 def test_no_windows_builds_no_intervals():
     assert build_intervals([], UTC, at(2026, 6, 15, 10, 30), 48) == []
 
@@ -174,7 +190,8 @@ def test_a_window_that_ends_inside_the_horizon_stops_pricing_at_that_instant():
 
 def test_a_daylight_saving_change_moves_the_peak_start_in_utc():
     """Sydney moves to daylight saving at 02:00 on 4 October 2026. Local 07:00
-    is 21:00Z the day before on 3 October, and 20:00Z after the change."""
+    on 4 October is 20:00Z on 3 October; without the change it would have been
+    21:00Z."""
     windows = parse_windows(
         [
             window(label="peak", start_time="07:00:00", end_time="22:00:00", rate_c_per_kwh="40.0000"),

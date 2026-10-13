@@ -36,12 +36,21 @@ def _minutes_of_day(start: datetime.time, end: datetime.time) -> frozenset[int]:
     return frozenset(range(start_minute, DAY_MINUTES)) | frozenset(range(end_minute))
 
 
+def _parse_utc_offset_timestamp(value: str) -> datetime.datetime:
+    """Rejects a timestamp with no offset: comparing it with the aware UTC
+    minutes in _applies would raise TypeError mid-build."""
+    parsed = datetime.datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        raise ValueError(f"timestamp has no UTC offset: {value!r}")
+    return parsed
+
+
 def _parse_window(raw: dict) -> RateWindow:
     effective_to = raw["effective_to"]
     return RateWindow(
         channel=raw["channel"],
-        effective_from=datetime.datetime.fromisoformat(raw["effective_from"]),
-        effective_to=datetime.datetime.fromisoformat(effective_to) if effective_to else None,
+        effective_from=_parse_utc_offset_timestamp(raw["effective_from"]),
+        effective_to=_parse_utc_offset_timestamp(effective_to) if effective_to else None,
         months=frozenset(raw["months"]),
         days_of_week=frozenset(raw["days_of_week"]),
         minutes=_minutes_of_day(
@@ -58,7 +67,7 @@ def parse_windows(raw_windows: list[dict]) -> list[RateWindow]:
     for raw in raw_windows:
         try:
             windows.append(_parse_window(raw))
-        except (KeyError, ValueError, decimal.InvalidOperation):
+        except (KeyError, ValueError, TypeError, decimal.InvalidOperation):
             logger.exception("Skipping malformed rate window: %r", raw)
     return windows
 

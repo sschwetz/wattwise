@@ -23,4 +23,6 @@ def get_settings() -> Settings:
         horizon_hours = int(raw_horizon)
     except ValueError as exc:
         raise RuntimeError(f"LOCAL_HORIZON_HOURS must be a whole number, got {raw_horizon!r}") from exc
+    if horizon_hours < 1:
+        raise RuntimeError(f"LOCAL_HORIZON_HOURS must be at least 1, got {raw_horizon!r}")
     return Settings(core_api_url=core_api_url.rstrip("/"), collector_key=collector_key, horizon_hours=horizon_hours)

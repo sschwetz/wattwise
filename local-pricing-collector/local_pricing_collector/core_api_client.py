@@ -31,7 +31,10 @@ def fetch_collector_sources(base_url: str, collector_key: str) -> list[int]:
     )
     if response.status_code != 200:
         raise CoreApiError(f"Failed to fetch collector sources: {response.status_code} {response.text}")
-    return [entry["source_id"] for entry in response.json()]
+    try:
+        return [entry["source_id"] for entry in response.json()]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise CoreApiError(f"Unexpected collector sources body: {response.text}") from exc
 
 
 def fetch_source_config(base_url: str, source_id: int, collector_key: str) -> dict:
@@ -40,7 +43,10 @@ def fetch_source_config(base_url: str, source_id: int, collector_key: str) -> di
     )
     if response.status_code != 200:
         raise CoreApiError(f"Failed to fetch source config: {response.status_code} {response.text}")
-    return response.json()["config"]
+    try:
+        return response.json()["config"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise CoreApiError(f"Unexpected source config body: {response.text}") from exc
 
 
 def push_price_intervals(

@@ -81,6 +81,26 @@ def test_a_push_failure_is_logged_and_does_not_raise(monkeypatch, caplog):
     assert "Failed to push" in caplog.text
 
 
+def test_an_unexpected_error_is_logged_and_does_not_raise(monkeypatch, caplog):
+    def boom(*args, **kwargs):
+        raise RuntimeError("surprise")
+
+    monkeypatch.setattr(poll, "fetch_source_config", lambda url, source_id, key: CONFIG)
+    monkeypatch.setattr(poll, "build_intervals", boom)
+
+    poll.sync_one_source(SETTINGS, 7, now=NOW)
+
+    assert "Unexpected error syncing pricing source 7" in caplog.text
+
+
+def test_a_config_of_the_wrong_shape_is_logged_and_does_not_raise(monkeypatch, caplog):
+    monkeypatch.setattr(poll, "fetch_source_config", lambda url, source_id, key: None)
+
+    poll.sync_one_source(SETTINGS, 7, now=NOW)
+
+    assert "pricing source 7" in caplog.text
+
+
 def test_next_aligned_tick_is_the_next_five_minute_boundary_plus_buffer():
     now = datetime.datetime(2026, 6, 15, 10, 31, 0, tzinfo=datetime.timezone.utc)
     assert next_aligned_tick(now) == datetime.datetime(2026, 6, 15, 10, 35, 5, tzinfo=datetime.timezone.utc)

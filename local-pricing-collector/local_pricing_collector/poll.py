@@ -31,13 +31,18 @@ def sync_one_source(settings: Settings, source_id: int, *, now: datetime.datetim
         logger.exception("Failed to fetch config for pricing source %s this cycle", source_id)
         return
     try:
+        _build_and_push(settings, source_id, config, now or datetime.datetime.now(datetime.timezone.utc))
+    except Exception:
+        logger.exception("Unexpected error syncing pricing source %s this cycle", source_id)
+
+
+def _build_and_push(settings: Settings, source_id: int, config: dict, now: datetime.datetime) -> None:
+    try:
         tz = zoneinfo.ZoneInfo(config["timezone"])
         windows = parse_windows(config["rate_windows"])
-    except (KeyError, zoneinfo.ZoneInfoNotFoundError, ValueError):
+    except (KeyError, TypeError, zoneinfo.ZoneInfoNotFoundError, ValueError):
         logger.exception("Failed to read config for pricing source %s this cycle", source_id)
         return
-
-    now = now or datetime.datetime.now(datetime.timezone.utc)
     intervals = build_intervals(windows, tz, now, settings.horizon_hours)
     if not intervals:
         return
@@ -53,13 +58,13 @@ def _run_tick(settings: Settings) -> None:
     except CoreApiError:
         logger.exception("Failed to refresh the local pricing source list this tick; skipping")
         return
-    children = [multiprocessing.Process(target=sync_one_source, args=(settings, sid)) for sid in source_ids]
-    for child in children:
+    children = [(sid, multiprocessing.Process(target=sync_one_source, args=(settings, sid))) for sid in source_ids]
+    for _, child in children:
         child.start()
-    for child in children:
+    for source_id, child in children:
         child.join(timeout=CHILD_JOIN_TIMEOUT_SECONDS)
         if child.is_alive():
-            logger.error("Local pricing source process did not finish in time; terminating")
+            logger.error("Process for local pricing source %s did not finish in time; terminating", source_id)
             child.terminate()
             child.join()
 

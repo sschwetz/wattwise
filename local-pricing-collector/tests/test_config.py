@@ -31,6 +31,14 @@ def test_missing_url_or_key_raises(monkeypatch):
         get_settings()
 
 
+def test_a_horizon_below_one_raises(monkeypatch):
+    monkeypatch.setenv("CORE_API_URL", "http://x")
+    monkeypatch.setenv("COLLECTOR_KEY", "k")
+    monkeypatch.setenv("LOCAL_HORIZON_HOURS", "0")
+    with pytest.raises(RuntimeError):
+        get_settings()
+
+
 def test_a_non_numeric_horizon_raises(monkeypatch):
     monkeypatch.setenv("CORE_API_URL", "http://x")
     monkeypatch.setenv("COLLECTOR_KEY", "k")
