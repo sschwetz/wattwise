@@ -876,17 +876,20 @@ def test_repin_refuses_when_the_serial_number_changed(monkeypatch, caplog):
     assert any("serial" in m for m in caplog.messages)
 
 
-def test_repin_stores_the_serial_number_when_none_was_known(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
-    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+def test_repin_refuses_when_no_serial_number_is_stored(monkeypatch, caplog):
+    fetched = []
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: fetched.append(host))
     reported = _reports(monkeypatch)
 
     config = _expiring_config(days_left=30)
     del config["serial_num"]
-    result = main_module.repin_certificate(SETTINGS, 1, config)
+    with caplog.at_level("ERROR"):
+        result = main_module.repin_certificate(SETTINGS, 1, config)
 
-    assert result["serial_num"] == "123456789012"
-    assert reported[0]["serial_num"] == "123456789012"
+    assert result == config
+    assert fetched == []
+    assert reported == []
+    assert any("no serial number" in m for m in caplog.messages)
 
 
 def test_repin_keeps_the_old_pin_when_the_new_certificate_cannot_be_read(monkeypatch):

@@ -116,6 +116,14 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
     CERT_REPIN_WINDOW of expiring (the Envoy renews it then) and the device
     reports the same serial number. Otherwise returns `config` unchanged and
     the source keeps failing until the owner clears the pin."""
+    known_serial = config.get("serial_num")
+    if not known_serial:
+        logger.error(
+            "Envoy for source %s presented a different TLS certificate than pinned, and no serial number "
+            "is stored to check the device against; not re-pinning. Enter the serial number in the source.",
+            source_id,
+        )
+        return config
     if not _repin_allowed(config, datetime.datetime.now(datetime.timezone.utc)):
         logger.error(
             "Envoy for source %s presented a different TLS certificate than pinned, and the pinned one "
@@ -132,8 +140,7 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
     except Exception:
         logger.exception("Failed to read the new Envoy certificate for source %s; will retry next cycle", source_id)
         return config
-    known_serial = config.get("serial_num")
-    if known_serial and serial != known_serial:
+    if serial != known_serial:
         logger.error(
             "Envoy for source %s now reports serial %s, not %s; not re-pinning its certificate.",
             source_id,
@@ -142,7 +149,7 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
         )
         return config
     new_config = dict(config)
-    _store_pin(settings, source_id, new_config, info, **({} if known_serial else {"serial_num": serial}))
+    _store_pin(settings, source_id, new_config, info)
     logger.warning("Re-pinned the renewed Envoy TLS certificate for source %s", source_id)
     return new_config
 
