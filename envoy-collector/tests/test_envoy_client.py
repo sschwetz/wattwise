@@ -9,6 +9,7 @@ import subprocess
 import threading
 
 import pytest
+from cryptography import x509
 
 from envoy_collector.envoy_client import (
     EnvoyAuthError,
@@ -114,6 +115,9 @@ def test_fetch_certificate_info_returns_fingerprint_and_expiry(envoy_server):
     host, expected_fingerprint = envoy_server
     info = fetch_certificate_info(host)
     assert info.fingerprint == expected_fingerprint
+    hostname, _, port = host.rpartition(":")
+    pem = ssl.get_server_certificate((hostname, int(port)))
+    assert info.serial == format(x509.load_pem_x509_certificate(pem.encode()).serial_number, "X")
     # The fixture certificate is valid for one day.
     remaining = info.expires_at - datetime.datetime.now(datetime.timezone.utc)
     assert datetime.timedelta(hours=23) < remaining <= datetime.timedelta(days=1)

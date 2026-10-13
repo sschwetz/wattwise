@@ -49,7 +49,7 @@ def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
     has a usable pin -- poll_once must not send the real token to a host
     that hasn't been pinned yet."""
     if "cert_fingerprint" in config:
-        _record_cert_expiry(settings, source_id, config)
+        _record_cert_details(settings, source_id, config)
         return True
     try:
         info = fetch_certificate_info(config["host"])
@@ -61,43 +61,42 @@ def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
     return True
 
 
-def _store_pin(settings: Settings, source_id: int, config: dict, info: CertificateInfo, **extra: str) -> None:
+def _cert_details(info: CertificateInfo) -> dict[str, str]:
+    return {"cert_expires_at": info.expires_at.isoformat(), "cert_serial": info.serial}
+
+
+def _store_pin(settings: Settings, source_id: int, config: dict, info: CertificateInfo) -> None:
+    details = _cert_details(info)
     config["cert_fingerprint"] = info.fingerprint
-    config["cert_expires_at"] = info.expires_at.isoformat()
-    config.update(extra)
+    config.update(details)
     try:
         report_discovered_config(
-            settings.core_api_url,
-            source_id,
-            settings.collector_key,
-            cert_fingerprint=info.fingerprint,
-            cert_expires_at=config["cert_expires_at"],
-            **extra,
+            settings.core_api_url, source_id, settings.collector_key, cert_fingerprint=info.fingerprint, **details
         )
     except CoreApiError:
         logger.exception("Failed to report pinned TLS certificate to Core API for source %s", source_id)
 
 
-def _record_cert_expiry(settings: Settings, source_id: int, config: dict) -> None:
-    """Backfills `cert_expires_at` for a source pinned before expiry was
-    tracked. Only records it when the Envoy still presents the pinned
-    certificate, so the stored expiry always belongs to the pinned one."""
-    if "cert_expires_at" in config:
+def _record_cert_details(settings: Settings, source_id: int, config: dict) -> None:
+    """Backfills `cert_expires_at` and `cert_serial` for a source pinned
+    before they were tracked. Only records them when the Envoy still presents
+    the pinned certificate, so the stored values always belong to the pinned
+    one."""
+    if "cert_expires_at" in config and "cert_serial" in config:
         return
     try:
         info = fetch_certificate_info(config["host"])
     except Exception:
-        logger.exception("Failed to read the Envoy certificate expiry for source %s; will retry next refresh", source_id)
+        logger.exception("Failed to read the Envoy certificate details for source %s; will retry next refresh", source_id)
         return
     if info.fingerprint != config["cert_fingerprint"]:
         return
-    config["cert_expires_at"] = info.expires_at.isoformat()
+    details = _cert_details(info)
+    config.update(details)
     try:
-        report_discovered_config(
-            settings.core_api_url, source_id, settings.collector_key, cert_expires_at=config["cert_expires_at"]
-        )
+        report_discovered_config(settings.core_api_url, source_id, settings.collector_key, **details)
     except CoreApiError:
-        logger.exception("Failed to report certificate expiry to Core API for source %s", source_id)
+        logger.exception("Failed to report certificate details to Core API for source %s", source_id)
 
 
 def _repin_allowed(config: dict, now: datetime.datetime) -> bool:
@@ -343,7 +342,7 @@ def _refresh_sources(settings: Settings, known: dict[int, dict]) -> dict[int, di
         # seen) so a source whose host was briefly unreachable -- and so
         # never got pinned -- keeps retrying instead of being silently
         # skipped by poll_once for the rest of the process's life.
-        if "cert_fingerprint" not in refreshed[source_id] or "cert_expires_at" not in refreshed[source_id]:
+        if not {"cert_fingerprint", "cert_expires_at", "cert_serial"} <= refreshed[source_id].keys():
             discover_and_sync_serial(settings, source_id, refreshed[source_id])
         if _token_expiring(refreshed[source_id], datetime.datetime.now(datetime.timezone.utc)):
             refreshed[source_id] = renew_token(settings, source_id, refreshed[source_id])

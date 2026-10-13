@@ -208,3 +208,17 @@ def test_report_discovered_config_rejects_a_cert_expires_at_without_a_timezone(c
         headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY},
     )
     assert patch.status_code == 422
+
+
+def test_report_discovered_config_merges_cert_serial(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url, {"host": "envoy.local", "token": "abc"})
+    patch = client.patch(
+        f"/api/v1/sources/{source_id}/discovered-config",
+        json={"cert_serial": "322103FC7603C350"},
+        headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY},
+    )
+    assert patch.status_code == 204, patch.text
+
+    get = client.get(f"/api/v1/sources/{source_id}/config", headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY})
+    assert get.json()["config"]["cert_serial"] == "322103FC7603C350"

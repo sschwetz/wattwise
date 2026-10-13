@@ -264,6 +264,17 @@ describe("SourcesPage", () => {
       expect(screen.queryByText(/collector will accept the new one/)).not.toBeInTheDocument();
     });
 
+    it("shows the certificate serial when the collector has recorded one", async () => {
+      await openEnvoyForm({ host: "envoy.local", cert_expires_at: inDays(40), cert_serial: "322103FC7603C350" });
+      expect(screen.getByText("Certificate serial")).toBeInTheDocument();
+      expect(screen.getByText("322103FC7603C350")).toBeInTheDocument();
+    });
+
+    it("omits the serial line when only the expiry is known", async () => {
+      await openEnvoyForm({ host: "envoy.local", cert_expires_at: inDays(40) });
+      expect(screen.queryByText("Certificate serial")).not.toBeInTheDocument();
+    });
+
     it("shows nothing before the collector has recorded an expiry", async () => {
       await openEnvoyForm({ host: "envoy.local" });
       expect(screen.queryByText("Certificate expires")).not.toBeInTheDocument();

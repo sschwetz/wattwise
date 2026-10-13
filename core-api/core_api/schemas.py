@@ -408,6 +408,7 @@ class DiscoveredSourceConfig(BaseModel):
     serial_num: str | None = None
     cert_fingerprint: str | None = None
     cert_expires_at: AwareDatetime | None = None
+    cert_serial: str | None = None
     token: str | None = None
 
 

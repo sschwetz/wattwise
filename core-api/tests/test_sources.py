@@ -529,13 +529,18 @@ def test_update_rejects_extending_effective_to_into_another_pricing_sources_rang
     assert response.status_code == 409
 
 
-def test_patch_config_clears_the_cert_expiry_when_host_changes(client, app_and_db_url):
+def test_patch_config_clears_the_cert_expiry_and_serial_when_host_changes(client, app_and_db_url):
     """The expiry belongs to the pinned certificate, so it goes with the pin."""
     _, db_url = app_and_db_url
     owner_id, site_id, source_id = _create_envoy_source(
         client,
         db_url,
-        {"host": "old.local", "cert_fingerprint": "old-pin", "cert_expires_at": "2027-01-01T00:00:00+00:00"},
+        {
+            "host": "old.local",
+            "cert_fingerprint": "old-pin",
+            "cert_expires_at": "2027-01-01T00:00:00+00:00",
+            "cert_serial": "322103FC",
+        },
     )
     patch = client.patch(
         f"/api/v1/sites/{site_id}/sources/{source_id}",

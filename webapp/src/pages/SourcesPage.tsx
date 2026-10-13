@@ -166,7 +166,7 @@ const CERT_REPIN_WINDOW_DAYS = 100;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const CERT_DATE_FORMAT = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
 
-function CertificateExpiry({ expiresAt }: { expiresAt: string }) {
+function CertificateDetails({ expiresAt, serial }: { expiresAt: string; serial?: string }) {
   const [now] = useState(() => Date.now());
   const expires = new Date(expiresAt);
   if (Number.isNaN(expires.getTime())) return null;
@@ -174,7 +174,13 @@ function CertificateExpiry({ expiresAt }: { expiresAt: string }) {
   const remaining = daysLeft < 0 ? `expired ${-daysLeft} days ago` : `${daysLeft} days left`;
   return (
     <div className="flex flex-col text-ink-muted">
-      Certificate expires
+      {serial && (
+        <>
+          <span>Certificate serial</span>
+          <p className="font-mono text-ink">{serial}</p>
+        </>
+      )}
+      <span>Certificate expires</span>
       <p className="text-ink">
         {CERT_DATE_FORMAT.format(expires)} ({remaining})
       </p>
@@ -224,7 +230,12 @@ function EnvoyConfigForm({
         The collector fills this in when it can read it from the Envoy. If it stays empty, enter the serial number
         printed on the Envoy or shown in Enlighten. The collector needs it to renew the token.
       </p>
-      {typeof config.cert_expires_at === "string" && <CertificateExpiry expiresAt={config.cert_expires_at} />}
+      {typeof config.cert_expires_at === "string" && (
+        <CertificateDetails
+          expiresAt={config.cert_expires_at}
+          serial={typeof config.cert_serial === "string" ? config.cert_serial : undefined}
+        />
+      )}
       <label className="flex items-center gap-2 text-ink-muted">
         <input
           type="checkbox"

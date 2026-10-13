@@ -76,11 +76,12 @@ def fetch_certificate_fingerprint(host: str) -> str:
 class CertificateInfo:
     fingerprint: str
     expires_at: datetime.datetime
+    serial: str  # X.509 serial number, upper-case hex
 
 
 def fetch_certificate_info(host: str) -> CertificateInfo:
     """Like `fetch_certificate_fingerprint`, but also returns the
-    certificate's expiry (UTC). The Envoy regenerates its certificate once
+    certificate's expiry (UTC) and X.509 serial number. The Envoy regenerates its certificate once
     it is within 100 days of expiring, so the expiry tells the collector
     when a changed certificate is expected rather than suspicious."""
     conn = _connect(host)
@@ -88,8 +89,12 @@ def fetch_certificate_info(host: str) -> CertificateInfo:
         der = conn.sock.getpeercert(binary_form=True)  # type: ignore[union-attr]
     finally:
         conn.close()
-    expires_at = x509.load_der_x509_certificate(der).not_valid_after_utc
-    return CertificateInfo(fingerprint=hashlib.sha256(der).hexdigest(), expires_at=expires_at)
+    cert = x509.load_der_x509_certificate(der)
+    return CertificateInfo(
+        fingerprint=hashlib.sha256(der).hexdigest(),
+        expires_at=cert.not_valid_after_utc,
+        serial=format(cert.serial_number, "X"),
+    )
 
 
 def _request(

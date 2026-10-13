@@ -49,12 +49,14 @@ def report_discovered_config(
     serial_num: str | None = None,
     cert_fingerprint: str | None = None,
     cert_expires_at: str | None = None,
+    cert_serial: str | None = None,
     token: str | None = None,
 ) -> None:
     fields = {
         "serial_num": serial_num,
         "cert_fingerprint": cert_fingerprint,
         "cert_expires_at": cert_expires_at,
+        "cert_serial": cert_serial,
         "token": token,
     }
     payload = {k: v for k, v in fields.items() if v is not None}
