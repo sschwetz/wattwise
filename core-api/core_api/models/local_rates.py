@@ -3,12 +3,17 @@ from __future__ import annotations
 import datetime
 import decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Time
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String, Time
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
-from core_api.models.base import Base, enum_check, str_enum
+from core_api.models.base import Base, str_enum
 from core_api.models.pricing import PriceChannel
+
+# A local tariff has no demand channel, so the CHECK lists these three and
+# not every PriceChannel member.
+LOCAL_RATE_CHANNELS = (PriceChannel.BUY, PriceChannel.SELL, PriceChannel.CONTROLLED_LOAD)
+_CHANNEL_VALUES = ", ".join(repr(channel.value) for channel in LOCAL_RATE_CHANNELS)
 
 
 class LocalRateWindow(Base):
@@ -20,7 +25,7 @@ class LocalRateWindow(Base):
     negative-when-paid convention."""
 
     __tablename__ = "local_rate_windows"
-    __table_args__ = (enum_check("channel", PriceChannel, "ck_local_rate_windows_channel"),)
+    __table_args__ = (CheckConstraint(f"channel IN ({_CHANNEL_VALUES})", name="ck_local_rate_windows_channel"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"), nullable=False, index=True)

@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import Site, User
 from core_api.models.local_rates import LocalRateWindow
-from core_api.models.pricing import PriceChannel
+from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.security import create_access_token
 
 
@@ -556,30 +556,66 @@ def test_patch_config_clears_the_cert_expiry_and_serial_when_host_changes(client
     assert patch.json()["config"] == {"host": "new.local"}
 
 
-def test_delete_local_source_also_deletes_its_rate_windows(client, app_and_db_url):
-    _, db_url = app_and_db_url
-    owner_id, site_id = make_owner_and_site(db_url)
-    source = client.post(
+def create_pricing_source(client, site_id: int, owner_id: int) -> int:
+    return client.post(
         f"/api/v1/sites/{site_id}/sources",
         json={"kind": "pricing", "provider": "amber", "config": {}},
         headers=auth(owner_id),
-    ).json()
-    engine = make_engine(db_url)
-    session = make_session_factory(engine)()
-    session.add(
-        LocalRateWindow(
-            source_id=source["id"], channel=PriceChannel.BUY, label="Flat",
-            effective_from=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
-            months=[1], days_of_week=[0], start_time=datetime.time(0, 0), end_time=datetime.time(0, 0),
-            rate_c_per_kwh=decimal.Decimal("30"),
-        )
-    )
-    session.commit()
-    session.close()
+    ).json()["id"]
 
-    response = client.delete(f"/api/v1/sites/{site_id}/sources/{source['id']}", headers=auth(owner_id))
+
+def add_rows(db_url: str, *rows: object) -> None:
+    session = make_session_factory(make_engine(db_url))()
+    try:
+        session.add_all(rows)
+        session.commit()
+    finally:
+        session.close()
+
+
+def flat_window(source_id: int) -> LocalRateWindow:
+    return LocalRateWindow(
+        source_id=source_id, channel=PriceChannel.BUY, label="Flat",
+        effective_from=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+        months=[1], days_of_week=[0], start_time=datetime.time(0, 0), end_time=datetime.time(0, 0),
+        rate_c_per_kwh=decimal.Decimal("30"),
+    )
+
+
+def count_windows(db_url: str) -> int:
+    session = make_session_factory(make_engine(db_url))()
+    try:
+        return session.execute(sa.select(sa.func.count()).select_from(LocalRateWindow)).scalar_one()
+    finally:
+        session.close()
+
+
+def test_delete_pricing_source_also_deletes_its_rate_windows(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    source_id = create_pricing_source(client, site_id, owner_id)
+    add_rows(db_url, flat_window(source_id))
+
+    response = client.delete(f"/api/v1/sites/{site_id}/sources/{source_id}", headers=auth(owner_id))
 
     assert response.status_code == 204, response.text
-    session = make_session_factory(engine)()
-    assert session.execute(sa.select(sa.func.count()).select_from(LocalRateWindow)).scalar_one() == 0
-    session.close()
+    assert count_windows(db_url) == 0
+
+
+def test_delete_pricing_source_with_readings_keeps_its_rate_windows(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    source_id = create_pricing_source(client, site_id, owner_id)
+    reading = PriceReading(
+        pricing_source_id=source_id,
+        ts=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+        channel=PriceChannel.BUY,
+        value=decimal.Decimal("30"),
+    )
+    add_rows(db_url, flat_window(source_id), reading)
+
+    response = client.delete(f"/api/v1/sites/{site_id}/sources/{source_id}", headers=auth(owner_id))
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "source_has_readings"
+    assert count_windows(db_url) == 1
