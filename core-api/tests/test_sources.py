@@ -7,7 +7,7 @@ import sqlalchemy as sa
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import Site, User
-from core_api.models.local_rates import LocalRateWindow
+from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.security import create_access_token
 
@@ -619,3 +619,31 @@ def test_delete_pricing_source_with_readings_keeps_its_rate_windows(client, app_
     assert response.status_code == 409, response.text
     assert response.json()["code"] == "source_has_readings"
     assert count_windows(db_url) == 1
+
+
+def test_deleting_a_source_deletes_its_reprice_marker(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    source = client.post(
+        f"/api/v1/sites/{site_id}/sources",
+        json={"kind": "pricing", "provider": "local", "name": "Fixed"},
+        headers=auth(owner_id),
+    ).json()
+    client.post(
+        f"/api/v1/sites/{site_id}/sources/{source['id']}/rate-windows",
+        json={
+            "channel": "buy", "label": "Flat", "effective_from": "2026-01-01T00:00:00Z",
+            "months": list(range(1, 13)), "days_of_week": list(range(7)),
+            "start_time": "00:00:00", "end_time": "00:00:00", "rate_c_per_kwh": "30",
+        },
+        headers=auth(owner_id),
+    )
+
+    response = client.delete(f"/api/v1/sites/{site_id}/sources/{source['id']}", headers=auth(owner_id))
+
+    assert response.status_code == 204, response.text
+    session = make_session_factory(make_engine(db_url))()
+    try:
+        assert session.query(LocalRepriceMarker).count() == 0
+    finally:
+        session.close()

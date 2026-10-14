@@ -79,3 +79,12 @@ def test_migrated_check_constraint_rejects_the_demand_channel(app_and_db_url):
             insert_window_row(session, source.id, "demand")
     finally:
         session.close()
+
+
+def test_migration_creates_the_reprice_marker_table(app_and_db_url):
+    _, db_url = app_and_db_url
+    inspector = sa.inspect(make_engine(db_url))
+
+    assert "local_reprice_markers" in inspector.get_table_names()
+    columns = {c["name"] for c in inspector.get_columns("local_reprice_markers")}
+    assert columns == {"source_id", "reprice_from", "version"}

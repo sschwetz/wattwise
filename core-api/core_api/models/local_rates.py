@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String, Time
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, Time
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -38,3 +38,17 @@ class LocalRateWindow(Base):
     start_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
     end_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
     rate_c_per_kwh: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+
+
+class LocalRepriceMarker(Base):
+    """At most one per local source: the earliest instant whose price may have
+    changed because a rate window was created, replaced or deleted. The
+    collector reprices from here and then clears it. `version` goes up on every
+    change, so a clear that carries an old version leaves a newer edit in
+    place."""
+
+    __tablename__ = "local_reprice_markers"
+
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"), primary_key=True)
+    reprice_from: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)

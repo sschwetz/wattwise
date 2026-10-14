@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import datetime
 import secrets
 
 import pytest
 
+from core_api.db import make_engine, make_session_factory
+from core_api.models.local_rates import LocalRepriceMarker
+from core_api.time_utils import as_utc
 from core_api.models.sources import SourceKind
 from tests.conftest import PRICING_COLLECTOR_KEY
 from tests.test_billing import auth, make_owner_and_site
@@ -290,3 +294,117 @@ def test_amber_config_has_no_rate_windows(client, app_and_db_url):
     amber_id, _ = make_source(db_url, SourceKind.PRICING, "amber")
     response = client.get(f"/api/v1/sources/{amber_id}/config", headers={"X-Collector-Key": PRICING_COLLECTOR_KEY})
     assert "rate_windows" not in response.json()["config"]
+
+
+UTC = datetime.timezone.utc
+
+
+def _marker(ctx):
+    session = make_session_factory(make_engine(ctx["db_url"]))()
+    try:
+        row = session.get(LocalRepriceMarker, ctx["source"])
+        return (as_utc(row.reprice_from), row.version) if row else None
+    finally:
+        session.close()
+
+
+def _drop_marker(ctx):
+    session = make_session_factory(make_engine(ctx["db_url"]))()
+    try:
+        row = session.get(LocalRepriceMarker, ctx["source"])
+        if row:
+            session.delete(row)
+            session.commit()
+    finally:
+        session.close()
+
+
+def _create(client, ctx, **overrides) -> int:
+    response = client.post(_url(ctx), json=_window(**overrides), headers=auth(ctx["owner"]))
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+def _replace(client, ctx, window_id, **overrides):
+    response = client.patch(_url(ctx, f"/{window_id}"), json=_window(**overrides), headers=auth(ctx["owner"]))
+    assert response.status_code == 200, response.text
+
+
+def test_a_new_source_has_no_marker(local_source):
+    assert _marker(local_source) is None
+
+
+def test_creating_a_window_marks_from_its_start(client, local_source):
+    _create(client, local_source)
+    assert _marker(local_source) == (datetime.datetime(2026, 1, 1, tzinfo=UTC), 1)
+
+
+def test_a_later_change_keeps_the_earlier_start_and_raises_the_version(client, local_source):
+    _create(client, local_source)
+    _create(client, local_source, channel="sell", effective_from="2026-03-01T00:00:00Z")
+    assert _marker(local_source) == (datetime.datetime(2026, 1, 1, tzinfo=UTC), 2)
+
+
+def test_a_change_that_starts_earlier_lowers_the_start(client, local_source):
+    _create(client, local_source, effective_from="2026-03-01T00:00:00Z")
+    _create(client, local_source, channel="sell", effective_from="2026-01-01T00:00:00Z")
+    assert _marker(local_source) == (datetime.datetime(2026, 1, 1, tzinfo=UTC), 2)
+
+
+def test_changing_a_rate_marks_from_the_window_start(client, local_source):
+    window_id = _create(client, local_source)
+    _drop_marker(local_source)
+
+    _replace(client, local_source, window_id, rate_c_per_kwh="35")
+
+    assert _marker(local_source) == (datetime.datetime(2026, 1, 1, tzinfo=UTC), 1)
+
+
+def test_ending_a_window_marks_the_moment_it_ends(client, local_source):
+    window_id = _create(client, local_source)
+    _drop_marker(local_source)
+
+    _replace(client, local_source, window_id, effective_to="2026-06-15T10:00:00Z")
+
+    assert _marker(local_source) == (datetime.datetime(2026, 6, 15, 10, 0, tzinfo=UTC), 1)
+
+
+def test_end_then_add_from_now_marks_only_from_now(client, local_source):
+    window_id = _create(client, local_source, effective_from="2025-01-01T00:00:00Z")
+    _drop_marker(local_source)
+
+    _replace(client, local_source, window_id, effective_from="2025-01-01T00:00:00Z", effective_to="2026-06-15T10:00:00Z")
+    _create(client, local_source, effective_from="2026-06-15T10:00:01Z", rate_c_per_kwh="35")
+
+    assert _marker(local_source) == (datetime.datetime(2026, 6, 15, 10, 0, tzinfo=UTC), 2)
+
+
+def test_renaming_a_window_marks_nothing(client, local_source):
+    window_id = _create(client, local_source)
+    _drop_marker(local_source)
+
+    _replace(client, local_source, window_id, label="Renamed")
+
+    assert _marker(local_source) is None
+
+
+def test_deleting_a_window_marks_from_its_start(client, local_source):
+    window_id = _create(client, local_source, effective_from="2026-02-01T00:00:00Z")
+    _drop_marker(local_source)
+
+    response = client.delete(_url(local_source, f"/{window_id}"), headers=auth(local_source["owner"]))
+
+    assert response.status_code == 204
+    assert _marker(local_source) == (datetime.datetime(2026, 2, 1, tzinfo=UTC), 1)
+
+
+def test_a_rejected_change_marks_nothing(client, local_source):
+    _create(client, local_source)
+    _drop_marker(local_source)
+
+    overlap = client.post(
+        _url(local_source), json=_window(label="Clash", start_time="07:00:00", end_time="09:00:00"), headers=auth(local_source["owner"])
+    )
+
+    assert overlap.status_code == 422
+    assert _marker(local_source) is None

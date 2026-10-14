@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from core_api.deps import get_db_session, require_site_access, require_site_owner
 from core_api.errors import AppError
 from core_api.local_rates import find_overlap
+from core_api.local_reprice import mark_reprice, reprice_start, window_snapshot
 from core_api.models.identity import Site
 from core_api.models.local_rates import LocalRateWindow
 from core_api.models.sources import Source, SourceKind
@@ -59,6 +60,7 @@ def create_rate_window(
     _reject_overlap(db, source, payload)
     window = LocalRateWindow(source_id=source.id, **payload.model_dump())
     db.add(window)
+    mark_reprice(db, source.id, payload.effective_from)
     db.commit()
     db.refresh(window)
     return window
@@ -92,8 +94,12 @@ def replace_rate_window(
     source = _get_local_source(db, site, source_id)
     window = _get_window(db, source, window_id)
     _reject_overlap(db, source, payload, exclude_id=window.id)
+    old = window_snapshot(window)
     for field, value in payload.model_dump().items():
         setattr(window, field, value)
+    start = reprice_start(old, window_snapshot(window))
+    if start is not None:
+        mark_reprice(db, source.id, start)
     db.commit()
     db.refresh(window)
     return window
@@ -107,5 +113,7 @@ def delete_rate_window(
     db: Session = Depends(get_db_session),
 ) -> None:
     source = _get_local_source(db, site, source_id)
-    db.delete(_get_window(db, source, window_id))
+    window = _get_window(db, source, window_id)
+    mark_reprice(db, source.id, window.effective_from)
+    db.delete(window)
     db.commit()

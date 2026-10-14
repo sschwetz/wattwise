@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from core_api.deps import get_current_user, get_db_session, require_site_access, require_site_owner
 from core_api.errors import AppError
 from core_api.models.identity import Site, User
-from core_api.models.local_rates import LocalRateWindow
+from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
 from core_api.models.sources import Source, SourceKind
 from core_api.schemas import SourceCreate, SourceOut, SourceUpdate, normalize_tariff_name
 from core_api.time_utils import as_utc
@@ -194,6 +194,7 @@ def delete_source(
     # Rate windows go in the same transaction: if readings still block the
     # delete, the IntegrityError below rolls the window delete back too.
     db.execute(delete(LocalRateWindow).where(LocalRateWindow.source_id == source.id))
+    db.execute(delete(LocalRepriceMarker).where(LocalRepriceMarker.source_id == source.id))
     db.delete(source)
     try:
         db.commit()
