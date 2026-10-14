@@ -360,7 +360,9 @@ describe("DashboardPage live tiles", () => {
     const liveTiles = within(await screen.findByTestId("live-tiles"));
     expect(await liveTiles.findByText("Including Discounts")).toBeInTheDocument();
     expect(liveTiles.getByText("$25.00").className).toContain("text-flow");
-    expect(liveTiles.getByText("Billing Period").parentElement?.parentElement?.className).toContain("grid");
+    const billingWrapper = liveTiles.getByText("Billing Period").parentElement?.parentElement;
+    expect(billingWrapper?.className).toContain("sm:col-span-2");
+    expect(billingWrapper?.parentElement?.className).toContain("sm:grid-cols-3");
   });
 
   it("hides the Including Discounts tile when no discount covers the period", async () => {

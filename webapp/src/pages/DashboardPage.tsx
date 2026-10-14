@@ -411,7 +411,8 @@ function TodayCostTile({ siteId }: { siteId: number }) {
  * tile grid, since it summarizes a much longer span than a live reading.
  * When a monthly fee discount covers any of this period, an "Including
  * Discounts" tile showing the gross discount total (not net of the normal
- * fee) sits beside it and the Billing Period tile shrinks to half width. A 404 (no billing cycle configured yet)
+ * fee) sits beside it at the regular tile size and the Billing Period tile takes the other two
+ * tile spaces. A 404 (no billing cycle configured yet)
  * is a normal state, not an error -- nothing renders.
  */
 function BillingPeriodTiles({ siteId }: { siteId: number }) {
@@ -433,8 +434,10 @@ function BillingPeriodTiles({ siteId }: { siteId: number }) {
   const hasDiscounts = discountDollars > 0;
   const [discountValue] = formatTooltipValue(discountDollars, "Discounts");
   return (
-    <div className={hasDiscounts ? "grid gap-4 sm:grid-cols-2" : undefined}>
-      <Tile label="Billing Period" value={value} accent={accent} glow={accent} />
+    <div className={hasDiscounts ? "grid gap-4 sm:grid-cols-3" : undefined}>
+      <div className="sm:col-span-2">
+        <Tile label="Billing Period" value={value} accent={accent} glow={accent} />
+      </div>
       {hasDiscounts && <Tile label="Including Discounts" value={discountValue} accent="flow" glow="flow" />}
     </div>
   );
