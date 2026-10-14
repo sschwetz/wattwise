@@ -52,9 +52,12 @@ from `_local_days_in_range`:
    credit windows on it whose months and days of week match the day.
 2. Skip the window if its end time has not passed yet (compared with the real current
    time, whatever `prorate_fees` is).
-3. Read `grid_import_w` for the minutes from the window's start up to, but not
-   including, its end. The window needs `(end - start)` in minutes readings.
-4. If any minute has no reading, no credit.
+3. Read `grid_import_w` and `grid_export_w` for the minutes from the window's start up
+   to, but not including, its end. Every one of the window's `(end - start)` minutes
+   needs a grid reading. The Envoy collector writes `grid_export_w` and no
+   `grid_import_w` while the site exports, so an export-only minute counts as present
+   at 0 W import.
+4. If any minute has neither reading, no credit.
 5. If the average is strictly below `max_avg_import_w`, subtract `credit_c` from the
    total.
 

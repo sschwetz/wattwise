@@ -104,7 +104,7 @@ Click **Add conditional credit**. On each matching day, WattWise averages your g
 - The test uses power drawn from the grid only. Power you export does not offset it, and it does not change with the [net or gross](05-dashboard.md#net-and-gross-cost) setting.
 - Equal to the limit does not qualify.
 - A day earns nothing until its end time has passed.
-- If any minute in the window has no reading, for example because a collector was offline, that day earns nothing.
+- A minute while you are exporting counts as 0 W of import. If any minute in the window has no grid reading at all, for example because a collector was offline, that day earns nothing.
 - If several credits qualify on the same day, they add together.
 - Credits lower the **Cost** total and the billing period tiles. They do not appear on the history chart.
 
