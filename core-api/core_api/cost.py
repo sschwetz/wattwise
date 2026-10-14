@@ -241,13 +241,18 @@ def _window_average_import_w(
     db: Session, energy_source_ids: list[int], start_utc: datetime.datetime, end_utc: datetime.datetime
 ) -> decimal.Decimal | None:
     """Mean grid_import_w over the whole minutes of [start_utc, end_utc), or
-    None when any of those minutes has no reading -- a collector outage must
-    not look like a quiet window. Zero-watt readings count as readings."""
+    None when any of those minutes has no grid reading -- a collector outage
+    must not look like a quiet window. The Envoy collector writes
+    grid_export_w and no grid_import_w while the site exports, so a minute
+    with only an export reading counts as present at 0 W import. Zero-watt
+    readings count as readings."""
     expected_minutes = int((end_utc - start_utc).total_seconds() // 60)
-    readings = _energy_by_ts(db, energy_source_ids, EnergyMetric.GRID_IMPORT_W, start_utc, end_utc)
-    if expected_minutes <= 0 or len(readings) < expected_minutes:
+    imports = _energy_by_ts(db, energy_source_ids, EnergyMetric.GRID_IMPORT_W, start_utc, end_utc)
+    exports = _energy_by_ts(db, energy_source_ids, EnergyMetric.GRID_EXPORT_W, start_utc, end_utc)
+    covered_minutes = set(imports) | set(exports)
+    if expected_minutes <= 0 or len(covered_minutes) < expected_minutes:
         return None
-    return sum(readings.values(), decimal.Decimal("0")) / len(readings)
+    return sum(imports.values(), decimal.Decimal("0")) / len(covered_minutes)
 
 
 def _window_credit_c(

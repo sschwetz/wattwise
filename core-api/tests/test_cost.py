@@ -1026,6 +1026,22 @@ def test_credit_applies_when_every_reading_is_zero_watts(db, site):
     assert _credit_total(db, site) == decimal.Decimal("-50")
 
 
+def test_credit_counts_exporting_minutes_as_zero_import(db, site):
+    """The Envoy collector writes grid_export_w and no grid_import_w while the
+    site exports, so an exporting minute has a reading but no import row."""
+    source, _ = _credit_setup(db, site, watts=200, minutes=60)
+    _add_readings(db, source, sydney_local(*CREDIT_DAY, 11, 0), 60, 500, metric=EnergyMetric.GRID_EXPORT_W)
+
+    assert _credit_total(db, site) == decimal.Decimal("-50")  # (200 W x 60 + 0 W x 60) / 120 = 100 W
+
+
+def test_exporting_minutes_do_not_hide_high_import(db, site):
+    source, _ = _credit_setup(db, site, watts=700, minutes=60)
+    _add_readings(db, source, sydney_local(*CREDIT_DAY, 11, 0), 60, 500, metric=EnergyMetric.GRID_EXPORT_W)
+
+    assert _credit_total(db, site) == decimal.Decimal("0")  # (700 W x 60 + 0 W x 60) / 120 = 350 W
+
+
 def test_no_credit_before_the_window_has_ended(db, site):
     _credit_setup(db, site, watts=200)
 
