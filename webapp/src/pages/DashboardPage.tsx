@@ -409,9 +409,9 @@ function TodayCostTile({ siteId }: { siteId: number }) {
  * start up to now -- the billing-cycle analogue of TodayCostTile above, same
  * formatting and sign convention. Full-width rather than part of the power
  * tile grid, since it summarizes a much longer span than a live reading.
- * When monthly fee discounts have saved anything this period, an "Including
- * Discounts" tile showing the total saved sits beside it and the Billing
- * Period tile shrinks to half width. A 404 (no billing cycle configured yet)
+ * When a monthly fee discount covers any of this period, an "Including
+ * Discounts" tile showing the gross discount total (not net of the normal
+ * fee) sits beside it and the Billing Period tile shrinks to half width. A 404 (no billing cycle configured yet)
  * is a normal state, not an error -- nothing renders.
  */
 function BillingPeriodTiles({ siteId }: { siteId: number }) {
@@ -429,13 +429,13 @@ function BillingPeriodTiles({ siteId }: { siteId: number }) {
   const dollars = cost.total_cost_c / 100;
   const [value] = formatTooltipValue(dollars, "Cost");
   const accent = signAccent(dollars);
-  const savingsDollars = cost.monthly_fee_savings_c / 100;
-  const hasSavings = savingsDollars > 0;
-  const [savingsValue] = formatTooltipValue(savingsDollars, "Savings");
+  const discountDollars = cost.monthly_fee_discounts_c / 100;
+  const hasDiscounts = discountDollars > 0;
+  const [discountValue] = formatTooltipValue(discountDollars, "Discounts");
   return (
-    <div className={hasSavings ? "grid gap-4 sm:grid-cols-2" : undefined}>
+    <div className={hasDiscounts ? "grid gap-4 sm:grid-cols-2" : undefined}>
       <Tile label="Billing Period" value={value} accent={accent} glow={accent} />
-      {hasSavings && <Tile label="Including Discounts" value={savingsValue} accent="flow" glow="flow" />}
+      {hasDiscounts && <Tile label="Including Discounts" value={discountValue} accent="flow" glow="flow" />}
     </div>
   );
 }

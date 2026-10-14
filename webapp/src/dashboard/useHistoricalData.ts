@@ -7,7 +7,10 @@ export interface CostSummary {
   total_import_kwh: number;
   total_export_kwh: number;
   minutes_missing_price: number;
-  monthly_fee_savings_c: number;
+}
+
+export interface BillingPeriodCostSummary extends CostSummary {
+  monthly_fee_discounts_c: number;
 }
 
 export interface DateRange {
@@ -89,7 +92,7 @@ export function useBillingPeriodCost(siteId: number, method: "net" | "gross") {
     queryKey: ["cost", siteId, "billing-period", method],
     queryFn: () => {
       const params = new URLSearchParams({ method });
-      return apiFetch<CostSummary>(`/api/v1/sites/${siteId}/cost/billing-period?${params}`);
+      return apiFetch<BillingPeriodCostSummary>(`/api/v1/sites/${siteId}/cost/billing-period?${params}`);
     },
     refetchInterval: LIVE_POLL_MS,
   });

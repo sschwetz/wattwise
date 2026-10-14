@@ -9,10 +9,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core_api.cost import CostBucket, compute_cost, compute_cost_series
+from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly_fee_discounts_c
 from core_api.deps import get_db_session, require_site_access
 from core_api.errors import AppError
-from core_api.jobs.billing_periods import current_billing_period_start, effective_billing_cycles_for_site
+from core_api.jobs.billing_periods import (
+    billing_periods_for_site,
+    current_billing_period_start,
+    effective_billing_cycles_for_site,
+)
 from core_api.jobs.demand_config import (
     adjusted_export_price,
     export_adjustment_windows_by_tariff,
@@ -32,7 +36,7 @@ from core_api.models.readings import (
 )
 from core_api.models.sources import Source, SourceKind
 from core_api.readings_query import query_readings
-from core_api.schemas import CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, ReadingOut, UtcDatetime
+from core_api.schemas import BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, ReadingOut, UtcDatetime
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["query"])
 
@@ -161,12 +165,12 @@ def get_cost(
     return CostOut(**dataclasses.asdict(result))
 
 
-@router.get("/cost/billing-period", response_model=CostOut)
+@router.get("/cost/billing-period", response_model=BillingPeriodCostOut)
 def get_billing_period_cost(
     method: Literal["net", "gross"],
     site: Site = Depends(require_site_access),
     db: Session = Depends(get_db_session),
-) -> CostOut:
+) -> BillingPeriodCostOut:
     """Running cost/credit for the billing period `now` falls inside, from
     its start up to now -- the billing-cycle analogue of the dashboard's
     "today's cost" live tile. Falls back to the active cycle's own
@@ -176,14 +180,20 @@ def get_billing_period_cost(
 
     A live tile, like get_cost's own prorate_fees=false callers -- shows
     the committed service/monthly fee for today in full right away rather
-    than prorating it by elapsed time."""
+    than prorating it by elapsed time. monthly_fee_discounts_c is the gross
+    monthly fee covered by discount windows across the whole period, not just
+    the part elapsed."""
     now = datetime.datetime.now(datetime.timezone.utc)
     cycles = effective_billing_cycles_for_site(db, site.id)
     start = current_billing_period_start(cycles, site.timezone, now)
     if start is None:
         raise AppError(404, "no_active_billing_cycle", "No billing cycle is currently active for this site")
     result = compute_cost(db, site.id, start, now, method, site.timezone, prorate_fees=False)
-    return CostOut(**dataclasses.asdict(result))
+    periods = billing_periods_for_site(cycles, site.timezone, now)
+    current = periods[-1] if periods else None
+    period_end = current.end if current is not None and current.start <= now < current.end else now
+    discounts_c = monthly_fee_discounts_c(db, site.id, start, period_end, site.timezone)
+    return BillingPeriodCostOut(**dataclasses.asdict(result), monthly_fee_discounts_c=discounts_c)
 
 
 @router.get("/cost/series", response_model=list[CostSeriesPointOut])

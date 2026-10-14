@@ -496,7 +496,10 @@ class CostOut(BaseModel):
     total_import_kwh: decimal.Decimal
     total_export_kwh: decimal.Decimal
     minutes_missing_price: int
-    monthly_fee_savings_c: decimal.Decimal = decimal.Decimal("0")
+
+
+class BillingPeriodCostOut(CostOut):
+    monthly_fee_discounts_c: decimal.Decimal
 
 
 class CostSeriesPointOut(BaseModel):
