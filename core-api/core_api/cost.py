@@ -35,6 +35,7 @@ class CostResult:
     total_import_kwh: decimal.Decimal
     total_export_kwh: decimal.Decimal
     minutes_missing_price: int
+    monthly_fee_savings_c: decimal.Decimal = decimal.Decimal("0")
 
 
 @dataclasses.dataclass
@@ -168,15 +169,15 @@ def _service_charge_rows(
     return rows
 
 
-def _monthly_fee_rows(
+def _monthly_fee_day_amounts(
     db: Session,
     site_id: int,
     days: list[tuple[datetime.datetime, datetime.datetime]],
     site_timezone: str,
     tariffs: list[SiteTariff],
     now_utc: datetime.datetime | None,
-) -> list[_MinuteCost]:
-    """One row per local calendar day (already resolved by the caller -- see
+) -> list[tuple[datetime.datetime, decimal.Decimal, decimal.Decimal]]:
+    """One (midnight, normal, applied) tuple per local calendar day (already resolved by the caller -- see
     _service_charge_rows), at that day's local midnight -- whichever
     SiteTariff.monthly_fee_c (or, if a MonthlyFeeDiscountWindow covers that
     day, its discounted_fee_c) was effective, amortized evenly across the
@@ -188,8 +189,9 @@ def _monthly_fee_rows(
     see _service_charge_rows). No row for a day with no BillingCycle configured to
     divide by, or whose effective tariff has no monthly_fee_c set. Used
     only by compute_cost's total (never compute_cost_series -- see
-    _service_charge_rows). Zero kWh so these rows add to the cost total
-    without skewing import/export totals.
+    _service_charge_rows). `normal` is the day's share of the tariff's
+    undiscounted monthly_fee_c, `applied` the share of the fee actually
+    charged (discounted when a window covers the day), both in cents.
 
     Skips the BillingCycle/period lookup entirely when no tariff on the
     site has a monthly_fee_c set at all -- the common case while the
@@ -204,7 +206,7 @@ def _monthly_fee_rows(
     periods = billing_periods_for_site(cycles, site_timezone, days[-1][1])
     windows_by_tariff = monthly_fee_discount_windows_by_tariff(db, site_id)
 
-    rows = []
+    amounts = []
     period_idx = 0
     for midnight, next_midnight in days:
         tariff = tariff_effective_at(tariffs, midnight)
@@ -223,15 +225,45 @@ def _monthly_fee_rows(
         if fee_c is None:
             continue
         fraction = _day_elapsed_fraction(midnight, next_midnight, now_utc) if now_utc is not None else decimal.Decimal(1)
-        rows.append(
-            _MinuteCost(
-                ts=midnight,
-                cost_c=(fee_c / billing_period_days(period)) * fraction,
-                import_kwh=decimal.Decimal("0"),
-                export_kwh=decimal.Decimal("0"),
-            )
+        period_days = billing_period_days(period)
+        amounts.append((midnight, (tariff.monthly_fee_c / period_days) * fraction, (fee_c / period_days) * fraction))
+    return amounts
+
+
+def _monthly_fee_rows(
+    db: Session,
+    site_id: int,
+    days: list[tuple[datetime.datetime, datetime.datetime]],
+    site_timezone: str,
+    tariffs: list[SiteTariff],
+    now_utc: datetime.datetime | None,
+) -> list[_MinuteCost]:
+    """The monthly fee actually charged, one zero-kWh row per day (see
+    _monthly_fee_day_amounts), so the rows add to the cost total without
+    skewing import/export totals. Used only by compute_cost's total."""
+    return [
+        _MinuteCost(
+            ts=midnight,
+            cost_c=applied_c,
+            import_kwh=decimal.Decimal("0"),
+            export_kwh=decimal.Decimal("0"),
         )
-    return rows
+        for midnight, _normal_c, applied_c in _monthly_fee_day_amounts(db, site_id, days, site_timezone, tariffs, now_utc)
+    ]
+
+
+def _monthly_fee_savings_c(
+    db: Session,
+    site_id: int,
+    days: list[tuple[datetime.datetime, datetime.datetime]],
+    site_timezone: str,
+    tariffs: list[SiteTariff],
+    now_utc: datetime.datetime | None,
+) -> decimal.Decimal:
+    """Cents saved by monthly fee discount windows over `days`: the normal
+    fee minus the discounted fee, summed per day."""
+    amounts = _monthly_fee_day_amounts(db, site_id, days, site_timezone, tariffs, now_utc)
+    return sum((normal_c - applied_c for _midnight, normal_c, applied_c in amounts), decimal.Decimal("0"))
 
 
 def _minute_costs(
@@ -377,6 +409,7 @@ def compute_cost(
 
     for charge in _monthly_fee_rows(db, site_id, days, site_timezone, tariffs, now_utc):
         total_cost_c += charge.cost_c
+    monthly_fee_savings_c = _monthly_fee_savings_c(db, site_id, days, site_timezone, tariffs, now_utc)
 
     # Demand charges count toward the total as soon as there's a best
     # estimate -- even before the billing period closes and the charge is
@@ -389,6 +422,7 @@ def compute_cost(
         total_import_kwh=total_import_kwh,
         total_export_kwh=total_export_kwh,
         minutes_missing_price=minutes_missing_price,
+        monthly_fee_savings_c=monthly_fee_savings_c,
     )
 
 

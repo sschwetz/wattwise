@@ -371,7 +371,7 @@ function LiveTiles({ siteId }: { siteId: number }) {
     <div className="space-y-6" data-testid="live-tiles">
       {energy.isError && <ErrorAlert message="Failed to load live readings." />}
       <MetricTileGrid readings={energy.data} labels={TILE_LABELS} units={TILE_UNITS} siteId={siteId} />
-      <BillingPeriodCostTile siteId={siteId} />
+      <BillingPeriodTiles siteId={siteId} />
       <div>
         <p className="mb-3 text-sm font-medium text-ink-muted">Weather</p>
         {weather.isError && <ErrorAlert message="Failed to load live weather." />}
@@ -408,11 +408,13 @@ function TodayCostTile({ siteId }: { siteId: number }) {
  * The running cost/credit for the current billing period so far, from its
  * start up to now -- the billing-cycle analogue of TodayCostTile above, same
  * formatting and sign convention. Full-width rather than part of the power
- * tile grid, since it summarizes a much longer span than a live reading. A
- * 404 (no billing cycle configured yet) is a normal state, not an error --
- * the tile just doesn't render.
+ * tile grid, since it summarizes a much longer span than a live reading.
+ * When monthly fee discounts have saved anything this period, an "Including
+ * Discounts" tile showing the total saved sits beside it and the Billing
+ * Period tile shrinks to half width. A 404 (no billing cycle configured yet)
+ * is a normal state, not an error -- nothing renders.
  */
-function BillingPeriodCostTile({ siteId }: { siteId: number }) {
+function BillingPeriodTiles({ siteId }: { siteId: number }) {
   const { data: cost, isError, error } = useBillingPeriodCost(siteId, "net");
 
   if (isError) {
@@ -427,8 +429,15 @@ function BillingPeriodCostTile({ siteId }: { siteId: number }) {
   const dollars = cost.total_cost_c / 100;
   const [value] = formatTooltipValue(dollars, "Cost");
   const accent = signAccent(dollars);
-  const label = dollars < 0 ? "Billing period credit" : "Billing period cost";
-  return <Tile label={label} value={value} accent={accent} glow={accent} />;
+  const savingsDollars = cost.monthly_fee_savings_c / 100;
+  const hasSavings = savingsDollars > 0;
+  const [savingsValue] = formatTooltipValue(savingsDollars, "Savings");
+  return (
+    <div className={hasSavings ? "grid gap-4 sm:grid-cols-2" : undefined}>
+      <Tile label="Billing Period" value={value} accent={accent} glow={accent} />
+      {hasSavings && <Tile label="Including Discounts" value={savingsValue} accent="flow" glow="flow" />}
+    </div>
+  );
 }
 
 /**

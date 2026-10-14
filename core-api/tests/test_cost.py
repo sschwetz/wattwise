@@ -926,6 +926,34 @@ def test_compute_cost_monthly_fee_discount_window_does_not_apply_outside_its_dat
     assert result.total_cost_c == decimal.Decimal("10.0")
 
 
+def test_compute_cost_reports_monthly_fee_savings_for_a_discounted_day(db, site):
+    """Normal 10c/day minus discounted 3c/day -> 7c saved."""
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    tariff = _make_tariff(
+        db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0"
+    )
+    _make_monthly_fee_discount(
+        db, tariff, starts_at=sydney_local(2026, 1, 10), ends_at=sydney_local(2026, 1, 11), discounted_fee_c="93.0"
+    )
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 9), sydney_local(2026, 1, 12), method="net", site_timezone=site.timezone
+    )
+
+    assert result.monthly_fee_savings_c == decimal.Decimal("7.0")
+
+
+def test_compute_cost_reports_no_monthly_fee_savings_without_a_discount(db, site):
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 3), method="net", site_timezone=site.timezone
+    )
+
+    assert result.monthly_fee_savings_c == decimal.Decimal("0")
+
+
 def test_compute_cost_series_excludes_the_monthly_fee(db, site):
     """The usage chart must not show a lump-sum spike for the monthly fee,
     same reasoning as the daily service charge."""

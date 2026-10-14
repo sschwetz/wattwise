@@ -7,6 +7,7 @@ export interface CostSummary {
   total_import_kwh: number;
   total_export_kwh: number;
   minutes_missing_price: number;
+  monthly_fee_savings_c: number;
 }
 
 export interface DateRange {

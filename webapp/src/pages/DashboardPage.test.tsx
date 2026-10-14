@@ -324,7 +324,7 @@ describe("DashboardPage live tiles", () => {
     );
     renderPage();
     const liveTiles = within(await screen.findByTestId("live-tiles"));
-    expect(await liveTiles.findByText("Billing period cost")).toBeInTheDocument();
+    expect(await liveTiles.findByText("Billing Period")).toBeInTheDocument();
     const value = liveTiles.getByText("$3.00");
     expect(value.className).toContain("text-danger");
     expect(value.parentElement?.className).toContain("danger-glow");
@@ -341,10 +341,41 @@ describe("DashboardPage live tiles", () => {
     );
     renderPage();
     const liveTiles = within(await screen.findByTestId("live-tiles"));
-    expect(await liveTiles.findByText("Billing period credit")).toBeInTheDocument();
+    expect(await liveTiles.findByText("Billing Period")).toBeInTheDocument();
     const value = liveTiles.getByText("$3.00");
     expect(value.className).toContain("text-flow");
     expect(value.parentElement?.className).toContain("flow-glow");
+  });
+
+  it("adds an Including Discounts tile with the total fee savings when discounts saved money", async () => {
+    mockApi(
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { total_cost_c: 300, total_import_kwh: 20, total_export_kwh: 8, minutes_missing_price: 0, monthly_fee_savings_c: 215 },
+    );
+    renderPage();
+    const liveTiles = within(await screen.findByTestId("live-tiles"));
+    expect(await liveTiles.findByText("Including Discounts")).toBeInTheDocument();
+    expect(liveTiles.getByText("$2.15").className).toContain("text-flow");
+    expect(liveTiles.getByText("Billing Period").parentElement?.parentElement?.className).toContain("grid");
+  });
+
+  it("hides the Including Discounts tile when no discount saved anything", async () => {
+    mockApi(
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { total_cost_c: 300, total_import_kwh: 20, total_export_kwh: 8, minutes_missing_price: 0, monthly_fee_savings_c: 0 },
+    );
+    renderPage();
+    const liveTiles = within(await screen.findByTestId("live-tiles"));
+    expect(await liveTiles.findByText("Billing Period")).toBeInTheDocument();
+    expect(liveTiles.queryByText("Including Discounts")).not.toBeInTheDocument();
   });
 
   it("shows nothing for the billing period tile when there's no active billing cycle", async () => {
@@ -352,8 +383,7 @@ describe("DashboardPage live tiles", () => {
     renderPage();
     const liveTiles = within(await screen.findByTestId("live-tiles"));
     await liveTiles.findByText("Weather");
-    expect(liveTiles.queryByText("Billing period cost")).not.toBeInTheDocument();
-    expect(liveTiles.queryByText("Billing period credit")).not.toBeInTheDocument();
+    expect(liveTiles.queryByText("Billing Period")).not.toBeInTheDocument();
     expect(liveTiles.queryByRole("alert")).not.toBeInTheDocument();
   });
 

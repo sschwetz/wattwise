@@ -96,11 +96,13 @@ If your tariff has a monthly fee, a **fee discount** replaces that fee with a lo
 | **Discount starts (YYYY-MM-DD)** / **Discount ends (YYYY-MM-DD)** | The first and last dates, for example `2026-11-01`. |
 | **Discounted fee** | The dollars per month you pay during the span instead of the normal fee. |
 
+The dashboard's **Including Discounts** tile adds up what these discounts saved in the current billing period: the normal fee minus the discounted fee, for each day so far.
+
 Click **Add fee discount**. Expired discounts stay in the list, struck through. Only one fee applies on a given day.
 
 ## Billing cycles
 
-A **billing cycle** tells WattWise when your bill closes. It drives the **Billing period cost** tile and the [demand charge](#demand-charges) calculation.
+A **billing cycle** tells WattWise when your bill closes. It drives the **Billing Period** tile and the [demand charge](#demand-charges) calculation.
 
 1. In the **Billing cycle** card, enter:
    - **Cycle length (months)**: `1` for monthly, `3` for quarterly.
@@ -109,7 +111,7 @@ A **billing cycle** tells WattWise when your bill closes. It drives the **Billin
 
 The list shows it as, for example, *Every 1 month(s), anchored on day 15, from 13/10/2026*. To change it, click **End this cycle** and add a new one. Periods that were already worked out keep the old cycle.
 
-Without a billing cycle, the dashboard hides the **Billing period cost** tile and no demand charges are calculated.
+Without a billing cycle, the dashboard hides the **Billing Period** tile and no demand charges are calculated.
 
 ## Demand charges
 

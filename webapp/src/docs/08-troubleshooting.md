@@ -33,7 +33,7 @@ If your home's consumption reads negative while importing, your Envoy's consumpt
 |---------|---------------|
 | No **Today's cost** tile | No readings or no prices yet. Check [energy](#the-dashboard-is-empty) and [pricing](#no-prices-or-pricing-chart) sources. |
 | **Cost** is lower than your bill | Minutes without a price are skipped. Pricing may have been added after those minutes, or the pricing collector was down. |
-| No **Billing period cost** tile | No billing cycle. [Add one](06-billing.md#billing-cycles). This is normal until you do. |
+| No **Billing Period** tile | No billing cycle. [Add one](06-billing.md#billing-cycles). This is normal until you do. |
 | Fixed fees are missing | The daily charge needs a [tariff](06-billing.md#tariffs). The monthly fee needs a tariff with a monthly fee **and** a billing cycle. |
 | Demand charges are missing | Needs a [demand window](06-billing.md#demand-windows) on the active tariff, a billing cycle, and some days of data. |
 | Tariff change not reflected | Rates apply from the moment a tariff is added, not retroactively. |

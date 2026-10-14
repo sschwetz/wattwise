@@ -24,7 +24,8 @@ The large tile at the top is **Production**. Below it are the other tiles. A til
 | **Battery** | The battery's charge level, as a percentage. |
 | **Today's cost** / **Today's credit** | What you have spent, or earned, since local midnight. |
 | **Grid import price** / **Grid export price** | The price per kWh that applies right now. |
-| **Billing period cost** / **Billing period credit** | The running total since your current billing period began. |
+| **Billing Period** | The running total since your current billing period began. Red is a cost, green is a credit. |
+| **Including Discounts** | The total saved so far this billing period by [monthly fee discounts](06-billing.md#monthly-fee-discounts). Shown only when a discount has saved something. The Billing Period tile shrinks to half width to make room. |
 
 ### Reading the colors
 
@@ -48,12 +49,12 @@ The **Battery** tile changes its background from red through amber to green as t
 
 ### Cost and credit
 
-**Today's cost**, **Billing period cost** and the history chart all use one sign rule:
+**Today's cost**, **Billing Period** and the history chart all use one sign rule:
 
 - A positive amount is money you owe. It shows in red and the tile says **cost**.
 - A negative amount is money you earn. It shows in green and the tile says **credit**. The minus sign is dropped because the color and word already say it.
 
-**Billing period cost** appears only after you [add a billing cycle](06-billing.md#billing-cycles). Without one the tile is hidden, which is normal.
+**Billing Period** appears only after you [add a billing cycle](06-billing.md#billing-cycles). Without one the tile is hidden, which is normal.
 
 Fixed daily and monthly fees are included in proportion to how much of the day has passed, so the figure rises smoothly instead of jumping at midnight. The monthly fee needs a billing cycle. See [How the cost is calculated](06-billing.md#how-the-cost-is-calculated).
 
