@@ -40,6 +40,36 @@ def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
     return zero_based // 12, zero_based % 12 + 1
 
 
+def _first_anchor_midnight(first_cycle: BillingCycle, tz: zoneinfo.ZoneInfo) -> datetime.datetime:
+    """Local midnight (tz-aware, in `tz`) of the first anchor day on or after
+    `first_cycle`'s effective_from."""
+    first_effective_from = as_utc(first_cycle.effective_from)
+    first_local = first_effective_from.astimezone(tz)
+    year, month = first_local.year, first_local.month
+    start_date = _anchor_date(year, month, first_cycle.anchor_day)
+    if local_midnight(start_date, tz) < first_effective_from:
+        year, month = _add_months(year, month, 1)
+        start_date = _anchor_date(year, month, first_cycle.anchor_day)
+    return local_midnight(start_date, tz)
+
+
+def partial_first_period(
+    cycles: list[BillingCycle], site_timezone: str, now: datetime.datetime
+) -> BillingPeriod | None:
+    """The partial period before the first anchor day: from the earliest
+    cycle's effective_from (the day it was submitted) to that first anchor
+    day. Only returned while `now` is inside it, i.e. the cycle is active but
+    billing_periods_for_site has no period yet. None otherwise."""
+    if not cycles:
+        return None
+    first_cycle = min(cycles, key=lambda c: as_utc(c.effective_from))
+    start = as_utc(first_cycle.effective_from)
+    end = _first_anchor_midnight(first_cycle, zoneinfo.ZoneInfo(site_timezone)).astimezone(datetime.timezone.utc)
+    if not start <= now < end:
+        return None
+    return BillingPeriod(start=start, end=end, cycle=first_cycle)
+
+
 def effective_billing_cycles_for_site(db: Session, site_id: int) -> list[BillingCycle]:
     stmt = select(BillingCycle).where(BillingCycle.site_id == site_id).order_by(BillingCycle.effective_from)
     return list(db.execute(stmt).scalars())
@@ -57,7 +87,7 @@ def current_billing_period_start(
 ) -> datetime.datetime | None:
     """The start of whichever billing period `now` falls inside, or -- if a
     cycle is active but hasn't reached its first anchor day yet (the gap
-    billing_periods_for_site leaves unmodeled between a cycle's
+    billing_periods_for_site leaves out between a cycle's
     effective_from and its first anchor date) -- the active cycle's own
     effective_from, so there's still a "since" to report the running cost
     from instead of nothing. None only when no cycle is active at all: none
@@ -87,9 +117,8 @@ def billing_periods_for_site(
     periods).
 
     The first period starts on the first anchor-day on or after the
-    earliest cycle's effective_from; a partial period before that anchor
-    day is not modeled (billing is assumed to begin cleanly on an anchor
-    day).
+    earliest cycle's effective_from. The partial period before that anchor
+    day is not in this list -- see partial_first_period.
 
     Calendar math (which date is "the 18th of next month") is done in the
     site's local calendar throughout, since that's what anchor_day means —
@@ -104,16 +133,9 @@ def billing_periods_for_site(
         return []
     tz = zoneinfo.ZoneInfo(site_timezone)
     first_cycle = min(cycles, key=lambda c: as_utc(c.effective_from))
-    first_effective_from = as_utc(first_cycle.effective_from)
-    first_local = first_effective_from.astimezone(tz)
-    year, month = first_local.year, first_local.month
-    start_date = _anchor_date(year, month, first_cycle.anchor_day)
-    if local_midnight(start_date, tz) < first_effective_from:
-        year, month = _add_months(year, month, 1)
-        start_date = _anchor_date(year, month, first_cycle.anchor_day)
 
     periods: list[BillingPeriod] = []
-    local_cursor = local_midnight(start_date, tz)
+    local_cursor = _first_anchor_midnight(first_cycle, tz)
     while local_cursor < until:
         cursor_year, cursor_month = local_cursor.year, local_cursor.month
         cyc = _cycle_effective_at(cycles, local_cursor)

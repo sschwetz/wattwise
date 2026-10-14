@@ -9,13 +9,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly_fee_discounts_c
+from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly_fee_discounts_c, partial_period_discounts_c
 from core_api.deps import get_db_session, require_site_access
 from core_api.errors import AppError
 from core_api.jobs.billing_periods import (
     billing_periods_for_site,
     current_billing_period_start,
     effective_billing_cycles_for_site,
+    partial_first_period,
 )
 from core_api.jobs.demand_config import (
     adjusted_export_price,
@@ -182,17 +183,22 @@ def get_billing_period_cost(
     the committed service/monthly fee for today in full right away rather
     than prorating it by elapsed time. monthly_fee_discounts_c is the gross
     monthly fee covered by discount windows across the whole period, not just
-    the part elapsed."""
+    the part elapsed. Before the cycle's first anchor day it is the full
+    discounted fee of any covering window, not prorated."""
     now = datetime.datetime.now(datetime.timezone.utc)
     cycles = effective_billing_cycles_for_site(db, site.id)
     start = current_billing_period_start(cycles, site.timezone, now)
     if start is None:
         raise AppError(404, "no_active_billing_cycle", "No billing cycle is currently active for this site")
     result = compute_cost(db, site.id, start, now, method, site.timezone, prorate_fees=False)
-    periods = billing_periods_for_site(cycles, site.timezone, now)
-    current = periods[-1] if periods else None
-    period_end = current.end if current is not None and current.start <= now < current.end else now
-    discounts_c = monthly_fee_discounts_c(db, site.id, start, period_end, site.timezone)
+    partial = partial_first_period(cycles, site.timezone, now)
+    if partial is not None:
+        discounts_c = partial_period_discounts_c(db, site.id, partial.start, partial.end, site.timezone)
+    else:
+        periods = billing_periods_for_site(cycles, site.timezone, now)
+        current = periods[-1] if periods else None
+        period_end = current.end if current is not None and current.start <= now < current.end else now
+        discounts_c = monthly_fee_discounts_c(db, site.id, start, period_end, site.timezone)
     return BillingPeriodCostOut(**dataclasses.asdict(result), monthly_fee_discounts_c=discounts_c)
 
 

@@ -508,6 +508,52 @@ def test_get_billing_period_cost_reports_the_discount_for_the_whole_period(clien
     assert round(decimal.Decimal(response.json()["monthly_fee_discounts_c"]), 4) == decimal.Decimal("2500")
 
 
+def test_get_billing_period_cost_reports_the_full_discount_before_the_first_anchor_day(client, app_and_db_url):
+    """With the cycle added before its first anchor day, the discount is the
+    window's full discounted fee, not prorated to the partial period."""
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="bp-cost-partial@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    now = datetime.datetime.now(UTC)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    anchor_day = today.day + 1 if today.day < 28 else 1
+    session.add(BillingCycle(site_id=site.id, effective_from=today, cycle_months=1, anchor_day=anchor_day))
+    tariff = SiteTariff(
+        site_id=site.id,
+        effective_from=today,
+        service_availability_c_per_day=decimal.Decimal("0"),
+        monthly_fee_c=decimal.Decimal("2500"),
+    )
+    session.add(tariff)
+    session.commit()
+    session.add(
+        MonthlyFeeDiscountWindow(
+            site_tariff_id=tariff.id,
+            label="Promo",
+            starts_at=today - datetime.timedelta(days=1),
+            ends_at=today + datetime.timedelta(days=400),
+            discounted_fee_c=decimal.Decimal("2500"),
+        )
+    )
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/cost/billing-period",
+        params={"method": "net"},
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    assert decimal.Decimal(response.json()["monthly_fee_discounts_c"]) == decimal.Decimal("2500")
+
+
 def test_get_billing_period_cost_404s_with_no_active_cycle(client, app_and_db_url):
     _, db_url = app_and_db_url
     engine = make_engine(db_url)

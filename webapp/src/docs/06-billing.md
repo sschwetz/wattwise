@@ -118,7 +118,7 @@ If your tariff has a monthly fee, a **fee discount** replaces that fee with a lo
 | **Discount starts (YYYY-MM-DD)** / **Discount ends (YYYY-MM-DD)** | The first and last dates, for example `2026-11-01`. |
 | **Discounted fee** | The dollars per month you pay during the span instead of the normal fee. |
 
-The dashboard's **Including Discounts** tile adds up the discounted fee for every day of the current billing period that a discount covers. A discount that covers the whole period shows its full discounted fee, for example $25.00.
+The dashboard's **Including Discounts** tile adds up the discounted fee for every day of the current billing period that a discount covers. A discount that covers the whole period shows its full discounted fee, for example $25.00. Before your billing cycle's first anchor day, the period runs from the day you added the cycle, and a discount covering it also shows its full discounted fee.
 
 Click **Add fee discount**. Expired discounts stay in the list, struck through. Only one fee applies on a given day.
 

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import datetime
 
-from core_api.jobs.billing_periods import billing_periods_for_site, current_billing_period_start
+from core_api.jobs.billing_periods import (
+    billing_periods_for_site,
+    current_billing_period_start,
+    partial_first_period,
+)
 from core_api.models.billing import BillingCycle
 from tests.conftest import UTC
 
@@ -128,3 +132,23 @@ def test_current_billing_period_start_after_cycle_ends_with_no_successor(site):
     # straddling the gap -- "now" sits in the gap after it with nothing to cover it.
     start = current_billing_period_start([ended], "UTC", datetime.datetime(2026, 3, 1, tzinfo=UTC))
     assert start is None
+
+
+def test_partial_first_period_runs_from_effective_from_to_the_first_anchor_day(site):
+    effective_from = datetime.datetime(2026, 10, 7, 9, 29, 44, tzinfo=UTC)
+    cycles = [cycle(site.id, effective_from, anchor_day=1, cycle_months=1)]
+    period = partial_first_period(cycles, "UTC", datetime.datetime(2026, 10, 14, tzinfo=UTC))
+    assert period is not None
+    assert period.start == effective_from
+    assert period.end == datetime.datetime(2026, 11, 1, tzinfo=UTC)
+
+
+def test_partial_first_period_is_none_once_the_first_anchor_day_has_passed(site):
+    cycles = [cycle(site.id, datetime.datetime(2026, 10, 7, tzinfo=UTC), anchor_day=1, cycle_months=1)]
+    assert partial_first_period(cycles, "UTC", datetime.datetime(2026, 11, 2, tzinfo=UTC)) is None
+
+
+def test_partial_first_period_is_none_without_cycles_or_before_the_cycle_starts(site):
+    assert partial_first_period([], "UTC", datetime.datetime(2026, 10, 14, tzinfo=UTC)) is None
+    cycles = [cycle(site.id, datetime.datetime(2026, 10, 7, tzinfo=UTC), anchor_day=1, cycle_months=1)]
+    assert partial_first_period(cycles, "UTC", datetime.datetime(2026, 10, 1, tzinfo=UTC)) is None

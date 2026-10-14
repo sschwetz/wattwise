@@ -337,6 +337,29 @@ def _conditional_credit_total_c(
     return total_c
 
 
+def partial_period_discounts_c(
+    db: Session, site_id: int, start: datetime.datetime, end: datetime.datetime, site_timezone: str
+) -> decimal.Decimal:
+    """Cents of discounted monthly fee for the partial period before a
+    cycle's first anchor day (see billing_periods.partial_first_period): the
+    full discounted_fee_c of each distinct discount window covering any day
+    of [start, end), not prorated to the partial period's length."""
+    tariffs = site_tariffs_for_site(db, site_id)
+    windows_by_tariff = monthly_fee_discount_windows_by_tariff(db, site_id)
+    tz = site_tz(site_timezone)
+    first_day = local_midnight(as_utc(start).astimezone(tz).date(), tz).astimezone(datetime.timezone.utc)
+    covering = {}
+    for midnight, _next_midnight in _local_days_in_range(first_day, end, site_timezone):
+        tariff = tariff_effective_at(tariffs, midnight)
+        if tariff is None:
+            continue
+        for window in windows_by_tariff.get(tariff.id, []):
+            if as_utc(window.starts_at) <= midnight < as_utc(window.ends_at):
+                covering[window.id] = window.discounted_fee_c
+                break
+    return sum(covering.values(), decimal.Decimal("0"))
+
+
 def _minute_costs(
     db: Session,
     site_id: int,
