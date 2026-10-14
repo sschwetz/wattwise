@@ -139,24 +139,32 @@ If a direction that has current windows leaves some months, days or times uncove
 
 ### Changing a rate
 
+To fix a mistyped rate, either of these works:
+
+- **Delete** the window and add it again with the right rate.
+- Click **End** on the window, then add a new one with the right rate and **From** set to the same day.
+
+To change a rate from now on:
+
 1. Click **End** on the old window. This closes it at that moment. **End** appears only on a window that has started and has not ended.
 2. Add the new window with **From** set to today. It starts at the moment you add it, so the new rate follows straight on from the old one.
 
-Cost for earlier times keeps the old rate. **Delete** removes a window, and it stops new prices from it.
-
-The new rate shows in the prices written from the next 23:59 push, which is tomorrow's prices. Prices already written for today keep the old rate.
+The webapp has no way to edit a window in place. The API can change one.
 
 You cannot schedule a rate change for a future date in advance. Two windows on the same direction overlap if they cover the same minute in any month and day. A window with no end date overlaps every later window like that, so WattWise refuses the new one. End the old window on the day the rate changes.
 
 ### When changes take effect
 
-The collector writes the next day's prices once a day, at 23:59 in your site's time zone. For a direction that already has stored prices, a rate you add or change today therefore shows in tomorrow's prices, and today's prices keep the rate they already have. A new source, or the first window of a new direction, has no stored prices, so it is priced for the rest of today within a minute. If the 23:59 push does not go through, the collector retries it every minute until 02:00. A retry after midnight writes that day's prices again.
+Adding, ending or deleting a window, or changing one through the API, reprices from the moment the change takes effect to the end of tomorrow. The collector does this within about a minute, and the stored prices are overwritten. Ending a window and adding the next one from now reprices from now. Correcting a rate on a window dated last month reprices from last month, so the whole span since then is rewritten and your cost figures for it change. Renaming a window changes no prices and starts no repricing.
 
-It also fills in what is missing. A fill runs within a minute of a new source, a restart, or a change to the source's rate windows (adding, ending or deleting a window, or changing one through the API), and on the first check of each new day. The first check of a new day fills a day whose 23:59 push did not go through. A fill compares the prices stored for each direction with what your windows imply and writes only what is missing. It prices a new direction, for example your first Export window, and past days back to the first data on your site, for example when you add a window with an earlier **From** date. It reaches back only to times when a window was in effect, and your cost figures for those days use it.
+If a repricing run fails, the collector tries again every minute until it goes through. A change you make while a run is in progress is picked up by the next run.
 
-A fill does not rewrite days that already have prices. If you change a window through the API and it already has stored prices, the change reaches the next day's prices through the 23:59 push, and the past keeps the old rate.
+Repricing overwrites prices for minutes that a window still prices. It does not remove prices for minutes that no window prices any more. A window you delete with no replacement leaves the prices it wrote, and so does **End** for minutes after the end that no other window covers.
 
-Prices already written stay as they are after an **End** or **Delete**. Minutes that no other window covers keep the old rate until the end of the day the prices were written for. That is the end of today, or the end of tomorrow for a source created today or once the 23:59 push has run.
+The collector also writes the next day's prices once a day, at 23:59 in your site's time zone. If the 23:59 push does not go through, the collector retries it every minute until 02:00. A retry after midnight writes that day's prices again.
+
+A new source, a restart, and the first check of each new day also trigger a fill. The first check of a new day fills a day whose 23:59 push did not go through. A fill compares the prices stored for each direction with what your windows imply and writes only what is missing. It prices a new direction, for example your first Export window, within a minute, and it prices past days back to the first data on your site, for example when you add a window with an earlier **From** date. It reaches back only to times when a window was in effect, and your cost figures for those days use it.
+
 
 ## Connecting a WeatherLink Live station
 

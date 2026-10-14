@@ -21,7 +21,7 @@ It also never prices past days, so cost for history shows as missing price.
 - The scheduled push happens at 23:59 on the site's local clock. It covers the next local calendar day, 00:00 to the following 00:00. A literal 24 hours would end an hour early on the 25-hour clocks-go-back day.
 - The collector works out what is missing from core-api's record of what is already priced, and fills it. It keeps no state of its own, so a restart cannot lose its place.
 - The fill reaches back to the first data on the site, and only where a window was in effect. A window with an earlier **From** date therefore prices past days.
-- Editing a window changes prices from the next scheduled push. It does not reprice the current day.
+- Editing a window used to change prices only from the next scheduled push. A change now reprices from where it takes effect; see `2026-10-14-local-pricing-reprice-on-change-design.md`.
 - The collector wakes every minute and decides per source. 23:59 is fixed, not configurable.
 
 ## Core-api
@@ -117,7 +117,7 @@ No change to the panel. The hint under the add form stays. The "Adding a window 
 
 ## Not included
 
-- Repricing the current day after an edit.
+- Repricing the current day after an edit. Added later; see `2026-10-14-local-pricing-reprice-on-change-design.md`.
 - Changing 23:59 or the 7-day chunk size through settings.
 - Filling holes in the middle of the covered span. A hole before `first` or after `last` is filled, and the forward fill from `last` repairs an outage.
 - Clearing future prices when a window ends (still the known gap in the earlier spec).
@@ -132,6 +132,7 @@ No change to the panel. The hint under the add form stays. The "Adding a window 
 - A change to a source's rate windows triggers a catch-up within a minute. The parent keeps a fingerprint of the windows from the last successful catch-up, in memory with the rest of the per-source record. The catch-up fills what is missing and does not reprice ranges that already have prices.
 - The collector uses the config in the discovery response, so `fetch_source_config` is gone.
 - A child process runs one source's work and the parent does not wait for it, so a long history fill never delays other sources. A child is stopped after 2 hours.
+- A change to a rate window now reprices from where it takes effect, using a durable marker kept in core-api. See `2026-10-14-local-pricing-reprice-on-change-design.md`.
 - core-api sends the site data floor without a UTC offset, so the collector reads an offset-less floor as UTC.
 
 ## Replaces in the 2026-10-13 spec
