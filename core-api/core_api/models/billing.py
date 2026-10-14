@@ -87,6 +87,26 @@ class ExportAdjustmentWindow(Base):
     adjustment_c_per_kwh: Mapped[decimal.Decimal] = mapped_column(Numeric(10, 4), nullable=False)
 
 
+class ConditionalCreditWindow(Base):
+    """A flat credit earned on each matching day whose average grid import
+    over [start_time, end_time) is strictly below max_avg_import_w. Same
+    months/days-of-week/time-of-day pattern as ExportAdjustmentWindow,
+    attached to a SiteTariff the same way. cost.py works it out on the fly
+    and stacks every matching window; nothing is stored per day."""
+
+    __tablename__ = "conditional_credit_windows"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_tariff_id: Mapped[int] = mapped_column(ForeignKey("site_tariffs.id"), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    months: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    days_of_week: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    start_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
+    end_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
+    max_avg_import_w: Mapped[decimal.Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    credit_c: Mapped[decimal.Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+
+
 class MonthlyFeeDiscountWindow(Base):
     """A date-bounded discount on a SiteTariff's monthly_fee_c -- e.g. a
     retailer's promotional period waiving or reducing its normally-full

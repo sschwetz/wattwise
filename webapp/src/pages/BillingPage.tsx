@@ -1,6 +1,7 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { BackLink } from "../layout/BackLink";
+import { ConditionalCreditForm, ConditionalCreditList } from "../billing/ConditionalCredits";
 import { tariffHeading } from "../billing/tariffHeading";
 import { useSources } from "../sources/useSources";
 import {
@@ -18,12 +19,17 @@ import {
   useMonthlyFeeDiscountWindows,
   useTariffs,
 } from "../billing/useBilling";
+import {
+  errorClass,
+  formatCents,
+  formatDaysOfWeek,
+  formatMonths,
+  formatTime,
+  inputClass,
+  parseIntList,
+  primaryButtonClass,
+} from "../billing/billingUi";
 
-const inputClass =
-  "rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
-const primaryButtonClass =
-  "rounded-md bg-solar px-3 py-1.5 text-sm font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
-const errorClass = "rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger";
 const endLinkClass = "text-sm text-ink-muted underline hover:text-ink";
 // Applied to anything shown but no longer active (e.g. an expired fee
 // discount window) -- kept visible rather than removed, but visually
@@ -36,23 +42,6 @@ function isActive(entity: { effective_to: string | null }): boolean {
 
 function isExpired(endsAt: string): boolean {
   return new Date(endsAt).getTime() <= Date.now();
-}
-
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-function formatMonths(months: number[]): string {
-  if (new Set(months).size === 12) return "all year";
-  return months.map((m) => MONTH_NAMES[m - 1] ?? String(m)).join(", ");
-}
-
-function formatDaysOfWeek(days: number[]): string {
-  if (new Set(days).size === 7) return "every day";
-  return days.map((d) => DAY_NAMES[d] ?? String(d)).join(", ");
-}
-
-function formatCents(value: string): string {
-  return Number(value).toFixed(2);
 }
 
 function formatSignedCents(value: string): string {
@@ -70,18 +59,6 @@ function formatCentsAsDollars(value: string): string {
 
 function dollarsToCents(value: string): number {
   return Math.round(Number(value) * 100);
-}
-
-function formatTime(time: string): string {
-  return time.slice(0, 5);
-}
-
-function parseIntList(raw: string): number[] {
-  return raw
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
-    .map(Number);
 }
 
 function DemandWindowsList({ siteId, tariffId }: { siteId: number; tariffId: number }) {
@@ -469,11 +446,13 @@ function TariffSection({ siteId }: { siteId: number }) {
               <div className="space-y-2">
                 <DemandWindowsList siteId={siteId} tariffId={tariff.id} />
                 <ExportAdjustmentWindowsList siteId={siteId} tariffId={tariff.id} />
+                <ConditionalCreditList siteId={siteId} tariffId={tariff.id} />
                 {hasMonthlyFee && <MonthlyFeeDiscountWindowsList siteId={siteId} tariffId={tariff.id} />}
               </div>
               <div className="space-y-4">
                 <DemandWindowForm siteId={siteId} tariffId={tariff.id} />
                 <ExportAdjustmentWindowForm siteId={siteId} tariffId={tariff.id} />
+                <ConditionalCreditForm siteId={siteId} tariffId={tariff.id} />
                 {hasMonthlyFee && <MonthlyFeeDiscountWindowForm siteId={siteId} tariffId={tariff.id} />}
               </div>
             </li>
@@ -495,6 +474,7 @@ function TariffSection({ siteId }: { siteId: number }) {
                 <div className="border-t border-line/40 p-3 space-y-2">
                   <DemandWindowsList siteId={siteId} tariffId={tariff.id} />
                   <ExportAdjustmentWindowsList siteId={siteId} tariffId={tariff.id} />
+                  <ConditionalCreditList siteId={siteId} tariffId={tariff.id} />
                   {hasMonthlyFee && <MonthlyFeeDiscountWindowsList siteId={siteId} tariffId={tariff.id} />}
                 </div>
               )}

@@ -13,6 +13,7 @@
 | **c/kWh** | Cents per kilowatt-hour: the price of energy. |
 | **c/kW/day** | Cents per kilowatt per day: the rate of a demand charge. |
 | **Collector** | A background program that reads one kind of device or service and sends readings to WattWise. See [How the pieces fit together](01-getting-started.md#how-the-pieces-fit-together). |
+| **Conditional credit** | A fixed amount taken off your bill on days when your average grid import in a set time window stays below a limit. See [Conditional credits](06-billing.md#conditional-credits). |
 | **Consumption** | The power your home is using. |
 | **Credit** | A negative cost: you earned more than you spent. Shown in green. |
 | **CT (current transformer)** | A clamp sensor that measures power flowing through a cable. The Envoy uses CTs to measure production and consumption. |

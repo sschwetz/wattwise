@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import secrets
 
+import pytest
+
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import Site, User
 from core_api.security import create_access_token
@@ -277,3 +279,94 @@ def test_close_billing_cycle_from_another_site_is_404(client, app_and_db_url):
         headers=auth(other_owner_id),
     )
     assert patch.status_code == 404
+
+
+CREDIT_PAYLOAD = {
+    "label": "Low evening import",
+    "months": [1, 2, 3],
+    "days_of_week": [0, 1, 2, 3, 4],
+    "start_time": "17:00:00",
+    "end_time": "21:00:00",
+    "max_avg_import_w": "300",
+    "credit_c": "50",
+}
+
+
+def _make_tariff(client, owner_id, site_id) -> int:
+    response = client.post(
+        f"/api/v1/sites/{site_id}/tariffs",
+        json={"effective_from": "2026-01-01T00:00:00Z", "service_availability_c_per_day": "80.5"},
+        headers=auth(owner_id),
+    )
+    return response.json()["id"]
+
+
+def test_create_and_list_conditional_credit(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    tariff_id = _make_tariff(client, owner_id, site_id)
+    url = f"/api/v1/sites/{site_id}/tariffs/{tariff_id}/conditional-credits"
+
+    created = client.post(url, json=CREDIT_PAYLOAD, headers=auth(owner_id))
+    assert created.status_code == 201, created.text
+    assert created.json()["credit_c"] == "50.0000"
+    assert created.json()["max_avg_import_w"] == "300.0000"
+
+    listed = client.get(url, headers=auth(owner_id))
+    assert [w["label"] for w in listed.json()] == ["Low evening import"]
+
+
+def test_create_conditional_credit_for_tariff_from_another_site_is_404(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    other_owner_id, other_site_id = make_owner_and_site(db_url)
+    tariff_id = _make_tariff(client, owner_id, site_id)
+
+    response = client.post(
+        f"/api/v1/sites/{other_site_id}/tariffs/{tariff_id}/conditional-credits",
+        json=CREDIT_PAYLOAD,
+        headers=auth(other_owner_id),
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"start_time": "21:00:00", "end_time": "17:00:00"},
+        {"start_time": "17:00:00", "end_time": "17:00:00"},
+        {"days_of_week": []},
+        {"months": []},
+        {"months": [13]},
+        {"days_of_week": [7]},
+        {"max_avg_import_w": "0"},
+        {"credit_c": "0"},
+        {"credit_c": "-5"},
+        {"label": ""},
+    ],
+)
+def test_create_conditional_credit_rejects_invalid_input(client, app_and_db_url, override):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    tariff_id = _make_tariff(client, owner_id, site_id)
+
+    response = client.post(
+        f"/api/v1/sites/{site_id}/tariffs/{tariff_id}/conditional-credits",
+        json={**CREDIT_PAYLOAD, **override},
+        headers=auth(owner_id),
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("override", [{"start_time": "17:00:30"}, {"end_time": "21:00:00+10:00"}])
+def test_create_conditional_credit_rejects_times_that_are_not_whole_minutes(client, app_and_db_url, override):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    tariff_id = _make_tariff(client, owner_id, site_id)
+
+    response = client.post(
+        f"/api/v1/sites/{site_id}/tariffs/{tariff_id}/conditional-credits",
+        json={**CREDIT_PAYLOAD, **override},
+        headers=auth(owner_id),
+    )
+    assert response.status_code == 422

@@ -6,6 +6,7 @@ import decimal
 
 from core_api.models.billing import (
     BillingCycle,
+    ConditionalCreditWindow,
     DemandCharge,
     DemandInterval,
     DemandWindow,
@@ -965,3 +966,219 @@ def test_compute_cost_series_excludes_the_monthly_fee(db, site):
     )
 
     assert points == []
+
+
+def _make_credit(
+    db, tariff, credit_c="50", max_avg_import_w="300", months=None, days_of_week=None, start="10:00", end="12:00"
+) -> ConditionalCreditWindow:
+    window = ConditionalCreditWindow(
+        site_tariff_id=tariff.id,
+        label="Low import credit",
+        months=months or list(range(1, 13)),
+        days_of_week=days_of_week if days_of_week is not None else [0, 1, 2, 3, 4, 5, 6],
+        start_time=datetime.time.fromisoformat(start),
+        end_time=datetime.time.fromisoformat(end),
+        max_avg_import_w=decimal.Decimal(max_avg_import_w),
+        credit_c=decimal.Decimal(credit_c),
+    )
+    db.add(window)
+    db.commit()
+    return window
+
+
+def _add_readings(db, source, start, minutes, watts, metric=EnergyMetric.GRID_IMPORT_W):
+    for i in range(minutes):
+        db.add(
+            EnergyReading(
+                source_id=source.id, ts=start + datetime.timedelta(minutes=i), metric=metric, value=float(watts)
+            )
+        )
+    db.commit()
+
+
+# 2026-01-07 is a Wednesday (weekday 2); Sydney is UTC+11 in January.
+CREDIT_DAY = (2026, 1, 7)
+AFTER_WINDOW = sydney_local(2026, 1, 7, 13, 0)
+
+
+def _credit_total(db, site, now=AFTER_WINDOW, start=None, end=None, method="net"):
+    return compute_cost(
+        db,
+        site.id,
+        start or sydney_local(*CREDIT_DAY),
+        end or sydney_local(2026, 1, 8),
+        method=method,
+        site_timezone=site.timezone,
+        now=now,
+    ).total_cost_c
+
+
+def _credit_setup(db, site, watts=200, minutes=120, **credit_kwargs):
+    """A zero-service-charge tariff with one 10:00-12:00 credit, and `minutes`
+    of grid import at `watts` from 10:00 on CREDIT_DAY."""
+    source = _make_energy_source(db, site)
+    tariff = _make_tariff(db, site, datetime.datetime(2026, 1, 1, tzinfo=UTC), service_c_per_day="0")
+    _make_credit(db, tariff, **credit_kwargs)
+    _add_readings(db, source, sydney_local(*CREDIT_DAY, 10, 0), minutes, watts)
+    return source, tariff
+
+
+def test_credit_applies_when_average_import_is_below_the_threshold(db, site):
+    _credit_setup(db, site, watts=200)
+
+    assert _credit_total(db, site) == decimal.Decimal("-50")
+
+
+def test_no_credit_when_average_import_equals_the_threshold(db, site):
+    _credit_setup(db, site, watts=300)
+
+    assert _credit_total(db, site) == decimal.Decimal("0")
+
+
+def test_credit_uses_the_average_not_every_minute(db, site):
+    source, _ = _credit_setup(db, site, watts=100, minutes=60)
+    _add_readings(db, source, sydney_local(*CREDIT_DAY, 11, 0), 60, 450)  # average 275 W
+
+    assert _credit_total(db, site) == decimal.Decimal("-50")
+
+
+def test_no_credit_when_one_minute_has_no_reading(db, site):
+    _credit_setup(db, site, watts=200, minutes=119)
+
+    assert _credit_total(db, site) == decimal.Decimal("0")
+
+
+def test_credit_applies_when_every_reading_is_zero_watts(db, site):
+    _credit_setup(db, site, watts=0)
+
+    assert _credit_total(db, site) == decimal.Decimal("-50")
+
+
+def test_credit_counts_exporting_minutes_as_zero_import(db, site):
+    """The Envoy collector writes grid_export_w and no grid_import_w while the
+    site exports, so an exporting minute has a reading but no import row."""
+    source, _ = _credit_setup(db, site, watts=200, minutes=60)
+    _add_readings(db, source, sydney_local(*CREDIT_DAY, 11, 0), 60, 500, metric=EnergyMetric.GRID_EXPORT_W)
+
+    assert _credit_total(db, site) == decimal.Decimal("-50")  # (200 W x 60 + 0 W x 60) / 120 = 100 W
+
+
+def test_exporting_minutes_do_not_hide_high_import(db, site):
+    source, _ = _credit_setup(db, site, watts=700, minutes=60)
+    _add_readings(db, source, sydney_local(*CREDIT_DAY, 11, 0), 60, 500, metric=EnergyMetric.GRID_EXPORT_W)
+
+    assert _credit_total(db, site) == decimal.Decimal("0")  # (700 W x 60 + 0 W x 60) / 120 = 350 W
+
+
+def test_no_credit_before_the_window_has_ended(db, site):
+    _credit_setup(db, site, watts=200)
+
+    assert _credit_total(db, site, now=sydney_local(2026, 1, 7, 11, 0)) == decimal.Decimal("0")
+
+
+def test_credit_counts_once_the_window_end_is_reached(db, site):
+    _credit_setup(db, site, watts=200)
+
+    assert _credit_total(db, site, now=sydney_local(2026, 1, 7, 12, 0)) == decimal.Decimal("-50")
+
+
+def test_no_credit_on_a_day_that_does_not_match(db, site):
+    _credit_setup(db, site, watts=200, days_of_week=[0])  # Monday only
+
+    assert _credit_total(db, site) == decimal.Decimal("0")
+
+
+def test_no_credit_in_a_month_that_does_not_match(db, site):
+    _credit_setup(db, site, watts=200, months=[2])
+
+    assert _credit_total(db, site) == decimal.Decimal("0")
+
+
+def test_credit_matches_weekday_and_month_in_site_local_time(db, site):
+    """10:00-12:00 Sydney on Monday 2026-02-02 is Sunday 2026-02-01 in UTC."""
+    source = _make_energy_source(db, site)
+    tariff = _make_tariff(db, site, datetime.datetime(2026, 1, 1, tzinfo=UTC), service_c_per_day="0")
+    _make_credit(db, tariff, months=[2], days_of_week=[0])
+    _add_readings(db, source, sydney_local(2026, 2, 2, 10, 0), 120, 200)
+
+    total = _credit_total(
+        db, site, now=sydney_local(2026, 2, 2, 13, 0), start=sydney_local(2026, 2, 2), end=sydney_local(2026, 2, 3)
+    )
+
+    assert total == decimal.Decimal("-50")
+
+
+def test_two_matching_credits_both_apply(db, site):
+    _, tariff = _credit_setup(db, site, watts=200)
+    _make_credit(db, tariff, credit_c="30", max_avg_import_w="250")
+
+    assert _credit_total(db, site) == decimal.Decimal("-80")
+
+
+def test_credit_comes_from_the_tariff_in_force_that_day(db, site):
+    source = _make_energy_source(db, site)
+    old = _make_tariff(
+        db, site, datetime.datetime(2025, 12, 1, tzinfo=UTC), effective_to=sydney_local(*CREDIT_DAY), service_c_per_day="0"
+    )
+    new = _make_tariff(db, site, sydney_local(*CREDIT_DAY), service_c_per_day="0")
+    _make_credit(db, old, credit_c="50")
+    _make_credit(db, new, credit_c="30")
+    _add_readings(db, source, sydney_local(*CREDIT_DAY, 10, 0), 120, 200)
+
+    assert _credit_total(db, site) == decimal.Decimal("-30")
+
+
+def test_credit_is_the_same_under_net_and_gross(db, site):
+    source, _ = _credit_setup(db, site, watts=200)
+    _add_readings(db, source, sydney_local(*CREDIT_DAY, 10, 0), 120, 5000, metric=EnergyMetric.CONSUMPTION_W)
+
+    assert _credit_total(db, site, method="net") == decimal.Decimal("-50")
+    assert _credit_total(db, site, method="gross") == decimal.Decimal("-50")
+
+
+def test_credit_is_found_when_the_range_ends_before_the_window(db, site):
+    _credit_setup(db, site, watts=200)
+
+    total = _credit_total(db, site, end=sydney_local(2026, 1, 7, 9, 0))
+
+    assert total == decimal.Decimal("-50")
+
+
+def test_credit_is_skipped_when_the_site_has_no_energy_source(db, site):
+    tariff = _make_tariff(db, site, datetime.datetime(2026, 1, 1, tzinfo=UTC), service_c_per_day="0")
+    _make_credit(db, tariff)
+
+    assert _credit_total(db, site) == decimal.Decimal("0")
+
+
+def test_credit_window_on_dst_end_day_needs_every_real_minute(db, site):
+    """Sydney clocks go back on 2026-04-05 (03:00 AEDT -> 02:00 AEST), so
+    01:00-04:00 local is 240 real minutes."""
+    source = _make_energy_source(db, site)
+    tariff = _make_tariff(db, site, datetime.datetime(2026, 1, 1, tzinfo=UTC), service_c_per_day="0")
+    _make_credit(db, tariff, start="01:00", end="04:00")
+    start = sydney_local(2026, 4, 5, 1, 0)
+    now = sydney_local(2026, 4, 5, 6, 0)
+    day_start, day_end = sydney_local(2026, 4, 5), sydney_local(2026, 4, 6)
+
+    _add_readings(db, source, start, 180, 200)  # the 180 minutes a 3-hour window would need
+    assert _credit_total(db, site, now=now, start=day_start, end=day_end) == decimal.Decimal("0")
+
+    _add_readings(db, source, start + datetime.timedelta(minutes=180), 60, 200)
+    assert _credit_total(db, site, now=now, start=day_start, end=day_end) == decimal.Decimal("-50")
+
+
+def test_series_leaves_the_credit_out(db, site):
+    _credit_setup(db, site, watts=200)
+
+    points = compute_cost_series(
+        db,
+        site.id,
+        sydney_local(*CREDIT_DAY),
+        sydney_local(2026, 1, 8),
+        method="net",
+        bucket="hour",
+        site_timezone=site.timezone,
+    )
+
+    assert all(p.cost_c >= 0 for p in points)

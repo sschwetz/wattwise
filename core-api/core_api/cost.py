@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import decimal
+import zoneinfo
 from typing import Literal
 
 from sqlalchemy import select
@@ -10,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from core_api.jobs.billing_periods import billing_period_days, billing_periods_for_site, effective_billing_cycles_for_site
 from core_api.jobs.demand_config import (
+    conditional_credit_windows_by_tariff,
+    credit_window_applies_on,
     demand_charge_bucket_shares,
     demand_charges_overlapping,
     demand_window_for_charge,
@@ -20,7 +23,7 @@ from core_api.jobs.demand_config import (
     tariff_effective_at,
     total_export_adjustment_c_per_kwh,
 )
-from core_api.models.billing import SiteTariff
+from core_api.models.billing import ConditionalCreditWindow, SiteTariff
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
@@ -266,6 +269,77 @@ def _monthly_fee_savings_c(
     return sum((normal_c - applied_c for _midnight, normal_c, applied_c in amounts), decimal.Decimal("0"))
 
 
+def _window_average_import_w(
+    db: Session, energy_source_ids: list[int], start_utc: datetime.datetime, end_utc: datetime.datetime
+) -> decimal.Decimal | None:
+    """Mean grid_import_w over the whole minutes of [start_utc, end_utc), or
+    None when any of those minutes has no grid reading -- a collector outage
+    must not look like a quiet window. The Envoy collector writes
+    grid_export_w and no grid_import_w while the site exports, so a minute
+    with only an export reading counts as present at 0 W import. Zero-watt
+    readings count as readings."""
+    expected_minutes = int((end_utc - start_utc).total_seconds() // 60)
+    imports = _energy_by_ts(db, energy_source_ids, EnergyMetric.GRID_IMPORT_W, start_utc, end_utc)
+    exports = _energy_by_ts(db, energy_source_ids, EnergyMetric.GRID_EXPORT_W, start_utc, end_utc)
+    covered_minutes = set(imports) | set(exports)
+    if expected_minutes <= 0 or len(covered_minutes) < expected_minutes:
+        return None
+    return sum(imports.values(), decimal.Decimal("0")) / len(covered_minutes)
+
+
+def _window_credit_c(
+    db: Session,
+    energy_source_ids: list[int],
+    window: ConditionalCreditWindow,
+    local_date: datetime.date,
+    tz: zoneinfo.ZoneInfo,
+    real_now_utc: datetime.datetime,
+) -> decimal.Decimal:
+    """The credit `window` earns on `local_date` as negative cents, or 0 when
+    the window has not ended yet, a minute is missing, or the average is not
+    below the limit. The window's wall-clock bounds are converted to UTC, so a
+    DST day has its real length."""
+    start_utc = datetime.datetime.combine(local_date, window.start_time, tzinfo=tz).astimezone(datetime.timezone.utc)
+    end_utc = datetime.datetime.combine(local_date, window.end_time, tzinfo=tz).astimezone(datetime.timezone.utc)
+    if end_utc > real_now_utc:
+        return decimal.Decimal("0")
+    average_w = _window_average_import_w(db, energy_source_ids, start_utc, end_utc)
+    if average_w is None or average_w >= window.max_avg_import_w:
+        return decimal.Decimal("0")
+    return -window.credit_c
+
+
+def _conditional_credit_total_c(
+    db: Session,
+    site_id: int,
+    days: list[tuple[datetime.datetime, datetime.datetime]],
+    site_timezone: str,
+    tariffs: list[SiteTariff],
+    real_now_utc: datetime.datetime,
+) -> decimal.Decimal:
+    """Sum of every ConditionalCreditWindow's credit (negative cents) over the
+    local days already resolved by the caller, as for _service_charge_rows: a
+    matching window earns its credit on a day whose average grid import over
+    [start_time, end_time) is strictly below max_avg_import_w. Windows stack.
+    Used only by compute_cost's total, never compute_cost_series, for the same
+    reason as the daily fees."""
+    windows_by_tariff = conditional_credit_windows_by_tariff(db, site_id)
+    if not days or not windows_by_tariff:
+        return decimal.Decimal("0")
+    tz = site_tz(site_timezone)
+    energy_source_ids = _source_ids(db, site_id, SourceKind.ENERGY)
+    total_c = decimal.Decimal("0")
+    for midnight, _ in days:
+        tariff = tariff_effective_at(tariffs, midnight)
+        if tariff is None:
+            continue
+        local_date = midnight.astimezone(tz).date()
+        for window in windows_by_tariff.get(tariff.id, []):
+            if credit_window_applies_on(window, local_date):
+                total_c += _window_credit_c(db, energy_source_ids, window, local_date, tz, real_now_utc)
+    return total_c
+
+
 def _minute_costs(
     db: Session,
     site_id: int,
@@ -389,8 +463,12 @@ def compute_cost(
     `prorate_fees=False` charges each day's service/monthly fee in full the
     instant its midnight passes, ignoring `now` for that purpose entirely --
     for callers that want the committed daily amount visible right away
-    rather than a smoothly ticking total (the dashboard's live tiles)."""
-    now_utc = (as_utc(now) if now is not None else datetime.datetime.now(datetime.timezone.utc)) if prorate_fees else None
+    rather than a smoothly ticking total (the dashboard's live tiles).
+
+    Conditional credits always compare their window end with the real current
+    time, whatever `prorate_fees` is."""
+    real_now_utc = as_utc(now) if now is not None else datetime.datetime.now(datetime.timezone.utc)
+    now_utc = real_now_utc if prorate_fees else None
     tariffs = site_tariffs_for_site(db, site_id)
     rows, minutes_missing_price = _minute_costs(db, site_id, start, end, method, site_timezone, tariffs)
 
@@ -410,6 +488,8 @@ def compute_cost(
     for charge in _monthly_fee_rows(db, site_id, days, site_timezone, tariffs, now_utc):
         total_cost_c += charge.cost_c
     monthly_fee_savings_c = _monthly_fee_savings_c(db, site_id, days, site_timezone, tariffs, now_utc)
+
+    total_cost_c += _conditional_credit_total_c(db, site_id, days, site_timezone, tariffs, real_now_utc)
 
     # Demand charges count toward the total as soon as there's a best
     # estimate -- even before the billing period closes and the charge is
