@@ -312,6 +312,10 @@ class PriceCoverageOut(BaseModel):
     channels: dict[str, ChannelCoverageOut]
 
 
+class RepriceMarkerClear(BaseModel):
+    version: int
+
+
 class ReadingOut(BaseModel):
     # UtcDatetime, not a plain datetime: rows read back from SQLite are naive
     # (tzinfo is dropped on write) but are always actually UTC. Without this,

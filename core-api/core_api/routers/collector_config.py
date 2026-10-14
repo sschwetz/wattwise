@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from core_api.deps import get_db_session, get_source_by_collector_key
 from core_api.models.identity import Site, User
-from core_api.models.local_rates import LocalRateWindow
+from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
 from core_api.models.sources import Source
 from core_api.schemas import DiscoveredSourceConfig, SourceConfigOut
 from core_api.time_utils import as_utc
@@ -34,6 +34,9 @@ def _local_config(db: Session, source: Source, config: dict) -> None:
     ).scalars().all()
     config["timezone"] = site.timezone
     config["rate_windows"] = [_rate_window_config(w) for w in windows]
+    marker = db.get(LocalRepriceMarker, source.id)
+    if marker is not None:
+        config["reprice"] = {"from": as_utc(marker.reprice_from).isoformat(), "version": marker.version}
 
 
 def resolve_source_config(db: Session, source: Source) -> dict:

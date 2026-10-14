@@ -408,3 +408,67 @@ def test_a_rejected_change_marks_nothing(client, local_source):
 
     assert overlap.status_code == 422
     assert _marker(local_source) is None
+
+
+CONFIG_HEADERS = {"X-Collector-Key": PRICING_COLLECTOR_KEY, "X-Collector-Provider": "local"}
+
+
+def _config(client, ctx) -> dict:
+    return client.get(f"/api/v1/sources/{ctx['source']}/config", headers=CONFIG_HEADERS).json()["config"]
+
+
+def _clear(client, ctx, version, headers=None):
+    return client.post(
+        f"/api/v1/sources/{ctx['source']}/prices/reprice-marker/clear",
+        json={"version": version},
+        headers=headers or CONFIG_HEADERS,
+    )
+
+
+def test_config_has_no_reprice_key_without_a_marker(client, local_source):
+    assert "reprice" not in _config(client, local_source)
+
+
+def test_config_carries_the_marker_as_utc_iso_and_a_version(client, local_source):
+    _create(client, local_source, effective_from="2026-02-01T00:00:00Z")
+
+    assert _config(client, local_source)["reprice"] == {"from": "2026-02-01T00:00:00+00:00", "version": 1}
+
+
+def test_clearing_with_the_matching_version_removes_the_marker(client, local_source):
+    _create(client, local_source)
+
+    response = _clear(client, local_source, 1)
+
+    assert response.status_code == 204
+    assert "reprice" not in _config(client, local_source)
+
+
+def test_clearing_with_a_stale_version_keeps_the_marker(client, local_source):
+    _create(client, local_source)
+    _create(client, local_source, channel="sell")  # version is now 2
+
+    response = _clear(client, local_source, 1)
+
+    assert response.status_code == 204
+    assert _config(client, local_source)["reprice"]["version"] == 2
+
+
+def test_clearing_when_there_is_no_marker_is_a_no_op(client, local_source):
+    assert _clear(client, local_source, 1).status_code == 204
+
+
+def test_clearing_needs_the_collector_key(client, local_source):
+    assert _clear(client, local_source, 1, headers={"X-Collector-Key": "wrong"}).status_code == 401
+
+
+def test_clearing_rejects_a_provider_header_for_another_provider(client, local_source):
+    headers = {"X-Collector-Key": PRICING_COLLECTOR_KEY, "X-Collector-Provider": "amber"}
+    assert _clear(client, local_source, 1, headers=headers).status_code == 401
+
+
+def test_an_amber_config_never_has_a_reprice_key(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    amber_id, _ = make_source(db_url, SourceKind.PRICING, "amber")
+    response = client.get(f"/api/v1/sources/{amber_id}/config", headers={"X-Collector-Key": PRICING_COLLECTOR_KEY})
+    assert "reprice" not in response.json()["config"]

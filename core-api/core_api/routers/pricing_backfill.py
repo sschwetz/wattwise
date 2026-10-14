@@ -8,11 +8,12 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from core_api.deps import get_db_session, get_source_by_collector_key, require_source_kind
+from core_api.models.local_rates import LocalRepriceMarker
 from core_api.models.pricing import PriceChannel, PriceGapMarker, PriceInterval, PriceReading
 from core_api.models.readings import EnergyReading, WeatherReading
 from core_api.models.sources import Source, SourceKind
 from core_api.pricing_gaps import coalesce_missing_days, missing_days_in_range
-from core_api.schemas import ChannelCoverageOut, GapMarkerCreate, PriceCoverageOut, SiteDataFloorOut, UtcDatetime
+from core_api.schemas import ChannelCoverageOut, GapMarkerCreate, PriceCoverageOut, RepriceMarkerClear, SiteDataFloorOut, UtcDatetime
 
 router = APIRouter(prefix="/sources/{source_id}/prices", tags=["pricing-backfill"])
 
@@ -91,6 +92,22 @@ def get_price_coverage(
     return PriceCoverageOut(
         channels={channel.value: ChannelCoverageOut(first=first, last=last) for channel, first, last in rows}
     )
+
+
+@router.post("/reprice-marker/clear", status_code=status.HTTP_204_NO_CONTENT)
+def clear_reprice_marker(
+    payload: RepriceMarkerClear,
+    source: Source = Depends(require_source_kind(SourceKind.PRICING)),
+    db: Session = Depends(get_db_session),
+) -> None:
+    """Deletes the source's reprice marker only when its version matches the
+    one the collector read. A newer change raised the version, so the marker
+    stays and the next run handles it. Always 204: a missing marker or a stale
+    version is not an error."""
+    marker = db.get(LocalRepriceMarker, source.id)
+    if marker is not None and marker.version == payload.version:
+        db.delete(marker)
+        db.commit()
 
 
 site_router = APIRouter(prefix="/sources/{source_id}", tags=["pricing-backfill"])
