@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -104,10 +104,14 @@ def clear_reprice_marker(
     one the collector read. A newer change raised the version, so the marker
     stays and the next run handles it. Always 204: a missing marker or a stale
     version is not an error."""
-    marker = db.get(LocalRepriceMarker, source.id)
-    if marker is not None and marker.version == payload.version:
-        db.delete(marker)
-        db.commit()
+    # One statement, so an edit that raises the version between a read and a
+    # delete cannot have its marker removed.
+    db.execute(
+        delete(LocalRepriceMarker).where(
+            LocalRepriceMarker.source_id == source.id, LocalRepriceMarker.version == payload.version
+        )
+    )
+    db.commit()
 
 
 site_router = APIRouter(prefix="/sources/{source_id}", tags=["pricing-backfill"])

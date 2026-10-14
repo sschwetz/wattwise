@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import datetime
 import secrets
 
 import pytest
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.local_rates import LocalRepriceMarker
@@ -452,6 +455,58 @@ def test_clearing_with_a_stale_version_keeps_the_marker(client, local_source):
 
     assert response.status_code == 204
     assert _config(client, local_source)["reprice"]["version"] == 2
+
+
+@contextlib.contextmanager
+def _captured_sql():
+    """Collects every SQL statement any engine runs inside the block."""
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany):
+        statements.append(" ".join(statement.split()))
+
+    event.listen(Engine, "before_cursor_execute", record)
+    try:
+        yield statements
+    finally:
+        event.remove(Engine, "before_cursor_execute", record)
+
+
+def _first_index(statements: list[str], prefix: str, table: str) -> int:
+    return next(i for i, s in enumerate(statements) if s.startswith(prefix) and f"FROM {table}" in s)
+
+
+def test_config_reads_the_marker_before_the_windows(client, local_source):
+    _create(client, local_source)
+
+    with _captured_sql() as statements:
+        assert "reprice" in _config(client, local_source)
+
+    marker_read = _first_index(statements, "SELECT", "local_reprice_markers")
+    windows_read = _first_index(statements, "SELECT", "local_rate_windows")
+    assert marker_read < windows_read
+
+
+def test_clearing_deletes_by_source_and_version_in_one_statement(client, local_source):
+    _create(client, local_source)
+
+    with _captured_sql() as statements:
+        assert _clear(client, local_source, 1).status_code == 204
+
+    deletes = [s for s in statements if s.startswith("DELETE FROM local_reprice_markers")]
+    assert len(deletes) == 1
+    where = deletes[0].split("WHERE", 1)[1]
+    assert "source_id" in where and "version" in where
+    assert not any(s.startswith("SELECT") and "FROM local_reprice_markers" in s for s in statements)
+
+
+def test_clearing_with_a_stale_version_returns_204_and_leaves_the_marker(client, local_source):
+    _create(client, local_source)
+    _create(client, local_source, channel="sell")  # version is now 2
+
+    assert _clear(client, local_source, 1).status_code == 204
+
+    assert _marker(local_source) == (datetime.datetime(2026, 1, 1, tzinfo=UTC), 2)
 
 
 def test_clearing_when_there_is_no_marker_is_a_no_op(client, local_source):

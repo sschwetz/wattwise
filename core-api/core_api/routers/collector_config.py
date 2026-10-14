@@ -29,20 +29,25 @@ def _rate_window_config(window: LocalRateWindow) -> dict:
 
 def _local_config(db: Session, source: Source, config: dict) -> None:
     site = db.get(Site, source.site_id)
+    # Read the marker before the windows. If an owner's edit commits between
+    # the two reads, the collector then gets new windows with the old version:
+    # its clear is ignored and the next run reprices again. The other order
+    # would give old windows with the new version, and the clear would match.
+    marker = db.get(LocalRepriceMarker, source.id)
     windows = db.execute(
         select(LocalRateWindow).where(LocalRateWindow.source_id == source.id).order_by(LocalRateWindow.id)
     ).scalars().all()
     config["timezone"] = site.timezone
     config["rate_windows"] = [_rate_window_config(w) for w in windows]
-    marker = db.get(LocalRepriceMarker, source.id)
     if marker is not None:
         config["reprice"] = {"from": as_utc(marker.reprice_from).isoformat(), "version": marker.version}
 
 
 def resolve_source_config(db: Session, source: Source) -> dict:
     if source.provider == "local":
-        # The local collector reads exactly {timezone, rate_windows}, so any
-        # stray keys in source.config are left out.
+        # The local collector reads exactly {timezone, rate_windows, reprice},
+        # with reprice present only while a marker exists, so any stray keys
+        # in source.config are left out.
         config: dict = {}
         _local_config(db, source, config)
         return config
