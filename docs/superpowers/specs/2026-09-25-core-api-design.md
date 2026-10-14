@@ -153,6 +153,12 @@ write time.
   and tariff rates can change independently (e.g. a retailer switch mid-plan). Effective-
   dated for the same reason as `SiteTariff`/`DemandWindow`: a later cycle-length change must
   not retroactively rewrite already-finalized billing periods.
+  If the cycle's `effective_from` falls before its first anchor day, there is no earlier
+  anchor to count from. The first billing period is then a partial period that starts at
+  `effective_from` (the day the cycle was submitted) and ends on that first anchor day.
+  In this partial period the dashboard's Including Discounts tile shows the full discounted
+  fee of a discount window that covers it (for example $25.00), not a share prorated to the
+  partial period's length.
 - **DemandWindow**: `id`, `site_tariff_id` (FK), `label`, `months` (set), `days_of_week`
   (set), `start_time`, `end_time`, `rate_c_per_kwh` (unit/conversion verified at
   implementation time — see Deferred below), `measurement_interval_minutes` (default 30,
