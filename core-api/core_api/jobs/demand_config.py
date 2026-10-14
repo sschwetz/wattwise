@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from core_api.jobs.time_buckets import BUCKET_WIDTH
 from core_api.models.billing import (
+    ConditionalCreditWindow,
     DemandCharge,
     DemandWindow,
     ExportAdjustmentWindow,
@@ -145,6 +146,17 @@ def total_export_adjustment_c_per_kwh(
         if _in_time_pattern(window, at_local):
             total += window.adjustment_c_per_kwh
     return total
+
+
+def conditional_credit_windows_by_tariff(db: Session, site_id: int) -> dict[int, list[ConditionalCreditWindow]]:
+    return _windows_by_tariff(db, site_id, ConditionalCreditWindow)
+
+
+def credit_window_applies_on(window: ConditionalCreditWindow, local_date: datetime.date) -> bool:
+    """Does `local_date` (a calendar day in the site's time zone) fall in the
+    window's months and days of week? The time of day is not checked here:
+    the credit looks at the whole window on that day, not at one instant."""
+    return local_date.month in window.months and local_date.weekday() in window.days_of_week
 
 
 def monthly_fee_discount_windows_by_tariff(db: Session, site_id: int) -> dict[int, list[MonthlyFeeDiscountWindow]]:
