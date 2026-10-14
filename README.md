@@ -20,7 +20,7 @@ Both pricing collectors use `PRICING_COLLECTOR_KEY`. Each one asks for its own p
 
 To add a collector for another supplier, create a directory like `amber-pricing-collector/` and give it its own provider name. Use that name in the discovery request (`provider=<name>`) and in the `X-Collector-Provider` header. Read each source's settings from `GET /api/v1/sources/{id}/config` and push prices to `POST /api/v1/sources/{id}/prices`.
 
-Design specs and implementation plans are in `docs/superpowers/`.
+Documentation for owners, maintainers and AI agents is in [`docs/`](docs/README.md): architecture, data flows, operations and a handover checklist, and a guide to [adding a provider](docs/adding-a-provider.md). Design specs and implementation plans are in `docs/superpowers/`.
 
 ## Start a development instance
 
