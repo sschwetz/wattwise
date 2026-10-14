@@ -58,11 +58,11 @@ The window routes in `routers/local_rates.py` record a change with `mark_reprice
 
 ## Webapp
 
-No change. The panel already offers Add, End and Delete. Fixing a typo is Delete then Add.
+Each window row gets an **Edit rate** action next to End and Delete, on every window including ended ones. It opens an inline editor in the row: a `New rate (c/kWh)` number input prefilled with the current rate, Save and Cancel. Save sends the existing PATCH with every other field unchanged and only `rate_c_per_kwh` replaced, so core-api marks from the window's own `effective_from`. Save is disabled for a value that is not a finite number of zero or more, for the current rate, and while any window change is pending. A successful save closes the editor; a failure shows in the panel's one error alert. Fixing a typo is Edit rate. Delete then Add is not a fix: a new window dated today starts at the moment it is added, which leaves the minutes in between at the old rate, and the next day the same date becomes local midnight, which overlaps an ended window.
 
 ## Docs
 
-`04-sources.md` ("Changing a rate" and "When changes take effect"): a change to a window reprices from where it takes effect to the end of tomorrow, within about a minute. Correcting a rate on a window dated last month reprices from last month. Deleting a window leaves the prices it wrote for any minute that no other window prices. The earlier statements that "the past keeps the old rate" and that edits reach only the next day's prices are replaced. `README.md` row updated.
+`04-sources.md` ("Changing a rate" and "When changes take effect"): a change to a window reprices from where it takes effect to the end of tomorrow, within about a minute. Fixing a typo is Edit rate, which reprices from the window's start, so correcting a rate on a window dated last month reprices from last month. The docs say why Delete then Add does not fix a typo, and keep End then Add for changing a rate from now on. Deleting a window leaves the prices it wrote for any minute that no other window prices. The earlier statements that "the past keeps the old rate" and that edits reach only the next day's prices are replaced. `README.md` row updated.
 
 ## Testing
 

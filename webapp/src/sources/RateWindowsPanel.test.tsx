@@ -254,6 +254,105 @@ describe("RateWindowsPanel", () => {
     expect(screen.queryByText("No windows.")).not.toBeInTheDocument();
   });
 
+  describe("Edit rate", () => {
+    async function openEditor(window: RateWindow = win({})) {
+      const user = userEvent.setup();
+      renderPanel();
+      await user.click(await screen.findByRole("button", { name: `Edit rate of ${window.label}` }));
+      return user;
+    }
+
+    it("opens prefilled with the current rate", async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce([win({})]);
+      await openEditor();
+
+      expect(screen.getByLabelText("New rate (c/kWh)")).toHaveValue(32.5);
+    });
+
+    it("sends the window back unchanged apart from the new rate, then closes", async () => {
+      const window = win({ effective_to: "2026-09-01T00:00:00Z", months: [1, 2], days_of_week: [5, 6], start_time: "07:00:00", end_time: "22:00:00" });
+      vi.mocked(apiFetch).mockResolvedValueOnce([window]).mockResolvedValueOnce(window).mockResolvedValueOnce([window]);
+      const user = await openEditor(window);
+
+      await user.clear(screen.getByLabelText("New rate (c/kWh)"));
+      await user.type(screen.getByLabelText("New rate (c/kWh)"), "35");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      const patch = vi.mocked(apiFetch).mock.calls[1];
+      expect(patch[0]).toBe("/api/v1/sites/7/sources/3/rate-windows/1");
+      expect((patch[1] as RequestInit).method).toBe("PATCH");
+      expect(JSON.parse((patch[1] as RequestInit).body as string)).toEqual({
+        channel: "buy",
+        label: "Peak",
+        effective_from: "2026-01-01T00:00:00Z",
+        effective_to: "2026-09-01T00:00:00Z",
+        months: [1, 2],
+        days_of_week: [5, 6],
+        start_time: "07:00:00",
+        end_time: "22:00:00",
+        rate_c_per_kwh: 35,
+      });
+      await expectRefetch();
+      await waitFor(() => expect(screen.queryByLabelText("New rate (c/kWh)")).not.toBeInTheDocument());
+    });
+
+    it("cannot save an unchanged, negative or empty rate", async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce([win({})]);
+      const user = await openEditor();
+      const input = screen.getByLabelText("New rate (c/kWh)");
+      const save = screen.getByRole("button", { name: "Save" });
+
+      expect(save).toBeDisabled();
+      await user.clear(input);
+      expect(save).toBeDisabled();
+      await user.type(input, "-1");
+      expect(save).toBeDisabled();
+      await user.clear(input);
+      await user.type(input, "40");
+      expect(save).toBeEnabled();
+    });
+
+    it("closes on Cancel without calling the API", async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce([win({})]);
+      const user = await openEditor();
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByLabelText("New rate (c/kWh)")).not.toBeInTheDocument();
+      expect(apiFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the server's message in the one alert when saving fails", async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce([win({})]).mockRejectedValueOnce(new Error("Rate rejected"));
+      const user = await openEditor();
+
+      await user.clear(screen.getByLabelText("New rate (c/kWh)"));
+      await user.type(screen.getByLabelText("New rate (c/kWh)"), "40");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Rate rejected");
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+    });
+
+    it("is disabled while another change is in flight", async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce([win({})]).mockReturnValueOnce(new Promise(() => {}));
+      const user = userEvent.setup();
+      renderPanel();
+
+      await user.click(await screen.findByRole("button", { name: "End Peak" }));
+
+      await waitFor(() => expect(screen.getByRole("button", { name: "Edit rate of Peak" })).toBeDisabled());
+    });
+
+    it("is offered on an ended window", async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce([win({ effective_to: "2026-03-01T00:00:00Z" })]);
+      renderPanel();
+
+      expect(await screen.findByRole("button", { name: "Edit rate of Peak" })).toHaveTextContent("Edit rate");
+      expect(screen.queryByRole("button", { name: "End Peak" })).not.toBeInTheDocument();
+    });
+  });
+
   it("deletes a window", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce([win({})]).mockResolvedValueOnce(undefined).mockResolvedValueOnce([]);
     const user = userEvent.setup();

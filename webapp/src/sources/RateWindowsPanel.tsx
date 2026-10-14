@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { AddWindowForm } from "./AddWindowForm";
 import { type CoverageGap, findCoverageGaps } from "./rateCoverage";
-import { CHANNEL_SECTIONS, SHORT_DAYS, SHORT_MONTHS, channelTitle, errorClass } from "./rateWindowUi";
+import { CHANNEL_SECTIONS, SHORT_DAYS, SHORT_MONTHS, channelTitle, errorClass, inputClass } from "./rateWindowUi";
 import {
   type RateWindow,
   type RateWindowInput,
@@ -42,6 +42,8 @@ function toInput(window: RateWindow, overrides: Partial<RateWindowInput>): RateW
 
 interface WindowActions {
   onEnd: (window: RateWindow) => void;
+  /** Sends the window back with only its rate changed; `onSaved` runs on success. */
+  onEditRate: (window: RateWindow, rate: number, onSaved: () => void) => void;
   onDelete: (window: RateWindow) => void;
   isPending: boolean;
 }
@@ -60,6 +62,10 @@ function useWindowChanges(siteId: number, sourceId: number) {
       resetAll();
       replaceWindow.mutate({ windowId: window.id, input: toInput(window, { effective_to: new Date().toISOString() }) });
     },
+    onEditRate: (window, rate, onSaved) => {
+      resetAll();
+      replaceWindow.mutate({ windowId: window.id, input: toInput(window, { rate_c_per_kwh: rate }) }, { onSuccess: onSaved });
+    },
     onDelete: (window) => {
       resetAll();
       deleteWindow.mutate(window.id);
@@ -74,33 +80,71 @@ function useWindowChanges(siteId: number, sourceId: number) {
   return { actions, onAdd, error };
 }
 
-function WindowRow({ window, canEnd, actions }: { window: RateWindow; canEnd: boolean; actions: WindowActions }) {
+function WindowSummary({ window }: { window: RateWindow }) {
   return (
-    <li className="flex justify-between gap-2 rounded-md border border-line px-2 py-1">
-      <span className="text-ink">
-        <span className="font-medium">{window.label}</span> — {formatRate(window.rate_c_per_kwh)} — {describePattern(window)}
-        {window.effective_to && (
-          <span className="text-ink-muted"> (ended {new Date(window.effective_to).toLocaleDateString()})</span>
-        )}
-      </span>
-      <span className="flex shrink-0 gap-3">
-        {canEnd && (
-          <button aria-label={`End ${window.label}`} onClick={() => actions.onEnd(window)} disabled={actions.isPending} className={linkButtonClass}>
-            End
-          </button>
-        )}
-        <button aria-label={`Delete ${window.label}`} onClick={() => actions.onDelete(window)} disabled={actions.isPending} className={linkButtonClass}>
-          Delete
-        </button>
-      </span>
+    <span className="text-ink">
+      <span className="font-medium">{window.label}</span> — {formatRate(window.rate_c_per_kwh)} — {describePattern(window)}
+      {window.effective_to && (
+        <span className="text-ink-muted"> (ended {new Date(window.effective_to).toLocaleDateString()})</span>
+      )}
+    </span>
+  );
+}
+
+function RowButtons({ window, actions, onEdit }: { window: RateWindow; actions: WindowActions; onEdit: () => void }) {
+  const [now] = useState(() => Date.now());
+  // A window that has not started yet is removed with Delete, not ended.
+  const canEnd = window.effective_to === null && Date.parse(window.effective_from) <= now;
+  const button = (text: string, ariaPrefix: string, onClick: () => void) => (
+    <button aria-label={`${ariaPrefix} ${window.label}`} onClick={onClick} disabled={actions.isPending} className={linkButtonClass}>
+      {text}
+    </button>
+  );
+  return (
+    <span className="flex shrink-0 gap-3">
+      {button("Edit rate", "Edit rate of", onEdit)}
+      {canEnd && button("End", "End", () => actions.onEnd(window))}
+      {button("Delete", "Delete", () => actions.onDelete(window))}
+    </span>
+  );
+}
+
+/** Changes only the rate, so core-api reprices from the window's own start. */
+function RateEditor({ window, actions, onClose }: { window: RateWindow; actions: WindowActions; onClose: () => void }) {
+  const current = Number(window.rate_c_per_kwh);
+  const [value, setValue] = useState(() => String(current));
+  const rate = value.trim() === "" ? Number.NaN : Number(value);
+  const canSave = Number.isFinite(rate) && rate >= 0 && rate !== current && !actions.isPending;
+  return (
+    <div className="flex items-end gap-3">
+      <label className="flex flex-col text-ink-muted">
+        New rate (c/kWh)
+        <input aria-label="New rate (c/kWh)" type="number" step="0.0001" min="0" value={value} onChange={(e) => setValue(e.target.value)} className={inputClass} />
+      </label>
+      <button onClick={() => actions.onEditRate(window, rate, onClose)} disabled={!canSave} className={linkButtonClass}>
+        Save
+      </button>
+      <button onClick={onClose} className={linkButtonClass}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+function WindowRow({ window, actions }: { window: RateWindow; actions: WindowActions }) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <li className="space-y-1 rounded-md border border-line px-2 py-1">
+      <div className="flex justify-between gap-2">
+        <WindowSummary window={window} />
+        <RowButtons window={window} actions={actions} onEdit={() => setEditing(true)} />
+      </div>
+      {editing && <RateEditor window={window} actions={actions} onClose={() => setEditing(false)} />}
     </li>
   );
 }
 
 function ChannelSection({ title, windows, actions }: { title: string; windows: RateWindow[]; actions: WindowActions }) {
-  const [now] = useState(() => Date.now());
-  // A window that has not started yet is removed with Delete, not ended.
-  const canEnd = (window: RateWindow) => window.effective_to === null && Date.parse(window.effective_from) <= now;
   return (
     <section className="space-y-1">
       <h4 className="text-sm font-semibold text-ink">{title}</h4>
@@ -109,7 +153,7 @@ function ChannelSection({ title, windows, actions }: { title: string; windows: R
       ) : (
         <ul className="space-y-1 text-sm">
           {windows.map((window) => (
-            <WindowRow key={window.id} window={window} canEnd={canEnd(window)} actions={actions} />
+            <WindowRow key={window.id} window={window} actions={actions} />
           ))}
         </ul>
       )}
