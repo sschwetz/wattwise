@@ -18,6 +18,7 @@ class PlannedRange:
     channel: str
     start: datetime.datetime
     end: datetime.datetime
+    backward: bool = False
 
 
 def local_midnight(day: datetime.date, tz: zoneinfo.ZoneInfo) -> datetime.datetime:
@@ -51,41 +52,50 @@ def _end_limit(windows: list[RateWindow]) -> datetime.datetime | None:
     return max(w.effective_to for w in windows)
 
 
+Wanted = tuple[datetime.datetime, datetime.datetime, bool]
+
+
 def _wanted_ranges(
     coverage: Coverage | None,
     history_start: datetime.datetime,
-    today_end: datetime.datetime,
-    tomorrow_end: datetime.datetime,
+    edges: tuple[datetime.datetime, datetime.datetime],
     triggers: Triggers,
-) -> list[tuple[datetime.datetime, datetime.datetime]]:
+    tz: zoneinfo.ZoneInfo,
+) -> list[Wanted]:
+    """(start, end, backward). Only the history range is backward: it is
+    pushed newest chunk first so an interrupted fill leaves no hole."""
+    today_end, tomorrow_end = edges
     ranges = []
     if triggers.catch_up:
         if coverage is None:
-            ranges.append((history_start, tomorrow_end))
+            ranges.append((history_start, tomorrow_end, False))
         else:
             if coverage.first > history_start:
-                ranges.append((history_start, coverage.first))
+                ranges.append((history_start, coverage.first, True))
             if coverage.last < today_end:
-                ranges.append((coverage.last, tomorrow_end))
-    if triggers.scheduled:
-        ranges.append((today_end, tomorrow_end))
+                ranges.append((coverage.last, tomorrow_end, False))
+    if triggers.scheduled_for is not None:
+        day = triggers.scheduled_for
+        ranges.append((local_midnight(day, tz), local_midnight(day + ONE_DAY, tz), False))
     return ranges
 
 
 def _clamp_and_merge(
-    ranges: list[tuple[datetime.datetime, datetime.datetime]],
+    ranges: list[Wanted],
     low: datetime.datetime,
     high: datetime.datetime | None,
-) -> list[tuple[datetime.datetime, datetime.datetime]]:
-    clamped = sorted((max(start, low), end if high is None else min(end, high)) for start, end in ranges)
-    merged: list[tuple[datetime.datetime, datetime.datetime]] = []
-    for start, end in clamped:
+) -> list[Wanted]:
+    """A merged range is backward only if every range merged into it was."""
+    clamped = sorted((max(start, low), end if high is None else min(end, high), back) for start, end, back in ranges)
+    merged: list[Wanted] = []
+    for start, end, back in clamped:
         if start >= end:
             continue
         if merged and start <= merged[-1][1]:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            last = merged[-1]
+            merged[-1] = (last[0], max(last[1], end), last[2] and back)
         else:
-            merged.append((start, end))
+            merged.append((start, end, back))
     return merged
 
 
@@ -100,18 +110,18 @@ def plan_ranges(
     """What to price this tick, per channel. Ranges are limited to when the
     channel's windows were in effect, so a source whose windows have all ended
     does not rebuild empty history."""
-    today_end, tomorrow_end = _day_edges(now, tz)
+    edges = _day_edges(now, tz)
     planned = []
     for channel in CHANNELS:
         channel_windows = [w for w in windows if w.channel == channel]
         if not channel_windows:
             continue
         wanted = _wanted_ranges(
-            coverage.get(channel), _history_start(channel_windows, floor, now), today_end, tomorrow_end, triggers
+            coverage.get(channel), _history_start(channel_windows, floor, now), edges, triggers, tz
         )
         earliest = min(w.effective_from for w in channel_windows)
-        for start, end in _clamp_and_merge(wanted, earliest, _end_limit(channel_windows)):
-            planned.append(PlannedRange(channel, start, end))
+        for start, end, back in _clamp_and_merge(wanted, earliest, _end_limit(channel_windows)):
+            planned.append(PlannedRange(channel, start, end, back))
     return planned
 
 
@@ -122,6 +132,6 @@ def chunk_range(planned: PlannedRange, days: int = CHUNK_DAYS) -> list[PlannedRa
     start = planned.start
     while start < planned.end:
         end = min(start + step, planned.end)
-        chunks.append(PlannedRange(planned.channel, start, end))
+        chunks.append(PlannedRange(planned.channel, start, end, planned.backward))
         start = end
     return chunks

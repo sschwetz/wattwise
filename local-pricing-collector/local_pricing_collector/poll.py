@@ -49,7 +49,8 @@ def _coverage_and_floor(
 def _push_range(
     settings: Settings, source_id: int, windows: list[RateWindow], tz: zoneinfo.ZoneInfo, planned: PlannedRange
 ) -> None:
-    for chunk in chunk_range(planned):
+    chunks = chunk_range(planned)
+    for chunk in reversed(chunks) if planned.backward else chunks:
         intervals = channel_intervals(windows, chunk.channel, tz, chunk.start, chunk.end)
         if intervals:
             push_price_intervals(
@@ -125,7 +126,10 @@ def _reap(tick: TickState, now: datetime.datetime) -> None:
                 continue
             logger.error("Process for local pricing source %s ran too long; terminating", source_id)
             job.process.terminate()
-            job.process.join()
+            job.process.join(timeout=10)
+            if job.process.is_alive():
+                job.process.kill()
+                job.process.join()
         else:
             _finish(tick, source_id, job)
         del tick.running[source_id]

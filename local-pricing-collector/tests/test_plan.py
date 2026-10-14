@@ -11,9 +11,9 @@ from local_pricing_collector.triggers import Triggers
 UTC = datetime.timezone.utc
 SYDNEY = zoneinfo.ZoneInfo("Australia/Sydney")
 ADELAIDE = zoneinfo.ZoneInfo("Australia/Adelaide")
-CATCH_UP = Triggers(catch_up=True, scheduled=False)
-SCHEDULED = Triggers(catch_up=False, scheduled=True)
-BOTH = Triggers(catch_up=True, scheduled=True)
+CATCH_UP = Triggers(catch_up=True)
+SCHEDULED = Triggers(catch_up=False, scheduled_for=datetime.date(2026, 6, 16))
+BOTH = Triggers(catch_up=True, scheduled_for=datetime.date(2026, 6, 16))
 
 
 def at(*args) -> datetime.datetime:
@@ -83,14 +83,14 @@ def test_an_outage_is_filled_from_the_last_priced_instant():
 def test_history_before_the_first_priced_instant_is_filled():
     coverage = {"buy": Coverage(first=at(2026, 6, 10, 0, 0), last=TOMORROW_END)}
     ranges = plan([window()], coverage, floor=at(2026, 6, 1, 0, 0))
-    assert ranges == [PlannedRange("buy", at(2026, 6, 1, 0, 0), at(2026, 6, 10, 0, 0))]
+    assert ranges == [PlannedRange("buy", at(2026, 6, 1, 0, 0), at(2026, 6, 10, 0, 0), backward=True)]
 
 
 def test_history_and_a_forward_gap_are_both_planned():
     coverage = {"buy": Coverage(first=at(2026, 6, 10, 0, 0), last=at(2026, 6, 14, 0, 0))}
     ranges = plan([window()], coverage, floor=at(2026, 6, 1, 0, 0))
     assert ranges == [
-        PlannedRange("buy", at(2026, 6, 1, 0, 0), at(2026, 6, 10, 0, 0)),
+        PlannedRange("buy", at(2026, 6, 1, 0, 0), at(2026, 6, 10, 0, 0), backward=True),
         PlannedRange("buy", at(2026, 6, 14, 0, 0), TOMORROW_END),
     ]
 
@@ -129,6 +129,12 @@ def test_a_window_that_has_not_started_is_not_planned_before_it_starts():
     assert plan([future], floor=at(2026, 6, 1, 0, 0)) == []
 
 
+def test_a_scheduled_push_after_midnight_prices_the_whole_current_local_day():
+    now = at(2026, 6, 15, 14, 30)  # 00:30 on 16 June in Sydney
+    ranges = plan([window()], now=now, triggers=SCHEDULED)
+    assert ranges == [PlannedRange("buy", at(2026, 6, 15, 14, 0), at(2026, 6, 16, 14, 0))]
+
+
 def test_the_scheduled_push_is_the_whole_next_local_day():
     ranges = plan([window()], now=at(2026, 6, 15, 13, 59), triggers=SCHEDULED)
     assert ranges == [PlannedRange("buy", at(2026, 6, 15, 14, 0), at(2026, 6, 16, 14, 0))]
@@ -137,7 +143,7 @@ def test_the_scheduled_push_is_the_whole_next_local_day():
 def test_the_scheduled_push_before_the_clocks_go_back_is_25_hours_long():
     """Sydney leaves daylight saving at 03:00 on 4 April 2027, so that local day has 25 hours."""
     now = at(2027, 4, 3, 12, 59)  # 23:59 on 3 April in Sydney (UTC+11)
-    ranges = plan([window()], now=now, triggers=SCHEDULED)
+    ranges = plan([window()], now=now, triggers=Triggers(catch_up=False, scheduled_for=datetime.date(2027, 4, 4)))
     assert len(ranges) == 1
     assert ranges[0].end - ranges[0].start == datetime.timedelta(hours=25)
     assert ranges[0].start == at(2027, 4, 3, 13, 0)
@@ -177,3 +183,14 @@ def test_the_chunks_of_a_long_range_are_seven_days_or_less_and_join_up():
 def test_a_short_range_is_one_chunk():
     planned = PlannedRange("buy", at(2026, 6, 15, 0, 0), at(2026, 6, 16, 0, 0))
     assert chunk_range(planned) == [planned]
+
+
+def test_a_history_range_that_touches_a_forward_range_is_not_backward():
+    coverage = {"buy": Coverage(first=at(2026, 6, 10, 0, 0), last=at(2026, 6, 10, 0, 0))}
+    ranges = plan([window()], coverage, floor=at(2026, 6, 1, 0, 0))
+    assert ranges == [PlannedRange("buy", at(2026, 6, 1, 0, 0), TOMORROW_END, backward=False)]
+
+
+def test_chunks_keep_the_backward_flag():
+    planned = PlannedRange("buy", at(2026, 5, 1, 0, 0), at(2026, 6, 16, 14, 0), backward=True)
+    assert all(c.backward for c in chunk_range(planned))

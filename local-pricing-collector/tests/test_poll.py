@@ -15,8 +15,8 @@ SETTINGS = Settings(core_api_url="http://core-api:8000", collector_key="k")
 # 00:00Z on 15 June is 10:00 in Sydney. Local midnights: 2026-06-15T14:00Z and 2026-06-16T14:00Z.
 NOW = datetime.datetime(2026, 6, 15, 0, 0, tzinfo=UTC)
 AT_2359 = datetime.datetime(2026, 6, 15, 13, 59, tzinfo=UTC)
-CATCH_UP = Triggers(catch_up=True, scheduled=False)
-SCHEDULED = Triggers(catch_up=False, scheduled=True)
+CATCH_UP = Triggers(catch_up=True)
+SCHEDULED = Triggers(catch_up=False, scheduled_for=datetime.date(2026, 6, 16))
 FLAT_BUY = {
     "channel": "buy",
     "effective_from": "2026-01-01T00:00:00+00:00",
@@ -162,6 +162,26 @@ def test_a_range_with_no_matching_window_pushes_nothing_and_succeeds(monkeypatch
     assert api.pushes == []
 
 
+def test_a_history_range_is_pushed_newest_chunk_first(monkeypatch):
+    first = datetime.datetime(2026, 6, 10, tzinfo=UTC)
+    coverage = {"buy": Coverage(first=first, last=datetime.datetime(2026, 6, 16, 14, 0, tzinfo=UTC))}
+    api = FakeApi(coverage=coverage, floor=datetime.datetime(2026, 5, 1, tzinfo=UTC), fail_push_after=1)
+    api.install(monkeypatch)
+
+    assert poll.sync_one_source(SETTINGS, source(), CATCH_UP, NOW) is False
+
+    assert len(api.pushes) == 1
+    assert api.pushes[0][1][-1]["interval_end"] == first.isoformat()
+
+
+def test_sync_child_exits_with_the_sync_result(monkeypatch):
+    for result, code in ((True, 0), (False, 1)):
+        monkeypatch.setattr(poll, "sync_one_source", lambda *args, result=result: result)
+        with pytest.raises(SystemExit) as exit_info:
+            poll.sync_child(SETTINGS, source(), CATCH_UP, NOW)
+        assert exit_info.value.code == code
+
+
 class FakeProcess:
     instances: list["FakeProcess"] = []
 
@@ -172,6 +192,8 @@ class FakeProcess:
         self.alive = True
         self.exitcode = None
         self.terminated = False
+        self.killed = False
+        self.ignore_terminate = False
         FakeProcess.instances.append(self)
 
     def start(self):
@@ -185,8 +207,14 @@ class FakeProcess:
 
     def terminate(self):
         self.terminated = True
+        if not self.ignore_terminate:
+            self.alive = False
+            self.exitcode = -15
+
+    def kill(self):
+        self.killed = True
         self.alive = False
-        self.exitcode = -15
+        self.exitcode = -9
 
     def finish(self, exitcode=0):
         self.alive = False
@@ -312,3 +340,43 @@ def test_a_source_with_a_bad_time_zone_is_skipped_and_the_others_still_run(monke
 
     assert [p.args[1].source_id for p in FakeProcess.instances] == [2]
     assert "time zone" in caplog.text
+
+
+def test_a_child_that_ignores_terminate_is_killed(monkeypatch):
+    fake_discovery(monkeypatch, [source()])
+    state = poll.TickState()
+    tick(state)
+    FakeProcess.instances[0].ignore_terminate = True
+
+    tick(state, now=NOW + poll.MAX_RUN + datetime.timedelta(minutes=1))
+
+    assert FakeProcess.instances[0].killed
+    assert len(FakeProcess.instances) == 2
+
+
+def test_finished_children_are_recorded_even_when_discovery_fails(monkeypatch):
+    fake_discovery(monkeypatch, [source()])
+    state = poll.TickState()
+    tick(state)
+    FakeProcess.instances[0].finish(0)
+
+    def boom(url, key):
+        raise CoreApiError("down")
+
+    monkeypatch.setattr(poll, "fetch_collector_sources", boom)
+    tick(state)
+
+    assert state.states[7].caught_up_date == datetime.date(2026, 6, 15)
+    assert state.running == {}
+
+
+def test_a_scheduled_only_trigger_prices_exactly_the_target_day_without_coverage(monkeypatch):
+    api = FakeApi().install(monkeypatch)
+    after_midnight = datetime.datetime(2026, 6, 15, 14, 30, tzinfo=UTC)
+
+    assert poll.sync_one_source(SETTINGS, source(), SCHEDULED, after_midnight) is True
+
+    assert api.coverage_calls == 0
+    intervals = api.pushes[0][1]
+    assert intervals[0]["interval_start"] == "2026-06-15T14:00:00+00:00"
+    assert intervals[-1]["interval_end"] == "2026-06-16T14:00:00+00:00"
