@@ -122,6 +122,17 @@ No change to the panel. The hint under the add form stays. The "Adding a window 
 - Filling holes in the middle of the covered span. A hole before `first` or after `last` is filled, and the forward fill from `last` repairs an outage.
 - Clearing future prices when a window ends (still the known gap in the earlier spec).
 
+## Refinements made in planning
+
+- The scheduled push for a target date covers the whole of that date, local midnight to local midnight. At 23:59 on day D it prices D+1. It reprices no minute of the current day, except on a retry (see below).
+- The scheduled push stays owed until 02:00 local on its target date. If it fails, the collector retries it every minute until then. A retry after midnight prices the whole target date again.
+- The parent process keeps a small in-memory record per source: the local dates on which its catch-up and its scheduled push last succeeded. A catch-up runs when the source has none for the current local date, which covers a new source, a restart and a day rollover. A failed run leaves the record alone, so the next tick retries. The record exists so a long range is not rebuilt every minute. A restart starts with no record, so it always does a fresh catch-up and nothing is lost.
+- A range of more than 7 days is pushed in 7-day chunks. A history fill is pushed newest chunk first, so an interrupted fill resumes correctly.
+- A direction whose windows leave minutes without a rate, for example seasonal windows, is planned once per local day and per restart. It builds nothing for the unpriced stretch and sends no requests for it. This costs a little CPU once a day, and the spec accepts that.
+- The collector uses the config in the discovery response, so `fetch_source_config` is gone.
+- A child process runs one source's work and the parent does not wait for it, so a long history fill never delays other sources. A child is stopped after 2 hours.
+- core-api sends the site data floor without a UTC offset, so the collector reads an offset-less floor as UTC.
+
 ## Replaces in the 2026-10-13 spec
 
 - "Pushes from the top of the current UTC hour to `LOCAL_HORIZON_HOURS` ahead", "every 5 minutes", and the 48-hour default.

@@ -120,7 +120,7 @@ To add a window, fill in the form at the bottom of the panel:
 | **Direction** | **Import**, **Export (feed-in)** or **Controlled load**. |
 | **Window label** | A name, for example `Peak`. |
 | **Rate (c/kWh)** | Cents per kWh, zero or more. |
-| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at midnight in your browser's time zone. An earlier date does not add prices for past days. |
+| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at midnight in your browser's time zone. An earlier date prices past days, back to the first data on your site. |
 | **Start** / **End** | The times of day the rate applies. |
 | **Months** / **Days** | The months and days of the week it applies to. All are ticked to begin with. |
 
@@ -144,13 +144,17 @@ If a direction that has current windows leaves some months, days or times uncove
 
 Cost for earlier times keeps the old rate. **Delete** removes a window, and it stops new prices from it.
 
+The new rate shows in the prices written from the next 23:59 push, which is tomorrow's prices. Prices already written for today keep the old rate.
+
 You cannot schedule a rate change for a future date in advance. Two windows on the same direction overlap if they cover the same minute in any month and day. A window with no end date overlaps every later window like that, so WattWise refuses the new one. End the old window on the day the rate changes.
 
 ### When changes take effect
 
-Every 5 minutes, the collector writes prices from the start of the current UTC hour to 48 hours ahead. It never writes prices for earlier times, so a window whose **From** date is in the past adds no prices for the days already gone. A new or changed window reaches the dashboard within about 5 minutes.
+The collector writes the next day's prices once a day, at 23:59 in your site's time zone. A rate you add or change today therefore shows in tomorrow's prices, and today's prices keep the rate they already have. If the 23:59 push does not go through, the collector retries it every minute until 02:00. A retry after midnight writes that day's prices again.
 
-Prices already written stay as they are after an **End** or **Delete**. That includes the next 48 hours, so minutes that no other window covers keep the old rate until those 48 hours have passed.
+It also fills in what is missing. Within a minute of seeing a new source, after it restarts, and on the first check of each new day, it compares the prices stored for each direction with what your windows imply and writes the difference. That covers the rest of today for a source you have just created, and a day it missed. It reaches back to the first data on your site, but only for times when a window was in effect. A window with an earlier **From** date therefore prices past days, and your cost figures for those days use it.
+
+Prices already written stay as they are after an **End** or **Delete**. Minutes that no other window covers keep the old rate through the end of tomorrow.
 
 ## Connecting a WeatherLink Live station
 
