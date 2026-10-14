@@ -381,6 +381,23 @@ class ExportAdjustmentWindowOut(ExportAdjustmentWindowCreate):
     model_config = {"from_attributes": True}
 
 
+def _check_time_pattern(
+    months: list[int], days_of_week: list[int], start_time: datetime.time, end_time: datetime.time
+) -> None:
+    """The months/days-of-week/time-of-day checks shared by the window types
+    that take a whole-minute pattern (LocalRateWindowCreate and
+    ConditionalCreditWindowCreate)."""
+    if any(month < 1 or month > 12 for month in months):
+        raise ValueError("months must be between 1 and 12")
+    if any(day < 0 or day > 6 for day in days_of_week):
+        raise ValueError("days_of_week must be between 0 (Monday) and 6 (Sunday)")
+    # SQLite stores a time without its offset, so an offset would be lost.
+    if any(t.tzinfo is not None for t in (start_time, end_time)):
+        raise ValueError("start_time and end_time must not carry a timezone offset")
+    if any(t.second or t.microsecond for t in (start_time, end_time)):
+        raise ValueError("start_time and end_time must be whole minutes")
+
+
 class ConditionalCreditWindowCreate(BaseModel):
     label: str = Field(min_length=1, max_length=100)
     months: list[int] = Field(min_length=1)
@@ -392,15 +409,8 @@ class ConditionalCreditWindowCreate(BaseModel):
 
     @model_validator(mode="after")
     def _check_pattern(self) -> ConditionalCreditWindowCreate:
-        if any(month < 1 or month > 12 for month in self.months):
-            raise ValueError("months must be between 1 and 12")
-        if any(day < 0 or day > 6 for day in self.days_of_week):
-            raise ValueError("days_of_week must be between 0 (Monday) and 6 (Sunday)")
-        # cost.py counts one reading per minute, and SQLite drops an offset.
-        if any(t.tzinfo is not None for t in (self.start_time, self.end_time)):
-            raise ValueError("start_time and end_time must not carry a timezone offset")
-        if any(t.second or t.microsecond for t in (self.start_time, self.end_time)):
-            raise ValueError("start_time and end_time must be whole minutes")
+        # Whole minutes matter here because cost.py counts one reading per minute.
+        _check_time_pattern(self.months, self.days_of_week, self.start_time, self.end_time)
         if self.start_time >= self.end_time:
             raise ValueError("start_time must be before end_time")
         return self
@@ -450,15 +460,7 @@ class LocalRateWindowCreate(BaseModel):
 
     @model_validator(mode="after")
     def _check_pattern(self) -> LocalRateWindowCreate:
-        if any(month < 1 or month > 12 for month in self.months):
-            raise ValueError("months must be between 1 and 12")
-        if any(day < 0 or day > 6 for day in self.days_of_week):
-            raise ValueError("days_of_week must be between 0 (Monday) and 6 (Sunday)")
-        # SQLite stores a time without its offset, so an offset would be lost.
-        if any(t.tzinfo is not None for t in (self.start_time, self.end_time)):
-            raise ValueError("start_time and end_time must not carry a timezone offset")
-        if any(t.second or t.microsecond for t in (self.start_time, self.end_time)):
-            raise ValueError("start_time and end_time must be whole minutes")
+        _check_time_pattern(self.months, self.days_of_week, self.start_time, self.end_time)
         if self.effective_to is not None and self.effective_to <= self.effective_from:
             raise ValueError("effective_to must be after effective_from")
         return self

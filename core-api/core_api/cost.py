@@ -250,68 +250,57 @@ def _window_average_import_w(
     return sum(readings.values(), decimal.Decimal("0")) / len(readings)
 
 
-def _local_window_bounds_utc(
-    local_date: datetime.date, start_time: datetime.time, end_time: datetime.time, tz: zoneinfo.ZoneInfo
-) -> tuple[datetime.datetime, datetime.datetime]:
-    """A window's wall-clock start and end on `local_date`, as UTC instants, so
-    a DST day has its real length."""
-    start_utc = datetime.datetime.combine(local_date, start_time, tzinfo=tz).astimezone(datetime.timezone.utc)
-    end_utc = datetime.datetime.combine(local_date, end_time, tzinfo=tz).astimezone(datetime.timezone.utc)
-    return start_utc, end_utc
-
-
-def _window_credit_row(
+def _window_credit_c(
     db: Session,
     energy_source_ids: list[int],
     window: ConditionalCreditWindow,
     local_date: datetime.date,
     tz: zoneinfo.ZoneInfo,
     real_now_utc: datetime.datetime,
-) -> _MinuteCost | None:
-    """The credit `window` earns on `local_date`, or None: the window has not
-    ended yet, a minute is missing, or the average is not below the limit."""
-    start_utc, end_utc = _local_window_bounds_utc(local_date, window.start_time, window.end_time, tz)
+) -> decimal.Decimal:
+    """The credit `window` earns on `local_date` as negative cents, or 0 when
+    the window has not ended yet, a minute is missing, or the average is not
+    below the limit. The window's wall-clock bounds are converted to UTC, so a
+    DST day has its real length."""
+    start_utc = datetime.datetime.combine(local_date, window.start_time, tzinfo=tz).astimezone(datetime.timezone.utc)
+    end_utc = datetime.datetime.combine(local_date, window.end_time, tzinfo=tz).astimezone(datetime.timezone.utc)
     if end_utc > real_now_utc:
-        return None
+        return decimal.Decimal("0")
     average_w = _window_average_import_w(db, energy_source_ids, start_utc, end_utc)
     if average_w is None or average_w >= window.max_avg_import_w:
-        return None
-    return _MinuteCost(
-        ts=end_utc, cost_c=-window.credit_c, import_kwh=decimal.Decimal("0"), export_kwh=decimal.Decimal("0")
-    )
+        return decimal.Decimal("0")
+    return -window.credit_c
 
 
-def _conditional_credit_rows(
+def _conditional_credit_total_c(
     db: Session,
     site_id: int,
     days: list[tuple[datetime.datetime, datetime.datetime]],
     site_timezone: str,
     tariffs: list[SiteTariff],
     real_now_utc: datetime.datetime,
-) -> list[_MinuteCost]:
-    """One negative row per matching ConditionalCreditWindow on each local day
-    (days resolved by the caller, as for _service_charge_rows) whose average
-    grid import over [start_time, end_time) is strictly below max_avg_import_w.
-    Windows stack. Used only by compute_cost's total, never
-    compute_cost_series, for the same reason as the daily fees."""
+) -> decimal.Decimal:
+    """Sum of every ConditionalCreditWindow's credit (negative cents) over the
+    local days already resolved by the caller, as for _service_charge_rows: a
+    matching window earns its credit on a day whose average grid import over
+    [start_time, end_time) is strictly below max_avg_import_w. Windows stack.
+    Used only by compute_cost's total, never compute_cost_series, for the same
+    reason as the daily fees."""
     windows_by_tariff = conditional_credit_windows_by_tariff(db, site_id)
     if not days or not windows_by_tariff:
-        return []
+        return decimal.Decimal("0")
     tz = site_tz(site_timezone)
     energy_source_ids = _source_ids(db, site_id, SourceKind.ENERGY)
-    rows = []
-    for midnight, _next_midnight in days:
+    total_c = decimal.Decimal("0")
+    for midnight, _ in days:
         tariff = tariff_effective_at(tariffs, midnight)
         if tariff is None:
             continue
         local_date = midnight.astimezone(tz).date()
         for window in windows_by_tariff.get(tariff.id, []):
-            if not credit_window_applies_on(window, local_date):
-                continue
-            row = _window_credit_row(db, energy_source_ids, window, local_date, tz, real_now_utc)
-            if row is not None:
-                rows.append(row)
-    return rows
+            if credit_window_applies_on(window, local_date):
+                total_c += _window_credit_c(db, energy_source_ids, window, local_date, tz, real_now_utc)
+    return total_c
 
 
 def _minute_costs(
@@ -462,8 +451,7 @@ def compute_cost(
     for charge in _monthly_fee_rows(db, site_id, days, site_timezone, tariffs, now_utc):
         total_cost_c += charge.cost_c
 
-    for credit in _conditional_credit_rows(db, site_id, days, site_timezone, tariffs, real_now_utc):
-        total_cost_c += credit.cost_c
+    total_cost_c += _conditional_credit_total_c(db, site_id, days, site_timezone, tariffs, real_now_utc)
 
     # Demand charges count toward the total as soon as there's a best
     # estimate -- even before the billing period closes and the charge is
