@@ -6,7 +6,7 @@ import pathlib
 
 import pytest
 
-from weather_collector.mapping import (
+from weatherlink_local_collector.mapping import (
     RainState,
     map_barometer_readings,
     map_iss_readings,

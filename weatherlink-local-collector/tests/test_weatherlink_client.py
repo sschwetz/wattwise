@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from weather_collector.weatherlink_client import fetch_current_conditions
+from weatherlink_local_collector.weatherlink_client import fetch_current_conditions
 
 
 @respx.mock

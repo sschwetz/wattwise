@@ -5,12 +5,12 @@ import logging
 import time
 from dataclasses import dataclass
 
-from weather_collector.config import Settings, get_settings
-from weather_collector.core_api_client import fetch_collector_sources, push_weather_readings
-from weather_collector.mapping import RainState, map_barometer_readings, map_iss_readings
-from weather_collector.weatherlink_client import fetch_current_conditions
+from weatherlink_local_collector.config import Settings, get_settings
+from weatherlink_local_collector.core_api_client import fetch_collector_sources, push_weather_readings
+from weatherlink_local_collector.mapping import RainState, map_barometer_readings, map_iss_readings
+from weatherlink_local_collector.weatherlink_client import fetch_current_conditions
 
-logger = logging.getLogger("weather_collector")
+logger = logging.getLogger("weatherlink_local_collector")
 
 
 def _map_iss_or_empty(conditions: list[dict], ts: datetime.datetime, rain_state: RainState) -> list[dict]:

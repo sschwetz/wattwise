@@ -10,7 +10,7 @@ WattWise records and displays energy data for a home solar and battery system: p
 | `envoy-collector/` | Polls the Envoy local API every minute and pushes readings to core-api. Renews the Envoy token from stored Enlighten credentials. |
 | `amber-pricing-collector/` | Polls Amber prices, with live polling and backfill. |
 | `local-pricing-collector/` | Turns rate windows entered in the webapp into price intervals, for suppliers with a fixed tariff. At 23:59 in each site's time zone it pushes the next local day's prices. Within a minute of a new source, a restart or a change to the rate windows, and on the first check of each new day, it also fills what is missing, back to the site's first data. A change to a rate window reprices from where it takes effect, within a minute. |
-| `weather-collector/` | Polls the WeatherLink Live. |
+| `weatherlink-local-collector/` | Polls the WeatherLink Live. |
 | `webapp/` | React single-page app (Vite, Tailwind, TanStack Query, Recharts). Includes an in-app Help viewer. |
 | `mail-relay/` | Postfix relay that sends password-reset and email-confirmation mail for core-api. |
 
@@ -86,7 +86,7 @@ CORE_API_URL=http://localhost:8000 COLLECTOR_KEY=dev-envoy-key \
   uv run python -m envoy_collector.main
 ```
 
-The other collectors work the same way. The Amber and local pricing collectors both take `PRICING_COLLECTOR_KEY` as their `COLLECTOR_KEY` and run as `amber_pricing_collector.main` and `local_pricing_collector.main`. The weather collector takes `WEATHER_COLLECTOR_KEY` and runs as `weather_collector.main`. The Envoy and weather collectors must run on a machine that can reach the device's LAN address.
+The other collectors work the same way. The Amber and local pricing collectors both take `PRICING_COLLECTOR_KEY` as their `COLLECTOR_KEY` and run as `amber_pricing_collector.main` and `local_pricing_collector.main`. The WeatherLink collector takes `WEATHER_COLLECTOR_KEY` and runs as `weatherlink_local_collector.main`. The Envoy and weather collectors must run on a machine that can reach the device's LAN address.
 
 ## Run the full stack in Docker
 

@@ -4,10 +4,10 @@ import datetime
 
 import pytest
 
-from weather_collector import main as main_module
-from weather_collector.config import Settings
-from weather_collector.core_api_client import CoreApiError
-from weather_collector.mapping import RainState
+from weatherlink_local_collector import main as main_module
+from weatherlink_local_collector.config import Settings
+from weatherlink_local_collector.core_api_client import CoreApiError
+from weatherlink_local_collector.mapping import RainState
 
 SETTINGS = Settings(
     core_api_url="http://localhost:8000", collector_key="key", poll_interval_seconds=60, discovery_refresh_seconds=300

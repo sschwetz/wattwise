@@ -10,7 +10,7 @@ services:
     environment:
       JWT_SECRET: ${JWT_SECRET:?set a long random secret}
       ENVOY_COLLECTOR_KEY: ${ENVOY_COLLECTOR_KEY:?set a long random secret, shared with the envoy-collector service below}
-      WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weather-collector service below}
+      WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weatherlink-local-collector service below}
       PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the amber-pricing-collector service below}
       DATABASE_URL: sqlite:////data/core_api.db
       AVATAR_STORAGE_DIR: /data/avatars
@@ -85,8 +85,8 @@ services:
         condition: service_healthy
     networks: *app-network
 
-  weather-collector:
-    build: ./weather-collector
+  weatherlink-local-collector:
+    build: ./weatherlink-local-collector
     environment:
       CORE_API_URL: http://core-api:8000
       COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with core-api's own WEATHER_COLLECTOR_KEY}

@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from weather_collector.core_api_client import (
+from weatherlink_local_collector.core_api_client import (
     CoreApiError,
     fetch_collector_sources,
     push_weather_readings,

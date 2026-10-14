@@ -6,9 +6,9 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY weather_collector ./weather_collector
+COPY weatherlink_local_collector ./weatherlink_local_collector
 RUN uv sync --frozen --no-dev
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["/app/.venv/bin/python", "-m", "weather_collector.main"]
+CMD ["/app/.venv/bin/python", "-m", "weatherlink_local_collector.main"]
