@@ -8,6 +8,7 @@ from core_api.deps import get_db_session, require_site_access, require_site_owne
 from core_api.errors import AppError
 from core_api.models.billing import (
     BillingCycle,
+    ConditionalCreditWindow,
     DemandWindow,
     ExportAdjustmentWindow,
     MonthlyFeeDiscountWindow,
@@ -18,6 +19,8 @@ from core_api.schemas import (
     BillingCycleCreate,
     BillingCycleOut,
     BillingCycleUpdate,
+    ConditionalCreditWindowCreate,
+    ConditionalCreditWindowOut,
     DemandWindowCreate,
     DemandWindowOut,
     ExportAdjustmentWindowCreate,
@@ -43,7 +46,7 @@ def _get_owned_tariff(db: Session, site: Site, tariff_id: int) -> SiteTariff:
 
 def _create_tariff_child(db: Session, site: Site, tariff_id: int, model_cls: type, payload):
     """Create-under-an-owned-tariff, shared by every window type (DemandWindow,
-    ExportAdjustmentWindow, MonthlyFeeDiscountWindow) that's just
+    ExportAdjustmentWindow, ConditionalCreditWindow, MonthlyFeeDiscountWindow) that's just
     `site_tariff_id` plus the payload's own fields."""
     tariff = _get_owned_tariff(db, site, tariff_id)
     row = model_cls(site_tariff_id=tariff.id, **payload.model_dump())
@@ -140,6 +143,29 @@ def list_export_adjustment_windows(
     db: Session = Depends(get_db_session),
 ) -> list[ExportAdjustmentWindow]:
     return _list_tariff_children(db, site, tariff_id, ExportAdjustmentWindow)
+
+
+@router.post(
+    "/tariffs/{tariff_id}/conditional-credits",
+    response_model=ConditionalCreditWindowOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_conditional_credit_window(
+    tariff_id: int,
+    payload: ConditionalCreditWindowCreate,
+    site: Site = Depends(require_site_owner),
+    db: Session = Depends(get_db_session),
+) -> ConditionalCreditWindow:
+    return _create_tariff_child(db, site, tariff_id, ConditionalCreditWindow, payload)
+
+
+@router.get("/tariffs/{tariff_id}/conditional-credits", response_model=list[ConditionalCreditWindowOut])
+def list_conditional_credit_windows(
+    tariff_id: int,
+    site: Site = Depends(require_site_access),
+    db: Session = Depends(get_db_session),
+) -> list[ConditionalCreditWindow]:
+    return _list_tariff_children(db, site, tariff_id, ConditionalCreditWindow)
 
 
 @router.post(

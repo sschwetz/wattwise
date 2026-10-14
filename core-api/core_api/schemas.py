@@ -381,6 +381,38 @@ class ExportAdjustmentWindowOut(ExportAdjustmentWindowCreate):
     model_config = {"from_attributes": True}
 
 
+class ConditionalCreditWindowCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=100)
+    months: list[int] = Field(min_length=1)
+    days_of_week: list[int] = Field(min_length=1)
+    start_time: datetime.time
+    end_time: datetime.time
+    max_avg_import_w: decimal.Decimal = Field(gt=0, max_digits=10, decimal_places=4)
+    credit_c: decimal.Decimal = Field(gt=0, max_digits=10, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _check_pattern(self) -> ConditionalCreditWindowCreate:
+        if any(month < 1 or month > 12 for month in self.months):
+            raise ValueError("months must be between 1 and 12")
+        if any(day < 0 or day > 6 for day in self.days_of_week):
+            raise ValueError("days_of_week must be between 0 (Monday) and 6 (Sunday)")
+        # cost.py counts one reading per minute, and SQLite drops an offset.
+        if any(t.tzinfo is not None for t in (self.start_time, self.end_time)):
+            raise ValueError("start_time and end_time must not carry a timezone offset")
+        if any(t.second or t.microsecond for t in (self.start_time, self.end_time)):
+            raise ValueError("start_time and end_time must be whole minutes")
+        if self.start_time >= self.end_time:
+            raise ValueError("start_time must be before end_time")
+        return self
+
+
+class ConditionalCreditWindowOut(ConditionalCreditWindowCreate):
+    id: int
+    site_tariff_id: int
+
+    model_config = {"from_attributes": True}
+
+
 class MonthlyFeeDiscountWindowCreate(BaseModel):
     label: str
     starts_at: UtcDatetime
