@@ -71,7 +71,7 @@ def test_grant_list_and_revoke_site_access(client, app_and_db_url):
 
     revoke = client.delete(f"/api/v1/sites/{site_id}/access/{viewer_id}", headers=auth(owner_id))
     assert revoke.status_code == 204
-    assert client.get(f"/api/v1/sites/{site_id}", headers=auth(viewer_id)).status_code == 403
+    assert client.get(f"/api/v1/sites/{site_id}", headers=auth(viewer_id)).status_code == 404
 
 
 def test_grant_access_to_nonexistent_user_returns_404(client, app_and_db_url):
@@ -134,4 +134,4 @@ def test_non_owner_cannot_patch_site(client, app_and_db_url):
     response = client.patch(
         f"/api/v1/sites/{site_id}", json={"name": "Hijacked"}, headers=auth(stranger_id)
     )
-    assert response.status_code == 403
+    assert response.status_code == 404

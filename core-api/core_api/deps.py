@@ -104,7 +104,8 @@ def require_site_access(
     if site.owner_user_id != current_user.id:
         access = db.get(SiteAccess, (site_id, current_user.id))
         if access is None:
-            raise AppError(403, "forbidden", "No access to this site")
+            # Same response as a missing site, so IDs can't be enumerated.
+            raise AppError(404, "not_found", f"Site {site_id} not found")
     return site
 
 
@@ -117,6 +118,8 @@ def require_site_owner(
     if site is None:
         raise AppError(404, "not_found", f"Site {site_id} not found")
     if site.owner_user_id != current_user.id:
+        if db.get(SiteAccess, (site_id, current_user.id)) is None:
+            raise AppError(404, "not_found", f"Site {site_id} not found")
         raise AppError(403, "forbidden", "Only the site owner can perform this action")
     return site
 

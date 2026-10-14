@@ -80,7 +80,7 @@ def test_require_site_access_allows_owner_and_viewer_denies_stranger(wired_app):
     client = TestClient(app)
     assert client.get(f"/sites/{ids['site']}/peek", headers=auth(ids["owner"])).status_code == 200
     assert client.get(f"/sites/{ids['site']}/peek", headers=auth(ids["viewer"])).status_code == 200
-    assert client.get(f"/sites/{ids['site']}/peek", headers=auth(ids["stranger"])).status_code == 403
+    assert client.get(f"/sites/{ids['site']}/peek", headers=auth(ids["stranger"])).status_code == 404
 
 
 def test_require_site_owner_denies_viewer(wired_app):

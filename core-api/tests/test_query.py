@@ -109,7 +109,7 @@ def test_get_energy_readings_denies_non_member(client, app_and_db_url):
         },
         headers={"Authorization": f"Bearer {create_access_token(stranger_id)}"},
     )
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def seed_price_reading(db_url: str) -> tuple[int, int]:

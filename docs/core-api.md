@@ -45,8 +45,8 @@ Authorization is in the dependencies, not in the function bodies. A router funct
 | `get_current_user` | A valid access JWT whose user still exists | 401 `missing_token` or `invalid_token` |
 | `require_setup_token` | A valid `totp_setup` scoped token | 401 |
 | `require_mfa_token` | A valid `mfa` scoped token and the user is not locked out | 401 `too_many_attempts` |
-| `require_site_access` | Owner or `site_access` row | 404 `not_found`, 403 `forbidden` |
-| `require_site_owner` | Owner only | 403 `forbidden` |
+| `require_site_access` | Owner or `site_access` row | 404 `not_found` (also for sites the caller cannot access) |
+| `require_site_owner` | Owner only | 404 `not_found` if the caller has no access, 403 `forbidden` for a viewer |
 | `get_source_by_collector_key` | Correct key for the source's kind, matching provider header if sent, source enabled and within its effective dates | 401 `invalid_collector_key`, 403 `source_disabled` / `source_expired` |
 | `require_source_kind(kind)` | The above, and the source is that kind | 403 `wrong_source_kind` |
 

@@ -161,7 +161,7 @@ def test_only_the_site_owner_can_add_windows(client, local_source, app_and_db_ur
     _, db_url = app_and_db_url
     other_owner, _ = make_owner_and_site(db_url)
     response = client.post(_url(local_source), json=_window(), headers=auth(other_owner))
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_a_viewer_can_list_windows_but_not_change_them(client, local_source):
