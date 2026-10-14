@@ -112,16 +112,17 @@ def _interval(
     }
 
 
-def _channel_intervals(
+def channel_intervals(
     windows: list[RateWindow],
     channel: str,
     tz: zoneinfo.ZoneInfo,
     start: datetime.datetime,
     end: datetime.datetime,
 ) -> list[dict]:
-    """Walks minute by minute and closes an interval at each top of the hour
-    and wherever the rate changes. A minute with no rate closes the interval
-    and opens nothing."""
+    """Price intervals for one channel from start to end. Walks minute by
+    minute and closes an interval at each top of the UTC hour and wherever the
+    rate changes. A minute with no rate closes the interval and opens nothing.
+    start and end are whole minutes."""
     intervals = []
     run_start, run_rate = start, price_at(windows, channel, start, tz)
     minute = start + ONE_MINUTE
@@ -132,19 +133,4 @@ def _channel_intervals(
                 intervals.append(_interval(channel, run_start, minute, run_rate))
             run_start, run_rate = minute, rate
         minute += ONE_MINUTE
-    return intervals
-
-
-def build_intervals(
-    windows: list[RateWindow], tz: zoneinfo.ZoneInfo, now: datetime.datetime, horizon_hours: int
-) -> list[dict]:
-    """Price intervals from the top of the current UTC hour for horizon_hours.
-    Starting on the hour keeps every interval's start time the same across
-    pushes, so repeating a push overwrites rows instead of adding them."""
-    start = now.astimezone(datetime.timezone.utc).replace(minute=0, second=0, microsecond=0)
-    end = start + datetime.timedelta(hours=horizon_hours)
-    intervals: list[dict] = []
-    for channel in CHANNELS:
-        if any(w.channel == channel for w in windows):
-            intervals.extend(_channel_intervals(windows, channel, tz, start, end))
     return intervals

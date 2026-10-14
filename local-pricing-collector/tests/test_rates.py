@@ -5,11 +5,24 @@ import decimal
 import logging
 import zoneinfo
 
-from local_pricing_collector.rates import build_intervals, parse_windows, price_at
+from local_pricing_collector.rates import CHANNELS, channel_intervals, parse_windows, price_at
 
 UTC = datetime.timezone.utc
 SYDNEY = zoneinfo.ZoneInfo("Australia/Sydney")
 D = decimal.Decimal
+
+
+def build_intervals(windows, tz, now, horizon_hours):
+    """The old 'from the top of the hour for N hours' shape, over every
+    channel that has a window, built on the range function."""
+    start = now.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+    end = start + datetime.timedelta(hours=horizon_hours)
+    return [
+        interval
+        for channel in CHANNELS
+        if any(w.channel == channel for w in windows)
+        for interval in channel_intervals(windows, channel, tz, start, end)
+    ]
 
 
 def window(**overrides) -> dict:
@@ -206,3 +219,16 @@ def test_a_daylight_saving_change_moves_the_peak_start_in_utc():
     assert "2026-10-03T20:00:00+00:00" in peak_starts
     assert "2026-10-03T20:00:00+00:00" in off_peak_ends
     assert "2026-10-03T21:00:00+00:00" not in off_peak_ends
+
+
+def test_a_range_that_starts_and_ends_mid_hour_is_cut_at_the_hour():
+    adelaide = zoneinfo.ZoneInfo("Australia/Adelaide")
+    windows = parse_windows([window()])
+
+    intervals = channel_intervals(windows, "buy", adelaide, at(2026, 6, 14, 14, 30), at(2026, 6, 14, 16, 30))
+
+    assert [(i["interval_start"], i["interval_end"]) for i in intervals] == [
+        ("2026-06-14T14:30:00+00:00", "2026-06-14T15:00:00+00:00"),
+        ("2026-06-14T15:00:00+00:00", "2026-06-14T16:00:00+00:00"),
+        ("2026-06-14T16:00:00+00:00", "2026-06-14T16:30:00+00:00"),
+    ]
