@@ -16,6 +16,7 @@ Have a recent bill or your retailer's tariff sheet open. You need:
 - The monthly account fee, if you have one, in dollars.
 - Any demand charge: its time window, days, months and rate in cents per kW per day.
 - Any time-based feed-in bonus or penalty.
+- Any credit for keeping grid import low during set hours: its hours, days, months, power limit and amount in cents.
 - The day of the month your bill closes and how many months a bill covers.
 
 ## How the cost is calculated
@@ -27,14 +28,15 @@ WattWise builds each cost figure minute by minute:
 3. **Daily service charge**: the tariff's cents per day, added in proportion to how much of the day has passed.
 4. **Monthly fee**: the tariff's monthly fee (or its [discounted amount](#monthly-fee-discounts)), divided evenly across the days of the [billing cycle](#billing-cycles). Without a billing cycle, no monthly fee is charged.
 5. **Demand charge**: the [demand charge](#demand-charges) for the billing period, spread across the minutes inside the demand window.
+6. **Conditional credits**: a [conditional credit](#conditional-credits) subtracts a fixed amount for each day your average grid import in its time window stays below its limit.
 
-The **Cost** total and the billing period tiles include all five parts. The cost line on the history chart shows only the energy parts (1 and 2) plus the demand charge, so fixed fees do not show up as a spike at midnight. Prices and energy come from your sources. Everything on this page comes from you. Whenever a minute has energy but no price, that minute is left out. See [Net and gross cost](05-dashboard.md#net-and-gross-cost) for the two ways the energy side can be counted.
+The **Cost** total and the billing period tiles include all six parts. The cost line on the history chart shows only the energy parts (1 and 2) plus the demand charge, so fixed fees and conditional credits do not show up as a spike at one instant. Prices and energy come from your sources. Everything on this page comes from you. Whenever a minute has energy but no price, that minute is left out. See [Net and gross cost](05-dashboard.md#net-and-gross-cost) for the two ways the energy side can be counted.
 
 ## Tariffs
 
 A **tariff** is a set of fixed charges that applies from the moment you add it until you end it.
 
-The section heading names your price supplier: "Amber Tariffs" with an Amber source, "Origin Fixed Tariffs" with a local source called Origin Fixed, and "Tariffs" with neither. The supply charge, monthly fee, billing cycle, demand windows, export adjustments and fee discounts on this page apply to every kind of pricing source. Per-kWh rates for a local source are set in [Sources](04-sources.md#setting-up-a-fixed-tariff).
+The section heading names your price supplier: "Amber Tariffs" with an Amber source, "Origin Fixed Tariffs" with a local source called Origin Fixed, and "Tariffs" with neither. The supply charge, monthly fee, billing cycle, demand windows, export adjustments, conditional credits and fee discounts on this page apply to every kind of pricing source. Per-kWh rates for a local source are set in [Sources](04-sources.md#setting-up-a-fixed-tariff).
 
 ### Adding a tariff
 
@@ -54,7 +56,7 @@ Tariffs are not edited in place, so past bills keep their original rates.
 
 Ended tariffs stay in the list, struck through. Click one to see its windows. Always end the old tariff before you add its replacement.
 
-> **Note:** Demand windows, export adjustments and fee discounts belong to one tariff. The forms for them appear under an active tariff once it exists. When you add a replacement tariff, enter them again under the new one.
+> **Note:** Demand windows, export adjustments, conditional credits and fee discounts belong to one tariff. The forms for them appear under an active tariff once it exists. When you add a replacement tariff, enter them again under the new one.
 
 ### Demand windows
 
@@ -85,6 +87,26 @@ An **export adjustment** raises or lowers your feed-in price during a repeating 
 | **Adjustment** | Cents per kWh. Positive is an incentive, negative is a disincentive. |
 
 Click **Add export adjustment**. If several adjustments cover the same minute, they add together.
+
+### Conditional credits
+
+A **conditional credit** takes a fixed amount off your bill on each day that your average grid import, between two times of day, stays below a limit. Use it for a retailer offer such as "keep your evening import under 300 W and get 50 cents".
+
+| Field | What to enter |
+|-------|---------------|
+| **Credit label** | A name. |
+| **Credit months**, **Credit days of week**, **Credit start time**, **Credit end time** | Same format as a demand window. The end time must be later than the start time, so a window cannot cross midnight. |
+| **Average import below (W)** | The limit in watts. |
+| **Credit (cents)** | The amount for each qualifying day. |
+
+Click **Add conditional credit**. On each matching day, WattWise averages your grid import from the start time up to the end time. If the average is below the limit, that day earns the credit.
+
+- The test uses power drawn from the grid only. Power you export does not offset it, and it does not change with the [net or gross](05-dashboard.md#net-and-gross-cost) setting.
+- Equal to the limit does not qualify.
+- A day earns nothing until its end time has passed.
+- If any minute in the window has no reading, for example because a collector was offline, that day earns nothing.
+- If several credits qualify on the same day, they add together.
+- Credits lower the **Cost** total and the billing period tiles. They do not appear on the history chart.
 
 ### Monthly fee discounts
 
