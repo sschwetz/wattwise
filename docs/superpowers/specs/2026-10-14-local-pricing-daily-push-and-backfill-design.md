@@ -91,7 +91,7 @@ No change to the panel. The hint under the add form stays. The "Adding a window 
 
 - "When changes take effect" says the collector writes the next day's prices at 23:59 site time, fills what is missing within a minute of seeing a new source or a restart, and reaches back to your first data.
 - The **From** field says an earlier date prices past days back to the first data on the site.
-- "Changing a rate" says a new rate shows from the next 23:59 push. Today's prices keep the old rate.
+- "Changing a rate" says a new rate shows from the next 23:59 push. Today's prices keep the old rate. (Superseded by `2026-10-14-local-pricing-reprice-on-change-design.md`: a change now reprices from where it takes effect.)
 
 `README.md`: the `local-pricing-collector` row changes to match, and `LOCAL_HORIZON_HOURS` goes.
 

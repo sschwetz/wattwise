@@ -120,7 +120,7 @@ To add a window, fill in the form at the bottom of the panel:
 | **Direction** | **Import**, **Export (feed-in)** or **Controlled load**. |
 | **Window label** | A name, for example `Peak`. |
 | **Rate (c/kWh)** | Cents per kWh, zero or more. |
-| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at midnight in your browser's time zone. An earlier date prices past days that have no prices yet, back to the first data on your site, within a minute of saving. |
+| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at midnight in your browser's time zone. An earlier date prices past days back to the first data on your site, within a minute of saving. It also overwrites prices already stored for those days. |
 | **Start** / **End** | The times of day the rate applies. |
 | **Months** / **Days** | The months and days of the week it applies to. All are ticked to begin with. |
 
@@ -139,10 +139,7 @@ If a direction that has current windows leaves some months, days or times uncove
 
 ### Changing a rate
 
-To fix a mistyped rate, either of these works:
-
-- **Delete** the window and add it again with the right rate.
-- Click **End** on the window, then add a new one with the right rate and **From** set to the same day.
+To correct a mistyped rate for the past, click **Delete** on the window and add it again with the right rate and the same **From** date. The stored prices follow within a minute. **End** does not do this: it keeps the old rate for every minute the window already priced, and WattWise refuses a new window dated back to the old one's start because the two overlap.
 
 To change a rate from now on:
 
@@ -155,7 +152,7 @@ You cannot schedule a rate change for a future date in advance. Two windows on t
 
 ### When changes take effect
 
-Adding, ending or deleting a window, or changing one through the API, reprices from the moment the change takes effect to the end of tomorrow. The collector does this within about a minute, and the stored prices are overwritten. Ending a window and adding the next one from now reprices from now. Correcting a rate on a window dated last month reprices from last month, so the whole span since then is rewritten and your cost figures for it change. Renaming a window changes no prices and starts no repricing.
+Adding or ending a window, or changing one through the API, reprices from the moment the change takes effect to the end of tomorrow. Deleting a window reprices from the start of the deleted window. Repricing never starts before the first data on your site. The collector does this within about a minute, and the stored prices are overwritten. Ending a window and adding the next one from now reprices from now. Deleting and re-adding a window dated last month reprices from last month, so the whole span since then is rewritten and your cost figures for it change. Renaming a window changes no prices and starts no repricing.
 
 If a repricing run fails, the collector tries again every minute until it goes through. A change you make while a run is in progress is picked up by the next run.
 
@@ -163,7 +160,7 @@ Repricing overwrites prices for minutes that a window still prices. It does not 
 
 The collector also writes the next day's prices once a day, at 23:59 in your site's time zone. If the 23:59 push does not go through, the collector retries it every minute until 02:00. A retry after midnight writes that day's prices again.
 
-A new source, a restart, and the first check of each new day also trigger a fill. The first check of a new day fills a day whose 23:59 push did not go through. A fill compares the prices stored for each direction with what your windows imply and writes only what is missing. It prices a new direction, for example your first Export window, within a minute, and it prices past days back to the first data on your site, for example when you add a window with an earlier **From** date. It reaches back only to times when a window was in effect, and your cost figures for those days use it.
+A new source, a restart, a change to the rate windows, and the first check of each new day also trigger a fill. The first check of a new day fills a day whose 23:59 push did not go through. A fill compares the prices stored for each direction with what your windows imply and writes only what is missing. It prices a new direction, for example your first Export window, within a minute, and it prices past days back to the first data on your site, for example when you add a window with an earlier **From** date. It reaches back only to times when a window was in effect, and your cost figures for those days use it.
 
 
 ## Connecting a WeatherLink Live station
