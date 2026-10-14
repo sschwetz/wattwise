@@ -249,7 +249,7 @@ def test_a_new_source_gets_a_catch_up_child(monkeypatch):
 
 def test_a_source_that_is_not_due_gets_no_child(monkeypatch):
     fake_discovery(monkeypatch, [source()])
-    state = poll.TickState(states={7: SourceState(caught_up_date=datetime.date(2026, 6, 15))})
+    state = poll.TickState(states={7: SourceState(caught_up_date=datetime.date(2026, 6, 15), windows_key=poll.windows_key(source().config))})
 
     tick(state)
 
@@ -258,7 +258,7 @@ def test_a_source_that_is_not_due_gets_no_child(monkeypatch):
 
 def test_the_scheduled_push_starts_a_child_at_23_59_local(monkeypatch):
     fake_discovery(monkeypatch, [source()])
-    state = poll.TickState(states={7: SourceState(caught_up_date=datetime.date(2026, 6, 15))})
+    state = poll.TickState(states={7: SourceState(caught_up_date=datetime.date(2026, 6, 15), windows_key=poll.windows_key(source().config))})
 
     tick(state, now=AT_2359)
 
@@ -314,7 +314,7 @@ def test_a_child_that_runs_too_long_is_terminated_and_retried(monkeypatch):
 
 def test_state_is_forgotten_for_a_source_that_disappears(monkeypatch):
     fake_discovery(monkeypatch, [])
-    state = poll.TickState(states={7: SourceState(caught_up_date=datetime.date(2026, 6, 15))})
+    state = poll.TickState(states={7: SourceState(caught_up_date=datetime.date(2026, 6, 15), windows_key=poll.windows_key(source().config))})
 
     tick(state)
 
@@ -380,3 +380,55 @@ def test_a_scheduled_only_trigger_prices_exactly_the_target_day_without_coverage
     intervals = api.pushes[0][1]
     assert intervals[0]["interval_start"] == "2026-06-15T14:00:00+00:00"
     assert intervals[-1]["interval_end"] == "2026-06-16T14:00:00+00:00"
+
+
+def caught_up_state() -> poll.TickState:
+    key = poll.windows_key(source().config)
+    return poll.TickState(states={7: SourceState(caught_up_date=datetime.date(2026, 6, 15), windows_key=key)})
+
+
+def test_a_caught_up_source_with_unchanged_windows_gets_no_child(monkeypatch):
+    fake_discovery(monkeypatch, [source()])
+    tick(caught_up_state())
+    assert FakeProcess.instances == []
+
+
+def test_an_added_window_starts_a_catch_up_child(monkeypatch):
+    sell = dict(FLAT_BUY, channel="sell")
+    fake_discovery(monkeypatch, [source(windows=[FLAT_BUY, sell])])
+
+    tick(caught_up_state())
+
+    assert len(FakeProcess.instances) == 1
+    assert FakeProcess.instances[0].args[2] == CATCH_UP
+
+
+def test_a_successful_catch_up_records_the_windows_key(monkeypatch):
+    sell = dict(FLAT_BUY, channel="sell")
+    changed = source(windows=[FLAT_BUY, sell])
+    fake_discovery(monkeypatch, [changed])
+    state = caught_up_state()
+    tick(state)
+    FakeProcess.instances[0].finish(0)
+
+    tick(state)
+
+    assert len(FakeProcess.instances) == 1
+    assert state.states[7].windows_key == poll.windows_key(changed.config)
+
+
+def test_windows_edited_while_a_child_runs_trigger_another_catch_up(monkeypatch):
+    fake_discovery(monkeypatch, [source()])
+    state = poll.TickState()
+    tick(state)
+    FakeProcess.instances[0].finish(0)
+    fake_discovery(monkeypatch, [source(windows=[FLAT_BUY, dict(FLAT_BUY, channel="sell")])])
+
+    tick(state)
+
+    assert len(FakeProcess.instances) == 2
+
+
+def test_windows_key_ignores_key_order_and_sees_window_changes():
+    assert poll.windows_key({"rate_windows": {"a": 1, "b": 2}}) == poll.windows_key({"rate_windows": {"b": 2, "a": 1}})
+    assert poll.windows_key({"rate_windows": [FLAT_BUY]}) != poll.windows_key({"rate_windows": [dict(FLAT_BUY, rate_c_per_kwh="31")]})

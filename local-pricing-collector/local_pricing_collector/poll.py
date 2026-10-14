@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
+import json
 import logging
 import multiprocessing
 import multiprocessing.process
@@ -29,6 +31,12 @@ logger = logging.getLogger("local_pricing_collector")
 PUSH_TIMEOUT_SECONDS = 120
 MAX_RUN = datetime.timedelta(hours=2)
 CONFIG_ERRORS = (KeyError, TypeError, zoneinfo.ZoneInfoNotFoundError, ValueError)
+
+
+def windows_key(config: dict) -> str:
+    """A fingerprint of the source's rate windows. A change means the owner
+    edited them, so the next tick runs a catch-up."""
+    return hashlib.sha256(json.dumps(config.get("rate_windows"), sort_keys=True).encode()).hexdigest()
 
 
 def site_timezone(config: dict) -> zoneinfo.ZoneInfo:
@@ -100,6 +108,7 @@ class RunningJob:
     triggers: Triggers
     tz: zoneinfo.ZoneInfo
     started: datetime.datetime
+    windows_key: str
 
 
 @dataclass
@@ -114,7 +123,7 @@ class TickState:
 def _finish(tick: TickState, source_id: int, job: RunningJob) -> None:
     job.process.join()
     if job.process.exitcode == 0:
-        tick.states[source_id] = after_success(tick.states.get(source_id), job.triggers, job.started, job.tz)
+        tick.states[source_id] = after_success(tick.states.get(source_id), job.triggers, job.started, job.tz, job.windows_key)
     else:
         logger.warning("Pricing source %s did not finish its work (exit %s); retrying", source_id, job.process.exitcode)
 
@@ -149,12 +158,13 @@ def _start_if_due(
     except CONFIG_ERRORS:
         logger.exception("Unusable time zone for pricing source %s; skipping it this tick", source.source_id)
         return
-    triggers = due(tick.states.get(source.source_id), now, tz)
+    key = windows_key(source.config)
+    triggers = due(tick.states.get(source.source_id), now, tz, key)
     if not triggers.any:
         return
     process = process_factory(target=sync_child, args=(settings, source, triggers, now))
     process.start()
-    tick.running[source.source_id] = RunningJob(process, triggers, tz, now)
+    tick.running[source.source_id] = RunningJob(process, triggers, tz, now, key)
 
 
 def run_tick(
