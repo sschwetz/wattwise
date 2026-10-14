@@ -62,3 +62,16 @@ def test_migration_encrypts_existing_plaintext_rows(tmp_path):
         assert session.query(Source).one().config == {"password": "hunter2"}
         assert session.query(User).one().amber_api_key == "amber-secret"
         assert session.query(User).one().totp_secret == "JBSWY3DPEHPK3PXP"
+
+
+def test_totp_migration_encrypts_secrets_left_plaintext_by_an_earlier_revision(tmp_path):
+    db_url = f"sqlite:///{tmp_path}/stale.db"
+    run_migrations(db_url, "d3a7b9c1e4f8")
+    engine = make_engine(db_url)
+    with engine.begin() as conn:
+        conn.execute(sa.text("INSERT INTO users (id, email, totp_secret, totp_enabled, email_confirmed) VALUES (1, 'a@example.com', 'JBSWY3DPEHPK3PXP', 1, 1)"))
+    run_migrations(db_url)
+
+    assert "JBSWY3DPEHPK3PXP" not in _raw(engine, "SELECT totp_secret FROM users")
+    with make_session_factory(engine)() as session:
+        assert session.query(User).one().totp_secret == "JBSWY3DPEHPK3PXP"
