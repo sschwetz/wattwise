@@ -120,7 +120,7 @@ To add a window, fill in the form at the bottom of the panel:
 | **Direction** | **Import**, **Export (feed-in)** or **Controlled load**. |
 | **Window label** | A name, for example `Peak`. |
 | **Rate (c/kWh)** | Cents per kWh, zero or more. |
-| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at midnight in your browser's time zone. An earlier date prices past days back to the first data on your site, within a minute of saving. It also overwrites prices already stored for those days. |
+| **From** | The date the window starts. Today's date starts the window at the moment you add it. A later date starts it at midnight in your browser's time zone. An earlier date prices past days back to the first data on your site, within a minute of saving. It also overwrites prices already stored for those days. To fix the rate of a window you already added, use [**Edit rate**](#changing-a-rate) instead. |
 | **Start** / **End** | The times of day the rate applies. |
 | **Months** / **Days** | The months and days of the week it applies to. All are ticked to begin with. |
 
@@ -139,20 +139,20 @@ If a direction that has current windows leaves some months, days or times uncove
 
 ### Changing a rate
 
-To correct a mistyped rate for the past, click **Delete** on the window and add it again with the right rate and the same **From** date. The stored prices follow within a minute. **End** does not do this: it keeps the old rate for every minute the window already priced, and WattWise refuses a new window dated back to the old one's start because the two overlap.
+To correct a mistyped rate, click **Edit rate** on the window, type the right rate in **New rate (c/kWh)** and click **Save**. Only the rate changes. The stored prices follow from the window's start within a minute. **Edit rate** is on every window, including ended ones.
+
+Use **Edit rate** for a typo, not **Delete** and a new window. A new window dated today starts at the moment you add it, so the minutes between the old window's start and that moment keep the old rate. **End** does not fix a typo either: it keeps the old rate for every minute the window already priced.
 
 To change a rate from now on:
 
 1. Click **End** on the old window. This closes it at that moment. **End** appears only on a window that has started and has not ended.
 2. Add the new window with **From** set to today. It starts at the moment you add it, so the new rate follows straight on from the old one.
 
-The webapp has no way to edit a window in place. The API can change one.
-
-You cannot schedule a rate change for a future date in advance. Two windows on the same direction overlap if they cover the same minute in any month and day. A window with no end date overlaps every later window like that, so WattWise refuses the new one. End the old window on the day the rate changes.
+You cannot schedule a rate change for a future date in advance. Two windows on the same direction overlap if they cover the same minute in any month and day. A window with no end date overlaps every later window like that, so WattWise refuses the new one. On the day the rate changes, click **End** on the old window and add the new one.
 
 ### When changes take effect
 
-Adding or ending a window, or changing one through the API, reprices from the moment the change takes effect to the end of tomorrow. Deleting a window reprices from the start of the deleted window. Repricing never starts before the first data on your site. The collector does this within about a minute, and the stored prices are overwritten. Ending a window and adding the next one from now reprices from now. Deleting and re-adding a window dated last month reprices from last month, so the whole span since then is rewritten and your cost figures for it change. Renaming a window changes no prices and starts no repricing.
+Adding or ending a window reprices from the moment the change takes effect to the end of tomorrow. **Edit rate** reprices from the start of the window you edited. Deleting a window reprices from the start of the deleted window. Repricing never starts before the first data on your site. The collector does this within about a minute, and the stored prices are overwritten. Ending a window and adding the next one from now reprices from now. Deleting and re-adding a window dated last month reprices from last month, so the whole span since then is rewritten and your cost figures for it change. Renaming a window changes no prices and starts no repricing.
 
 If a repricing run fails, the collector tries again every minute until it goes through. A change you make while a run is in progress is picked up by the next run.
 
