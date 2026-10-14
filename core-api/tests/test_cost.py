@@ -17,7 +17,7 @@ from core_api.models.identity import Site, User
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
-from core_api.cost import compute_cost, compute_cost_series
+from core_api.cost import compute_cost, compute_cost_series, monthly_fee_discounts_c
 from tests.conftest import sydney_local
 
 UTC = datetime.timezone.utc
@@ -926,8 +926,24 @@ def test_compute_cost_monthly_fee_discount_window_does_not_apply_outside_its_dat
     assert result.total_cost_c == decimal.Decimal("10.0")
 
 
-def test_compute_cost_reports_monthly_fee_savings_for_a_discounted_day(db, site):
-    """Normal 10c/day minus discounted 3c/day -> 7c saved."""
+def test_monthly_fee_discounts_c_is_the_gross_discounted_fee_over_a_covered_period(db, site):
+    """A window covering the whole January cycle totals its discounted fee,
+    even when it equals the normal fee (no net saving)."""
+    _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
+    tariff = _make_tariff(
+        db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="2500.0"
+    )
+    _make_monthly_fee_discount(
+        db, tariff, starts_at=sydney_local(2026, 1, 1), ends_at=sydney_local(2026, 3, 1), discounted_fee_c="2500.0"
+    )
+
+    total = monthly_fee_discounts_c(db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 2, 1), site.timezone)
+
+    assert round(total, 4) == decimal.Decimal("2500.0")
+
+
+def test_monthly_fee_discounts_c_counts_only_discounted_days(db, site):
+    """One discounted day at 93c/month over a 31-day cycle -> 3c."""
     _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
     tariff = _make_tariff(
         db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0"
@@ -936,22 +952,18 @@ def test_compute_cost_reports_monthly_fee_savings_for_a_discounted_day(db, site)
         db, tariff, starts_at=sydney_local(2026, 1, 10), ends_at=sydney_local(2026, 1, 11), discounted_fee_c="93.0"
     )
 
-    result = compute_cost(
-        db, site.id, sydney_local(2026, 1, 9), sydney_local(2026, 1, 12), method="net", site_timezone=site.timezone
-    )
+    total = monthly_fee_discounts_c(db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 2, 1), site.timezone)
 
-    assert result.monthly_fee_savings_c == decimal.Decimal("7.0")
+    assert total == decimal.Decimal("3.0")
 
 
-def test_compute_cost_reports_no_monthly_fee_savings_without_a_discount(db, site):
+def test_monthly_fee_discounts_c_is_zero_without_a_discount(db, site):
     _make_billing_cycle(db, site, effective_from=sydney_local(2026, 1, 1), cycle_months=1, anchor_day=1)
     _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0", monthly_fee_c="310.0")
 
-    result = compute_cost(
-        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 3), method="net", site_timezone=site.timezone
-    )
+    total = monthly_fee_discounts_c(db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 2, 1), site.timezone)
 
-    assert result.monthly_fee_savings_c == decimal.Decimal("0")
+    assert total == decimal.Decimal("0")
 
 
 def test_compute_cost_series_excludes_the_monthly_fee(db, site):

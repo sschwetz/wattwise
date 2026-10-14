@@ -35,7 +35,6 @@ class CostResult:
     total_import_kwh: decimal.Decimal
     total_export_kwh: decimal.Decimal
     minutes_missing_price: int
-    monthly_fee_savings_c: decimal.Decimal = decimal.Decimal("0")
 
 
 @dataclasses.dataclass
@@ -176,8 +175,8 @@ def _monthly_fee_day_amounts(
     site_timezone: str,
     tariffs: list[SiteTariff],
     now_utc: datetime.datetime | None,
-) -> list[tuple[datetime.datetime, decimal.Decimal, decimal.Decimal]]:
-    """One (midnight, normal, applied) tuple per local calendar day (already resolved by the caller -- see
+) -> list[tuple[datetime.datetime, decimal.Decimal, bool]]:
+    """One (midnight, applied, discounted) tuple per local calendar day (already resolved by the caller -- see
     _service_charge_rows), at that day's local midnight -- whichever
     SiteTariff.monthly_fee_c (or, if a MonthlyFeeDiscountWindow covers that
     day, its discounted_fee_c) was effective, amortized evenly across the
@@ -189,9 +188,8 @@ def _monthly_fee_day_amounts(
     see _service_charge_rows). No row for a day with no BillingCycle configured to
     divide by, or whose effective tariff has no monthly_fee_c set. Used
     only by compute_cost's total (never compute_cost_series -- see
-    _service_charge_rows). `normal` is the day's share of the tariff's
-    undiscounted monthly_fee_c, `applied` the share of the fee actually
-    charged (discounted when a window covers the day), both in cents.
+    _service_charge_rows). `applied` is the day's share of the fee actually
+    charged, in cents; `discounted` says a MonthlyFeeDiscountWindow set it.
 
     Skips the BillingCycle/period lookup entirely when no tariff on the
     site has a monthly_fee_c set at all -- the common case while the
@@ -225,8 +223,8 @@ def _monthly_fee_day_amounts(
         if fee_c is None:
             continue
         fraction = _day_elapsed_fraction(midnight, next_midnight, now_utc) if now_utc is not None else decimal.Decimal(1)
-        period_days = billing_period_days(period)
-        amounts.append((midnight, (tariff.monthly_fee_c / period_days) * fraction, (fee_c / period_days) * fraction))
+        discounted = any(as_utc(window.starts_at) <= midnight < as_utc(window.ends_at) for window in windows)
+        amounts.append((midnight, (fee_c / billing_period_days(period)) * fraction, discounted))
     return amounts
 
 
@@ -248,22 +246,21 @@ def _monthly_fee_rows(
             import_kwh=decimal.Decimal("0"),
             export_kwh=decimal.Decimal("0"),
         )
-        for midnight, _normal_c, applied_c in _monthly_fee_day_amounts(db, site_id, days, site_timezone, tariffs, now_utc)
+        for midnight, applied_c, _discounted in _monthly_fee_day_amounts(db, site_id, days, site_timezone, tariffs, now_utc)
     ]
 
 
-def _monthly_fee_savings_c(
-    db: Session,
-    site_id: int,
-    days: list[tuple[datetime.datetime, datetime.datetime]],
-    site_timezone: str,
-    tariffs: list[SiteTariff],
-    now_utc: datetime.datetime | None,
+def monthly_fee_discounts_c(
+    db: Session, site_id: int, start: datetime.datetime, end: datetime.datetime, site_timezone: str
 ) -> decimal.Decimal:
-    """Cents saved by monthly fee discount windows over `days`: the normal
-    fee minus the discounted fee, summed per day."""
-    amounts = _monthly_fee_day_amounts(db, site_id, days, site_timezone, tariffs, now_utc)
-    return sum((normal_c - applied_c for _midnight, normal_c, applied_c in amounts), decimal.Decimal("0"))
+    """Gross cents of monthly fee covered by discount windows in [start, end):
+    each discounted day's share of the discounted fee, not prorated and not
+    reduced by the normal fee it replaced. Over a whole billing period that
+    a window covers throughout, this is the discounted_fee_c itself."""
+    tariffs = site_tariffs_for_site(db, site_id)
+    days = _local_days_in_range(start, end, site_timezone)
+    amounts = _monthly_fee_day_amounts(db, site_id, days, site_timezone, tariffs, None)
+    return sum((applied_c for _midnight, applied_c, discounted in amounts if discounted), decimal.Decimal("0"))
 
 
 def _minute_costs(
@@ -409,7 +406,6 @@ def compute_cost(
 
     for charge in _monthly_fee_rows(db, site_id, days, site_timezone, tariffs, now_utc):
         total_cost_c += charge.cost_c
-    monthly_fee_savings_c = _monthly_fee_savings_c(db, site_id, days, site_timezone, tariffs, now_utc)
 
     # Demand charges count toward the total as soon as there's a best
     # estimate -- even before the billing period closes and the charge is
@@ -422,7 +418,6 @@ def compute_cost(
         total_import_kwh=total_import_kwh,
         total_export_kwh=total_export_kwh,
         minutes_missing_price=minutes_missing_price,
-        monthly_fee_savings_c=monthly_fee_savings_c,
     )
 
 

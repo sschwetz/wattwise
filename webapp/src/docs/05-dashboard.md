@@ -25,7 +25,7 @@ The large tile at the top is **Production**. Below it are the other tiles. A til
 | **Today's cost** / **Today's credit** | What you have spent, or earned, since local midnight. |
 | **Grid import price** / **Grid export price** | The price per kWh that applies right now. |
 | **Billing Period** | The running total since your current billing period began. Red is a cost, green is a credit. |
-| **Including Discounts** | The total saved so far this billing period by [monthly fee discounts](06-billing.md#monthly-fee-discounts). Shown only when a discount has saved something. The Billing Period tile shrinks to half width to make room. |
+| **Including Discounts** | The total of the [monthly fee discounts](06-billing.md#monthly-fee-discounts) that cover your current billing period, in full: the discounted fee itself, not the amount saved against the normal fee. Shown only when a discount covers part of the period. The Billing Period tile shrinks to half width to make room. |
 
 ### Reading the colors
 

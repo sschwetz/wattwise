@@ -347,30 +347,30 @@ describe("DashboardPage live tiles", () => {
     expect(value.parentElement?.className).toContain("flow-glow");
   });
 
-  it("adds an Including Discounts tile with the total fee savings when discounts saved money", async () => {
+  it("adds an Including Discounts tile with the gross fee discount total", async () => {
     mockApi(
       {},
       undefined,
       undefined,
       undefined,
       undefined,
-      { total_cost_c: 300, total_import_kwh: 20, total_export_kwh: 8, minutes_missing_price: 0, monthly_fee_savings_c: 215 },
+      { total_cost_c: 300, total_import_kwh: 20, total_export_kwh: 8, minutes_missing_price: 0, monthly_fee_discounts_c: 2500 },
     );
     renderPage();
     const liveTiles = within(await screen.findByTestId("live-tiles"));
     expect(await liveTiles.findByText("Including Discounts")).toBeInTheDocument();
-    expect(liveTiles.getByText("$2.15").className).toContain("text-flow");
+    expect(liveTiles.getByText("$25.00").className).toContain("text-flow");
     expect(liveTiles.getByText("Billing Period").parentElement?.parentElement?.className).toContain("grid");
   });
 
-  it("hides the Including Discounts tile when no discount saved anything", async () => {
+  it("hides the Including Discounts tile when no discount covers the period", async () => {
     mockApi(
       {},
       undefined,
       undefined,
       undefined,
       undefined,
-      { total_cost_c: 300, total_import_kwh: 20, total_export_kwh: 8, minutes_missing_price: 0, monthly_fee_savings_c: 0 },
+      { total_cost_c: 300, total_import_kwh: 20, total_export_kwh: 8, minutes_missing_price: 0, monthly_fee_discounts_c: 0 },
     );
     renderPage();
     const liveTiles = within(await screen.findByTestId("live-tiles"));

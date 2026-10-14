@@ -11,6 +11,7 @@ from core_api.models.billing import (
     DemandInterval,
     DemandWindow,
     ExportAdjustmentWindow,
+    MonthlyFeeDiscountWindow,
     SiteTariff,
 )
 from core_api.models.identity import Site, User
@@ -460,6 +461,51 @@ def test_get_billing_period_cost_includes_the_full_service_charge_for_a_day_just
     )
     assert response.status_code == 200, response.text
     assert decimal.Decimal(response.json()["total_cost_c"]) == decimal.Decimal("100.0")
+
+
+def test_get_billing_period_cost_reports_the_discount_for_the_whole_period(client, app_and_db_url):
+    """monthly_fee_discounts_c covers the full billing period, not just the
+    days elapsed so far, and is not reduced by the normal fee it replaced."""
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="bp-cost-discount@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    now = datetime.datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    session.add(BillingCycle(site_id=site.id, effective_from=month_start, cycle_months=1, anchor_day=1))
+    tariff = SiteTariff(
+        site_id=site.id,
+        effective_from=month_start,
+        service_availability_c_per_day=decimal.Decimal("0"),
+        monthly_fee_c=decimal.Decimal("2500"),
+    )
+    session.add(tariff)
+    session.commit()
+    session.add(
+        MonthlyFeeDiscountWindow(
+            site_tariff_id=tariff.id,
+            label="Promo",
+            starts_at=month_start - datetime.timedelta(days=40),
+            ends_at=month_start + datetime.timedelta(days=400),
+            discounted_fee_c=decimal.Decimal("2500"),
+        )
+    )
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/cost/billing-period",
+        params={"method": "net"},
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    assert round(decimal.Decimal(response.json()["monthly_fee_discounts_c"]), 4) == decimal.Decimal("2500")
 
 
 def test_get_billing_period_cost_404s_with_no_active_cycle(client, app_and_db_url):
