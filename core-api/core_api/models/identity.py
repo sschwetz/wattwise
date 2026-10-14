@@ -6,6 +6,7 @@ import enum
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core_api.encrypted_types import EncryptedString
 from core_api.models.base import Base, enum_check, str_enum
 
 
@@ -29,9 +30,9 @@ class User(Base):
     # so nothing could ever authenticate as it even if a future code path
     # checked the password without separately checking email_confirmed.
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    amber_api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    pending_totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    amber_api_key: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
+    totp_secret: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
+    pending_totp_secret: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # The 30s TOTP step number last accepted for this user (login or
     # step-up), so a code observed once (shoulder-surfing, a compromised
@@ -73,9 +74,9 @@ class SiteAccess(Base):
 
 class RecoveryCode(Base):
     """One-time TOTP-recovery codes, generated 10-at-a-time when a user
-    completes TOTP enrollment. code_hash is SHA-256 (see Global Constraints
-    in the plan this came from — deterministic hash, direct-lookup
-    verification, not bcrypt)."""
+    completes TOTP enrollment. code_hash is a keyed HMAC-SHA256
+    (security.hash_recovery_code) -- deterministic for direct-lookup
+    verification, but not recoverable without SECRETS_ENCRYPTION_KEY."""
 
     __tablename__ = "recovery_codes"
 

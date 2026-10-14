@@ -202,13 +202,13 @@ def test_verify_rejects_a_racing_double_submit_of_the_same_recovery_code(client,
     _secret, recovery_codes, mfa_token = _enroll_and_login(client)
 
     barrier = threading.Barrier(2)
-    original_hash_token = totp_module.hash_token
+    original_hash_token = totp_module.hash_recovery_code
 
     def synced_hash_token(raw_code):
         barrier.wait()
         return original_hash_token(raw_code)
 
-    monkeypatch.setattr(totp_module, "hash_token", synced_hash_token)
+    monkeypatch.setattr(totp_module, "hash_recovery_code", synced_hash_token)
 
     results: list[int] = []
 

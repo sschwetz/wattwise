@@ -22,7 +22,7 @@ from core_api.security import (
     create_access_token,
     generate_recovery_codes,
     generate_totp_secret,
-    hash_token,
+    hash_recovery_code,
     totp_provisioning_uri,
     verify_totp_code,
     verify_totp_code_once,
@@ -69,7 +69,7 @@ def confirm_setup(
     user.totp_enabled = True
     raw_codes = generate_recovery_codes()
     for raw_code in raw_codes:
-        db.add(RecoveryCode(user_id=user.id, code_hash=hash_token(raw_code)))
+        db.add(RecoveryCode(user_id=user.id, code_hash=hash_recovery_code(raw_code)))
     db.commit()
     return TotpSetupConfirmOut(access_token=create_access_token(user.id), recovery_codes=raw_codes)
 
@@ -99,7 +99,7 @@ def _consume_recovery_code(db: Session, user_id: int, raw_code: str) -> bool:
     `used_at IS NULL` SELECT before either committed, so both could redeem
     the same single-use code. Only the first UPDATE to flip used_at can match
     `used_at IS NULL`; a racing second UPDATE affects zero rows."""
-    code_hash = hash_token(raw_code)
+    code_hash = hash_recovery_code(raw_code)
     now = datetime.datetime.now(datetime.timezone.utc)
     result = db.execute(
         update(RecoveryCode)

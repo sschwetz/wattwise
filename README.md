@@ -33,6 +33,7 @@ cd core-api
 uv sync
 
 export JWT_SECRET=$(openssl rand -hex 32)
+export SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')
 export ENVOY_COLLECTOR_KEY=dev-envoy-key
 export WEATHER_COLLECTOR_KEY=dev-weather-key
 export PRICING_COLLECTOR_KEY=dev-pricing-key
@@ -43,7 +44,7 @@ uv run uvicorn core_api.main:create_app --factory --reload --port 8000
 
 `core_api.bootstrap` creates or upgrades the SQLite database (`core_api.db` in the current directory). Run it again after pulling new migrations.
 
-Core-api refuses to start without `JWT_SECRET` and the three collector keys. Other settings and their defaults are in `core-api/.env.example` and `core-api/core_api/config.py`. The defaults work for development: CORS allows `http://localhost:5173`, which is where Vite serves the webapp.
+Core-api refuses to start without `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` and the three collector keys. `SECRETS_ENCRYPTION_KEY` encrypts source configs (device tokens, the Enlighten password) and Amber API keys in the database. Keep a copy of it: without it those values cannot be read. Other settings and their defaults are in `core-api/.env.example` and `core-api/core_api/config.py`. The defaults work for development: CORS allows `http://localhost:5173`, which is where Vite serves the webapp.
 
 Check that it is up:
 
@@ -96,7 +97,7 @@ This builds every service and starts it behind the ports Compose publishes: the 
 cp .env.example .env
 ```
 
-Edit `.env`: set `JWT_SECRET` and the three `*_COLLECTOR_KEY` values (`openssl rand -hex 32` works for each). The defaults for `FRONTEND_BASE_URL` and `API_BASE_URL` suit a single machine. `RELAY_DOMAIN` and `RELAY_SMARTHOST` are required by Compose even if you don't plan to send mail. Then:
+Edit `.env`: set `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (generate it as described in `.env.example`; keep a copy) and the three `*_COLLECTOR_KEY` values (`openssl rand -hex 32` works for each). The defaults for `FRONTEND_BASE_URL` and `API_BASE_URL` suit a single machine. `RELAY_DOMAIN` and `RELAY_SMARTHOST` are required by Compose even if you don't plan to send mail. Then:
 
 ```sh
 docker compose up --build

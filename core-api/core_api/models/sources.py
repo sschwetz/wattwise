@@ -3,9 +3,10 @@ from __future__ import annotations
 import datetime
 import enum
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core_api.encrypted_types import EncryptedJSON
 from core_api.models.base import Base, enum_check, str_enum
 
 
@@ -42,7 +43,8 @@ class Source(Base):
     # at one site (e.g. two Envoy units in different buildings) -- optional,
     # purely for the operator's own benefit, no uniqueness constraint.
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Encrypted at rest: holds device tokens and the Enlighten password.
+    config: Mapped[dict] = mapped_column(EncryptedJSON, nullable=False, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     effective_from: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     effective_to: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

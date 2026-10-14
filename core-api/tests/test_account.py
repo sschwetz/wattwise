@@ -15,7 +15,7 @@ from core_api.errors import AppError
 from core_api.models.identity import EmailChangeToken, RecoveryCode, User
 from core_api.routers.account import confirm_totp_reenroll
 from core_api.schemas import ConfirmTotpReenrollIn
-from core_api.security import create_access_token, generate_totp_secret, hash_password, hash_token, verify_totp_code
+from core_api.security import create_access_token, generate_totp_secret, hash_password, hash_recovery_code, hash_token, verify_totp_code
 
 
 def make_user(db_url: str, amber_api_key: str | None = None) -> int:
@@ -544,7 +544,7 @@ def test_reenroll_confirm_invalidates_previous_unused_recovery_codes(client, app
     user_id, old_secret = make_enrolled_user(db_url)
     engine = make_engine(db_url)
     session = make_session_factory(engine)()
-    session.add(RecoveryCode(user_id=user_id, code_hash=hash_token("old-recovery-code")))
+    session.add(RecoveryCode(user_id=user_id, code_hash=hash_recovery_code("old-recovery-code")))
     session.commit()
     session.close()
 
@@ -635,7 +635,7 @@ def test_reenroll_confirm_twice_with_the_same_code_rejects_the_second(client, ap
 
     live_codes = _unused_recovery_codes(db_url, user_id)
     assert len(live_codes) == 10
-    assert {hash_token(c) for c in first.json()["recovery_codes"]} == {c.code_hash for c in live_codes}
+    assert {hash_recovery_code(c) for c in first.json()["recovery_codes"]} == {c.code_hash for c in live_codes}
 
 
 def test_reenroll_confirm_that_loses_the_promotion_race_mints_no_second_batch(client, app_and_db_url):
@@ -683,7 +683,7 @@ def test_reenroll_confirm_that_loses_the_promotion_race_mints_no_second_batch(cl
 
     live_codes = _unused_recovery_codes(db_url, user_id)
     assert len(live_codes) == 10
-    assert {hash_token(c) for c in winner.json()["recovery_codes"]} == {c.code_hash for c in live_codes}
+    assert {hash_recovery_code(c) for c in winner.json()["recovery_codes"]} == {c.code_hash for c in live_codes}
 
 
 def enroll_through_the_real_flow(
@@ -735,7 +735,7 @@ def test_reenroll_start_accepts_an_unused_recovery_code_as_the_second_factor(cli
     # Using it here spends it, exactly as using one to log in does.
     live_codes = _unused_recovery_codes(db_url, user_id)
     assert len(live_codes) == 9
-    assert hash_token(recovery_codes[0]) not in {c.code_hash for c in live_codes}
+    assert hash_recovery_code(recovery_codes[0]) not in {c.code_hash for c in live_codes}
 
 
 def test_step_up_rejects_a_recovery_code_that_has_already_been_used(client, app_and_db_url):

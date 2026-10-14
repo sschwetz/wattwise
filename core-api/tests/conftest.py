@@ -17,9 +17,13 @@ from core_api.models import Base
 from core_api.models.identity import Site, User
 
 
+TEST_SECRETS_ENCRYPTION_KEY = "Bs7vdii7tm51P9fe-7-D4L0nWd7BkKEjE8A6ixcc0FI="
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _set_test_jwt_secret():
     os.environ.setdefault("JWT_SECRET", "test-secret")
+    os.environ.setdefault("SECRETS_ENCRYPTION_KEY", TEST_SECRETS_ENCRYPTION_KEY)
 
 
 ENVOY_COLLECTOR_KEY = "test-envoy-key"
@@ -57,6 +61,7 @@ def fake_email_sender() -> FakeEmailSender:
 @pytest.fixture()
 def app_and_db_url(tmp_path, monkeypatch, fake_email_sender):
     monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("SECRETS_ENCRYPTION_KEY", TEST_SECRETS_ENCRYPTION_KEY)
     monkeypatch.setenv("AVATAR_STORAGE_DIR", str(tmp_path / "avatars"))
     db_url = f"sqlite:///{tmp_path}/app_test.db"
     run_migrations(db_url)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import hmac
 import secrets
 import time
 
@@ -87,12 +88,25 @@ def decode_scoped_token(token: str, expected_scope: str) -> tuple[int, str]:
 
 
 def hash_token(raw: str) -> str:
-    """SHA-256 for system-generated random credentials (recovery codes,
-    password reset tokens) — deterministic by design, unlike bcrypt, so
+    """SHA-256 for system-generated 256-bit random tokens (password reset,
+    email confirmation and change tokens) — deterministic by design, unlike bcrypt, so
     verification is a direct DB lookup rather than an iterate-and-compare
     loop. Not for passwords; see Global Constraints in the plan this came
     from."""
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def hash_recovery_code(raw: str) -> str:
+    """Keyed HMAC-SHA256 for recovery codes. Recovery codes are short enough
+    that a plain SHA-256 of them could be brute-forced offline from a leaked
+    database; keying the hash with a secret that is not in the database
+    makes the stored values useless without it. Still deterministic, so
+    verification stays a direct lookup. The key is derived from
+    SECRETS_ENCRYPTION_KEY, so rotating that key invalidates every recovery
+    code."""
+    master = get_settings().secrets_encryption_key.encode("utf-8")
+    key = hmac.new(master, b"recovery-code-v1", hashlib.sha256).digest()
+    return hmac.new(key, raw.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def generate_totp_secret() -> str:
@@ -136,4 +150,4 @@ def verify_totp_code_once(secret: str, code: str, last_used_step: int | None) ->
 
 
 def generate_recovery_codes(count: int = 10) -> list[str]:
-    return [secrets.token_hex(5) for _ in range(count)]
+    return [secrets.token_hex(8) for _ in range(count)]

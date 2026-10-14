@@ -19,6 +19,7 @@ class Settings:
     database_url: str
     avatar_storage_dir: str
     jwt_secret: str
+    secrets_encryption_key: str
     jwt_expiry_hours: int
     smtp_host: str
     smtp_port: int
@@ -38,6 +39,10 @@ def get_settings() -> Settings:
         database_url=os.environ.get("DATABASE_URL", "sqlite:///./core_api.db"),
         avatar_storage_dir=os.environ.get("AVATAR_STORAGE_DIR", "./data/avatars"),
         jwt_secret=_require_env("JWT_SECRET", insecure_default_note=" (no insecure default is provided)."),
+        secrets_encryption_key=_require_env(
+            "SECRETS_ENCRYPTION_KEY",
+            insecure_default_note=" (a Fernet key; generate one with: openssl rand -base64 32 | tr '+/' '-_').",
+        ),
         jwt_expiry_hours=int(os.environ.get("JWT_EXPIRY_HOURS", "24")),
         smtp_host=os.environ.get("SMTP_HOST", "mail-relay"),
         smtp_port=int(os.environ.get("SMTP_PORT", "25")),

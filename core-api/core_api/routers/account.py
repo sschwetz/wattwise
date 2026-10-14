@@ -36,6 +36,7 @@ from core_api.security import (
     generate_recovery_codes,
     generate_totp_secret,
     hash_password,
+    hash_recovery_code,
     hash_token,
     totp_provisioning_uri,
     verify_password,
@@ -363,12 +364,12 @@ def confirm_totp_reenroll(
     # Conditional UPDATE guards against a double-submit racing this same
     # request: verify_totp_code has no replay guard, so two overlapping
     # confirms can both pass the checks above. Only the first can still match
-    # pending_totp_secret == pending_secret and actually flip the row; the
+    # pending_totp_secret IS NOT NULL and actually flip the row; the
     # loser sees rowcount == 0 and is rejected instead of also generating a
     # second, redundant batch of 10 recovery codes the user never sees.
     result = db.execute(
         update(User)
-        .where(User.id == current_user.id, User.pending_totp_secret == pending_secret)
+        .where(User.id == current_user.id, User.pending_totp_secret.is_not(None))
         .values(totp_secret=pending_secret, pending_totp_secret=None)
     )
     if result.rowcount == 0:
@@ -394,6 +395,6 @@ def confirm_totp_reenroll(
 
     raw_codes = generate_recovery_codes()
     for raw_code in raw_codes:
-        db.add(RecoveryCode(user_id=current_user.id, code_hash=hash_token(raw_code)))
+        db.add(RecoveryCode(user_id=current_user.id, code_hash=hash_recovery_code(raw_code)))
     db.commit()
     return TotpReenrollConfirmOut(recovery_codes=raw_codes)

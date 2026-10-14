@@ -9,6 +9,7 @@ services:
     build: ./core-api
     environment:
       JWT_SECRET: ${JWT_SECRET:?set a long random secret}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:?set a Fernet key, see .env.example}
       ENVOY_COLLECTOR_KEY: ${ENVOY_COLLECTOR_KEY:?set a long random secret, shared with the envoy-collector service below}
       WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weatherlink-local-collector service below}
       PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the amber-pricing-collector service below}

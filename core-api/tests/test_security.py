@@ -5,6 +5,7 @@ import time
 
 import jwt
 import pyotp
+from cryptography.fernet import Fernet
 import pytest
 
 from core_api.security import (
@@ -12,8 +13,10 @@ from core_api.security import (
     create_scoped_token,
     decode_access_token,
     decode_scoped_token,
+    generate_recovery_codes,
     generate_totp_secret,
     hash_password,
+    hash_recovery_code,
     hash_token,
     verify_password,
     verify_totp_code,
@@ -148,3 +151,18 @@ def test_verify_totp_code_once_accepts_a_later_code_after_a_replay_was_rejected(
     later_step = verify_totp_code_once(secret, later_code, first_step)
     assert later_step is not None
     assert later_step > first_step
+
+
+def test_hash_recovery_code_is_keyed_and_deterministic(monkeypatch):
+    first = hash_recovery_code("abcdef0123456789")
+    assert first == hash_recovery_code("abcdef0123456789")
+    assert first != hash_token("abcdef0123456789")
+
+    monkeypatch.setenv("SECRETS_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    assert hash_recovery_code("abcdef0123456789") != first
+
+
+def test_generate_recovery_codes_are_16_hex_chars():
+    codes = generate_recovery_codes()
+    assert len(codes) == 10
+    assert all(len(c) == 16 and int(c, 16) >= 0 for c in codes)
