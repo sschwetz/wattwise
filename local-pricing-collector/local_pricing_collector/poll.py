@@ -15,12 +15,13 @@ from dataclasses import dataclass, field
 from local_pricing_collector.config import Settings
 from local_pricing_collector.core_api_client import (
     CoreApiError,
+    clear_reprice_marker,
     fetch_collector_sources,
     fetch_price_coverage,
     fetch_site_data_floor,
     push_price_intervals,
 )
-from local_pricing_collector.models import Coverage, LocalSource
+from local_pricing_collector.models import Coverage, LocalSource, RepriceMarker, parse_reprice
 from local_pricing_collector.plan import PlannedRange, chunk_range, plan_ranges
 from local_pricing_collector.rates import RateWindow, channel_intervals, parse_windows
 from local_pricing_collector.scheduling import next_aligned_tick
@@ -46,12 +47,13 @@ def site_timezone(config: dict) -> zoneinfo.ZoneInfo:
 def _coverage_and_floor(
     settings: Settings, source_id: int, triggers: Triggers
 ) -> tuple[dict[str, Coverage], datetime.datetime | None]:
-    """Only a catch-up needs to know what is already priced. The scheduled
-    push is the next local day whatever is stored."""
-    if not triggers.catch_up:
-        return {}, None
+    """A catch-up needs what is already priced and the site's first data. A
+    reprice needs the first data only, so it does not reprice years of empty
+    history. The scheduled push needs neither."""
     url, key = settings.core_api_url, settings.collector_key
-    return fetch_price_coverage(url, source_id, key), fetch_site_data_floor(url, source_id, key)
+    coverage = fetch_price_coverage(url, source_id, key) if triggers.catch_up else {}
+    wants_floor = triggers.catch_up or triggers.reprice is not None
+    return coverage, (fetch_site_data_floor(url, source_id, key) if wants_floor else None)
 
 
 def _push_range(
@@ -66,6 +68,21 @@ def _push_range(
             )
 
 
+def _clear_marker(settings: Settings, source_id: int, triggers: Triggers) -> None:
+    if triggers.reprice is not None:
+        clear_reprice_marker(settings.core_api_url, source_id, settings.collector_key, triggers.reprice.version)
+
+
+def _clear_when_empty(settings: Settings, source_id: int, triggers: Triggers) -> bool:
+    """With no windows there is nothing to price, so a marker is spent."""
+    try:
+        _clear_marker(settings, source_id, triggers)
+    except CoreApiError:
+        logger.exception("Failed to clear the reprice marker for source %s; will retry", source_id)
+        return False
+    return True
+
+
 def _sync(settings: Settings, source: LocalSource, triggers: Triggers, now: datetime.datetime) -> bool:
     try:
         tz = site_timezone(source.config)
@@ -74,13 +91,14 @@ def _sync(settings: Settings, source: LocalSource, triggers: Triggers, now: date
         logger.exception("Failed to read config for pricing source %s this cycle", source.source_id)
         return False
     if not windows:
-        return True
+        return _clear_when_empty(settings, source.source_id, triggers)
     try:
         coverage, floor = _coverage_and_floor(settings, source.source_id, triggers)
         planned_ranges = plan_ranges(windows, coverage, floor, tz, now, triggers)
         # Forward ranges first: a long history fill must not delay or block them.
         for planned in sorted(planned_ranges, key=lambda r: r.backward):
             _push_range(settings, source.source_id, windows, tz, planned)
+        _clear_marker(settings, source.source_id, triggers)
     except CoreApiError:
         logger.exception("Failed to price source %s this cycle; will retry", source.source_id)
         return False
@@ -146,6 +164,16 @@ def _reap(tick: TickState, now: datetime.datetime) -> None:
         del tick.running[source_id]
 
 
+def _marker_or_none(source: LocalSource) -> RepriceMarker | None:
+    """A malformed marker is logged and ignored, so it cannot stop the rest of
+    the source's pricing."""
+    try:
+        return parse_reprice(source.config)
+    except CONFIG_ERRORS:
+        logger.exception("Ignoring a malformed reprice marker for pricing source %s", source.source_id)
+        return None
+
+
 def _start_if_due(
     settings: Settings,
     tick: TickState,
@@ -161,7 +189,7 @@ def _start_if_due(
         logger.exception("Unusable time zone for pricing source %s; skipping it this tick", source.source_id)
         return
     key = windows_key(source.config)
-    triggers = due(tick.states.get(source.source_id), now, tz, key)
+    triggers = due(tick.states.get(source.source_id), now, tz, key, _marker_or_none(source))
     if not triggers.any:
         return
     process = process_factory(target=sync_child, args=(settings, source, triggers, now))

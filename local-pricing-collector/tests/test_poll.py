@@ -7,7 +7,7 @@ import pytest
 from local_pricing_collector import poll
 from local_pricing_collector.config import Settings
 from local_pricing_collector.core_api_client import CoreApiError
-from local_pricing_collector.models import Coverage, LocalSource
+from local_pricing_collector.models import Coverage, LocalSource, RepriceMarker
 from local_pricing_collector.triggers import SourceState, Triggers
 
 UTC = datetime.timezone.utc
@@ -36,12 +36,14 @@ def source(windows=None, timezone="Australia/Sydney", source_id=7) -> LocalSourc
 class FakeApi:
     """Stands in for the three core-api calls the sync makes."""
 
-    def __init__(self, coverage=None, floor=None, fail_push_after=None):
+    def __init__(self, coverage=None, floor=None, fail_push_after=None, fail_clear=False):
         self.coverage = coverage or {}
         self.floor = floor
         self.fail_push_after = fail_push_after
         self.coverage_calls = 0
         self.pushes = []
+        self.fail_clear = fail_clear
+        self.clears = []
 
     def fetch_price_coverage(self, url, source_id, key):
         self.coverage_calls += 1
@@ -55,8 +57,13 @@ class FakeApi:
             raise CoreApiError("down")
         self.pushes.append((source_id, intervals))
 
+    def clear_reprice_marker(self, url, source_id, key, version):
+        if self.fail_clear:
+            raise CoreApiError("down")
+        self.clears.append((source_id, version))
+
     def install(self, monkeypatch):
-        for name in ("fetch_price_coverage", "fetch_site_data_floor", "push_price_intervals"):
+        for name in ("fetch_price_coverage", "fetch_site_data_floor", "push_price_intervals", "clear_reprice_marker"):
             monkeypatch.setattr(poll, name, getattr(self, name))
         return self
 
@@ -470,3 +477,112 @@ def test_forward_ranges_are_pushed_before_history_and_survive_a_history_failure(
     failing.install(monkeypatch)
     assert poll.sync_one_source(SETTINGS, source(windows=[buy_history, sell, load]), CATCH_UP, NOW) is False
     assert [chunk[0]["channel"] for _, chunk in failing.pushes] == ["sell", "controlled_load"]
+
+
+MARKER_FROM = datetime.datetime(2026, 6, 10, 0, 0, tzinfo=UTC)
+MARKER = RepriceMarker(MARKER_FROM, 3)
+REPRICE = Triggers(catch_up=False, reprice=MARKER)
+FLOOR = datetime.datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+
+
+def test_a_reprice_pushes_from_the_marker_then_clears_it(monkeypatch):
+    api = FakeApi(floor=FLOOR).install(monkeypatch)
+
+    assert poll.sync_one_source(SETTINGS, source(), REPRICE, NOW) is True
+
+    assert api.coverage_calls == 0
+    intervals = api.pushes[0][1]
+    assert intervals[0]["interval_start"] == "2026-06-10T00:00:00+00:00"
+    assert intervals[-1]["interval_end"] == "2026-06-16T14:00:00+00:00"
+    assert api.clears == [(7, 3)]
+
+
+def test_a_reprice_only_run_fetches_the_site_data_floor_and_starts_no_earlier(monkeypatch):
+    api = FakeApi(floor=FLOOR).install(monkeypatch)
+    early = Triggers(catch_up=False, reprice=RepriceMarker(datetime.datetime(2026, 5, 1, tzinfo=UTC), 5))
+
+    assert poll.sync_one_source(SETTINGS, source(), early, NOW) is True
+
+    assert api.pushes[0][1][0]["interval_start"] == "2026-06-01T00:00:00+00:00"
+    assert api.clears == [(7, 5)]
+
+
+def test_a_failed_push_leaves_the_marker(monkeypatch):
+    api = FakeApi(floor=FLOOR, fail_push_after=0).install(monkeypatch)
+
+    assert poll.sync_one_source(SETTINGS, source(), REPRICE, NOW) is False
+    assert api.clears == []
+
+
+def test_a_failed_clear_reports_failure(monkeypatch):
+    api = FakeApi(floor=FLOOR, fail_clear=True).install(monkeypatch)
+
+    assert poll.sync_one_source(SETTINGS, source(), REPRICE, NOW) is False
+    assert len(api.pushes) >= 1
+
+
+def test_a_source_with_no_windows_clears_its_marker_without_pushing(monkeypatch):
+    api = FakeApi().install(monkeypatch)
+
+    assert poll.sync_one_source(SETTINGS, source(windows=[]), REPRICE, NOW) is True
+    assert api.pushes == []
+    assert api.clears == [(7, 3)]
+
+
+def test_a_marker_that_clamps_to_nothing_is_cleared_without_pushing(monkeypatch):
+    api = FakeApi(floor=FLOOR).install(monkeypatch)
+    later = Triggers(catch_up=False, reprice=RepriceMarker(datetime.datetime(2026, 6, 30, tzinfo=UTC), 4))
+
+    assert poll.sync_one_source(SETTINGS, source(), later, NOW) is True
+    assert api.pushes == []
+    assert api.clears == [(7, 4)]
+
+
+def test_a_catch_up_and_a_reprice_in_one_pass_clear_once(monkeypatch):
+    api = FakeApi(floor=FLOOR).install(monkeypatch)
+
+    assert poll.sync_one_source(SETTINGS, source(), Triggers(catch_up=True, reprice=MARKER), NOW) is True
+    assert api.clears == [(7, 3)]
+    assert api.coverage_calls == 1
+
+
+def test_a_run_without_a_marker_never_clears(monkeypatch):
+    api = FakeApi(floor=FLOOR).install(monkeypatch)
+
+    poll.sync_one_source(SETTINGS, source(), CATCH_UP, NOW)
+
+    assert api.clears == []
+
+
+def marked_source(version=3, source_id=7) -> LocalSource:
+    base = source(source_id=source_id)
+    return LocalSource(source_id, {**base.config, "reprice": {"from": "2026-06-10T00:00:00+00:00", "version": version}})
+
+
+def test_a_marker_starts_a_child_for_a_source_that_is_caught_up(monkeypatch):
+    src = marked_source()
+    fake_discovery(monkeypatch, [src])
+    state = poll.TickState(
+        states={7: SourceState(caught_up_date=datetime.date(2026, 6, 15), windows_key=poll.windows_key(src.config))}
+    )
+
+    tick(state)
+
+    assert len(FakeProcess.instances) == 1
+    assert FakeProcess.instances[0].args[2].reprice == MARKER
+
+
+def test_a_malformed_marker_is_logged_and_the_source_still_gets_its_other_work(monkeypatch, caplog):
+    bad = LocalSource(7, {**source().config, "reprice": {"from": "nope", "version": 1}})
+    fake_discovery(monkeypatch, [bad])
+
+    tick(poll.TickState())
+
+    assert "reprice marker" in caplog.text
+    assert FakeProcess.instances[0].args[2].reprice is None
+    assert FakeProcess.instances[0].args[2].catch_up is True
+
+
+def test_the_windows_fingerprint_ignores_the_marker():
+    plain = source()
+    assert poll.windows_key(plain.config) == poll.windows_key(marked_source().config)
