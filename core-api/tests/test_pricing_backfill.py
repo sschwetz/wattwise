@@ -174,3 +174,90 @@ def test_prices_gaps_reports_uncovered_days_for_known_channel(client, app_and_db
     assert response.json() == {
         "gaps": [{"channel": "buy", "start_date": first_gap_day.isoformat(), "end_date": today.isoformat()}]
     }
+
+
+COLLECTOR_HEADERS = {"X-Collector-Key": PRICING_COLLECTOR_KEY}
+
+
+def _interval(channel: str, start: str, end: str) -> dict:
+    return {"channel": channel, "interval_start": start, "interval_end": end, "price": "30"}
+
+
+def _push_intervals(client, source_id: int, intervals: list[dict]) -> None:
+    response = client.post(
+        f"/api/v1/sources/{source_id}/prices", json={"intervals": intervals}, headers=COLLECTOR_HEADERS
+    )
+    assert response.status_code == 202, response.text
+
+
+def _utc(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def test_price_coverage_is_empty_for_a_source_with_no_prices(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+
+    response = client.get(f"/api/v1/sources/{source_id}/prices/coverage", headers=COLLECTOR_HEADERS)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"channels": {}}
+
+
+def test_price_coverage_gives_the_first_and_last_instant_per_channel(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+    _push_intervals(
+        client,
+        source_id,
+        [
+            _interval("buy", "2026-06-01T10:00:00Z", "2026-06-01T10:05:00Z"),
+            _interval("buy", "2026-06-01T10:05:00Z", "2026-06-01T10:10:00Z"),
+            _interval("sell", "2026-06-01T09:00:00Z", "2026-06-01T09:05:00Z"),
+        ],
+    )
+
+    channels = client.get(
+        f"/api/v1/sources/{source_id}/prices/coverage", headers=COLLECTOR_HEADERS
+    ).json()["channels"]
+
+    assert set(channels) == {"buy", "sell"}
+    utc = timezone.utc
+    assert _utc(channels["buy"]["first"]) == datetime(2026, 6, 1, 10, 0, tzinfo=utc)
+    assert _utc(channels["buy"]["last"]) == datetime(2026, 6, 1, 10, 10, tzinfo=utc)
+    assert _utc(channels["sell"]["first"]) == datetime(2026, 6, 1, 9, 0, tzinfo=utc)
+    assert _utc(channels["sell"]["last"]) == datetime(2026, 6, 1, 9, 5, tzinfo=utc)
+
+
+def test_price_coverage_only_counts_the_requested_source(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    first_source = make_pricing_source(db_url)
+    other_source = make_pricing_source(db_url)
+    _push_intervals(client, other_source, [_interval("buy", "2026-06-01T10:00:00Z", "2026-06-01T10:05:00Z")])
+
+    response = client.get(f"/api/v1/sources/{first_source}/prices/coverage", headers=COLLECTOR_HEADERS)
+
+    assert response.json() == {"channels": {}}
+
+
+def test_price_coverage_rejects_a_wrong_key(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+
+    response = client.get(
+        f"/api/v1/sources/{source_id}/prices/coverage", headers={"X-Collector-Key": "wrong"}
+    )
+
+    assert response.status_code == 401
+
+
+def test_price_coverage_rejects_a_provider_header_for_another_provider(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+
+    response = client.get(
+        f"/api/v1/sources/{source_id}/prices/coverage",
+        headers={**COLLECTOR_HEADERS, "X-Collector-Provider": "local"},
+    )
+
+    assert response.status_code == 401

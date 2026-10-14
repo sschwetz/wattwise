@@ -303,6 +303,15 @@ class SiteDataFloorOut(BaseModel):
     floor_ts: datetime.datetime | None
 
 
+class ChannelCoverageOut(BaseModel):
+    first: UtcDatetime
+    last: UtcDatetime
+
+
+class PriceCoverageOut(BaseModel):
+    channels: dict[str, ChannelCoverageOut]
+
+
 class ReadingOut(BaseModel):
     # UtcDatetime, not a plain datetime: rows read back from SQLite are naive
     # (tzinfo is dropped on write) but are always actually UTC. Without this,

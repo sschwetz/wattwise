@@ -12,7 +12,7 @@ from core_api.models.pricing import PriceChannel, PriceGapMarker, PriceInterval,
 from core_api.models.readings import EnergyReading, WeatherReading
 from core_api.models.sources import Source, SourceKind
 from core_api.pricing_gaps import coalesce_missing_days, missing_days_in_range
-from core_api.schemas import GapMarkerCreate, SiteDataFloorOut, UtcDatetime
+from core_api.schemas import ChannelCoverageOut, GapMarkerCreate, PriceCoverageOut, SiteDataFloorOut, UtcDatetime
 
 router = APIRouter(prefix="/sources/{source_id}/prices", tags=["pricing-backfill"])
 
@@ -71,6 +71,26 @@ def get_price_gaps(
             gaps.append({"channel": channel.value, "start_date": run_start.isoformat(), "end_date": run_end.isoformat()})
 
     return {"gaps": gaps}
+
+
+@router.get("/coverage", response_model=PriceCoverageOut)
+def get_price_coverage(
+    source: Source = Depends(require_source_kind(SourceKind.PRICING)),
+    db: Session = Depends(get_db_session),
+) -> PriceCoverageOut:
+    """The earliest interval start and the latest interval end stored for each
+    channel of this source. A channel with no stored prices is left out. The
+    local pricing collector compares this with what its windows imply to find
+    what is missing, so it needs instants and not the whole UTC days that
+    /gaps reports."""
+    rows = db.execute(
+        select(PriceInterval.channel, func.min(PriceInterval.interval_start), func.max(PriceInterval.interval_end))
+        .where(PriceInterval.pricing_source_id == source.id)
+        .group_by(PriceInterval.channel)
+    ).all()
+    return PriceCoverageOut(
+        channels={channel.value: ChannelCoverageOut(first=first, last=last) for channel, first, last in rows}
+    )
 
 
 site_router = APIRouter(prefix="/sources/{source_id}", tags=["pricing-backfill"])
