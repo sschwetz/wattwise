@@ -50,6 +50,19 @@ export interface ExportAdjustmentWindow {
   adjustment_c_per_kwh: string;
 }
 
+export interface ConditionalCreditWindow {
+  id: number;
+  site_tariff_id: number;
+  label: string;
+  months: number[];
+  days_of_week: number[];
+  start_time: string;
+  end_time: string;
+  // Serialized by core-api as decimal strings, not JSON numbers.
+  max_avg_import_w: string;
+  credit_c: string;
+}
+
 export interface BillingCycle {
   id: number;
   site_id: number;
@@ -96,6 +109,16 @@ interface CreateExportAdjustmentWindowInput {
   start_time: string;
   end_time: string;
   adjustment_c_per_kwh: number;
+}
+
+interface CreateConditionalCreditWindowInput {
+  label: string;
+  months: number[];
+  days_of_week: number[];
+  start_time: string;
+  end_time: string;
+  max_avg_import_w: number;
+  credit_c: number;
 }
 
 interface CreateBillingCycleInput {
@@ -179,6 +202,28 @@ export function useCreateExportAdjustmentWindow(siteId: number, tariffId: number
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["export-adjustments", siteId, tariffId] });
+    },
+  });
+}
+
+export function useConditionalCreditWindows(siteId: number, tariffId: number) {
+  return useQuery({
+    queryKey: ["conditional-credits", siteId, tariffId],
+    queryFn: () =>
+      apiFetch<ConditionalCreditWindow[]>(`/api/v1/sites/${siteId}/tariffs/${tariffId}/conditional-credits`),
+  });
+}
+
+export function useCreateConditionalCreditWindow(siteId: number, tariffId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateConditionalCreditWindowInput) =>
+      apiFetch<ConditionalCreditWindow>(`/api/v1/sites/${siteId}/tariffs/${tariffId}/conditional-credits`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conditional-credits", siteId, tariffId] });
     },
   });
 }
