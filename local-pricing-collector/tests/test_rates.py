@@ -5,7 +5,7 @@ import decimal
 import logging
 import zoneinfo
 
-from local_pricing_collector.rates import CHANNELS, channel_intervals, parse_windows, price_at
+from local_pricing_collector.rates import CHANNELS, ceil_minute, channel_intervals, parse_windows, price_at
 
 UTC = datetime.timezone.utc
 SYDNEY = zoneinfo.ZoneInfo("Australia/Sydney")
@@ -232,3 +232,22 @@ def test_a_range_that_starts_and_ends_mid_hour_is_cut_at_the_hour():
         ("2026-06-14T15:00:00+00:00", "2026-06-14T16:00:00+00:00"),
         ("2026-06-14T16:00:00+00:00", "2026-06-14T16:30:00+00:00"),
     ]
+
+
+def test_ceil_minute_keeps_a_whole_minute_and_rounds_up_otherwise():
+    assert ceil_minute(at(2026, 6, 15, 10, 0)) == at(2026, 6, 15, 10, 0)
+    off = datetime.datetime(2026, 6, 15, 10, 0, 12, 345000, tzinfo=UTC)
+    assert ceil_minute(off) == at(2026, 6, 15, 10, 1)
+
+
+def test_channel_intervals_over_off_minute_bounds_stay_on_whole_minutes():
+    windows = parse_windows([window()])
+    start = datetime.datetime(2026, 6, 15, 10, 0, 12, 345000, tzinfo=UTC)
+    end = datetime.datetime(2026, 6, 15, 12, 47, 30, tzinfo=UTC)
+
+    intervals = channel_intervals(windows, "buy", UTC, start, end)
+
+    stamps = [i[k] for i in intervals for k in ("interval_start", "interval_end")]
+    assert all(t.endswith(":00+00:00") for t in stamps)
+    assert intervals[0]["interval_start"] == "2026-06-15T10:01:00+00:00"
+    assert intervals[-1]["interval_end"] == "2026-06-15T12:48:00+00:00"

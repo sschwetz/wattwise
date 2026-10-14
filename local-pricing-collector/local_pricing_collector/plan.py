@@ -5,7 +5,7 @@ import zoneinfo
 from dataclasses import dataclass
 
 from local_pricing_collector.models import Coverage
-from local_pricing_collector.rates import CHANNELS, RateWindow
+from local_pricing_collector.rates import CHANNELS, RateWindow, ceil_minute
 from local_pricing_collector.triggers import Triggers
 
 UTC = datetime.timezone.utc
@@ -36,12 +36,16 @@ def _day_edges(now: datetime.datetime, tz: zoneinfo.ZoneInfo) -> tuple[datetime.
     return local_midnight(today + ONE_DAY, tz), local_midnight(today + 2 * ONE_DAY, tz)
 
 
+def _earliest(windows: list[RateWindow]) -> datetime.datetime:
+    return ceil_minute(min(w.effective_from for w in windows))
+
+
 def _history_start(
     windows: list[RateWindow], floor: datetime.datetime | None, now: datetime.datetime
 ) -> datetime.datetime:
     """Where this channel's history begins: the site's first data, or now when
     the site has none, and never before the channel's first window."""
-    earliest = min(w.effective_from for w in windows)
+    earliest = _earliest(windows)
     return max(_whole_minute(floor) if floor is not None else _whole_minute(now), earliest)
 
 
@@ -49,7 +53,7 @@ def _end_limit(windows: list[RateWindow]) -> datetime.datetime | None:
     """The latest end among the windows, or None when any window is open ended."""
     if any(w.effective_to is None for w in windows):
         return None
-    return max(w.effective_to for w in windows)
+    return ceil_minute(max(w.effective_to for w in windows))
 
 
 Wanted = tuple[datetime.datetime, datetime.datetime, bool]
@@ -119,7 +123,7 @@ def plan_ranges(
         wanted = _wanted_ranges(
             coverage.get(channel), _history_start(channel_windows, floor, now), edges, triggers, tz
         )
-        earliest = min(w.effective_from for w in channel_windows)
+        earliest = _earliest(channel_windows)
         for start, end, back in _clamp_and_merge(wanted, earliest, _end_limit(channel_windows)):
             planned.append(PlannedRange(channel, start, end, back))
     return planned

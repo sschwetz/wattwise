@@ -112,6 +112,15 @@ def _interval(
     }
 
 
+def ceil_minute(value: datetime.datetime) -> datetime.datetime:
+    """Rounds up to a whole minute. A window applies to a minute when
+    effective_from <= minute < effective_to, so the first priced minute is the
+    rounded-up start."""
+    if value.second == 0 and value.microsecond == 0:
+        return value
+    return value.replace(second=0, microsecond=0) + ONE_MINUTE
+
+
 def channel_intervals(
     windows: list[RateWindow],
     channel: str,
@@ -122,7 +131,8 @@ def channel_intervals(
     """Price intervals for one channel from start to end. Walks minute by
     minute and closes an interval at each top of the UTC hour and wherever the
     rate changes. A minute with no rate closes the interval and opens nothing.
-    start and end are whole minutes."""
+    start and end are rounded up to whole minutes."""
+    start, end = ceil_minute(start), ceil_minute(end)
     intervals = []
     run_start, run_rate = start, price_at(windows, channel, start, tz)
     minute = start + ONE_MINUTE

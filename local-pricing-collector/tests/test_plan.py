@@ -194,3 +194,15 @@ def test_a_history_range_that_touches_a_forward_range_is_not_backward():
 def test_chunks_keep_the_backward_flag():
     planned = PlannedRange("buy", at(2026, 5, 1, 0, 0), at(2026, 6, 16, 14, 0), backward=True)
     assert all(c.backward for c in chunk_range(planned))
+
+
+def test_an_off_minute_window_start_gives_a_whole_minute_range_start():
+    w = window(effective_from="2026-06-15T10:00:12.345+00:00")
+    ranges = plan([w], floor=at(2026, 6, 1, 0, 0))
+    assert ranges == [PlannedRange("buy", at(2026, 6, 15, 10, 1), TOMORROW_END)]
+
+
+def test_an_off_minute_window_end_gives_a_whole_minute_range_end():
+    w = window(effective_to="2026-06-15T10:47:30+00:00")
+    ranges = plan([w], floor=at(2026, 6, 1, 0, 0))
+    assert ranges[-1].end == at(2026, 6, 15, 10, 48)

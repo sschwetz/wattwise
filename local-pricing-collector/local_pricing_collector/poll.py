@@ -77,7 +77,9 @@ def _sync(settings: Settings, source: LocalSource, triggers: Triggers, now: date
         return True
     try:
         coverage, floor = _coverage_and_floor(settings, source.source_id, triggers)
-        for planned in plan_ranges(windows, coverage, floor, tz, now, triggers):
+        planned_ranges = plan_ranges(windows, coverage, floor, tz, now, triggers)
+        # Forward ranges first: a long history fill must not delay or block them.
+        for planned in sorted(planned_ranges, key=lambda r: r.backward):
             _push_range(settings, source.source_id, windows, tz, planned)
     except CoreApiError:
         logger.exception("Failed to price source %s this cycle; will retry", source.source_id)

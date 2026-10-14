@@ -24,8 +24,9 @@ function localDateString(date: Date): string {
 }
 
 /** A window starting today starts now: core-api rejects a start before the end
- * of a window the user has just ended. The collector prices only from the
- * current hour on, so a later start today changes no stored price. */
+ * of a window the user has just ended. A window added with today's date
+ * starts at the current instant; the collector rounds its start up to the
+ * next whole minute. */
 function effectiveFromFor(dateString: string): string {
   const now = new Date();
   if (dateString === localDateString(now)) return now.toISOString();

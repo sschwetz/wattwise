@@ -432,3 +432,41 @@ def test_windows_edited_while_a_child_runs_trigger_another_catch_up(monkeypatch)
 def test_windows_key_ignores_key_order_and_sees_window_changes():
     assert poll.windows_key({"rate_windows": {"a": 1, "b": 2}}) == poll.windows_key({"rate_windows": {"b": 2, "a": 1}})
     assert poll.windows_key({"rate_windows": [FLAT_BUY]}) != poll.windows_key({"rate_windows": [dict(FLAT_BUY, rate_c_per_kwh="31")]})
+
+
+def test_a_window_starting_mid_minute_pushes_only_whole_minute_intervals(monkeypatch):
+    off = dict(FLAT_BUY, effective_from="2026-06-15T00:00:12.345+00:00")
+    api = FakeApi(floor=datetime.datetime(2026, 6, 14, tzinfo=UTC)).install(monkeypatch)
+
+    assert poll.sync_one_source(SETTINGS, source(windows=[off]), CATCH_UP, NOW) is True
+
+    intervals = [i for _, chunk in api.pushes for i in chunk]
+    for i in intervals:
+        for key in ("interval_start", "interval_end"):
+            parsed = datetime.datetime.fromisoformat(i[key])
+            assert parsed.second == 0 and parsed.microsecond == 0
+    assert intervals[0]["interval_start"] == "2026-06-15T00:01:00+00:00"
+    assert intervals[-1]["interval_end"] == "2026-06-16T14:00:00+00:00"
+
+
+def test_forward_ranges_are_pushed_before_history_and_survive_a_history_failure(monkeypatch):
+    buy_history = dict(FLAT_BUY, channel="buy")
+    sell, load = dict(FLAT_BUY, channel="sell"), dict(FLAT_BUY, channel="controlled_load")
+    first = datetime.datetime(2026, 6, 10, tzinfo=UTC)
+    last = datetime.datetime(2026, 6, 16, 14, 0, tzinfo=UTC)
+    coverage = {
+        "buy": Coverage(first=first, last=last),
+        "sell": Coverage(first=datetime.datetime(2026, 5, 1, tzinfo=UTC), last=datetime.datetime(2026, 6, 15, 0, 0, tzinfo=UTC)),
+        "controlled_load": Coverage(first=datetime.datetime(2026, 5, 1, tzinfo=UTC), last=datetime.datetime(2026, 6, 15, 0, 0, tzinfo=UTC)),
+    }
+    api = FakeApi(coverage=coverage, floor=datetime.datetime(2026, 5, 1, tzinfo=UTC)).install(monkeypatch)
+
+    assert poll.sync_one_source(SETTINGS, source(windows=[buy_history, sell, load]), CATCH_UP, NOW) is True
+    channels = [chunk[0]["channel"] for _, chunk in api.pushes]
+    assert channels[:2] == ["sell", "controlled_load"]
+    assert set(channels[2:]) == {"buy"}
+
+    failing = FakeApi(coverage=coverage, floor=datetime.datetime(2026, 5, 1, tzinfo=UTC), fail_push_after=2)
+    failing.install(monkeypatch)
+    assert poll.sync_one_source(SETTINGS, source(windows=[buy_history, sell, load]), CATCH_UP, NOW) is False
+    assert [chunk[0]["channel"] for _, chunk in failing.pushes] == ["sell", "controlled_load"]
