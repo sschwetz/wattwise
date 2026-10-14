@@ -67,7 +67,8 @@ def _wanted_ranges(
     tz: zoneinfo.ZoneInfo,
 ) -> list[Wanted]:
     """(start, end, backward). Only the history range is backward: it is
-    pushed newest chunk first so an interrupted fill leaves no hole."""
+    pushed newest chunk first so an interrupted fill leaves no hole. A
+    reprice marker adds a forward range from the marker to the end of tomorrow."""
     today_end, tomorrow_end = edges
     ranges = []
     if triggers.catch_up:
@@ -81,6 +82,8 @@ def _wanted_ranges(
     if triggers.scheduled_for is not None:
         day = triggers.scheduled_for
         ranges.append((local_midnight(day, tz), local_midnight(day + ONE_DAY, tz), False))
+    if triggers.reprice is not None:
+        ranges.append((max(triggers.reprice.start, history_start), tomorrow_end, False))
     return ranges
 
 

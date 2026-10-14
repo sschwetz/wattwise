@@ -4,6 +4,8 @@ import datetime
 import zoneinfo
 from dataclasses import dataclass
 
+from local_pricing_collector.models import RepriceMarker
+
 SCHEDULED_TIME = datetime.time(23, 59)
 CARRY_OVER_UNTIL = datetime.time(2, 0)
 
@@ -12,10 +14,12 @@ CARRY_OVER_UNTIL = datetime.time(2, 0)
 class Triggers:
     """Why a source needs work this tick. `catch_up` fills what is missing
     (a new source, a restart, a new local day). `scheduled_for` is the local
-    date whose prices the daily push must rewrite, or None."""
+    date whose prices the daily push must rewrite, or None. `reprice` is
+    core-api's marker for a changed rate window."""
 
     catch_up: bool
     scheduled_for: datetime.date | None = None
+    reprice: RepriceMarker | None = None
 
     @property
     def scheduled(self) -> bool:
@@ -23,7 +27,7 @@ class Triggers:
 
     @property
     def any(self) -> bool:
-        return self.catch_up or self.scheduled
+        return self.catch_up or self.scheduled or self.reprice is not None
 
 
 @dataclass(frozen=True)
@@ -51,7 +55,11 @@ def _scheduled_target(local: datetime.datetime) -> datetime.date | None:
 
 
 def due(
-    state: SourceState | None, now: datetime.datetime, tz: zoneinfo.ZoneInfo, windows_key: str
+    state: SourceState | None,
+    now: datetime.datetime,
+    tz: zoneinfo.ZoneInfo,
+    windows_key: str,
+    reprice: RepriceMarker | None = None,
 ) -> Triggers:
     local = now.astimezone(tz)
     state = state or SourceState()
@@ -59,6 +67,7 @@ def due(
     return Triggers(
         catch_up=state.caught_up_date != local.date() or state.windows_key != windows_key,
         scheduled_for=target if target != state.scheduled_date else None,
+        reprice=reprice,
     )
 
 

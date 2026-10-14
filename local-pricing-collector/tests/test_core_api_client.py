@@ -150,3 +150,34 @@ def test_fetch_price_coverage_raises_on_an_unexpected_body(body):
     respx.get(f"{BASE_URL}/api/v1/sources/4/prices/coverage").mock(return_value=httpx.Response(200, json=body))
     with pytest.raises(CoreApiError):
         fetch_price_coverage(BASE_URL, 4, "k")
+
+
+from local_pricing_collector.core_api_client import clear_reprice_marker
+
+
+@respx.mock
+def test_clear_reprice_marker_posts_the_version():
+    route = respx.post(f"{BASE_URL}/api/v1/sources/4/prices/reprice-marker/clear").mock(
+        return_value=httpx.Response(204)
+    )
+
+    clear_reprice_marker(BASE_URL, 4, "k", 3)
+
+    request = route.calls[0].request
+    assert json.loads(request.content) == {"version": 3}
+    assert request.headers["X-Collector-Key"] == "k"
+    assert request.headers["X-Collector-Provider"] == "local"
+
+
+@respx.mock
+def test_clear_reprice_marker_raises_on_failure():
+    respx.post(f"{BASE_URL}/api/v1/sources/4/prices/reprice-marker/clear").mock(return_value=httpx.Response(500, text="no"))
+    with pytest.raises(CoreApiError):
+        clear_reprice_marker(BASE_URL, 4, "k", 3)
+
+
+@respx.mock
+def test_clear_reprice_marker_wraps_connection_errors():
+    respx.post(f"{BASE_URL}/api/v1/sources/4/prices/reprice-marker/clear").mock(side_effect=httpx.ConnectError("down"))
+    with pytest.raises(CoreApiError):
+        clear_reprice_marker(BASE_URL, 4, "k", 3)

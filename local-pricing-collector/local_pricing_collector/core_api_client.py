@@ -96,3 +96,17 @@ def push_price_intervals(
     )
     if response.status_code != 202:
         raise CoreApiError(f"Failed to push price intervals: {response.status_code} {response.text}")
+
+
+def clear_reprice_marker(base_url: str, source_id: int, collector_key: str, version: int) -> None:
+    """Tells core-api the repricing for this marker version is done. core-api
+    keeps the marker if a newer change has raised the version."""
+    response = _request(
+        "POST",
+        f"{base_url}/api/v1/sources/{source_id}/prices/reprice-marker/clear",
+        headers=_headers(collector_key),
+        json={"version": version},
+        timeout=10,
+    )
+    if response.status_code != 204:
+        raise CoreApiError(f"Failed to clear the reprice marker: {response.status_code} {response.text}")

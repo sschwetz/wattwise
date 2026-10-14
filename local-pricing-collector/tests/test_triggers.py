@@ -122,3 +122,29 @@ def test_a_scheduled_push_keeps_the_old_windows_key():
     triggers = Triggers(catch_up=False, scheduled_for=datetime.date(2026, 6, 16))
     state = after_success(before, triggers, at(2026, 6, 15, 13, 59), SYDNEY, "new")
     assert state.windows_key == "old"
+
+
+from local_pricing_collector.models import RepriceMarker
+
+MARKER = RepriceMarker(datetime.datetime(2026, 6, 1, tzinfo=UTC), 3)
+
+
+def test_a_marker_makes_a_caught_up_source_due():
+    state = SourceState(caught_up_date=datetime.date(2026, 6, 15), windows_key="k")
+
+    triggers = due(state, at(2026, 6, 15, 0, 0), SYDNEY, "k", MARKER)
+
+    assert triggers.reprice == MARKER
+    assert triggers.catch_up is False
+    assert triggers.any
+
+
+def test_without_a_marker_nothing_changes():
+    state = SourceState(caught_up_date=datetime.date(2026, 6, 15), windows_key="k")
+    triggers = due(state, at(2026, 6, 15, 0, 0), SYDNEY, "k")
+    assert triggers.reprice is None
+    assert not triggers.any
+
+
+def test_triggers_default_to_no_marker():
+    assert Triggers(catch_up=True).reprice is None

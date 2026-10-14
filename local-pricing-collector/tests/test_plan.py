@@ -206,3 +206,62 @@ def test_an_off_minute_window_end_gives_a_whole_minute_range_end():
     w = window(effective_to="2026-06-15T10:47:30+00:00")
     ranges = plan([w], floor=at(2026, 6, 1, 0, 0))
     assert ranges[-1].end == at(2026, 6, 15, 10, 48)
+
+
+from local_pricing_collector.models import RepriceMarker
+
+
+def marker(*args, version=1) -> RepriceMarker:
+    return RepriceMarker(at(*args), version)
+
+
+def only_reprice(m):
+    return Triggers(catch_up=False, reprice=m)
+
+
+def test_a_marker_reprices_from_the_marker_to_the_end_of_tomorrow():
+    ranges = plan([window()], floor=at(2026, 6, 1, 0, 0), triggers=only_reprice(marker(2026, 6, 10, 0, 0)))
+    assert ranges == [PlannedRange("buy", at(2026, 6, 10, 0, 0), TOMORROW_END)]
+
+
+def test_a_marker_before_the_site_data_floor_starts_at_the_floor():
+    ranges = plan([window()], floor=at(2026, 6, 1, 0, 0), triggers=only_reprice(marker(2026, 5, 1, 0, 0)))
+    assert ranges == [PlannedRange("buy", at(2026, 6, 1, 0, 0), TOMORROW_END)]
+
+
+def test_a_marker_before_the_window_starts_at_the_window():
+    early = window(effective_from="2026-06-10T00:00:00+00:00")
+    ranges = plan([early], floor=at(2026, 6, 1, 0, 0), triggers=only_reprice(marker(2026, 6, 5, 0, 0)))
+    assert ranges == [PlannedRange("buy", at(2026, 6, 10, 0, 0), TOMORROW_END)]
+
+
+def test_a_marker_after_the_end_of_tomorrow_plans_nothing():
+    assert plan([window()], floor=at(2026, 6, 1, 0, 0), triggers=only_reprice(marker(2026, 6, 20, 0, 0))) == []
+
+
+def test_a_marker_is_cut_at_the_end_of_windows_that_have_all_ended():
+    ended = window(effective_to="2026-06-14T00:00:00+00:00")
+    ranges = plan([ended], floor=at(2026, 6, 1, 0, 0), triggers=only_reprice(marker(2026, 6, 10, 0, 0)))
+    assert ranges == [PlannedRange("buy", at(2026, 6, 10, 0, 0), at(2026, 6, 14, 0, 0))]
+
+
+def test_a_marker_reprices_every_direction_that_has_windows():
+    windows = [window(), window(channel="sell")]
+    ranges = plan(windows, floor=at(2026, 6, 1, 0, 0), triggers=only_reprice(marker(2026, 6, 10, 0, 0)))
+    assert [(r.channel, r.start) for r in ranges] == [("buy", at(2026, 6, 10, 0, 0)), ("sell", at(2026, 6, 10, 0, 0))]
+
+
+def test_a_marker_merges_with_a_catch_up_range():
+    triggers = Triggers(catch_up=True, reprice=marker(2026, 6, 10, 0, 0))
+    ranges = plan([window()], floor=at(2026, 6, 1, 0, 0), triggers=triggers)
+    assert ranges == [PlannedRange("buy", at(2026, 6, 1, 0, 0), TOMORROW_END)]
+
+
+def test_a_marker_range_is_not_backward():
+    ranges = plan([window()], floor=at(2026, 6, 1, 0, 0), triggers=only_reprice(marker(2026, 6, 10, 0, 0)))
+    assert ranges[0].backward is False
+
+
+def test_a_marker_needs_no_coverage():
+    ranges = plan([window()], coverage={}, floor=at(2026, 6, 1, 0, 0), triggers=only_reprice(marker(2026, 6, 10, 0, 0)))
+    assert len(ranges) == 1
