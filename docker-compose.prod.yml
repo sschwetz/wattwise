@@ -1,0 +1,46 @@
+# Production override: run the images published to ghcr.io instead of
+# building from source. Use it together with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Set WATTWISE_VERSION in .env to pin a release (e.g. 1.2.0 or sha-abc1234).
+# It defaults to "latest", the newest build of master.
+#
+# `build: !reset null` needs Docker Compose 2.24 or later.
+
+services:
+  core-api:
+    image: ghcr.io/sschwetz/wattwise-core-api:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
+
+  webapp:
+    image: ghcr.io/sschwetz/wattwise-webapp:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
+
+  mail-relay:
+    image: ghcr.io/sschwetz/wattwise-mail-relay:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
+
+  envoy-collector:
+    image: ghcr.io/sschwetz/wattwise-envoy-collector:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
+
+  weatherlink-local-collector:
+    image: ghcr.io/sschwetz/wattwise-weatherlink-local-collector:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
+
+  amber-pricing-collector:
+    image: ghcr.io/sschwetz/wattwise-amber-pricing-collector:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
+
+  local-pricing-collector:
+    image: ghcr.io/sschwetz/wattwise-local-pricing-collector:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
