@@ -1,4 +1,12 @@
 import { useCallback, useState } from "react";
+import type { DateRange } from "./useHistoricalData";
+
+/** A zoom window held by a page and shared by the charts on it; null `range`
+ * means each chart shows its own full range. */
+export interface ChartZoom {
+  range: DateRange | null;
+  set: (range: DateRange | null) => void;
+}
 
 /** The x values (timestamps) of a drag-selection in progress. */
 export interface ZoomSelection {

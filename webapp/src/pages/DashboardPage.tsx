@@ -1,38 +1,19 @@
 import { useMemo, useState } from "react";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
 import { useParams } from "react-router-dom";
-import { Bar, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ApiError } from "../api/client";
 import { useActiveDemandWindow } from "../billing/useBilling";
 import { compassDirection } from "../dashboard/compass";
-import {
-  ErrorAlert,
-  ResetZoomButton,
-  ZoomSelectionArea,
-} from "../dashboard/chartParts";
-import { addDays, clipToDay, DAY_MS, startOfDay, todayRange, zoomRangeFor } from "../dashboard/dateRange";
+import { ErrorAlert, ResetZoomButton } from "../dashboard/chartParts";
+import { clipToDay, todayRange, zoomRangeFor } from "../dashboard/dateRange";
+import { formatTooltipValue } from "../dashboard/historyChart";
+import { HistoryChart } from "../dashboard/GridCostChart";
+import { useGridCostSeries } from "../dashboard/useGridCostSeries";
 import { priceMagnitude } from "../dashboard/priceChart";
-import { SWATCH_COLORS, ZOOMABLE_CHART_STYLE } from "../dashboard/chartStyle";
-import { useChartZoom } from "../dashboard/useChartZoom";
-import {
-  buildAxisTickPlan,
-  buildHistoryChartData,
-  formatBucketTick,
-  formatTooltipValue,
-  type HistoryChartPoint,
-} from "../dashboard/historyChart";
-import {
-  type CostBucket,
-  type CostSeriesPoint,
-  type DateRange,
-  useBillingPeriodCost,
-  useCost,
-  useCostSeries,
-  useHistoricalEnergyReadings,
-  useTodayCost,
-  useBillingPeriodBounds,
-} from "../dashboard/useHistoricalData";
+import { signAccent } from "../dashboard/signColors";
+import { Tile } from "../dashboard/Tile";
+import { TodayPriceChart } from "../dashboard/TodayPriceChart";
+import { type ChartZoom } from "../dashboard/useChartZoom";
+import { type DateRange, useBillingPeriodCost, useTodayCost } from "../dashboard/useHistoricalData";
 import {
   type PriceChannel,
   type Reading,
@@ -40,10 +21,6 @@ import {
   useLatestEnergyReadings,
   useLatestWeatherReadings,
 } from "../dashboard/useLiveReadings";
-
-/** The chart's bar metrics: actual grid flow, regardless of the net/gross cost method. */
-const CHART_IMPORT_METRIC = "grid_import_w";
-const CHART_EXPORT_METRIC = "grid_export_w";
 
 const TILE_LABELS: Record<string, string> = {
   production_w: "Production",
@@ -207,13 +184,6 @@ const METRIC_ACCENT: Record<string, "solar" | "flow" | "grid" | "danger"> = {
   battery_discharge_w: "danger",
 };
 
-const ACCENT_TEXT: Record<string, string> = {
-  solar: "text-solar",
-  flow: "text-flow",
-  grid: "text-grid",
-  danger: "text-danger",
-};
-
 // Only these tiles get the animated gradient background, and only while their
 // value is real activity (not zero-floored) -- it's a "something is actively
 // happening" indicator, not decoration every tile should have. Grid import/
@@ -226,44 +196,6 @@ const TILE_GLOW: Record<string, "solar" | "flow" | "danger"> = {
   grid_import_w: "danger",
   grid_export_w: "flow",
 };
-
-const GLOW_CLASS: Record<"solar" | "flow" | "danger", string> = {
-  solar: "solar-glow",
-  flow: "flow-glow",
-  danger: "danger-glow",
-};
-
-function Tile({
-  label,
-  value,
-  accent,
-  glow,
-  hero = false,
-  backgroundImage,
-}: {
-  label: string;
-  value: string;
-  accent?: "solar" | "flow" | "grid" | "danger";
-  glow?: "solar" | "flow" | "danger";
-  hero?: boolean;
-  backgroundImage?: string;
-}) {
-  return (
-    <div
-      className={`rounded-xl border border-line bg-surface ${glow ? GLOW_CLASS[glow] : ""} ${hero ? "p-6" : "p-4"}`}
-      style={backgroundImage ? { backgroundImage } : undefined}
-    >
-      <p className="text-sm text-ink-muted">{label}</p>
-      <p
-        className={`mt-1 font-display tabular-nums font-semibold ${hero ? "text-4xl" : "text-2xl"} ${
-          accent ? ACCENT_TEXT[accent] : "text-ink"
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
 
 function MetricTileGrid({
   readings,
@@ -461,303 +393,12 @@ function GridPriceTile({ siteId, direction }: { siteId: number; direction: "impo
   return <Tile label={label} value={`${priceMagnitude(price.value).toFixed(1)}c/kWh`} accent={accent} glow={accent} />;
 }
 
-type RangeMode = "today" | "yesterday" | "7d" | "30d" | "billing" | "custom";
-
-const RANGE_MODE_LABELS: Record<RangeMode, string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  "7d": "7 days",
-  "30d": "30 days",
-  billing: "Billing period",
-  custom: "Custom range",
-};
-
-/** Today/7 days/30 days all start at local midnight and run through the end of
- * today (even the part that hasn't happened yet) rather than a rolling N*24h
- * window, so a day's bars/line always cover the same fixed calendar span no
- * matter what time "now" is -- the not-yet-happened part reads as zero.
- * Yesterday is the one fully-elapsed exception: it stops at today's midnight
- * rather than running into the future. Billing period is the site's current
- * cycle, start to end, as reported by core-api. */
-function rangeForMode(mode: RangeMode, custom: DateRange, billing: DateRange | null | undefined): DateRange {
-  if (mode === "custom") {
-    return custom;
-  }
-  if (mode === "billing") {
-    // Falls back to today while the period bounds load or if no cycle is active.
-    return billing ?? todayRange();
-  }
-  if (mode === "yesterday") {
-    const from = addDays(startOfDay(new Date()), -1);
-    return { from, to: addDays(from, 1) };
-  }
-  const daysBack = mode === "today" ? 0 : mode === "7d" ? 6 : 29;
-  const to = addDays(startOfDay(new Date()), 1);
-  const from = addDays(to, -1 - daysBack);
-  return { from, to };
-}
-
-const SEVEN_DAYS_MS = 7 * DAY_MS;
-const THIRTY_DAYS_MS = 30 * DAY_MS;
-
-/** Finer resolution for shorter spans, coarser for longer ones, so the chart
- * stays both detailed and readable at every zoom level. Anything up to a day
- * (including a zoomed-in selection) is always 5-minute intervals. */
-function bucketForRange(range: DateRange): CostBucket {
-  const durationMs = range.to.getTime() - range.from.getTime();
-  if (durationMs <= DAY_MS) {
-    return "5min";
-  }
-  if (durationMs < SEVEN_DAYS_MS) {
-    return "15min";
-  }
-  if (durationMs < THIRTY_DAYS_MS) {
-    return "hour";
-  }
-  return "6hour";
-}
-
-function MethodRadio({
-  method,
-  selected,
-  onSelect,
-}: {
-  method: "net" | "gross";
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const label = method === "net" ? "Net" : "Gross";
-  return (
-    <label className="flex items-center gap-1 text-sm text-ink-muted">
-      <input type="radio" name="method" checked={selected} onChange={onSelect} aria-label={label} />
-      {label}
-    </label>
-  );
-}
-
-/** The dashboard's one sign convention, used everywhere a number means "cost
- * vs. credit" or "import vs. export": positive -> danger (red), negative ->
- * flow (green), exactly zero -> neutral (each call site picks its own neutral
- * color/class, since "zero" renders differently as a Tile accent vs. a raw
- * chart color). */
-function signAccent(value: number): "danger" | "flow" | undefined {
-  if (value > 0) {
-    return "danger";
-  }
-  if (value < 0) {
-    return "flow";
-  }
-  return undefined;
-}
-
-const ACCENT_CSS_VAR: Record<"solar" | "flow" | "grid" | "danger", string> = {
-  solar: "var(--color-solar)",
-  flow: "var(--color-flow)",
-  grid: "var(--color-grid)",
-  danger: "var(--color-danger)",
-};
-
-/** Red while importing (costing money), green while exporting (earning money) --
- * the same convention as the "Grid import"/"Grid export" tiles' text color.
- * Exactly zero (e.g. a not-yet-happened bucket) is neutral, not red, since
- * red would otherwise misread as "importing". */
-function gridBarColor(value: number): string {
-  const accent = signAccent(value);
-  return accent ? ACCENT_CSS_VAR[accent] : "var(--color-line)";
-}
-
-/** Same red/green convention as gridBarColor, as a raw CSS color for inline
- * styling (the chart tooltip's cost row). */
-function costTextColor(value: number): string {
-  const accent = signAccent(value);
-  return accent ? ACCENT_CSS_VAR[accent] : "var(--color-ink-muted)";
-}
-
-function LegendSwatch({
-  color,
-  label,
-  textColor,
-}: {
-  color: string;
-  label: string;
-  /** Inline text color, e.g. for a live reading whose sign the text itself
-   * should convey (red/green). Defaults to the neutral ink-muted token --
-   * the static legend and the Grid tooltip row keep that default. */
-  textColor?: string;
-}) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span aria-hidden className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-      <span className={textColor ? undefined : "text-ink-muted"} style={textColor ? { color: textColor } : undefined}>
-        {label}
-      </span>
-    </span>
-  );
-}
-
-/** Built in plain HTML/Tailwind rather than recharts' own <Legend>, so its text
- * always renders in the theme's ink tokens -- never a series color -- and reads
- * correctly in both light and dark mode. */
-function HistoryChartLegend() {
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-4 text-xs">
-      <LegendSwatch color={SWATCH_COLORS.gridImport} label="Grid import" />
-      <LegendSwatch color={SWATCH_COLORS.gridExport} label="Grid export" />
-      <LegendSwatch color={SWATCH_COLORS.cost} label="Cost" />
-    </div>
-  );
-}
-
-/** Custom tooltip content, not recharts' default: its text always renders in
- * the theme's ink tokens, same reasoning as HistoryChartLegend above -- the
- * default content colors each row from the series' own fill/stroke, which is
- * unset for "Grid" and otherwise unreadable against a dark surface. */
-function HistoryChartTooltip({
-  active,
-  label,
-  payload,
-  bucket,
-}: {
-  active?: boolean;
-  label?: string | number;
-  payload?: ReadonlyArray<{ payload?: HistoryChartPoint }>;
-  bucket: CostBucket;
-}) {
-  const point = payload?.[0]?.payload;
-  if (!active || !point || label === undefined) {
-    return null;
-  }
-  const [gridValue] = formatTooltipValue(point.gridKwh, "Grid");
-  const [costValue] = formatTooltipValue(point.costDollars, "Cost");
-  const costColor = costTextColor(point.costDollars);
-  return (
-    <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-lg">
-      <p className="mb-1 text-ink-muted">{formatBucketTick(Number(label), bucket)}</p>
-      <LegendSwatch color={gridBarColor(point.gridKwh)} label={gridValue} />
-      <LegendSwatch color={costColor} textColor={costColor} label={costValue} />
-    </div>
-  );
-}
-
-function HistoryChart({
-  importReadings,
-  exportReadings,
-  costSeries,
-  range,
-  bucket,
-  onZoom,
-}: {
-  importReadings: Reading[];
-  exportReadings: Reading[];
-  costSeries: CostSeriesPoint[];
-  range: DateRange;
-  bucket: CostBucket;
-  onZoom: (fromTs: number, toTs: number) => void;
-}) {
-  const { handlers, selection } = useChartZoom(onZoom);
-  const chartData = useMemo(
-    () => buildHistoryChartData(importReadings, exportReadings, costSeries, range, bucket),
-    [importReadings, exportReadings, costSeries, range, bucket],
-  );
-  const axisTickPlan = useMemo(() => buildAxisTickPlan(chartData, range), [chartData, range]);
-  return (
-    <>
-      <ResponsiveContainer width="100%" height={240}>
-        <ComposedChart data={chartData} style={ZOOMABLE_CHART_STYLE} {...handlers}>
-          <XAxis
-            dataKey="ts"
-            ticks={axisTickPlan.ticks}
-            tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
-            stroke="var(--color-ink-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-          />
-          <YAxis
-            yAxisId="grid"
-            stroke="var(--color-ink-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-            width={48}
-            label={{
-              value: "kWh",
-              angle: -90,
-              position: "insideLeft",
-              style: { fill: "var(--color-ink-muted)", fontSize: 12, textAnchor: "middle" },
-            }}
-          />
-          <YAxis
-            yAxisId="cost"
-            orientation="right"
-            stroke="var(--color-ink-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-            width={48}
-            label={{
-              value: "$",
-              angle: -90,
-              position: "insideRight",
-              style: { fill: "var(--color-ink-muted)", fontSize: 12, textAnchor: "middle" },
-            }}
-          />
-          <Tooltip content={(props) => <HistoryChartTooltip {...props} bucket={bucket} />} />
-          <Bar yAxisId="grid" dataKey="gridKwh" name="Grid" radius={2}>
-            {chartData.map((point) => (
-              <Cell key={point.ts} fill={gridBarColor(point.gridKwh)} />
-            ))}
-          </Bar>
-          <Line
-            yAxisId="cost"
-            type="monotone"
-            dataKey="costDollars"
-            name="Cost"
-            stroke="var(--color-solar)"
-            strokeWidth={2}
-            dot={false}
-          />
-          <ZoomSelectionArea selection={selection} yAxisId="grid" />
-        </ComposedChart>
-      </ResponsiveContainer>
-      <HistoryChartLegend />
-    </>
-  );
-}
-
-const DATE_PICKER_INPUT_CLASS =
-  "rounded-md border border-line bg-surface px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
-
-/** The time window both dashboard charts show while zoomed; null means each
- * chart shows its own full range. */
-interface SharedZoom {
-  range: DateRange | null;
-  set: (range: DateRange | null) => void;
-}
-
-/** The grid bars and cost line inputs for a range: import/export energy plus
- * the cost trend at the bucket size that fits the range. */
-function useGridCostSeries(siteId: number, range: DateRange, method: "net" | "gross") {
-  const bucket = bucketForRange(range);
-  const importHistory = useHistoricalEnergyReadings(siteId, range, CHART_IMPORT_METRIC);
-  const exportHistory = useHistoricalEnergyReadings(siteId, range, CHART_EXPORT_METRIC);
-  const costSeries = useCostSeries(siteId, range, method, bucket);
-  return {
-    bucket,
-    importReadings: importHistory.data ?? [],
-    exportReadings: exportHistory.data ?? [],
-    costSeries: costSeries.data ?? [],
-    readingsFailed: importHistory.isError || exportHistory.isError,
-    costSeriesFailed: costSeries.isError,
-  };
-}
-
 /**
  * Grid flow and cost for today only, with no controls or totals -- always
  * today at 5-minute intervals, independent of the history card's range. It
  * follows the shared zoom with the history chart.
  */
-function TodayChart({ siteId, zoom }: { siteId: number; zoom: SharedZoom }) {
+function TodayChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
   const day = useMemo(() => todayRange(), []);
   const range = useMemo(() => clipToDay(zoom.range, day), [zoom.range, day]);
   const data = useGridCostSeries(siteId, range, "net");
@@ -778,99 +419,6 @@ function TodayChart({ siteId, zoom }: { siteId: number; zoom: SharedZoom }) {
         bucket={data.bucket}
         onZoom={(fromTs, toTs) => zoom.set(zoomRangeFor(fromTs, toTs, data.bucket))}
       />
-    </div>
-  );
-}
-
-function HistoryAndCost({ siteId, zoom }: { siteId: number; zoom: SharedZoom }) {
-  const [rangeMode, setRangeMode] = useState<RangeMode>("today");
-  const [customRange, setCustomRange] = useState<DateRange>(todayRange);
-  const [method, setMethod] = useState<"net" | "gross">("net");
-  const { data: billingRange } = useBillingPeriodBounds(siteId);
-  const baseRange = useMemo(() => rangeForMode(rangeMode, customRange, billingRange), [rangeMode, customRange, billingRange]);
-  const range = zoom.range ?? baseRange;
-  const data = useGridCostSeries(siteId, range, method);
-  const { data: cost, isError: costFailed } = useCost(siteId, range, method);
-  const costTileAccent = cost ? signAccent(cost.total_cost_c) : undefined;
-  const rangeModes = (Object.keys(RANGE_MODE_LABELS) as RangeMode[]).filter(
-    (mode) => mode !== "billing" || billingRange || rangeMode === "billing",
-  );
-
-  // Picking a different range drops any zoom, so the new range is what shows.
-  function changeRange(update: () => void) {
-    zoom.set(null);
-    update();
-  }
-
-  return (
-    <div className="rounded-xl border border-line bg-surface p-5">
-      <div className="flex flex-wrap items-center gap-4">
-        <select
-          value={rangeMode}
-          onChange={(e) => changeRange(() => setRangeMode(e.target.value as RangeMode))}
-          aria-label="Date range"
-          className={DATE_PICKER_INPUT_CLASS}
-        >
-          {rangeModes.map((mode) => (
-            <option key={mode} value={mode}>
-              {RANGE_MODE_LABELS[mode]}
-            </option>
-          ))}
-        </select>
-        {rangeMode === "custom" && (
-          <>
-            <DatePicker
-              selected={customRange.from}
-              onChange={(date: Date | null) =>
-                date && changeRange(() => setCustomRange((prev) => ({ ...prev, from: date })))
-              }
-              showTimeSelect
-              timeIntervals={15}
-              dateFormat="yyyy-MM-dd HH:mm"
-              aria-label="Custom range start"
-              className={DATE_PICKER_INPUT_CLASS}
-            />
-            <span className="text-sm text-ink-muted">to</span>
-            <DatePicker
-              selected={customRange.to}
-              onChange={(date: Date | null) =>
-                date && changeRange(() => setCustomRange((prev) => ({ ...prev, to: date })))
-              }
-              showTimeSelect
-              timeIntervals={15}
-              dateFormat="yyyy-MM-dd HH:mm"
-              aria-label="Custom range end"
-              className={DATE_PICKER_INPUT_CLASS}
-            />
-          </>
-        )}
-        <MethodRadio method="net" selected={method === "net"} onSelect={() => setMethod("net")} />
-        <MethodRadio method="gross" selected={method === "gross"} onSelect={() => setMethod("gross")} />
-        {zoom.range && <ResetZoomButton onClick={() => zoom.set(null)} />}
-      </div>
-      <div className="mt-4 space-y-1" data-testid="history-cost">
-        {costFailed && <ErrorAlert message="Failed to load cost." />}
-        {data.readingsFailed && <ErrorAlert message="Failed to load historical readings." />}
-        {data.costSeriesFailed && <ErrorAlert message="Failed to load the cost trend." />}
-        {cost && (
-          <Tile
-            label="Cost"
-            value={`$${(cost.total_cost_c / 100).toFixed(2)}`}
-            accent={costTileAccent}
-            glow={costTileAccent}
-          />
-        )}
-      </div>
-      <div className="mt-4">
-        <HistoryChart
-          importReadings={data.importReadings}
-          exportReadings={data.exportReadings}
-          costSeries={data.costSeries}
-          range={range}
-          bucket={data.bucket}
-          onZoom={(fromTs, toTs) => zoom.set(zoomRangeFor(fromTs, toTs, data.bucket))}
-        />
-      </div>
     </div>
   );
 }
@@ -903,8 +451,8 @@ export function DashboardPage() {
         <DemandWindowNotice siteId={parsedSiteId} />
       </div>
       <LiveTiles siteId={parsedSiteId} />
+      <TodayPriceChart siteId={parsedSiteId} zoom={zoom} />
       <TodayChart siteId={parsedSiteId} zoom={zoom} />
-      <HistoryAndCost siteId={parsedSiteId} zoom={zoom} />
     </div>
   );
 }

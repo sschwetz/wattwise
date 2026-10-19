@@ -2,9 +2,9 @@
 
 [Contents](index.md) · Previous: [Sources](05-sources.md) · Next: [Billing](07-billing.md)
 
-The dashboard is the first page of every site. It has four parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [today's chart](#todays-chart) and the [history and cost chart](#history-and-cost). Today's Pricing is on the [Reporting page](#reporting-page).
+The dashboard is the first page of every site. It has four parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing) and [today's grid and cost chart](#todays-grid-and-cost-chart). The history chart is on the [Reporting page](#reporting-page).
 
-![The full dashboard: live tiles, weather and the history chart](images/dashboard-overview.png)
+![The full dashboard: live tiles, weather, today's pricing chart and today's grid and cost chart](images/dashboard-overview.png)
 
 Everything on the page refreshes by itself every 60 seconds. You do not need to reload.
 
@@ -68,19 +68,40 @@ Under the live tiles, **Weather** shows the latest reading from your WeatherLink
 
 When one of your [demand windows](07-billing.md#demand-windows) is in effect, the heading reads **Dashboard - DEMAND WINDOW ACTIVE** in red. While it shows, the power you import counts toward your peak-demand charge, so shifting heavy loads such as the oven, dryer or EV charger to another time lowers that charge.
 
-## Today's chart
+## Today's Pricing
 
-A chart of grid energy and cost for today, with no controls or totals. It always shows today in 5-minute bars, whatever the history card below is set to, and uses the Net cost method. Red bars are import, green bars are export, and the amber line is cost.
+![Step chart of import and export prices across today, solid for actual and dashed for predicted](images/dashboard-today-pricing.png)
 
-This chart and the history chart share one zoom. Drag across either to zoom both to that time span. The today's chart can only show times inside today, so if you zoom the history chart onto another day, it keeps showing all of today. Press **Reset zoom** on either chart to clear it.
+This chart shows your import and export price for every 5 minutes of today, in cents per kWh. The prices come from your pricing source: Amber's prices, or the rates in your [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
 
-## History and cost
+| Line | Meaning |
+|------|---------|
+| Red solid | **Import actual**: what buying power cost in intervals that have finished. |
+| Red dashed | **Import predicted**: the price for the rest of today. With Amber this is Amber's forecast. With a fixed tariff it is the rate your windows set. |
+| Green solid | **Export actual**: what you were paid for exporting. |
+| Green dashed | **Export predicted**: the export price for the rest of today, from Amber's forecast or your fixed tariff. |
+
+Drag across the chart to zoom into a stretch of the day, and press **Reset zoom** to go back. Hover over a point for the exact price. The chart always shows today and does not change with the date range on the Reporting page. It needs a pricing source, either [Amber](05-sources.md#connecting-amber-electric) or a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
+
+Prices are shown as plain positive rates. WattWise stores the sell price as a negative number when you are being paid, as Amber publishes it, and the chart shows its size instead.
+
+## Today's grid and cost chart
+
+A chart of grid energy and cost for today, with no controls or totals. It always shows today in 5-minute bars, whatever the Reporting page is set to, and uses the Net cost method. Red bars are import, green bars are export, and the amber line is cost.
+
+This chart and Today's Pricing above it share one zoom. Drag across either to zoom both to that time span, then press **Reset zoom** on either to clear it.
+
+## Reporting page
+
+Open **Reporting** in the sidebar for charts that look back over longer periods.
+
+### History and cost
 
 ![The history card with a range selector, Net and Gross options, a cost total and a chart](images/dashboard-history.png)
 
-The bottom card shows grid energy and cost over a period you choose.
+The history card shows grid energy and cost over a period you choose.
 
-### Choosing a period
+#### Choosing a period
 
 Use the **Date range** list:
 
@@ -104,15 +125,15 @@ The bars get wider as the period grows, so the chart stays readable:
 | 7 to under 30 days | 1 hour |
 | 30 days or more | 6 hours |
 
-### Reading the chart
+#### Reading the chart
 
 - **Bars** show grid energy in kWh (left axis). Red bars are import, green bars are export.
 - **The amber line** shows cost in dollars (right axis). It covers energy and demand charges only, so daily and monthly fees do not appear as spikes.
 - **The Cost tile** above the chart is the total for the chosen period, including daily and monthly fees.
 - Hover over a bar for the time, the grid energy and the cost for that bar.
-- Click and drag across the chart to zoom into that stretch of time. The chart reloads for the selected span, and any span of a day or less shows 5-minute bars. Press **Reset zoom** to go back. Changing the date range also clears the zoom. The zoom is shared with [today's chart](#todays-chart).
+- Click and drag across the chart to zoom into that stretch of time. The chart reloads for the selected span, and any span of a day or less shows 5-minute bars. Press **Reset zoom** to go back. Changing the date range also clears the zoom. This zoom is separate from the dashboard's charts.
 
-### Net and gross cost
+#### Net and gross cost
 
 The **Net** and **Gross** options change how the **Cost** total and cost line are calculated. The bars always show real grid flow.
 
@@ -123,30 +144,9 @@ The **Net** and **Gross** options change how the **Cost** total and cost line ar
 
 Net is the default and matches your retailer's bill. Gross is useful for comparing, for example, how much your solar saves.
 
-### Missing prices
+#### Missing prices
 
 If a minute has energy but no price (for example, before the pricing source was added), WattWise leaves that minute out of the cost instead of guessing. Totals for such periods will be lower than your real bill. See [Troubleshooting](09-troubleshooting.md#costs-look-too-low-or-are-missing).
-
-## Reporting page
-
-Open **Reporting** in the sidebar for charts that sit apart from the dashboard.
-
-### Today's Pricing
-
-![Step chart of import and export prices across today, solid for actual and dashed for predicted](images/dashboard-today-pricing.png)
-
-This chart shows your import and export price for every 5 minutes of today, in cents per kWh. The prices come from your pricing source: Amber's prices, or the rates in your [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
-
-| Line | Meaning |
-|------|---------|
-| Red solid | **Import actual**: what buying power cost in intervals that have finished. |
-| Red dashed | **Import predicted**: the price for the rest of today. With Amber this is Amber's forecast. With a fixed tariff it is the rate your windows set. |
-| Green solid | **Export actual**: what you were paid for exporting. |
-| Green dashed | **Export predicted**: the export price for the rest of today, from Amber's forecast or your fixed tariff. |
-
-Drag across the chart to zoom into a stretch of the day, and press **Reset zoom** to go back. Hover over a point for the exact price. The chart always shows today and ignores the controls on the dashboard. It needs a pricing source, either [Amber](05-sources.md#connecting-amber-electric) or a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
-
-Prices are shown as plain positive rates. WattWise stores the sell price as a negative number when you are being paid, as Amber publishes it, and the chart shows its size instead.
 
 ## Next
 
