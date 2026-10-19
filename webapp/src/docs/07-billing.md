@@ -1,8 +1,8 @@
-# 6. Billing
+# 7. Billing
 
-[Contents](index.md) · Previous: [The dashboard](05-dashboard.md) · Next: [Account settings](07-account-settings.md)
+[Contents](index.md) · Previous: [The dashboard](06-dashboard.md) · Next: [Account settings](08-account-settings.md)
 
-The **Billing** page (sidebar link **Billing**) holds the parts of your electricity bill that are not a per-kWh price: fixed charges, time-of-day rules and the date your bill closes. [Amber prices](04-sources.md#connecting-amber-electric) or the rates of a [fixed tariff](04-sources.md#setting-up-a-fixed-tariff) cover the per-kWh part.
+The **Billing** page (sidebar link **Billing**) holds the parts of your electricity bill that are not a per-kWh price: fixed charges, time-of-day rules and the date your bill closes. [Amber prices](05-sources.md#connecting-amber-electric) or the rates of a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff) cover the per-kWh part.
 
 The page has three cards: [Tariffs](#tariffs), [Billing cycle](#billing-cycles) and [Demand charges](#demand-charges).
 
@@ -30,13 +30,13 @@ WattWise builds each cost figure minute by minute:
 5. **Demand charge**: the [demand charge](#demand-charges) for the billing period, spread across the minutes inside the demand window.
 6. **Conditional credits**: a [conditional credit](#conditional-credits) subtracts a fixed amount for each day your average grid import in its time window stays below its limit.
 
-The **Cost** total and the billing period tiles include all six parts. The cost line on the history chart shows only the energy parts (1 and 2) plus the demand charge, so fixed fees and conditional credits do not show up as a spike at one instant. Prices and energy come from your sources. Everything on this page comes from you. Whenever a minute has energy but no price, that minute is left out. See [Net and gross cost](05-dashboard.md#net-and-gross-cost) for the two ways the energy side can be counted.
+The **Cost** total and the billing period tiles include all six parts. The cost line on the history chart shows only the energy parts (1 and 2) plus the demand charge, so fixed fees and conditional credits do not show up as a spike at one instant. Prices and energy come from your sources. Everything on this page comes from you. Whenever a minute has energy but no price, that minute is left out. See [Net and gross cost](06-dashboard.md#net-and-gross-cost) for the two ways the energy side can be counted.
 
 ## Tariffs
 
 A **tariff** is a set of fixed charges that applies from the moment you add it until you end it.
 
-The section heading names your price supplier: "Amber Tariffs" with an Amber source, "Origin Fixed Tariffs" with a local source called Origin Fixed, and "Tariffs" with neither. The supply charge, monthly fee, billing cycle, demand windows, export adjustments, conditional credits and fee discounts on this page apply to every kind of pricing source. Per-kWh rates for a local source are set in [Sources](04-sources.md#setting-up-a-fixed-tariff).
+The section heading names your price supplier: "Amber Tariffs" with an Amber source, "Origin Fixed Tariffs" with a local source called Origin Fixed, and "Tariffs" with neither. The supply charge, monthly fee, billing cycle, demand windows, export adjustments, conditional credits and fee discounts on this page apply to every kind of pricing source. Per-kWh rates for a local source are set in [Sources](05-sources.md#setting-up-a-fixed-tariff).
 
 ### Adding a tariff
 
@@ -74,7 +74,7 @@ Add one under an active tariff:
 
 Click **Add demand window**. The list shows each window as, for example, `16:00–21:00 · Mon, Tue, Wed, Thu, Fri · Dec, Jan, Feb · every 30 min`. The "every 30 min" is the measurement interval: WattWise averages your grid import over 30-minute spans and takes the highest one.
 
-While a window is in effect, the [dashboard](05-dashboard.md#demand-window-notice) shows **DEMAND WINDOW ACTIVE**. Times use the [site's time zone](03-sites.md#creating-a-site).
+While a window is in effect, the [dashboard](06-dashboard.md#demand-window-notice) shows **DEMAND WINDOW ACTIVE**. Times use the [site's time zone](04-sites.md#creating-a-site).
 
 ### Export adjustments
 
@@ -101,7 +101,7 @@ A **conditional credit** takes a fixed amount off your bill on each day that you
 
 Click **Add conditional credit**. On each matching day, WattWise averages your grid import from the start time up to the end time. If the average is below the limit, that day earns the credit.
 
-- The test uses power drawn from the grid only. Power you export does not offset it, and it does not change with the [net or gross](05-dashboard.md#net-and-gross-cost) setting.
+- The test uses power drawn from the grid only. Power you export does not offset it, and it does not change with the [net or gross](06-dashboard.md#net-and-gross-cost) setting.
 - Equal to the limit does not qualify.
 - A day earns nothing until its end time has passed.
 - A minute while you are exporting counts as 0 W of import. If any minute in the window has no grid reading at all, for example because a collector was offline, that day earns nothing.
@@ -157,6 +157,6 @@ Notes:
 
 ## Next
 
-- [The dashboard](05-dashboard.md#cost-and-credit): where these numbers show up
-- [Troubleshooting costs](08-troubleshooting.md#costs-look-too-low-or-are-missing)
-- [Glossary](09-glossary.md)
+- [The dashboard](06-dashboard.md#cost-and-credit): where these numbers show up
+- [Troubleshooting costs](09-troubleshooting.md#costs-look-too-low-or-are-missing)
+- [Glossary](10-glossary.md)

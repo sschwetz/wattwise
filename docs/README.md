@@ -8,7 +8,7 @@ WattWise records a home's solar, battery, grid and weather data once a minute, c
 
 | You are... | Read this first | Then |
 |---|---|---|
-| **A homeowner using the app** | [User guide](../webapp/src/docs/index.md) (also available inside the app under Help) | [Troubleshooting](../webapp/src/docs/08-troubleshooting.md) |
+| **A homeowner using the app** | [User guide](../webapp/src/docs/index.md) (also available inside the app under Help) | [Troubleshooting](../webapp/src/docs/09-troubleshooting.md) |
 | **Setting up a new electricity provider or tariff** | [Adding a provider](adding-a-provider.md) | [Operations](operations.md) if a collector needs to run |
 | **The person who has to keep it running** | [Operations](operations.md) and its [handover checklist](operations.md#handover-checklist) | [Architecture](architecture.md) |
 | **A developer taking over the code** | [Architecture](architecture.md) | [Development](development.md), [Data model](data-model.md), [Core API](core-api.md) |

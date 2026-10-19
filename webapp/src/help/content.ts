@@ -18,7 +18,7 @@ function keyedBy(sources: Record<string, string>, strip: RegExp): Record<string,
   return Object.fromEntries(Object.entries(sources).map(([path, value]) => [path.replace(strip, ""), value]));
 }
 
-/** Markdown by chapter slug: "index", "01-getting-started", ... */
+/** Markdown by chapter slug: "index", "02-getting-started", ... */
 export const chapters: Record<string, string> = keyedBy(chapterSources, /^.*\/|\.md$/g);
 
 /** Hashed asset URLs by the path Markdown uses, e.g. "images/login.png". */

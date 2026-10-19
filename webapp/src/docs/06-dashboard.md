@@ -1,6 +1,6 @@
-# 5. The dashboard
+# 6. The dashboard
 
-[Contents](index.md) · Previous: [Sources](04-sources.md) · Next: [Billing](06-billing.md)
+[Contents](index.md) · Previous: [Sources](05-sources.md) · Next: [Billing](07-billing.md)
 
 The dashboard is the first page of every site. It has four parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing) and the [history and cost chart](#history-and-cost).
 
@@ -25,7 +25,7 @@ The large tile at the top is **Production**. Below it are the other tiles. A til
 | **Today's cost** / **Today's credit** | What you have spent, or earned, since local midnight. |
 | **Grid import price** / **Grid export price** | The price per kWh that applies right now. |
 | **Billing Period** | The running total since your current billing period began. Red is a cost, green is a credit. |
-| **Including Discounts** | The total of the [monthly fee discounts](06-billing.md#monthly-fee-discounts) that cover your current billing period, in full: the discounted fee itself, not the amount saved against the normal fee. Shown only when a discount covers part of the period. The Billing Period tile shrinks to half width to make room. |
+| **Including Discounts** | The total of the [monthly fee discounts](07-billing.md#monthly-fee-discounts) that cover your current billing period, in full: the discounted fee itself, not the amount saved against the normal fee. Shown only when a discount covers part of the period. The Billing Period tile shrinks to half width to make room. |
 
 ### Reading the colors
 
@@ -54,25 +54,25 @@ The **Battery** tile changes its background from red through amber to green as t
 - A positive amount is money you owe. It shows in red and the tile says **cost**.
 - A negative amount is money you earn. It shows in green and the tile says **credit**. The minus sign is dropped because the color and word already say it.
 
-**Billing Period** appears only after you [add a billing cycle](06-billing.md#billing-cycles). Without one the tile is hidden, which is normal.
+**Billing Period** appears only after you [add a billing cycle](07-billing.md#billing-cycles). Without one the tile is hidden, which is normal.
 
-Fixed daily and monthly fees are included in proportion to how much of the day has passed, so the figure rises smoothly instead of jumping at midnight. The monthly fee needs a billing cycle. See [How the cost is calculated](06-billing.md#how-the-cost-is-calculated).
+Fixed daily and monthly fees are included in proportion to how much of the day has passed, so the figure rises smoothly instead of jumping at midnight. The monthly fee needs a billing cycle. See [How the cost is calculated](07-billing.md#how-the-cost-is-calculated).
 
 ## Weather tiles
 
-Under the live tiles, **Weather** shows the latest reading from your WeatherLink station: **Temperature** (°C), **Humidity**, **Rain**, **Solar radiation** (W/m²), **Barometric pressure** (hPa) and **Wind speed** with a compass direction, for example `12.3 km/h NE`. These tiles need a [weather source](04-sources.md#connecting-a-weatherlink-live-station).
+Under the live tiles, **Weather** shows the latest reading from your WeatherLink station: **Temperature** (°C), **Humidity**, **Rain**, **Solar radiation** (W/m²), **Barometric pressure** (hPa) and **Wind speed** with a compass direction, for example `12.3 km/h NE`. These tiles need a [weather source](05-sources.md#connecting-a-weatherlink-live-station).
 
 ## Demand window notice
 
 ![The dashboard heading with a red DEMAND WINDOW ACTIVE notice](images/dashboard-demand-window.png)
 
-When one of your [demand windows](06-billing.md#demand-windows) is in effect, the heading reads **Dashboard - DEMAND WINDOW ACTIVE** in red. While it shows, the power you import counts toward your peak-demand charge, so shifting heavy loads such as the oven, dryer or EV charger to another time lowers that charge.
+When one of your [demand windows](07-billing.md#demand-windows) is in effect, the heading reads **Dashboard - DEMAND WINDOW ACTIVE** in red. While it shows, the power you import counts toward your peak-demand charge, so shifting heavy loads such as the oven, dryer or EV charger to another time lowers that charge.
 
 ## Today's Pricing
 
 ![Step chart of import and export prices across today, solid for actual and dashed for predicted](images/dashboard-today-pricing.png)
 
-This chart shows your import and export price for every 5 minutes of today, in cents per kWh. The prices come from your pricing source: Amber's prices, or the rates in your [fixed tariff](04-sources.md#setting-up-a-fixed-tariff).
+This chart shows your import and export price for every 5 minutes of today, in cents per kWh. The prices come from your pricing source: Amber's prices, or the rates in your [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
 
 | Line | Meaning |
 |------|---------|
@@ -81,7 +81,7 @@ This chart shows your import and export price for every 5 minutes of today, in c
 | Green solid | **Export actual**: what you were paid for exporting. |
 | Green dashed | **Export predicted**: the export price for the rest of today, from Amber's forecast or your fixed tariff. |
 
-Hover over a point for the exact price. The chart always shows today and ignores the controls in the history card below. It needs a pricing source, either [Amber](04-sources.md#connecting-amber-electric) or a [fixed tariff](04-sources.md#setting-up-a-fixed-tariff).
+Hover over a point for the exact price. The chart always shows today and ignores the controls in the history card below. It needs a pricing source, either [Amber](05-sources.md#connecting-amber-electric) or a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
 
 Prices are shown as plain positive rates. WattWise stores the sell price as a negative number when you are being paid, as Amber publishes it, and the chart shows its size instead.
 
@@ -133,10 +133,10 @@ Net is the default and matches your retailer's bill. Gross is useful for compari
 
 ### Missing prices
 
-If a minute has energy but no price (for example, before the pricing source was added), WattWise leaves that minute out of the cost instead of guessing. Totals for such periods will be lower than your real bill. See [Troubleshooting](08-troubleshooting.md#costs-look-too-low-or-are-missing).
+If a minute has energy but no price (for example, before the pricing source was added), WattWise leaves that minute out of the cost instead of guessing. Totals for such periods will be lower than your real bill. See [Troubleshooting](09-troubleshooting.md#costs-look-too-low-or-are-missing).
 
 ## Next
 
-- [Billing](06-billing.md): tariffs and cycles that feed the cost figures
-- [Troubleshooting](08-troubleshooting.md) when something looks wrong
-- [Glossary](09-glossary.md) for terms such as demand window and export adjustment
+- [Billing](07-billing.md): tariffs and cycles that feed the cost figures
+- [Troubleshooting](09-troubleshooting.md) when something looks wrong
+- [Glossary](10-glossary.md) for terms such as demand window and export adjustment

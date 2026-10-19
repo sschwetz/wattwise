@@ -130,6 +130,8 @@ git pull
 docker compose up -d --build --remove-orphans
 ```
 
+To run the published images instead of building from source, add `-f docker-compose.yml -f docker-compose.prod.yml` to the `docker compose` commands and replace `git pull` with `docker compose pull`. See "Run in production" in the root `README.md`.
+
 Migrations run automatically when `core-api` starts. Take a backup first. Rolling back means checking out the previous commit and restoring the backup taken before the upgrade. The encryption migration has a downgrade that decrypts the columns again, but downgrades are otherwise untested in this project.
 
 **Upgrading to the encryption release (commit `79651e9` or later):**
@@ -201,7 +203,7 @@ Fill this in once and keep it with the backups, in a password manager rather tha
 
 1. Get shell access to the machine and run `docker compose ps`. Confirm all services run.
 2. Take a backup using the [routine above](#backups), confirm you can open the file, and confirm you hold a copy of `SECRETS_ENCRYPTION_KEY`.
-3. Sign in to the web app. Check that live tiles update. If two-factor blocks you, use a [recovery code](../webapp/src/docs/02-signing-in.md).
+3. Sign in to the web app. Check that live tiles update. If two-factor blocks you, use a [recovery code](../webapp/src/docs/03-signing-in.md).
 4. Read [Architecture](architecture.md) and [How it works](how-it-works.md).
 5. Check the dates in [Things that break on a schedule](#things-that-break-on-a-schedule) against your accounts, starting with the Envoy token.
 6. Run the test suites ([Development](development.md#running-the-tests)) to confirm you can change code safely.

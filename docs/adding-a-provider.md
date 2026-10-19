@@ -76,7 +76,7 @@ Prices appear within about a minute of saving.
 
 ### Path B: Amber, Envoy or WeatherLink
 
-These are already supported. The steps, with screenshots, are in the user guide's [Sources chapter](../webapp/src/docs/04-sources.md). In short: Amber needs your API key (under Account settings) and a site ID; the Envoy needs its address on your network and either a token or your Enlighten login; the WeatherLink Live needs its address.
+These are already supported. The steps, with screenshots, are in the user guide's [Sources chapter](../webapp/src/docs/05-sources.md). In short: Amber needs your API key (under Account settings) and a site ID; the Envoy needs its address on your network and either a token or your Enlighten login; the WeatherLink Live needs its address.
 
 ### Path C: the extras on your plan
 
@@ -84,12 +84,12 @@ Retail plans often add rules on top of the energy rates. All are on the **Billin
 
 | If your plan has... | Add it as | Chapter |
 |---|---|---|
-| A daily supply charge | Tariff, service availability | [Billing](../webapp/src/docs/06-billing.md#tariffs) |
-| A monthly fee, perhaps discounted for a year | Tariff monthly fee, then a Monthly fee discount | [Billing](../webapp/src/docs/06-billing.md#monthly-fee-discounts) |
-| A charge for your highest evening draw | Demand window | [Billing](../webapp/src/docs/06-billing.md#demand-windows) |
-| A bonus or penalty on the feed-in rate at certain times | Export adjustment | [Billing](../webapp/src/docs/06-billing.md#export-adjustments) |
-| "Keep evening import under 300 W and earn 50 cents" | Conditional credit | [Billing](../webapp/src/docs/06-billing.md#conditional-credits) |
-| A bill that closes on a set day | Billing cycle | [Billing](../webapp/src/docs/06-billing.md#billing-cycles) |
+| A daily supply charge | Tariff, service availability | [Billing](../webapp/src/docs/07-billing.md#tariffs) |
+| A monthly fee, perhaps discounted for a year | Tariff monthly fee, then a Monthly fee discount | [Billing](../webapp/src/docs/07-billing.md#monthly-fee-discounts) |
+| A charge for your highest evening draw | Demand window | [Billing](../webapp/src/docs/07-billing.md#demand-windows) |
+| A bonus or penalty on the feed-in rate at certain times | Export adjustment | [Billing](../webapp/src/docs/07-billing.md#export-adjustments) |
+| "Keep evening import under 300 W and earn 50 cents" | Conditional credit | [Billing](../webapp/src/docs/07-billing.md#conditional-credits) |
+| A bill that closes on a set day | Billing cycle | [Billing](../webapp/src/docs/07-billing.md#billing-cycles) |
 
 ![The Billing page](../webapp/src/docs/images/billing-tariffs.png)
 
@@ -198,7 +198,7 @@ If the provider needs a credential that belongs to the user rather than a site (
 1. **Collector code.** Copy the nearest collector directory. Keep `config.py` (two environment variables), `core_api_client.py` and the loop shape. Replace the provider client and `mapping.py`.
 2. **Docker.** Copy the service block of a similar collector in [`docker-compose.yml`](../docker-compose.yml). Set `CORE_API_URL: http://core-api:8000` and `COLLECTOR_KEY` to the kind's key. Add the service to the table in the root [README](../README.md).
 3. **Web app.** In `webapp/src/pages/SourcesPage.tsx`, add the provider name to `PROVIDERS_BY_KIND`, a display name, and a config form in `CONFIG_FORMS` (without one the owner gets a raw JSON editor, which works but is unfriendly).
-4. **User guide.** Add a section to [`04-sources.md`](../webapp/src/docs/04-sources.md) and the glossary if there are new terms. Tests fail on broken links.
+4. **User guide.** Add a section to [`05-sources.md`](../webapp/src/docs/05-sources.md) and the glossary if there are new terms. Tests fail on broken links.
 5. **Tests.** Mirror the collector tests: mapping with fixture JSON from the real provider, client with mocked HTTP, config, and the core API client.
 6. **Spec and plan.** The repository records each feature as a dated spec and plan in [`docs/superpowers`](superpowers). Follow suit.
 

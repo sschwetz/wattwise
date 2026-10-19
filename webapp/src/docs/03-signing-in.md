@@ -1,6 +1,6 @@
-# 2. Signing in and account security
+# 3. Signing in and account security
 
-[Contents](index.md) · Previous: [Getting started](01-getting-started.md) · Next: [Sites](03-sites.md)
+[Contents](index.md) · Previous: [Getting started](02-getting-started.md) · Next: [Sites](04-sites.md)
 
 Every account is protected by a password and a six-digit code from an authenticator app. This chapter covers creating an account, signing in, and recovering access.
 
@@ -25,7 +25,7 @@ Every account is protected by a password and a six-digit code from an authentica
 2. WattWise sends you to one of two places:
    - [Set up two-factor authentication](#setting-up-two-factor-authentication), if this is your first sign-in.
    - [Enter your authenticator code](#entering-an-authenticator-code), on every later sign-in.
-3. After the code is accepted you land on your [site](03-sites.md).
+3. After the code is accepted you land on your [site](04-sites.md).
 
 Sessions last 24 hours by default. After that you sign in again. Your administrator can change this limit.
 
@@ -59,13 +59,13 @@ You get 10 recovery codes when you finish setting up two-factor authentication. 
 - Store them somewhere other than your phone, such as a password manager or a printout in a safe place.
 - You must tick the confirmation box before **Continue** (or **Done**, in Account settings) works.
 - The codes are shown only once. WattWise cannot show them again.
-- Replacing your authenticator creates 10 new codes and cancels all the old ones. See [Replacing your authenticator](07-account-settings.md#two-factor-authentication).
+- Replacing your authenticator creates 10 new codes and cancels all the old ones. See [Replacing your authenticator](08-account-settings.md#two-factor-authentication).
 
 ## Lost your authenticator device
 
 1. On the login page, enter your email and password.
 2. On the code page, click **Use a recovery code instead** and enter an unused recovery code.
-3. Open [Account settings](07-account-settings.md#two-factor-authentication) and use **Replace authenticator**. You can type a recovery code where it asks for the authenticator code.
+3. Open [Account settings](08-account-settings.md#two-factor-authentication) and use **Replace authenticator**. You can type a recovery code where it asks for the authenticator code.
 4. Scan the new QR code, confirm with a new 6-digit code, and save the new recovery codes.
 
 If you have no recovery codes left, ask your WattWise administrator for help. WattWise cannot reset two-factor authentication by email.
@@ -79,14 +79,14 @@ If you have no recovery codes left, ask your WattWise administrator for help. Wa
 
 Requesting a new link cancels any earlier unused link.
 
-To change your password while signed in, use [Change password](07-account-settings.md#change-password) instead.
+To change your password while signed in, use [Change password](08-account-settings.md#change-password) instead.
 
 ## Signing out
 
-Open the user menu in the top right corner and click **Log off**. See [The screens](01-getting-started.md#the-screens).
+Open the user menu in the top right corner and click **Log off**. See [The screens](02-getting-started.md#the-screens).
 
 ## Next
 
-- [Sites](03-sites.md)
-- [Account settings](07-account-settings.md) for changing your password, email or authenticator
-- [Troubleshooting sign-in problems](08-troubleshooting.md#sign-in-problems)
+- [Sites](04-sites.md)
+- [Account settings](08-account-settings.md) for changing your password, email or authenticator
+- [Troubleshooting sign-in problems](09-troubleshooting.md#sign-in-problems)

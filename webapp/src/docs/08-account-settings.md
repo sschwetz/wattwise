@@ -1,12 +1,12 @@
-# 7. Account settings
+# 8. Account settings
 
-[Contents](index.md) · Previous: [Billing](06-billing.md) · Next: [Troubleshooting](08-troubleshooting.md)
+[Contents](index.md) · Previous: [Billing](07-billing.md) · Next: [Troubleshooting](09-troubleshooting.md)
 
 Open your settings from the header: click your name in the top right corner, then **Account settings**. Use the back arrow at the top left of the page to return to your sites.
 
 ![The Account page with Profile, Change password, Change email, Two-factor authentication and Amber sections](images/account-page.png)
 
-Changes to your password, email address and authenticator ask for your current password and a code. This stops someone who finds your signed-in browser from taking over the account. In the code field you can enter either an authenticator code or an unused [recovery code](02-signing-in.md#recovery-codes).
+Changes to your password, email address and authenticator ask for your current password and a code. This stops someone who finds your signed-in browser from taking over the account. In the code field you can enter either an authenticator code or an unused [recovery code](03-signing-in.md#recovery-codes).
 
 ## Profile
 
@@ -21,7 +21,7 @@ Changes to your password, email address and authenticator ask for your current p
 2. Enter an **Authenticator code**.
 3. Click **Change password**. The card shows *Password changed.*
 
-If the two new passwords differ, the card says so and nothing is changed. Forgotten your current password? Sign out and use [Forgot password](02-signing-in.md#forgotten-password).
+If the two new passwords differ, the card says so and nothing is changed. Forgotten your current password? Sign out and use [Forgot password](03-signing-in.md#forgotten-password).
 
 ## Change email
 
@@ -34,7 +34,7 @@ Your email address does not change until you open the link. If the new address a
 
 ## Two-factor authentication
 
-Use this card when you have a new phone or lost the old one. For the first-time setup, see [Setting up two-factor authentication](02-signing-in.md#setting-up-two-factor-authentication).
+Use this card when you have a new phone or lost the old one. For the first-time setup, see [Setting up two-factor authentication](03-signing-in.md#setting-up-two-factor-authentication).
 
 1. Enter your current password and your current authenticator code (or a recovery code).
 2. Click **Replace authenticator**.
@@ -52,10 +52,10 @@ Amber pricing needs your personal API key.
 2. Paste it into **Amber API key** and click **Save**.
 3. The card changes from *No Amber API key set yet.* to *Your Amber API key is configured.*
 
-WattWise stores the key securely and never shows it again. To replace it, paste a new key. The key applies to every site you own. Then [add an Amber pricing source](04-sources.md#connecting-amber-electric) to each site that uses Amber.
+WattWise stores the key securely and never shows it again. To replace it, paste a new key. The key applies to every site you own. Then [add an Amber pricing source](05-sources.md#connecting-amber-electric) to each site that uses Amber.
 
 ## Next
 
-- [Sources](04-sources.md)
-- [Signing in and account security](02-signing-in.md)
-- [Troubleshooting](08-troubleshooting.md#sign-in-problems)
+- [Sources](05-sources.md)
+- [Signing in and account security](03-signing-in.md)
+- [Troubleshooting](09-troubleshooting.md#sign-in-problems)

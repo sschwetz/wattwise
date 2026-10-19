@@ -8,22 +8,24 @@ This guide covers every screen in the web app. Use the contents below, or the **
 
 | Chapter | What it covers |
 |---------|----------------|
-| [1. Getting started](01-getting-started.md) | What WattWise is, how data reaches it, and a first-day checklist |
-| [2. Signing in and account security](02-signing-in.md) | Creating an account, two-factor authentication, recovery codes, password reset |
-| [3. Sites](03-sites.md) | Creating sites, switching between them, time zones |
-| [4. Sources](04-sources.md) | Connecting your Envoy, Amber, a fixed tariff and WeatherLink |
-| [5. The dashboard](05-dashboard.md) | Live tiles, the pricing chart, the history chart, net and gross cost |
-| [6. Billing](06-billing.md) | Tariffs, billing cycles, demand windows, export adjustments, fee discounts |
-| [7. Account settings](07-account-settings.md) | Name, photo, password, email, authenticator, Amber API key |
-| [8. Troubleshooting](08-troubleshooting.md) | Fixes for missing tiles, wrong costs and sign-in problems |
-| [9. Glossary](09-glossary.md) | Plain-language definitions of the terms used in the app |
+| [1. Installing with Docker Compose](01-installing-with-docker.md) | For whoever runs the server: settings, starting, updating, backups |
+| [2. Getting started](02-getting-started.md) | What WattWise is, how data reaches it, and a first-day checklist |
+| [3. Signing in and account security](03-signing-in.md) | Creating an account, two-factor authentication, recovery codes, password reset |
+| [4. Sites](04-sites.md) | Creating sites, switching between them, time zones |
+| [5. Sources](05-sources.md) | Connecting your Envoy, Amber, a fixed tariff and WeatherLink |
+| [6. The dashboard](06-dashboard.md) | Live tiles, the pricing chart, the history chart, net and gross cost |
+| [7. Billing](07-billing.md) | Tariffs, billing cycles, demand windows, export adjustments, fee discounts |
+| [8. Account settings](08-account-settings.md) | Name, photo, password, email, authenticator, Amber API key |
+| [9. Troubleshooting](09-troubleshooting.md) | Fixes for missing tiles, wrong costs and sign-in problems |
+| [10. Glossary](10-glossary.md) | Plain-language definitions of the terms used in the app |
 
 ## Where to start
 
-- **New to WattWise?** Read [Getting started](01-getting-started.md), then follow its [first-day checklist](01-getting-started.md#first-day-checklist).
-- **Dashboard shows nothing?** Go to [Troubleshooting](08-troubleshooting.md#the-dashboard-is-empty).
-- **Costs look wrong?** Check [Billing](06-billing.md#how-the-cost-is-calculated) and [Net and gross cost](05-dashboard.md#net-and-gross-cost).
-- **Lost your phone?** See [Lost your authenticator device](02-signing-in.md#lost-your-authenticator-device).
+- **New to WattWise?** Read [Getting started](02-getting-started.md), then follow its [first-day checklist](02-getting-started.md#first-day-checklist).
+- **Dashboard shows nothing?** Go to [Troubleshooting](09-troubleshooting.md#the-dashboard-is-empty).
+- **Costs look wrong?** Check [Billing](07-billing.md#how-the-cost-is-calculated) and [Net and gross cost](06-dashboard.md#net-and-gross-cost).
+- **Running the server yourself?** See [Installing with Docker Compose](01-installing-with-docker.md).
+- **Lost your phone?** See [Lost your authenticator device](03-signing-in.md#lost-your-authenticator-device).
 
 ## Conventions in this guide
 

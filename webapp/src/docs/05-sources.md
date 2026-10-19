@@ -1,13 +1,13 @@
-# 4. Sources
+# 5. Sources
 
-[Contents](index.md) · Previous: [Sites](03-sites.md) · Next: [The dashboard](05-dashboard.md)
+[Contents](index.md) · Previous: [Sites](04-sites.md) · Next: [The dashboard](06-dashboard.md)
 
 A **source** connects a site to one device or service. WattWise supports three kinds:
 
 | Kind | Provider name | What it collects | Needs |
 |------|---------------|------------------|-------|
 | `energy` | `envoy` | Production, consumption, grid and battery readings | The Envoy's address and an access token |
-| `pricing` | `amber` | Buy and sell prices, plus the day's forecast | An Amber site ID, and your [Amber API key](07-account-settings.md#amber-api-key) |
+| `pricing` | `amber` | Buy and sell prices, plus the day's forecast | An Amber site ID, and your [Amber API key](08-account-settings.md#amber-api-key) |
 | `pricing` | `local` | Buy, sell and controlled-load prices from rates you type in | A tariff name and its [rate windows](#setting-up-a-fixed-tariff) |
 | `weather` | `weatherlink_live` | Temperature, humidity, wind, rain, solar radiation, pressure | The WeatherLink Live unit's address |
 
@@ -57,7 +57,7 @@ Choose kind `energy` and provider `envoy`, then open **Edit config**.
 | **Enlighten email** | Optional. The email you use to sign in to Enlighten (enlighten.enphaseenergy.com). |
 | **Enlighten password** | Optional. Shown as dots while you type. |
 | **Serial number** | The Envoy's serial number. The collector fills it in when it can read it from the Envoy; type it yourself if it stays empty. Needed to renew the token. |
-| **My consumption numbers are flipped (importing shows as negative)** | Tick this only if the dashboard's consumption looks upside down. See [Troubleshooting](08-troubleshooting.md#consumption-or-grid-numbers-have-the-wrong-sign). |
+| **My consumption numbers are flipped (importing shows as negative)** | Tick this only if the dashboard's consumption looks upside down. See [Troubleshooting](09-troubleshooting.md#consumption-or-grid-numbers-have-the-wrong-sign). |
 
 ### Getting the token
 
@@ -80,25 +80,25 @@ The Envoy uses a self-signed certificate. The first time the collector reaches y
 
 The Envoy replaces its certificate when the old one is within 100 days of expiring. If the collector sees a different certificate, it pins the new one only when the stored expiry is 100 days away or less (or already past), the source has a **Serial number** stored, and the Envoy reports that same number. Any other certificate change is refused, because it could be another device answering at the Envoy's address.
 
-Changing **Host** clears the stored certificate, its expiry and the serial number, so the collector pins the device again. If you replace or reset the Envoy and the collector stops connecting, see [Troubleshooting](08-troubleshooting.md#the-envoy-stopped-reporting-after-a-reset).
+Changing **Host** clears the stored certificate, its expiry and the serial number, so the collector pins the device again. If you replace or reset the Envoy and the collector stops connecting, see [Troubleshooting](09-troubleshooting.md#the-envoy-stopped-reporting-after-a-reset).
 
 ## Connecting Amber Electric
 
 Pricing needs two things:
 
-1. **Your Amber API key**, saved once under [Account settings](07-account-settings.md#amber-api-key). The key belongs to you, not to a site.
+1. **Your Amber API key**, saved once under [Account settings](08-account-settings.md#amber-api-key). The key belongs to you, not to a site.
 2. **An Amber pricing source** on the site, with the **Amber site ID** filled in.
 
 To add the source, choose kind `pricing` and provider **Amber**, open **Edit config**, enter your **Amber site ID** and click **Save config**. The site ID is the identifier Amber assigns to your property. Amber's API returns it when you list your sites with your API key.
 
-Once prices flow, the dashboard shows [Today's Pricing](05-dashboard.md#todays-pricing) and the [grid price tile](05-dashboard.md#live-tiles), and costs can be calculated.
+Once prices flow, the dashboard shows [Today's Pricing](06-dashboard.md#todays-pricing) and the [grid price tile](06-dashboard.md#live-tiles), and costs can be calculated.
 
 ## Setting up a fixed tariff
 
 Use this when your supplier charges fixed or time-of-use rates and has no price API. You type the rates in, and WattWise prices every minute from them.
 
 1. Open **Sources** and choose `pricing` as the **Kind** and **Local tariff** as the **Provider**.
-2. Type a **Tariff name**, such as `Origin Fixed`. It must be 1 to 100 characters, and a rename follows the same rule. The [Billing page](06-billing.md#tariffs) uses it as its heading, so this one reads "Origin Fixed Tariffs".
+2. Type a **Tariff name**, such as `Origin Fixed`. It must be 1 to 100 characters, and a rename follows the same rule. The [Billing page](07-billing.md#tariffs) uses it as its heading, so this one reads "Origin Fixed Tariffs".
 3. Click **Create source**. A **Rate windows** panel appears under the source. A local source has no **Edit config** button.
 
 A site can have one active pricing source at a time, so remove the Amber source before you add a local one. **Delete** works only while the Amber source has no stored prices. **Disable** does not free the place: WattWise still counts a disabled source as the site's pricing source. To retire an Amber source that has prices, set its end date (`effective_to`) through the API with `PATCH /api/v1/sites/{site_id}/sources/{source_id}`. The Sources page has no control for this.
@@ -165,10 +165,10 @@ A new source, a restart, a change to the rate windows, and the first check of ea
 
 ## Connecting a WeatherLink Live station
 
-Choose kind `weather` and provider `weatherlink_live`, open **Edit config**, enter the **Host** (the address of your WeatherLink Live unit on your home network) and click **Save config**. Weather tiles appear on the [dashboard](05-dashboard.md#weather-tiles).
+Choose kind `weather` and provider `weatherlink_live`, open **Edit config**, enter the **Host** (the address of your WeatherLink Live unit on your home network) and click **Save config**. Weather tiles appear on the [dashboard](06-dashboard.md#weather-tiles).
 
 ## Next
 
-- [The dashboard](05-dashboard.md): see your data
-- [Billing](06-billing.md): prices alone do not include fixed charges
-- [Troubleshooting](08-troubleshooting.md#the-dashboard-is-empty) if tiles stay empty
+- [The dashboard](06-dashboard.md): see your data
+- [Billing](07-billing.md): prices alone do not include fixed charges
+- [Troubleshooting](09-troubleshooting.md#the-dashboard-is-empty) if tiles stay empty

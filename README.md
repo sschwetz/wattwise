@@ -119,6 +119,64 @@ The Compose service `pricing-collector` is now `amber-pricing-collector`. On a h
 docker compose up -d --build --remove-orphans
 ```
 
+## Run in production
+
+Production runs the images that CI publishes to `ghcr.io/sschwetz/wattwise-<service>` on every push to `master` and every `v*` tag. `docker-compose.prod.yml` is an override for `docker-compose.yml`: it swaps each `build:` for an `image:` and adds `restart: unless-stopped`. It needs Docker Compose 2.24 or later (it uses `build: !reset null`). The host must be on the same LAN as the Envoy and WeatherLink Live, because the collectors run in the stack.
+
+You need `docker-compose.yml`, `docker-compose.prod.yml` and `.env.example` on the host. A clone of this repository works.
+
+### 1. Configure
+
+```sh
+cp .env.example .env
+```
+
+Fill in `.env`:
+
+| Variable | Value |
+|---|---|
+| `JWT_SECRET` | `openssl rand -hex 32` |
+| `SECRETS_ENCRYPTION_KEY` | `openssl rand -base64 32 \| tr '+/' '-_'`. Back it up off the host: without it the encrypted columns in a database backup cannot be read. |
+| `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` | A separate `openssl rand -hex 32` for each |
+| `FRONTEND_BASE_URL` | The public origin of the webapp. Also the CORS origin and the base of email links. |
+| `API_BASE_URL` | The origin the browser uses to reach core-api |
+| `RELAY_DOMAIN`, `RELAY_SMARTHOST` | Required by Compose. `RELAY_SMARTHOST` looks like `[smtp.example.com]:587`. Add `RELAY_USERNAME` and `RELAY_PASSWORD` if the smarthost needs a login. |
+| `WATTWISE_VERSION` | Optional. An image tag such as `1.2.0` or `sha-abc1234`. Defaults to `latest`, the newest `master` build. Pin a version in production. |
+
+### 2. Start
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose ps
+```
+
+To avoid retyping the `-f` flags, add `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` to `.env`. Then plain `docker compose pull` and `docker compose up -d` use both files.
+
+core-api runs migrations and creates the first user before `/health` answers, and the other services wait for that check. Read the admin password, sign in as `admin@example.com`, set up two-factor and change the password, then delete the file:
+
+```sh
+docker compose exec core-api cat /data/initial-admin-password.txt
+docker compose exec core-api rm /data/initial-admin-password.txt
+```
+
+### 3. Update
+
+Back up first (see [`docs/operations.md`](docs/operations.md#backups)), then bump `WATTWISE_VERSION` if you pinned one and run:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+```
+
+Migrations run when core-api starts.
+
+### HTTPS
+
+The webapp (port 80) and core-api (port 8000) serve plain HTTP, so passwords and login tokens cross the network unencrypted. Put a reverse proxy that terminates TLS in front of both ports before exposing the stack to the internet, and set `FRONTEND_BASE_URL` and `API_BASE_URL` to the `https://` addresses.
+
+Backups, restores, key rotation and the handover checklist are in [`docs/operations.md`](docs/operations.md). The same steps for end users are in the Help chapter [Installing with Docker Compose](webapp/src/docs/01-installing-with-docker.md).
+
 ## Tests and lint
 
 ```sh

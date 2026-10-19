@@ -1,6 +1,6 @@
-# 3. Sites
+# 4. Sites
 
-[Contents](index.md) · Previous: [Signing in and account security](02-signing-in.md) · Next: [Sources](04-sources.md)
+[Contents](index.md) · Previous: [Signing in and account security](03-signing-in.md) · Next: [Sources](05-sources.md)
 
 A **site** is one property you monitor. Readings, prices, tariffs and bills all belong to a site, so you add your devices to a site and look at costs per site.
 
@@ -17,7 +17,7 @@ If you have no sites, WattWise opens **Create your first site** straight after s
 
 > **Warning:** Choose the time zone carefully. WattWise uses it to decide where each local day starts and ends, which tariff window applies at a given time, and when billing cycles close. A wrong time zone shifts demand windows and daily charges by hours.
 
-After you create a site, continue with [adding sources](04-sources.md).
+After you create a site, continue with [adding sources](05-sources.md).
 
 ## Choosing a site
 
@@ -26,7 +26,7 @@ What you see after sign-in depends on how many sites you have:
 | Sites | What happens |
 |-------|--------------|
 | None | **Create your first site** form |
-| One | Opens that site's [dashboard](05-dashboard.md) directly |
+| One | Opens that site's [dashboard](06-dashboard.md) directly |
 | Two or more | **Choose a site** list. Click a name to open its dashboard. |
 
 ![The Choose a site list showing two sites](images/site-picker.png)
@@ -37,5 +37,5 @@ Use the site switcher at the top of the sidebar. Pick a site name to open its da
 
 ## Next
 
-- [Sources](04-sources.md): connect devices to your site
-- [Billing](06-billing.md): enter the tariff for your site
+- [Sources](05-sources.md): connect devices to your site
+- [Billing](07-billing.md): enter the tariff for your site

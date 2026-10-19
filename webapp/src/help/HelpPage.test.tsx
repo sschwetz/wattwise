@@ -42,41 +42,41 @@ describe("HelpPage", () => {
     renderAt("/help");
     const table = screen.getByRole("table");
     expect(table.parentElement?.className).toContain("overflow-x-auto");
-    expect(screen.getByRole("link", { name: "3. Sites" })).toHaveAttribute("href", "/help/03-sites");
+    expect(screen.getByRole("link", { name: "4. Sites" })).toHaveAttribute("href", "/help/04-sites");
   });
 
   it("builds links under the site route when there is a site", () => {
     renderAt("/sites/7/help");
-    expect(screen.getByRole("link", { name: "3. Sites" })).toHaveAttribute("href", "/sites/7/help/03-sites");
+    expect(screen.getByRole("link", { name: "4. Sites" })).toHaveAttribute("href", "/sites/7/help/04-sites");
   });
 
   it("navigates to a chapter by clicking an internal link and scrolls to the top", async () => {
     renderAt("/help");
-    await userEvent.click(screen.getByRole("link", { name: "3. Sites" }));
+    await userEvent.click(screen.getByRole("link", { name: "4. Sites" }));
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/sites/i);
-    expect(screen.getByTestId("where")).toHaveTextContent("/help/03-sites");
+    expect(screen.getByTestId("where")).toHaveTextContent("/help/04-sites");
     expect(scrollTo).toHaveBeenCalledWith(0, 0);
   });
 
   it("keeps the hash and scrolls to the heading it names", async () => {
     renderAt("/help");
     await userEvent.click(screen.getByRole("link", { name: "first-day checklist" }));
-    expect(screen.getByTestId("where")).toHaveTextContent("/help/01-getting-started#first-day-checklist");
+    expect(screen.getByTestId("where")).toHaveTextContent("/help/02-getting-started#first-day-checklist");
     expect(scrollIntoView).toHaveBeenCalled();
     expect(scrollIntoView.mock.contexts.at(-1)).toHaveProperty("id", "first-day-checklist");
   });
 
   it("scrolls to a same-file anchor without leaving the chapter", async () => {
-    renderAt("/help/06-billing");
-    const link = screen.getAllByRole("link").find((a) => a.getAttribute("href")?.startsWith("/help/06-billing#"));
+    renderAt("/help/07-billing");
+    const link = screen.getAllByRole("link").find((a) => a.getAttribute("href")?.startsWith("/help/07-billing#"));
     expect(link).toBeDefined();
     await userEvent.click(link!);
-    expect(screen.getByTestId("where")).toHaveTextContent(/^\/help\/06-billing#/);
+    expect(screen.getByTestId("where")).toHaveTextContent(/^\/help\/07-billing#/);
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
   it("resolves image sources through the asset map and lazy-loads them", () => {
-    renderAt("/help/02-signing-in");
+    renderAt("/help/03-signing-in");
     const img = screen.getByAltText(/login card/i);
     expect(img.getAttribute("src")).toMatch(/login\.png$/);
     expect(img).toHaveAttribute("loading", "lazy");

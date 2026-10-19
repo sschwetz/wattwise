@@ -96,7 +96,7 @@ describe("SiteLayout", () => {
   });
 
   it("keeps the sidebar on a help route and highlights none of its links", () => {
-    renderLayout("/sites/7/help/06-billing");
+    renderLayout("/sites/7/help/07-billing");
     expect(screen.getByText("Help content")).toBeInTheDocument();
     for (const name of ["Dashboard", "Sources", "Billing"]) {
       expect(screen.getByRole("link", { name })).not.toHaveAttribute("aria-current");
