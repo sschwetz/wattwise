@@ -24,3 +24,6 @@ dist-ssr/
 
 # Git worktrees (superpowers subagent-driven-development)
 .worktrees/
+
+# Rockstor rock-on definition (local deployment only)
+deploy/rockstor/wattwise.json

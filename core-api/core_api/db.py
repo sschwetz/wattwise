@@ -14,12 +14,21 @@ def make_engine(database_url: str | None = None) -> Engine:
     engine = create_engine(url, connect_args=connect_args)
 
     if url.startswith("sqlite"):
-        # SQLite defaults foreign_keys off per-connection; the schema relies
-        # on FK/composite-FK constraints being enforced.
         @event.listens_for(engine, "connect")
-        def _enable_foreign_keys(dbapi_connection, _connection_record):
+        def _configure_sqlite(dbapi_connection, _connection_record):
             cursor = dbapi_connection.cursor()
+            # SQLite defaults foreign_keys off per-connection; the schema
+            # relies on FK/composite-FK constraints being enforced.
             cursor.execute("PRAGMA foreign_keys=ON")
+            # On a spinning disk the default rollback journal syncs so often
+            # that simultaneous collector pushes hit "database is locked".
+            # WAL with synchronous=NORMAL syncs less and lets reads run during
+            # a write. A power cut can drop the last few commits but cannot
+            # corrupt the file.
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            # Wait up to 30s for a held write lock instead of the 5s default.
+            cursor.execute("PRAGMA busy_timeout=30000")
             cursor.close()
 
     return engine
