@@ -187,7 +187,7 @@ def seed_price_reading_with_export_adjustment(db_url: str, adjustment_c_per_kwh:
             months=list(range(1, 13)),
             days_of_week=[0, 1, 2, 3, 4, 5, 6],
             start_time=datetime.time(0, 0),
-            end_time=datetime.time(23, 59),
+            end_time=datetime.time.max,
             adjustment_c_per_kwh=decimal.Decimal(adjustment_c_per_kwh),
         )
     )
@@ -645,7 +645,7 @@ def test_get_active_demand_window_when_one_currently_matches(client, app_and_db_
             months=list(range(1, 13)),
             days_of_week=[0, 1, 2, 3, 4, 5, 6],
             start_time=datetime.time(0, 0),
-            end_time=datetime.time(23, 59),
+            end_time=datetime.time.max,
             rate_c_per_kw_per_day=decimal.Decimal("45.0"),
             measurement_interval_minutes=30,
         )
