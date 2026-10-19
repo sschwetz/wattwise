@@ -54,8 +54,8 @@ flowchart TD
     subgraph RECENT["Recent loop: every 1 min"]
         R1["Fetch the last 3 closed intervals<br/>(15 min), no forecast"] --> R2["Resend, so a revised price<br/>lands within a minute"] --> L3
     end
-    subgraph BACK["Backfill loop: every 12 h"]
-        B1["Ask Core API for missing days<br/>since the site's first data"] --> B2["Fetch history in 7-day chunks<br/>(Amber's limit)"] --> B3{"Amber has data?"}
+    subgraph BACK["Backfill loop: at startup, then every 12 h"]
+        B1["Ask Core API for missing days<br/>since the site's first data<br/>(under 95% of 5-min intervals)"] --> B2["Fetch history in 7-day chunks<br/>(Amber's limit)"] --> B3{"Amber has data?"}
         B3 -- yes --> L3
         B3 -- "no" --> B4["POST gap-markers<br/>stop asking about that day"]
     end

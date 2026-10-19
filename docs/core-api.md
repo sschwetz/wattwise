@@ -97,7 +97,7 @@ All collector endpoints send `X-Collector-Key`. Per-source endpoints may also se
 | `PATCH /sources/{id}/discovered-config` | Merge facts the collector learned (serial number, certificate pin, renewed token) into the stored config |
 | `POST /sources/{id}/readings/energy`, `/readings/weather` | Batch upsert of readings |
 | `POST /sources/{id}/prices` | Batch upsert of price intervals, with minute fan-out |
-| `GET /sources/{id}/prices/coverage`, `/prices/gaps?since=` | What is already priced, which days are missing |
+| `GET /sources/{id}/prices/coverage`, `/prices/gaps?since=` | What is already priced, which days are missing (a day with under 95% of its 5-minute intervals is missing) |
 | `POST /sources/{id}/prices/gap-markers` | Record a day the provider has no data for |
 | `POST /sources/{id}/prices/reprice-marker/clear` | Clear a reprice marker if its version still matches |
 | `GET /sources/{id}/site-data-floor` | Earliest reading on the site, so backfills know where to stop |

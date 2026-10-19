@@ -153,13 +153,15 @@ def test_prices_gaps_reports_uncovered_days_for_known_channel(client, app_and_db
     from core_api.models.pricing import PriceChannel, PriceGapMarker, PriceInterval
 
     covered_start = datetime(covered_day.year, covered_day.month, covered_day.day, tzinfo=timezone.utc)
-    session.add(PriceInterval(
-        pricing_source_id=source_id,
-        channel=PriceChannel.BUY,
-        interval_start=covered_start,
-        interval_end=covered_start + timedelta(minutes=5),
-        price=25,
-    ))
+    for i in range(24 * 12):
+        interval_start = covered_start + timedelta(minutes=5 * i)
+        session.add(PriceInterval(
+            pricing_source_id=source_id,
+            channel=PriceChannel.BUY,
+            interval_start=interval_start,
+            interval_end=interval_start + timedelta(minutes=5),
+            price=25,
+        ))
     session.add(PriceGapMarker(pricing_source_id=source_id, channel=PriceChannel.BUY, gap_date=marked_day))
     session.commit()
     session.close()
@@ -173,6 +175,58 @@ def test_prices_gaps_reports_uncovered_days_for_known_channel(client, app_and_db
     assert response.status_code == 200, response.text
     assert response.json() == {
         "gaps": [{"channel": "buy", "start_date": first_gap_day.isoformat(), "end_date": today.isoformat()}]
+    }
+
+
+def test_prices_gaps_reports_a_partly_covered_day(client, app_and_db_url):
+    """A day holding only 30-minute forecast rows is a gap even though those
+    rows span the whole day."""
+    from datetime import timedelta
+
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+    day = datetime.now(timezone.utc).date() - timedelta(days=2)
+    day_start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    from core_api.models.pricing import PriceChannel, PriceInterval
+
+    for i in range(0, 48):
+        interval_start = day_start + timedelta(minutes=30 * i)
+        session.add(PriceInterval(
+            pricing_source_id=source_id,
+            channel=PriceChannel.BUY,
+            interval_start=interval_start,
+            interval_end=interval_start + timedelta(minutes=30),
+            price=25,
+        ))
+    # The next day has all its 5-minute intervals.
+    next_start = day_start + timedelta(days=1)
+    for i in range(24 * 12):
+        interval_start = next_start + timedelta(minutes=5 * i)
+        session.add(PriceInterval(
+            pricing_source_id=source_id,
+            channel=PriceChannel.BUY,
+            interval_start=interval_start,
+            interval_end=interval_start + timedelta(minutes=5),
+            price=25,
+        ))
+    session.commit()
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sources/{source_id}/prices/gaps",
+        params={"since": day_start.isoformat()},
+        headers={"X-Collector-Key": PRICING_COLLECTOR_KEY},
+    )
+
+    today = datetime.now(timezone.utc).date()
+    assert response.json() == {
+        "gaps": [
+            {"channel": "buy", "start_date": day.isoformat(), "end_date": day.isoformat()},
+            {"channel": "buy", "start_date": today.isoformat(), "end_date": today.isoformat()},
+        ]
     }
 
 

@@ -121,7 +121,7 @@ docker compose start core-api
 
 Startup runs any migrations the restored file is missing. Restoring onto a server with a different `SECRETS_ENCRYPTION_KEY` makes source configs, Amber keys and authenticator secrets unreadable.
 
-**What a gap costs.** Readings the collectors could not deliver while Core API was down are lost (energy, weather). Prices are rebuilt: Amber by its 12-hourly backfill, local tariffs by the next catch-up.
+**What a gap costs.** Readings the collectors could not deliver while Core API was down are lost (energy, weather). Prices are rebuilt: Amber by its backfill (one pass a minute after startup, then every 12 hours), local tariffs by the next catch-up.
 
 ## Upgrading
 

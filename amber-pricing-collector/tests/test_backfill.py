@@ -173,8 +173,8 @@ def test_run_backfill_forever_visits_every_site_each_cycle(monkeypatch):
 
     def _fake_sleep(seconds):
         calls["n"] += 1
-        # The loop now sleeps BEFORE the pass, so the 1st sleep is the wait
-        # for the first trigger; let it through and stop on the 2nd sleep,
+        # The 1st sleep is the short startup delay before the first pass; let
+        # it through and stop on the 2nd sleep (the 12-hour wait),
         # after one full pass has run.
         if calls["n"] >= 2:
             raise SystemExit
@@ -185,6 +185,24 @@ def test_run_backfill_forever_visits_every_site_each_cycle(monkeypatch):
         backfill.run_backfill_forever(BASE_URL, "shared-key")
 
     assert visited == [1, 2]
+
+
+def test_run_backfill_forever_runs_first_pass_after_a_short_startup_delay(monkeypatch):
+    monkeypatch.setattr(backfill, "fetch_collector_sources", lambda base_url, key: [PricingSource(source_id=1)])
+    monkeypatch.setattr(backfill, "backfill_one_site", lambda base_url, sid, key: None)
+    sleeps = []
+
+    def _fake_sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) >= 2:
+            raise SystemExit
+
+    monkeypatch.setattr(backfill.time, "sleep", _fake_sleep)
+
+    with pytest.raises(SystemExit):
+        backfill.run_backfill_forever(BASE_URL, "shared-key")
+
+    assert sleeps == [backfill.STARTUP_DELAY_SECONDS, backfill.BACKFILL_INTERVAL_SECONDS]
 
 
 def test_run_backfill_forever_isolates_one_site_failure_from_the_next(monkeypatch):
@@ -204,8 +222,8 @@ def test_run_backfill_forever_isolates_one_site_failure_from_the_next(monkeypatc
 
     def _fake_sleep(seconds):
         calls["n"] += 1
-        # The loop now sleeps BEFORE the pass, so the 1st sleep is the wait
-        # for the first trigger; let it through and stop on the 2nd sleep,
+        # The 1st sleep is the short startup delay before the first pass; let
+        # it through and stop on the 2nd sleep (the 12-hour wait),
         # after one full pass has run.
         if calls["n"] >= 2:
             raise SystemExit
@@ -230,8 +248,8 @@ def test_run_backfill_forever_skips_pass_when_discovery_fails(monkeypatch):
 
     def _fake_sleep(seconds):
         calls["n"] += 1
-        # The loop now sleeps BEFORE the pass, so the 1st sleep is the wait
-        # for the first trigger; let it through and stop on the 2nd sleep,
+        # The 1st sleep is the short startup delay before the first pass; let
+        # it through and stop on the 2nd sleep (the 12-hour wait),
         # after one full pass has been attempted.
         if calls["n"] >= 2:
             raise SystemExit
@@ -260,8 +278,8 @@ def test_run_backfill_forever_skips_pass_when_discovery_raises_unexpected_error(
 
     def _fake_sleep(seconds):
         calls["n"] += 1
-        # The loop now sleeps BEFORE the pass, so the 1st sleep is the wait
-        # for the first trigger; let it through and stop on the 2nd sleep,
+        # The 1st sleep is the short startup delay before the first pass; let
+        # it through and stop on the 2nd sleep (the 12-hour wait),
         # after one full pass has been attempted.
         if calls["n"] >= 2:
             raise SystemExit

@@ -20,6 +20,10 @@ logger = logging.getLogger("amber_pricing_collector")
 
 MAX_CHUNK_DAYS = 7
 BACKFILL_INTERVAL_SECONDS = 12 * 60 * 60
+# The first pass runs shortly after startup, not after a full interval, so a
+# restart repairs gaps left while the stack was down instead of resetting the
+# 12-hour wait. The delay lets core-api finish starting first.
+STARTUP_DELAY_SECONDS = 60
 
 # A 7-day chunk is up to 4,032 intervals, which the server fans out to one row per
 # covered minute (~20,160 upserts) inside a single request. The client's 10s default
@@ -99,9 +103,10 @@ def backfill_one_site(core_api_url: str, source_id: int, collector_key: str) -> 
 
 
 def run_backfill_forever(core_api_url: str, collector_key: str) -> None:
+    delay = STARTUP_DELAY_SECONDS
     while True:
-        # Sleep first so startup isn't itself a backfill trigger.
-        time.sleep(BACKFILL_INTERVAL_SECONDS)
+        time.sleep(delay)
+        delay = BACKFILL_INTERVAL_SECONDS
         try:
             sources = fetch_collector_sources(core_api_url, collector_key)
         except Exception:

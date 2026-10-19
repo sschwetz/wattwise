@@ -12,7 +12,7 @@ from core_api.models.local_rates import LocalRepriceMarker
 from core_api.models.pricing import PriceChannel, PriceGapMarker, PriceInterval, PriceReading
 from core_api.models.readings import EnergyReading, WeatherReading
 from core_api.models.sources import Source, SourceKind
-from core_api.pricing_gaps import coalesce_missing_days, missing_days_in_range
+from core_api.pricing_gaps import coalesce_missing_days, covered_days as covered_days_from, missing_days_in_range
 from core_api.schemas import ChannelCoverageOut, GapMarkerCreate, PriceCoverageOut, RepriceMarkerClear, SiteDataFloorOut, UtcDatetime
 
 router = APIRouter(prefix="/sources/{source_id}/prices", tags=["pricing-backfill"])
@@ -39,7 +39,8 @@ def get_price_gaps(
     db: Session = Depends(get_db_session),
 ) -> dict:
     since_date = since.date()
-    today = datetime.datetime.now(datetime.timezone.utc).date()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    today = now.date()
 
     channels = list(
         db.execute(
@@ -49,16 +50,16 @@ def get_price_gaps(
 
     gaps = []
     for channel in channels:
-        covered_days = {
-            ts.date()
-            for ts in db.execute(
-                select(PriceInterval.interval_start).where(
-                    PriceInterval.pricing_source_id == source.id,
-                    PriceInterval.channel == channel,
-                    PriceInterval.interval_start >= since,
-                )
-            ).scalars()
-        }
+        # A day is covered only when it holds most of its 5-minute intervals,
+        # so a day with a few rows or only 30-minute forecasts is still a gap.
+        interval_starts = db.execute(
+            select(PriceInterval.interval_start).where(
+                PriceInterval.pricing_source_id == source.id,
+                PriceInterval.channel == channel,
+                PriceInterval.interval_start >= since,
+            )
+        ).scalars()
+        covered_days = covered_days_from(interval_starts, since, now)
         marked_days = set(
             db.execute(
                 select(PriceGapMarker.gap_date).where(
