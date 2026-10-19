@@ -524,10 +524,12 @@ def compute_cost(
     )
 
 
-CostBucket = Literal["15min", "hour", "6hour"]
+CostBucket = Literal["5min", "15min", "hour", "6hour"]
 
 
 def _bucket_start(ts: datetime.datetime, bucket: CostBucket) -> datetime.datetime:
+    if bucket == "5min":
+        return ts.replace(minute=(ts.minute // 5) * 5, second=0, microsecond=0)
     if bucket == "15min":
         return ts.replace(minute=(ts.minute // 15) * 15, second=0, microsecond=0)
     if bucket == "hour":

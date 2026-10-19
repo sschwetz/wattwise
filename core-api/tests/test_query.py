@@ -681,3 +681,55 @@ def test_get_active_demand_window_404s_with_no_match(client, app_and_db_url):
     )
     assert response.status_code == 404, response.text
     assert response.json()["code"] == "no_active_demand_window"
+
+
+def test_get_billing_period_bounds_returns_the_current_period(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="bp-bounds-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    now = datetime.datetime.now(UTC)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    session.add(BillingCycle(site_id=site.id, effective_from=start_of_day, cycle_months=1, anchor_day=start_of_day.day))
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/billing-period",
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    start = datetime.datetime.fromisoformat(body["start"].replace("Z", "+00:00"))
+    end = datetime.datetime.fromisoformat(body["end"].replace("Z", "+00:00"))
+    assert start == start_of_day
+    assert end > now  # the period runs through its end date, not just up to now
+
+
+def test_get_billing_period_bounds_404s_without_a_billing_cycle(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="bp-bounds-none@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/billing-period",
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "no_active_billing_cycle"

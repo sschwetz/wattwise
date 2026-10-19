@@ -12,6 +12,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { ReportingPage } from "./pages/ReportingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SitePickerPage } from "./pages/SitePickerPage";
 import { SourcesPage } from "./pages/SourcesPage";
@@ -38,6 +39,7 @@ export function App() {
           <Route path="/help/:slug?" element={<HelpPage />} />
           <Route path="/sites/:siteId" element={<SiteLayout />}>
             <Route index element={<DashboardPage />} />
+            <Route path="reporting" element={<ReportingPage />} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="billing" element={<BillingPage />} />
             <Route path="help/:slug?" element={<HelpPage />} />

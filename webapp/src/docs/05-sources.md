@@ -91,7 +91,7 @@ Pricing needs two things:
 
 To add the source, choose kind `pricing` and provider **Amber**, open **Edit config**, enter your **Amber site ID** and click **Save config**. The site ID is the identifier Amber assigns to your property. Amber's API returns it when you list your sites with your API key.
 
-Once prices flow, the dashboard shows [Today's Pricing](06-dashboard.md#todays-pricing) and the [grid price tile](06-dashboard.md#live-tiles), and costs can be calculated.
+Once prices flow, the Reporting page shows [Today's Pricing](06-dashboard.md#todays-pricing) and the [grid price tile](06-dashboard.md#live-tiles), and costs can be calculated.
 
 ## Setting up a fixed tariff
 

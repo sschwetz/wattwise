@@ -90,6 +90,11 @@ describe("buildHistoryChartData", () => {
     expect(data.map((p) => p.costDollars)).toEqual([-0.5, 0, 0]);
   });
 
+  it("buckets by 5 minutes when requested, truncating to the 5-minute start", () => {
+    const ms = bucketStartMs("2026-10-08T19:42:30Z", "5min");
+    expect(new Date(ms).toISOString()).toBe("2026-10-08T19:40:00.000Z");
+  });
+
   it("buckets by 15 minutes when requested, truncating to the quarter-hour start", () => {
     const ms = bucketStartMs("2026-10-08T19:42:00Z", "15min");
     expect(new Date(ms).toISOString()).toBe("2026-10-08T19:30:00.000Z");

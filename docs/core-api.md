@@ -81,7 +81,8 @@ All paths are under `/api/v1`. "Owner" means `require_site_owner`, "Viewer" mean
 | `GET /sites/{id}/readings/energy`, `/readings/weather`, `/prices` | Time series for a range. Reads raw rows for the last 365 days and rollups before that. |
 | `GET /sites/{id}/cost?start&end&method=net\|gross[&prorate_fees]` | Total cost in cents, import and export kWh, minutes missing a price |
 | `GET /sites/{id}/cost/billing-period?method=` | Running cost for the current billing period, plus monthly fee discounts. 404 `no_active_billing_cycle` when none. |
-| `GET /sites/{id}/cost/series?start&end&method&bucket=15min\|hour\|6hour` | Cost per bucket for charts |
+| `GET /sites/{id}/billing-period` | Start and end of the current billing period. 404 `no_active_billing_cycle` when none. |
+| `GET /sites/{id}/cost/series?start&end&method&bucket=5min\|15min\|hour\|6hour` | Cost per bucket for charts |
 | `GET /sites/{id}/demand-charges` | One row per billing period |
 | `GET /sites/{id}/demand-window/active` | The window active now, or 404 `no_active_demand_window` |
 

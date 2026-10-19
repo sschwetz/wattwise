@@ -524,6 +524,35 @@ def test_compute_cost_series_buckets_by_hour(db, site):
     ]
 
 
+def test_compute_cost_series_buckets_by_5min(db, site):
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+
+    # Minutes 2 and 4 share the :00-:04 bucket; minute 7 is in :05-:09.
+    for minute in (2, 4, 7):
+        ts = datetime.datetime(2026, 1, 1, 12, minute, tzinfo=UTC)
+        db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=600.0))
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal("30.0")))
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-10.0")))
+    db.commit()
+
+    points = compute_cost_series(
+        db,
+        site.id,
+        datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        datetime.datetime(2026, 1, 1, 12, 10, tzinfo=UTC),
+        method="net",
+        bucket="5min",
+        site_timezone=site.timezone,
+    )
+
+    assert [p.bucket_start for p in points] == [
+        datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        datetime.datetime(2026, 1, 1, 12, 5, tzinfo=UTC),
+    ]
+    assert [p.cost_c for p in points] == [decimal.Decimal("0.6"), decimal.Decimal("0.3")]
+
+
 def test_compute_cost_series_buckets_by_15min(db, site):
     energy_source = _make_energy_source(db, site)
     pricing_source = _make_pricing_source(db, site)

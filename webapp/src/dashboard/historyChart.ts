@@ -7,7 +7,8 @@ const MINUTES_TO_KWH = 1 / 60_000;
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 
-const BUCKET_STEP_MS: Record<CostBucket, number> = {
+export const BUCKET_STEP_MS: Record<CostBucket, number> = {
+  "5min": 5 * MINUTE_MS,
   "15min": 15 * MINUTE_MS,
   hour: HOUR_MS,
   "6hour": 6 * HOUR_MS,
@@ -21,7 +22,9 @@ export function bucketStartMs(ts: string, bucket: CostBucket): number {
 
 function bucketStartFromMs(ms: number, bucket: CostBucket): number {
   const date = new Date(ms);
-  if (bucket === "15min") {
+  if (bucket === "5min") {
+    date.setUTCMinutes(Math.floor(date.getUTCMinutes() / 5) * 5, 0, 0);
+  } else if (bucket === "15min") {
     date.setUTCMinutes(Math.floor(date.getUTCMinutes() / 15) * 15, 0, 0);
   } else if (bucket === "hour") {
     date.setUTCMinutes(0, 0, 0);
@@ -86,14 +89,14 @@ export function buildHistoryChartData(
 }
 
 /** Full, precise label for the tooltip (as opposed to the sparser axis ticks
- * in buildAxisTickPlan below) -- always 24-hour time, never AM/PM. 15-min
+ * in buildAxisTickPlan below) -- always 24-hour time, never AM/PM. 5- and 15-min
  * buckets only ever cover short (<7 day) spans, so time-of-day alone is
  * unambiguous there; hour and 6-hour buckets cover multi-day spans, so the
  * date is included too. */
 export function formatBucketTick(ts: number, bucket: CostBucket): string {
   const date = new Date(ts);
   const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-  if (bucket === "15min") {
+  if (bucket === "5min" || bucket === "15min") {
     return time;
   }
   return `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;

@@ -13,8 +13,7 @@ from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly
 from core_api.deps import get_db_session, require_site_access
 from core_api.errors import AppError
 from core_api.jobs.billing_periods import (
-    billing_periods_for_site,
-    current_billing_period_start,
+    current_billing_period_bounds,
     effective_billing_cycles_for_site,
     partial_first_period,
 )
@@ -37,7 +36,7 @@ from core_api.models.readings import (
 )
 from core_api.models.sources import Source, SourceKind
 from core_api.readings_query import query_readings
-from core_api.schemas import BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, ReadingOut, UtcDatetime
+from core_api.schemas import BillingPeriodBoundsOut, BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, ReadingOut, UtcDatetime
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["query"])
 
@@ -176,7 +175,7 @@ def get_billing_period_cost(
     its start up to now -- the billing-cycle analogue of the dashboard's
     "today's cost" live tile. Falls back to the active cycle's own
     effective_from when its first anchor day hasn't arrived yet (see
-    current_billing_period_start), so a freshly-configured cycle still shows
+    current_billing_period_bounds), so a freshly-configured cycle still shows
     a running total instead of 404ing until that first anchor day.
 
     A live tile, like get_cost's own prorate_fees=false callers -- shows
@@ -187,19 +186,32 @@ def get_billing_period_cost(
     discounted fee of any covering window, not prorated."""
     now = datetime.datetime.now(datetime.timezone.utc)
     cycles = effective_billing_cycles_for_site(db, site.id)
-    start = current_billing_period_start(cycles, site.timezone, now)
-    if start is None:
+    bounds = current_billing_period_bounds(cycles, site.timezone, now)
+    if bounds is None:
         raise AppError(404, "no_active_billing_cycle", "No billing cycle is currently active for this site")
+    start, period_end = bounds
     result = compute_cost(db, site.id, start, now, method, site.timezone, prorate_fees=False)
     partial = partial_first_period(cycles, site.timezone, now)
     if partial is not None:
         discounts_c = partial_period_discounts_c(db, site.id, partial.start, partial.end, site.timezone)
     else:
-        periods = billing_periods_for_site(cycles, site.timezone, now)
-        current = periods[-1] if periods else None
-        period_end = current.end if current is not None and current.start <= now < current.end else now
         discounts_c = monthly_fee_discounts_c(db, site.id, start, period_end, site.timezone)
     return BillingPeriodCostOut(**dataclasses.asdict(result), monthly_fee_discounts_c=discounts_c)
+
+
+@router.get("/billing-period", response_model=BillingPeriodBoundsOut)
+def get_billing_period_bounds(
+    site: Site = Depends(require_site_access),
+    db: Session = Depends(get_db_session),
+) -> BillingPeriodBoundsOut:
+    """Start and end of the current billing period, so the dashboard can chart
+    it as a date range. 404 `no_active_billing_cycle` when no cycle is active."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cycles = effective_billing_cycles_for_site(db, site.id)
+    bounds = current_billing_period_bounds(cycles, site.timezone, now)
+    if bounds is None:
+        raise AppError(404, "no_active_billing_cycle", "No billing cycle is currently active for this site")
+    return BillingPeriodBoundsOut(start=bounds[0], end=bounds[1])
 
 
 @router.get("/cost/series", response_model=list[CostSeriesPointOut])

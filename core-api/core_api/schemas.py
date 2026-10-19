@@ -502,6 +502,11 @@ class BillingPeriodCostOut(CostOut):
     monthly_fee_discounts_c: decimal.Decimal
 
 
+class BillingPeriodBoundsOut(BaseModel):
+    start: UtcDatetime
+    end: UtcDatetime
+
+
 class CostSeriesPointOut(BaseModel):
     bucket_start: UtcDatetime
     cost_c: decimal.Decimal

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "../api/client";
+import { ApiError, apiFetch } from "../api/client";
 import { LIVE_POLL_MS, type EnergyMetric, type PriceChannel, type Reading } from "./useLiveReadings";
 
 export interface CostSummary {
@@ -98,6 +98,32 @@ export function useBillingPeriodCost(siteId: number, method: "net" | "gross") {
   });
 }
 
+interface BillingPeriodBounds {
+  start: string;
+  end: string;
+}
+
+/** Start and end of the current billing period, or null when the site has no
+ * active billing cycle (404). Other errors surface so they are not mistaken
+ * for "no billing period option to offer". */
+export function useBillingPeriodBounds(siteId: number) {
+  return useQuery({
+    queryKey: ["billing-period", siteId],
+    queryFn: async (): Promise<DateRange | null> => {
+      try {
+        const bounds = await apiFetch<BillingPeriodBounds>(`/api/v1/sites/${siteId}/billing-period`);
+        return { from: new Date(bounds.start), to: new Date(bounds.end) };
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
 /**
  * Today's buy/sell price readings, actual and forecast together, independent
  * of the history chart's own date-range selector -- same "always today, not
@@ -122,7 +148,7 @@ export function useTodayPrices(siteId: number, channel: PriceChannel) {
   });
 }
 
-export type CostBucket = "15min" | "hour" | "6hour";
+export type CostBucket = "5min" | "15min" | "hour" | "6hour";
 
 export interface CostSeriesPoint {
   bucket_start: string;

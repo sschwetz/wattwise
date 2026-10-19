@@ -8,7 +8,7 @@ const primaryLinkClass = ({ isActive }: { isActive: boolean }) =>
 
 /**
  * Shared chrome for the site-scoped pages: a persistent sidebar between
- * Dashboard/Sources/Billing plus a dropdown to switch to (or add) a site.
+ * Dashboard/Reporting/Sources/Billing plus a dropdown to switch to (or add) a site.
  * Child routes inherit :siteId from here.
  */
 export function SiteLayout() {
@@ -22,6 +22,9 @@ export function SiteLayout() {
         </div>
         <NavLink to={`/sites/${siteId}`} end className={primaryLinkClass}>
           Dashboard
+        </NavLink>
+        <NavLink to={`/sites/${siteId}/reporting`} className={primaryLinkClass}>
+          Reporting
         </NavLink>
         <NavLink to={`/sites/${siteId}/sources`} className={primaryLinkClass}>
           Sources

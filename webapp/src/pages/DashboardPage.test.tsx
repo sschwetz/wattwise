@@ -47,8 +47,15 @@ function mockApi(
   // Same "null means 404 / nothing active" modeling as billingPeriodCost
   // above, for the dashboard heading's demand-window notice.
   activeDemandWindow: Record<string, unknown> | null = null,
+  // The current billing period's start/end; null models the 404 for no active cycle.
+  billingBounds: { start: string; end: string } | null = null,
 ) {
   vi.mocked(apiFetch).mockImplementation((path: string) => {
+    if (path.endsWith("/billing-period")) {
+      return billingBounds
+        ? Promise.resolve(billingBounds)
+        : Promise.reject(new ApiError(404, "no_active_billing_cycle", "none", null));
+    }
     if (path.includes("/readings/energy")) {
       const metric = queryParams(path).get("metric");
       return Promise.resolve(metric ? (readingsByMetric[metric] ?? []) : []);
@@ -646,9 +653,11 @@ describe("DashboardPage historical chart and cost", () => {
   it("shows a legend for the chart's grid-import/export and cost series", async () => {
     mockApi({});
     renderPage();
-    expect(await screen.findByText("Grid import")).toBeInTheDocument();
-    expect(screen.getByText("Grid export")).toBeInTheDocument();
-    expect(screen.getByText("Cost")).toBeInTheDocument();
+    const todayChart = await screen.findByTestId("today-chart");
+    for (const label of ["Grid import", "Grid export", "Cost"]) {
+      expect(within(todayChart).getByText(label)).toBeInTheDocument();
+    }
+    expect(screen.getAllByText("Grid export").length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows the computed cost for the selected net/gross method and re-fetches when toggled", async () => {
@@ -830,13 +839,46 @@ describe("DashboardPage date range selector", () => {
   it("uses progressively coarser buckets as the preset range grows", async () => {
     mockApi({});
     renderPage();
-    await waitFor(() => expect(costSeriesBucket()).toBe("15min")); // Today: < 7 days
+    await waitFor(() => expect(costSeriesBucket()).toBe("5min")); // Today: <= 1 day
+
+    await userEvent.selectOptions(screen.getByLabelText("Date range"), "Yesterday");
+    await waitFor(() => expect(costSeriesBucket()).toBe("5min")); // any 1-day period
 
     await userEvent.selectOptions(screen.getByLabelText("Date range"), "7 days");
     await waitFor(() => expect(costSeriesBucket()).toBe("hour")); // exactly 7 days: >= 7, < 30
 
     await userEvent.selectOptions(screen.getByLabelText("Date range"), "30 days");
     await waitFor(() => expect(costSeriesBucket()).toBe("6hour")); // exactly 30 days: >= 30
+  });
+
+  it("offers a Billing period range only when a billing cycle is active", async () => {
+    mockApi({});
+    renderPage();
+    await screen.findByLabelText("Date range");
+    await waitFor(() =>
+      expect(vi.mocked(apiFetch).mock.calls.some(([p]) => (p as string).endsWith("/billing-period"))).toBe(true),
+    );
+    expect(screen.queryByRole("option", { name: "Billing period" })).not.toBeInTheDocument();
+  });
+
+  it("charts the whole billing period when Billing period is selected", async () => {
+    const bounds = { start: "2026-10-01T00:00:00Z", end: "2026-11-01T00:00:00Z" };
+    mockApi({}, undefined, undefined, undefined, undefined, null, null, bounds);
+    renderPage();
+    await screen.findByRole("option", { name: "Billing period" });
+
+    await userEvent.selectOptions(screen.getByLabelText("Date range"), "Billing period");
+
+    await waitFor(() => {
+      const path = vi
+        .mocked(apiFetch)
+        .mock.calls.map(([p]) => p as string)
+        .findLast((p) => p.includes("/cost/series"));
+      const params = queryParams(path!);
+      expect(params.get("start")).toBe("2026-10-01T00:00:00.000Z");
+      expect(params.get("end")).toBe("2026-11-01T00:00:00.000Z");
+      expect(params.get("bucket")).toBe("6hour"); // 31 days
+    });
   });
 
   it("requests a 'Today' range that extends through the end of the day, not just up to now", async () => {
@@ -883,72 +925,6 @@ describe("DashboardPage date range selector", () => {
       expect(end - start).toBe(24 * 60 * 60_000);
       // Unlike "Today", "Yesterday" is fully elapsed -- it must not run past now.
       expect(end).toBeLessThanOrEqual(beforeNow);
-    }
-  });
-});
-
-describe("DashboardPage today's pricing chart", () => {
-  beforeEach(() => {
-    vi.mocked(apiFetch).mockReset();
-  });
-
-  it("shows the chart heading and an import/export actual/predicted legend", async () => {
-    mockApi({}, undefined, undefined, { buy: [{ ts: "2026-10-01T00:00:00Z", metric: "buy", value: 25.5 }] });
-    renderPage();
-    expect(await screen.findByText("Today's Pricing")).toBeInTheDocument();
-    expect(screen.getByText("Import actual")).toBeInTheDocument();
-    expect(screen.getByText("Import predicted")).toBeInTheDocument();
-    expect(screen.getByText("Export actual")).toBeInTheDocument();
-    expect(screen.getByText("Export predicted")).toBeInTheDocument();
-  });
-
-  it("requests today's buy price spanning the full calendar day, including the future", async () => {
-    mockApi({});
-    renderPage();
-    await waitFor(() =>
-      expect(
-        vi.mocked(apiFetch).mock.calls.some(([path]) => (path as string).includes("channel=buy")),
-      ).toBe(true),
-    );
-
-    const beforeNow = Date.now();
-    const buyPricePaths = vi
-      .mocked(apiFetch)
-      .mock.calls.map(([path]) => path as string)
-      .filter((path) => path.includes("/prices") && queryParams(path).get("channel") === "buy");
-    expect(buyPricePaths.length).toBeGreaterThan(0);
-    for (const path of buyPricePaths) {
-      const params = queryParams(path);
-      const start = Date.parse(params.get("start")!);
-      const end = Date.parse(params.get("end")!);
-      expect(end - start).toBe(24 * 60 * 60_000);
-      // Extends into the future (to pick up forecast rows), unlike the
-      // live-tile buy/sell price hooks which only look a few minutes back.
-      expect(end).toBeGreaterThan(beforeNow);
-    }
-  });
-
-  it("requests today's sell price spanning the full calendar day, including the future", async () => {
-    mockApi({});
-    renderPage();
-    await waitFor(() =>
-      expect(
-        vi.mocked(apiFetch).mock.calls.some(([path]) => (path as string).includes("channel=sell")),
-      ).toBe(true),
-    );
-
-    const beforeNow = Date.now();
-    const sellPricePaths = vi
-      .mocked(apiFetch)
-      .mock.calls.map(([path]) => path as string)
-      .filter((path) => path.includes("/prices") && queryParams(path).get("channel") === "sell");
-    expect(sellPricePaths.length).toBeGreaterThan(0);
-    for (const path of sellPricePaths) {
-      const params = queryParams(path);
-      const start = Date.parse(params.get("start")!);
-      const end = Date.parse(params.get("end")!);
-      expect(end - start).toBe(24 * 60 * 60_000);
-      expect(end).toBeGreaterThan(beforeNow);
     }
   });
 });
