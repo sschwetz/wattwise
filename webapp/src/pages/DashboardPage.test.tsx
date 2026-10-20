@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import { ENERGY_METRICS, WEATHER_METRICS } from "../dashboard/useLiveReadings";
 import { DashboardPage } from "./DashboardPage";
@@ -586,13 +586,49 @@ describe("DashboardPage today's charts", () => {
     }
   });
 
+  describe("pricing charts by time of day", () => {
+    afterEach(() => vi.useRealTimers());
+
+    async function renderAt(hour: number) {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 9, 20, hour, 30));
+      mockApi({});
+      renderPage();
+      await screen.findByText("Today's Pricing");
+    }
+
+    it("shows only today at midday", async () => {
+      await renderAt(12);
+      expect(screen.queryByText("Tomorrow's Pricing")).not.toBeInTheDocument();
+      expect(screen.queryByText("Yesterday's Pricing")).not.toBeInTheDocument();
+    });
+
+    it("adds tomorrow's chart below today's from 8pm", async () => {
+      await renderAt(20);
+      const today = screen.getByText("Today's Pricing");
+      const tomorrow = screen.getByText("Tomorrow's Pricing");
+      expect(today.compareDocumentPosition(tomorrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("shows yesterday's chart above today's until 4am", async () => {
+      await renderAt(2);
+      const yesterday = screen.getByText("Yesterday's Pricing");
+      const today = screen.getByText("Today's Pricing");
+      expect(yesterday.compareDocumentPosition(today) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(screen.queryByText("Tomorrow's Pricing")).not.toBeInTheDocument();
+    });
+  });
+
   it("shows the pricing chart with an import/export actual/predicted legend", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 20, 12));
     mockApi({}, undefined, undefined, { buy: [{ ts: "2026-10-01T00:00:00Z", metric: "buy", value: 25.5 }] });
     renderPage();
     expect(await screen.findByText("Today's Pricing")).toBeInTheDocument();
     for (const label of ["Import actual", "Import predicted", "Export actual", "Export predicted"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+    vi.useRealTimers();
   });
 
   it("shows the pricing chart above the grid and cost chart", async () => {

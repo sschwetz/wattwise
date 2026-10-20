@@ -5,7 +5,7 @@ import { useActiveDemandWindow } from "../billing/useBilling";
 import { compassDirection } from "../dashboard/compass";
 import { ErrorAlert, ResetZoomButton } from "../dashboard/chartParts";
 import { DataFreshness } from "../dashboard/DataFreshness";
-import { clipToDay, todayRange, zoomRangeFor } from "../dashboard/dateRange";
+import { clipToDay, dayRangeOffset, pricingDayOffsets, todayRange, zoomRangeFor } from "../dashboard/dateRange";
 import { formatTooltipValue } from "../dashboard/historyChart";
 import { HistoryChart } from "../dashboard/GridCostChart";
 import { TODAY_CHARTS_SYNC_ID } from "../dashboard/chartStyle";
@@ -13,6 +13,7 @@ import { useGridCostSeries } from "../dashboard/useGridCostSeries";
 import { priceMagnitude } from "../dashboard/priceChart";
 import { signAccent } from "../dashboard/signColors";
 import { Tile } from "../dashboard/Tile";
+import { useNow } from "../dashboard/useNow";
 import { TodayPriceChart } from "../dashboard/TodayPriceChart";
 import { type ChartZoom } from "../dashboard/useChartZoom";
 import { type DateRange, useBillingPeriodCost, useTodayCost } from "../dashboard/useHistoricalData";
@@ -443,6 +444,28 @@ function DemandWindowNotice({ siteId }: { siteId: number }) {
   return <span className="font-display text-2xl font-semibold text-danger"> - DEMAND WINDOW ACTIVE</span>;
 }
 
+/**
+ * Pricing charts for yesterday (until 4am), today, and tomorrow (from 8pm).
+ * Only today's chart uses the shared zoom; the others zoom on their own.
+ * Each is keyed by its date, so a chart remounts (and drops its zoom) when
+ * midnight moves it to a new role.
+ */
+function PricingCharts({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
+  const now = useNow();
+  return (
+    <>
+      {pricingDayOffsets(now).map((offset) => (
+        <TodayPriceChart
+          key={dayRangeOffset(offset, now).from.getTime()}
+          siteId={siteId}
+          dayOffset={offset}
+          zoom={offset === 0 ? zoom : undefined}
+        />
+      ))}
+    </>
+  );
+}
+
 export function DashboardPage() {
   const { siteId } = useParams<{ siteId: string }>();
   const parsedSiteId = Number(siteId);
@@ -459,7 +482,7 @@ export function DashboardPage() {
         <DataFreshness siteId={parsedSiteId} />
       </div>
       <LiveTiles siteId={parsedSiteId} />
-      <TodayPriceChart siteId={parsedSiteId} zoom={zoom} />
+      <PricingCharts siteId={parsedSiteId} zoom={zoom} />
       <TodayChart siteId={parsedSiteId} zoom={zoom} />
     </div>
   );

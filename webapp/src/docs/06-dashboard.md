@@ -76,6 +76,8 @@ When one of your [demand windows](07-billing.md#demand-windows) is in effect, th
 
 This chart shows your import and export price for every 5 minutes of today, in cents per kWh. The prices come from your pricing source: Amber's prices, or the rates in your [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
 
+From 8pm, a Tomorrow's Pricing chart appears below it. At midnight, Today's Pricing becomes Yesterday's Pricing and Tomorrow's becomes Today's. Yesterday's chart disappears at 4am. Only Today's Pricing shares its zoom and hover with the chart below; the other two zoom on their own.
+
 | Line | Meaning |
 |------|---------|
 | Red solid | **Import actual**: what buying power cost in intervals that have finished. |

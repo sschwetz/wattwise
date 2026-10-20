@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Area, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ErrorAlert, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
 import { SWATCH_COLORS, TODAY_CHARTS_SYNC_ID, ZOOMABLE_CHART_STYLE } from "./chartStyle";
-import { clipToDay, todayRange, zoomRangeFor } from "./dateRange";
+import { clipToDay, dayRangeOffset, type PricingDayOffset, zoomRangeFor } from "./dateRange";
 import { buildAxisTickPlan, formatBucketTick } from "./historyChart";
 import { InstabilitySummary } from "./InstabilitySummary";
 import {
@@ -14,7 +14,7 @@ import {
   visibleInstabilitySpans,
 } from "./priceChart";
 import { type ChartZoom, useChartZoom } from "./useChartZoom";
-import { useTodayPrices } from "./useHistoricalData";
+import { type DateRange, useTodayPrices } from "./useHistoricalData";
 
 /** Which series a tooltip value came from: actual shows nothing, a predicted
  * value is labelled, and a value with neither is the fallback series. */
@@ -109,20 +109,35 @@ function buildTodayPricingChartData(importPrices: PriceReading[], exportPrices: 
   return mergeImportExportPrices(buildPriceChartData(importPrices, now), buildPriceChartData(exportPrices, now));
 }
 
+const DAY_TITLES: Record<PricingDayOffset, string> = { [-1]: "Yesterday's Pricing", 0: "Today's Pricing", 1: "Tomorrow's Pricing" };
+
 /**
  * Amber's actual (elapsed) and predicted (forecast) import and export prices
- * for today, at 5-minute resolution. Solid where actual, dashed where
+ * for yesterday, today or tomorrow (`dayOffset`), at 5-minute resolution. Solid where actual, dashed where
  * predicted; import and export each get their own color (red/green, matching
  * the grid tiles on the dashboard) since they're two separate series.
- * Drag across the chart to zoom; the zoom is shared with the page's other
- * today chart.
+ * Drag across the chart to zoom. With a `zoom` prop the zoom is shared with
+ * the page's other today chart; without one the chart zooms on its own.
  */
-export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
-  const dayRange = useMemo(() => todayRange(), []);
+export function TodayPriceChart({
+  siteId,
+  zoom: sharedZoom,
+  dayOffset = 0,
+}: {
+  siteId: number;
+  zoom?: ChartZoom;
+  dayOffset?: PricingDayOffset;
+}) {
+  // Without a shared zoom the chart keeps its own, and it also stays out of
+  // the page's hover/zoom sync group.
+  const [ownRange, setOwnRange] = useState<DateRange | null>(null);
+  const zoom = useMemo<ChartZoom>(() => sharedZoom ?? { range: ownRange, set: setOwnRange }, [sharedZoom, ownRange]);
+  const title = DAY_TITLES[dayOffset];
+  const dayRange = useMemo(() => dayRangeOffset(dayOffset), [dayOffset]);
   const range = useMemo(() => clipToDay(zoom.range, dayRange), [zoom.range, dayRange]);
   const { handlers, selection } = useChartZoom((fromTs, toTs) => zoom.set(zoomRangeFor(fromTs, toTs, "5min")));
-  const { data: importPrices, isError: isImportError } = useTodayPrices(siteId, "buy");
-  const { data: exportPrices, isError: isExportError } = useTodayPrices(siteId, "sell");
+  const { data: importPrices, isError: isImportError } = useTodayPrices(siteId, "buy", dayOffset);
+  const { data: exportPrices, isError: isExportError } = useTodayPrices(siteId, "sell", dayOffset);
   const fullChartData = useMemo(
     () => buildTodayPricingChartData(importPrices ?? [], exportPrices ?? []),
     [importPrices, exportPrices],
@@ -154,7 +169,7 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
   return (
     <div className="rounded-xl border border-line bg-surface p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-semibold text-ink">Today's Pricing</h2>
+        <h2 className="font-display text-lg font-semibold text-ink">{title}</h2>
         <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted">
           {zoom.range && <ResetZoomButton onClick={() => zoom.set(null)} />}
           <PriceLegendSwatch color={SWATCH_COLORS.gridImport} label="Import actual" />
@@ -167,10 +182,10 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
           )}
         </div>
       </div>
-      {(isImportError || isExportError) && <ErrorAlert message="Failed to load today's pricing." />}
+      {(isImportError || isExportError) && <ErrorAlert message={`Failed to load ${title.toLowerCase()}.`} />}
       <InstabilitySummary windows={instabilityWindows} />
       <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={chartData} style={ZOOMABLE_CHART_STYLE} syncId={TODAY_CHARTS_SYNC_ID} syncMethod="value" {...handlers}>
+        <ComposedChart data={chartData} style={ZOOMABLE_CHART_STYLE} syncId={sharedZoom ? TODAY_CHARTS_SYNC_ID : undefined} syncMethod="value" {...handlers}>
           <XAxis
             dataKey="ts"
             ticks={axisTickPlan.ticks}

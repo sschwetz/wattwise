@@ -15,8 +15,16 @@ export function addDays(date: Date, days: number): Date {
 
 /** Local midnight to the next local midnight. */
 export function todayRange(): DateRange {
-  const from = startOfDay(new Date());
-  return { from, to: addDays(from, 1) };
+  return dayRangeOffset(0);
+}
+
+/** The local calendar day `offset` days from today (-1 yesterday, 1 tomorrow). */
+export function dayRangeOffset(offset: number, now = new Date()): DateRange {
+  const from = startOfDay(now);
+  from.setDate(from.getDate() + offset);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 1);
+  return { from, to };
 }
 
 /** `zoomed` clipped to `day`, or the whole `day` when the zoom is unset or
@@ -34,4 +42,19 @@ export function clipToDay(zoomed: DateRange | null, day: DateRange): DateRange {
  * bucket after the last selected bucket's start. */
 export function zoomRangeFor(fromTs: number, toTs: number, bucket: CostBucket): DateRange {
   return { from: new Date(fromTs), to: new Date(toTs + BUCKET_STEP_MS[bucket]) };
+}
+
+/** Tomorrow's prices appear from this local hour (8pm). */
+const TOMORROW_FROM_HOUR = 20;
+/** Yesterday's prices stay until this local hour (4am). */
+const YESTERDAY_UNTIL_HOUR = 4;
+
+/** Which day a pricing chart shows: yesterday, today or tomorrow. */
+export type PricingDayOffset = -1 | 0 | 1;
+
+/** Which pricing days to show at `now`: yesterday until 4am, today always,
+ * tomorrow from 8pm. */
+export function pricingDayOffsets(now: Date): PricingDayOffset[] {
+  const hour = now.getHours();
+  return [...(hour < YESTERDAY_UNTIL_HOUR ? [-1 as const] : []), 0, ...(hour >= TOMORROW_FROM_HOUR ? [1 as const] : [])];
 }
