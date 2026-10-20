@@ -104,6 +104,21 @@ function RangeLegendSwatch() {
   );
 }
 
+const SPIKE_LEVELS = {
+  potential: { color: "var(--color-solar)", label: "Price spike possible" },
+  spike: { color: "var(--color-danger)", label: "Price spike" },
+} as const;
+
+function SpikeLegendSwatch({ level }: { level: keyof typeof SPIKE_LEVELS }) {
+  const { color, label } = SPIKE_LEVELS[level];
+  return (
+    <span className="flex items-center gap-1.5">
+      <span aria-hidden className="h-2.5 w-4 rounded-sm opacity-30" style={{ backgroundColor: color }} />
+      {label}
+    </span>
+  );
+}
+
 function buildTodayPricingChartData(importPrices: PriceReading[], exportPrices: PriceReading[]): TodayPricingPoint[] {
   const now = new Date();
   return mergeImportExportPrices(buildPriceChartData(importPrices, now), buildPriceChartData(exportPrices, now));
@@ -177,6 +192,9 @@ export function TodayPriceChart({
           <PriceLegendSwatch color={SWATCH_COLORS.gridExport} label="Export actual" />
           <PriceLegendSwatch color={SWATCH_COLORS.gridExport} pattern="dashed" label="Export predicted" />
           {hasBand && <RangeLegendSwatch />}
+          {(["potential", "spike"] as const).map(
+            (level) => visibleSpans.some((span) => span.level === level) && <SpikeLegendSwatch key={level} level={level} />,
+          )}
           {hasFallback && (
             <PriceLegendSwatch color="var(--color-ink-muted)" pattern="dotted" label="Fallback (no advanced forecast)" />
           )}
@@ -214,7 +232,7 @@ export function TodayPriceChart({
               key={span.x1}
               x1={span.x1}
               x2={span.x2}
-              fill={span.level === "spike" ? "var(--color-danger)" : "var(--color-solar)"}
+              fill={SPIKE_LEVELS[span.level].color}
               fillOpacity={0.15}
               stroke="none"
               ifOverflow="visible"

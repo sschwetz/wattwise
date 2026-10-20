@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  BAND_WIDTH_THRESHOLD_CENTS,
   buildPriceChartData,
   findInstabilityWindows,
   mergeImportExportPrices,
@@ -284,21 +283,17 @@ describe("findInstabilityWindows", () => {
     ]);
   });
 
-  it("flags a band wider than the threshold, but not one exactly at it", () => {
-    const wide = point(0, { importBand: [10, 10 + BAND_WIDTH_THRESHOLD_CENTS + 0.01] });
-    const exact = point(1, { importBand: [10, 10 + BAND_WIDTH_THRESHOLD_CENTS] });
-
-    expect(findInstabilityWindows([wide, exact])).toEqual([{ from: 0, to: STEP, level: "wide-band" }]);
+  it("ignores a wide forecast band when Amber has not flagged the interval", () => {
+    expect(findInstabilityWindows([point(0, { importBand: [10, 60] })])).toEqual([]);
   });
 
-  it("gives a run the worst level in it: spike over potential over wide-band", () => {
+  it("gives a run the worst level in it: spike over potential", () => {
     const windows = findInstabilityWindows([
-      point(0, { importBand: [0, 50] }),
-      point(1, { importSpikeStatus: "potential" }),
-      point(2, { importSpikeStatus: "spike" }),
+      point(0, { importSpikeStatus: "potential" }),
+      point(1, { importSpikeStatus: "spike" }),
     ]);
 
-    expect(windows).toEqual([{ from: 0, to: 3 * STEP, level: "spike" }]);
+    expect(windows).toEqual([{ from: 0, to: 2 * STEP, level: "spike" }]);
   });
 
   it("skips points that already have an actual price", () => {
@@ -341,14 +336,14 @@ describe("visibleInstabilitySpans", () => {
       [
         { from: STEP, to: 2 * STEP, level: "spike" },
         { from: 20 * STEP, to: 21 * STEP, level: "potential" },
-        { from: 2 * STEP, to: 3 * STEP, level: "wide-band" },
+        { from: 2 * STEP, to: 3 * STEP, level: "potential" },
       ],
       tss,
     );
 
     expect(spans).toEqual([
       { x1: STEP, x2: 2 * STEP, level: "spike" },
-      { x1: 2 * STEP, x2: 3 * STEP, level: "wide-band" },
+      { x1: 2 * STEP, x2: 3 * STEP, level: "potential" },
     ]);
   });
 
