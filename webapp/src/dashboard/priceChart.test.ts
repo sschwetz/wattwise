@@ -311,24 +311,24 @@ describe("windowSpanWithin", () => {
   const tss = [0, STEP, 2 * STEP, 3 * STEP];
 
   it("runs from the window's first timestamp to the first one after it, so the last interval is tinted too", () => {
-    expect(windowSpanWithin({ from: STEP, to: 3 * STEP, level: "spike" }, tss)).toEqual({ x1: STEP, x2: 3 * STEP });
+    expect(windowSpanWithin({ from: STEP, to: 3 * STEP }, tss)).toEqual({ x1: STEP, x2: 3 * STEP });
   });
 
   it("gives a one-interval window a width: it ends at the next timestamp", () => {
-    expect(windowSpanWithin({ from: STEP, to: 2 * STEP, level: "spike" }, tss)).toEqual({ x1: STEP, x2: 2 * STEP });
+    expect(windowSpanWithin({ from: STEP, to: 2 * STEP }, tss)).toEqual({ x1: STEP, x2: 2 * STEP });
   });
 
   it("ends at the last visible timestamp when the window runs past the visible range", () => {
-    expect(windowSpanWithin({ from: 2 * STEP, to: 10 * STEP, level: "spike" }, tss)).toEqual({ x1: 2 * STEP, x2: 3 * STEP });
+    expect(windowSpanWithin({ from: 2 * STEP, to: 10 * STEP }, tss)).toEqual({ x1: 2 * STEP, x2: 3 * STEP });
   });
 
   it("starts at the first visible timestamp when the window began before the visible range", () => {
-    expect(windowSpanWithin({ from: -5 * STEP, to: STEP, level: "spike" }, tss)).toEqual({ x1: 0, x2: STEP });
+    expect(windowSpanWithin({ from: -5 * STEP, to: STEP }, tss)).toEqual({ x1: 0, x2: STEP });
   });
 
   it("returns null when no chart timestamp falls inside the window", () => {
-    expect(windowSpanWithin({ from: 10 * STEP, to: 12 * STEP, level: "spike" }, tss)).toBeNull();
-    expect(windowSpanWithin({ from: 0, to: STEP, level: "spike" }, [])).toBeNull();
+    expect(windowSpanWithin({ from: 10 * STEP, to: 12 * STEP }, tss)).toBeNull();
+    expect(windowSpanWithin({ from: 0, to: STEP }, [])).toBeNull();
   });
 });
 
