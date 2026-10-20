@@ -1,4 +1,7 @@
-FROM python:3.12-slim
+FROM python:3.12-alpine
+
+# Alpine ships no timezone database, and core_api uses ZoneInfo for site timezones.
+RUN apk add --no-cache tzdata
 
 RUN pip install --no-cache-dir uv
 
