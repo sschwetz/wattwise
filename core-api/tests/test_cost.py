@@ -19,6 +19,8 @@ from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
 from core_api.cost import compute_cost, compute_cost_series, monthly_fee_discounts_c
+from core_api.export_allowance_data import marginal_adjustment_fn
+from core_api.jobs.demand_config import export_adjustment_windows_by_tariff, site_tariffs_for_site
 from tests.conftest import sydney_local
 
 UTC = datetime.timezone.utc
@@ -448,7 +450,8 @@ def test_allowance_cost_over_a_sub_range_is_the_difference_of_its_ends(db, site)
     energy_source, pricing_source = _allowance_setup(db, site)
     _three_kwh_on_day_one(db, energy_source, pricing_source)
 
-    # Charged kWh is 1 just before 12:02 and 1 at the start of 3 Jan: no change.
+    # Charged kWh is 1 just before 12:02 and 0 at the start of 3 Jan, but the
+    # end is exclusive, so the 3 Jan refund is not in the range: no change.
     assert _cost(db, site, sydney_local(2026, 1, 1, 12, 2), sydney_local(2026, 1, 3)) == decimal.Decimal("0")
 
 
@@ -493,6 +496,92 @@ def test_allowance_counts_export_minutes_that_have_no_sell_price(db, site):
 
     assert result.minutes_missing_price == 2
     assert result.total_cost_c == decimal.Decimal("10")
+
+
+def _two_tariff_allowance_setup(db, site):
+    """Tariff A runs 1 Jan - 10 Jan 2026 and tariff B starts on 10 Jan, both
+    charging 10c/kWh beyond 1 kWh/day, in one billing period from 1 Jan."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    _make_billing_cycle(db, site, sydney_local(2026, 1, 1))
+    tariff_a = _make_tariff(
+        db, site, effective_from=sydney_local(2026, 1, 1), effective_to=sydney_local(2026, 1, 10), service_c_per_day="0.0"
+    )
+    tariff_b = _make_tariff(db, site, effective_from=sydney_local(2026, 1, 10), service_c_per_day="0.0")
+    for tariff in (tariff_a, tariff_b):
+        _make_export_adjustment(db, tariff, adjustment_c_per_kwh="-10", daily_allowance_kwh="1")
+    return energy_source, pricing_source
+
+
+def _add_noon_exports(db, energy_source, pricing_source, year, month, day, kwh):
+    noon = sydney_local(year, month, day, 12, 0)
+    for minute in range(kwh):
+        _add_export_kwh(db, energy_source, pricing_source, noon + datetime.timedelta(minutes=minute))
+
+
+def test_allowance_charge_of_an_ended_tariff_is_not_refunded_after_it_ends(db, site):
+    energy_source, pricing_source = _two_tariff_allowance_setup(db, site)
+    _add_noon_exports(db, energy_source, pricing_source, 2026, 1, 9, 20)
+
+    # A's window: 20 kWh exported by day 9 against 9 kWh of allowance -> 11 kWh
+    # at 10c = 110c. A ends at the start of 10 Jan, so later midnights refund nothing.
+    assert _cost(db, site, sydney_local(2026, 1, 1), sydney_local(2026, 1, 10)) == decimal.Decimal("110")
+    assert _cost(db, site, sydney_local(2026, 1, 1), sydney_local(2026, 2, 1)) == decimal.Decimal("110")
+
+
+def test_allowance_of_a_new_tariff_counts_days_from_its_own_start(db, site):
+    energy_source, pricing_source = _two_tariff_allowance_setup(db, site)
+    _add_noon_exports(db, energy_source, pricing_source, 2026, 1, 9, 20)
+    _add_noon_exports(db, energy_source, pricing_source, 2026, 1, 11, 20)
+
+    # B's window starts on 10 Jan, so 11 Jan is its day 2: 20 - 2 = 18 kWh at
+    # 10c = 180c, on top of A's 110c. Range ends before the 12 Jan midnight.
+    assert _cost(db, site, sydney_local(2026, 1, 1), sydney_local(2026, 1, 12)) == decimal.Decimal("290")
+
+
+def test_marginal_price_of_a_new_tariff_uses_its_own_day_count(db, site):
+    energy_source, pricing_source = _two_tariff_allowance_setup(db, site)
+    _add_noon_exports(db, energy_source, pricing_source, 2026, 1, 10, 3)
+    start, end, now = sydney_local(2026, 1, 1), sydney_local(2026, 2, 1), sydney_local(2026, 1, 12)
+
+    adjustment_at = marginal_adjustment_fn(
+        db, site.id, site.timezone, site_tariffs_for_site(db, site.id),
+        export_adjustment_windows_by_tariff(db, site.id), start, end, now,
+    )
+
+    # B has exported 3 kWh. On 11 Jan (its day 2) it has 2 kWh of allowance, so
+    # the next kWh is charged; on 14 Jan (day 5) it has 5 kWh, so it is not.
+    assert adjustment_at(sydney_local(2026, 1, 11, 18, 0)) == decimal.Decimal("-10")
+    assert adjustment_at(sydney_local(2026, 1, 14, 18, 0)) == decimal.Decimal("0")
+
+
+def test_allowance_cost_stops_at_now_for_a_range_ending_in_the_future(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site)
+    _add_noon_exports(db, energy_source, pricing_source, 2026, 1, 1, 20)
+    start, end = sydney_local(2026, 1, 1), sydney_local(2026, 2, 1)
+
+    def cost_at(now):
+        return compute_cost(db, site.id, start, end, method="net", site_timezone=site.timezone, now=now).total_cost_c
+
+    # 20 kWh against 5 days of allowance leaves 15 kWh at 10c as of 5 Jan.
+    assert cost_at(sydney_local(2026, 1, 5)) == decimal.Decimal("150")
+    # Past the period end the 20 kWh has been fully cancelled (31 days).
+    assert cost_at(sydney_local(2026, 2, 2)) == decimal.Decimal("0")
+
+
+def test_compute_cost_series_books_no_refund_after_now(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site)
+    _add_noon_exports(db, energy_source, pricing_source, 2026, 1, 1, 20)
+    now = sydney_local(2026, 1, 5)
+
+    points = compute_cost_series(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 2, 1), method="net", bucket="hour",
+        site_timezone=site.timezone, now=now,
+    )
+
+    # 190c charged at noon on 1 Jan, then one 10c refund at each midnight up to 5 Jan.
+    assert [p.cost_c for p in points] == [decimal.Decimal(c) for c in ("190", "-10", "-10", "-10", "-10")]
+    assert all(p.bucket_start <= now for p in points)
 
 
 def test_compute_cost_series_shows_the_charge_and_the_midnight_refund(db, site):

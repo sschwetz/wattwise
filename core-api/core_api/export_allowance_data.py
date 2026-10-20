@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
-from typing import Callable
+from typing import Callable, Iterator, NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,7 +32,7 @@ from core_api.jobs.demand_config import (
 from core_api.models.billing import BillingCycle, ExportAdjustmentWindow, SiteTariff
 from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
-from core_api.time_utils import as_utc, site_tz
+from core_api.time_utils import as_utc, local_midnight, site_tz
 
 # Same factor as cost.py's MINUTES_TO_KWH: 1 minute at N watts is N/60000 kWh.
 _MINUTE_W_TO_KWH = decimal.Decimal(1) / decimal.Decimal(60000)
@@ -115,6 +115,43 @@ def _window_export_kwh(
     return counted
 
 
+class AllowanceSpan(NamedTuple):
+    """One window's allowance accumulation: it counts local days from `start`
+    (the day of `start` is day 1) and stops changing at `end`."""
+
+    period: BillingPeriod
+    tariff_id: int
+    window: ExportAdjustmentWindow
+    start: datetime.datetime
+    end: datetime.datetime
+
+
+def allowance_window_spans(
+    periods: list[BillingPeriod],
+    tariffs: list[SiteTariff],
+    windows_by_tariff: dict[int, list[ExportAdjustmentWindow]],
+    site_timezone: str,
+) -> Iterator[AllowanceSpan]:
+    """Every (period, tariff, window with an allowance) with the span over which
+    its allowance accumulates: from local midnight of the later of the period's
+    first day and the tariff's first day, to the earlier of the period end and
+    the tariff's effective_to. Spans that come out empty are skipped."""
+    tz = site_tz(site_timezone)
+    tariffs_by_id = {t.id: t for t in tariffs}
+    for period in periods:
+        for tariff_id, windows in windows_by_tariff.items():
+            tariff = tariffs_by_id.get(tariff_id)
+            if tariff is None:
+                continue
+            first_day = max(period.start.astimezone(tz).date(), as_utc(tariff.effective_from).astimezone(tz).date())
+            start = local_midnight(first_day, tz).astimezone(datetime.timezone.utc)
+            end = period.end if tariff.effective_to is None else min(period.end, as_utc(tariff.effective_to))
+            if start >= end:
+                continue
+            for window in (w for w in windows if w.daily_allowance_kwh > 0):
+                yield AllowanceSpan(period, tariff_id, window, start, end)
+
+
 def allowance_cost_deltas(
     db: Session,
     site_id: int,
@@ -124,22 +161,26 @@ def allowance_cost_deltas(
     site_timezone: str,
     tariffs: list[SiteTariff],
     windows_by_tariff: dict[int, list[ExportAdjustmentWindow]],
+    now: datetime.datetime,
 ) -> list[tuple[datetime.datetime, decimal.Decimal]]:
-    """Cost changes in cents, at instants inside [start, end), from windows
-    with an allowance. Exports are read from each period's start so a range
-    that begins mid-period still sees the exports before it."""
+    """Cost changes in cents, at instants inside [start, end) and not after
+    `now`, from windows with an allowance. A midnight refund in the future is
+    not booked yet, the same as a service fee for a day not yet reached.
+    Exports are read from each period's start so a range that begins
+    mid-period still sees the exports before it."""
     tz = site_tz(site_timezone)
-    start_utc, end_utc = as_utc(start), as_utc(end)
+    start_utc, end_utc, now_utc = as_utc(start), as_utc(end), as_utc(now)
+    exports_by_period: dict[datetime.datetime, dict[datetime.datetime, decimal.Decimal]] = {}
     deltas: list[tuple[datetime.datetime, decimal.Decimal]] = []
-    for period in periods:
-        exports = _grid_export_kwh_by_minute(db, site_id, period.start, min(period.end, end_utc))
-        for tariff_id, windows in windows_by_tariff.items():
-            for window in (w for w in windows if w.daily_allowance_kwh > 0):
-                counted = _window_export_kwh(window, tariff_id, tariffs, exports, site_timezone)
-                steps = charged_kwh_steps(window.daily_allowance_kwh, period.start, period.end, counted, tz)
-                for ts, delta in charge_cost_deltas_c(window.adjustment_c_per_kwh, steps):
-                    if start_utc <= ts < end_utc:
-                        deltas.append((ts, delta))
+    for span in allowance_window_spans(periods, tariffs, windows_by_tariff, site_timezone):
+        if span.period.start not in exports_by_period:
+            read_end = min(span.period.end, end_utc, now_utc + datetime.timedelta(microseconds=1))
+            exports_by_period[span.period.start] = _grid_export_kwh_by_minute(db, site_id, span.period.start, read_end)
+        counted = _window_export_kwh(span.window, span.tariff_id, tariffs, exports_by_period[span.period.start], site_timezone)
+        steps = charged_kwh_steps(span.window.daily_allowance_kwh, span.start, span.end, counted, tz)
+        for ts, delta in charge_cost_deltas_c(span.window.adjustment_c_per_kwh, steps):
+            if start_utc <= ts < end_utc and ts <= now_utc:
+                deltas.append((ts, delta))
     return deltas
 
 
@@ -151,15 +192,17 @@ def _cumulative_exports(
     windows_by_tariff: dict[int, list[ExportAdjustmentWindow]],
     site_timezone: str,
     now: datetime.datetime,
-) -> dict[tuple[datetime.datetime, int], CumulativeExport]:
-    """Per (period start, window id): the window's exports up to `now`."""
+) -> dict[tuple[datetime.datetime, int], tuple[AllowanceSpan, CumulativeExport]]:
+    """Per (period start, window id): the window's span and its exports up to `now`."""
     cumulative = {}
-    for period in periods:
-        exports = _grid_export_kwh_by_minute(db, site_id, period.start, min(period.end, as_utc(now)))
-        for tariff_id, windows in windows_by_tariff.items():
-            for window in (w for w in windows if w.daily_allowance_kwh > 0):
-                counted = _window_export_kwh(window, tariff_id, tariffs, exports, site_timezone)
-                cumulative[(period.start, window.id)] = CumulativeExport(counted)
+    exports_by_period: dict[datetime.datetime, dict[datetime.datetime, decimal.Decimal]] = {}
+    for span in allowance_window_spans(periods, tariffs, windows_by_tariff, site_timezone):
+        if span.period.start not in exports_by_period:
+            exports_by_period[span.period.start] = _grid_export_kwh_by_minute(
+                db, site_id, span.period.start, min(span.period.end, as_utc(now))
+            )
+        counted = _window_export_kwh(span.window, span.tariff_id, tariffs, exports_by_period[span.period.start], site_timezone)
+        cumulative[(span.period.start, span.window.id)] = (span, CumulativeExport(counted))
     return cumulative
 
 
@@ -196,9 +239,14 @@ def marginal_adjustment_fn(
         if period is None:
             return total
         for window in (w for w in windows if w.daily_allowance_kwh > 0):
-            exported = cumulative[(period.start, window.id)].before(at_utc)
+            entry = cumulative.get((period.start, window.id))
+            if entry is None:
+                continue
+            span, exports = entry
+            if not span.start <= at_utc < span.end:
+                continue
             if in_export_window_pattern(window, at_local) and is_charging_next_kwh(
-                window.daily_allowance_kwh, period.start, at_utc, exported, tz
+                window.daily_allowance_kwh, span.start, at_utc, exports.before(at_utc), tz
             ):
                 total += window.adjustment_c_per_kwh
         return total
