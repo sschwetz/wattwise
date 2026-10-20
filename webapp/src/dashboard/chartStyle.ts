@@ -10,3 +10,6 @@ export const SWATCH_COLORS = {
 } as const;
 
 export const ZOOMABLE_CHART_STYLE = { userSelect: "none", cursor: "crosshair" } as const;
+
+/** The two "today" charts on the dashboard share one hover position. */
+export const TODAY_CHARTS_SYNC_ID = "today-charts";

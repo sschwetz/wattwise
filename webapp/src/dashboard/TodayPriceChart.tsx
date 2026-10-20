@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ErrorAlert, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
-import { SWATCH_COLORS, ZOOMABLE_CHART_STYLE } from "./chartStyle";
+import { SWATCH_COLORS, TODAY_CHARTS_SYNC_ID, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import { clipToDay, todayRange, zoomRangeFor } from "./dateRange";
 import { buildAxisTickPlan, formatBucketTick } from "./historyChart";
 import { buildPriceChartData, mergeImportExportPrices, type TodayPricingPoint } from "./priceChart";
@@ -104,7 +104,7 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
       </div>
       {(isImportError || isExportError) && <ErrorAlert message="Failed to load today's pricing." />}
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={chartData} style={ZOOMABLE_CHART_STYLE} {...handlers}>
+        <LineChart data={chartData} style={ZOOMABLE_CHART_STYLE} syncId={TODAY_CHARTS_SYNC_ID} syncMethod="value" {...handlers}>
           <XAxis
             dataKey="ts"
             ticks={axisTickPlan.ticks}

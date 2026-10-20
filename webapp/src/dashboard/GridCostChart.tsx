@@ -91,6 +91,7 @@ export function HistoryChart({
   range,
   bucket,
   onZoom,
+  syncId,
 }: {
   importReadings: Reading[];
   exportReadings: Reading[];
@@ -98,6 +99,8 @@ export function HistoryChart({
   range: DateRange;
   bucket: CostBucket;
   onZoom: (fromTs: number, toTs: number) => void;
+  /** Charts sharing a syncId show their tooltip at the same timestamp. */
+  syncId?: string;
 }) {
   const { handlers, selection } = useChartZoom(onZoom);
   const chartData = useMemo(
@@ -108,7 +111,7 @@ export function HistoryChart({
   return (
     <>
       <ResponsiveContainer width="100%" height={240}>
-        <ComposedChart data={chartData} style={ZOOMABLE_CHART_STYLE} {...handlers}>
+        <ComposedChart data={chartData} style={ZOOMABLE_CHART_STYLE} syncId={syncId} syncMethod="value" {...handlers}>
           <XAxis
             dataKey="ts"
             ticks={axisTickPlan.ticks}
