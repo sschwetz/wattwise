@@ -25,7 +25,10 @@ export const AVERAGED_METRICS: ReadonlySet<string> = new Set([
  * raw latest timestamp so the import/export and charge/discharge collapsing
  * still picks whichever side is newer.
  */
-export function averageLiveReadings(readings: Reading[], now: number): Reading[] {
+export function averageLiveReadings(
+  readings: Reading[],
+  now: number,
+): Reading[] {
   const bucketStart = Math.floor(now / AVERAGE_BUCKET_MS) * AVERAGE_BUCKET_MS;
 
   const pollTimes = new Set<string>();
@@ -44,22 +47,35 @@ export function averageLiveReadings(readings: Reading[], now: number): Reading[]
   }
 
   const latestAveraged = new Map<string, Reading>();
-  const passthrough: Reading[] = [];
   for (const reading of readings) {
-    if (!AVERAGED_METRICS.has(reading.metric)) {
-      passthrough.push(reading);
-      continue;
-    }
     const existing = latestAveraged.get(reading.metric);
-    if (!existing || reading.ts > existing.ts) {
+    if (
+      AVERAGED_METRICS.has(reading.metric) &&
+      (!existing || reading.ts > existing.ts)
+    ) {
       latestAveraged.set(reading.metric, reading);
     }
   }
 
-  const averaged = Array.from(latestAveraged.values()).map((latest) =>
-    hasBucketRow.has(latest.metric)
-      ? { ...latest, value: (sums.get(latest.metric) ?? 0) / pollTimes.size }
-      : latest,
-  );
-  return [...passthrough, ...averaged];
+  // Keep each averaged metric at the position of its first row: the tile grid
+  // orders tiles by first appearance, so moving them would reorder the tiles.
+  const result: Reading[] = [];
+  const emitted = new Set<string>();
+  for (const reading of readings) {
+    const latest = latestAveraged.get(reading.metric);
+    if (!latest) {
+      result.push(reading);
+    } else if (!emitted.has(reading.metric)) {
+      emitted.add(reading.metric);
+      result.push(
+        hasBucketRow.has(reading.metric)
+          ? {
+              ...latest,
+              value: (sums.get(reading.metric) ?? 0) / pollTimes.size,
+            }
+          : latest,
+      );
+    }
+  }
+  return result;
 }

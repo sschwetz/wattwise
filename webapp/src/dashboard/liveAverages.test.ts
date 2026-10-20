@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { averageLiveReadings } from "./liveAverages";
 
-const at = (minutes: number, seconds = 0) => new Date(Date.UTC(2026, 0, 1, 0, minutes, seconds)).toISOString();
-const reading = (ts: string, metric: string, value: number) => ({ ts, metric, value });
-const valueOf = (readings: ReturnType<typeof averageLiveReadings>, metric: string) =>
-  readings.find((r) => r.metric === metric)?.value;
+const at = (minutes: number, seconds = 0) =>
+  new Date(Date.UTC(2026, 0, 1, 0, minutes, seconds)).toISOString();
+const reading = (ts: string, metric: string, value: number) => ({
+  ts,
+  metric,
+  value,
+});
+const valueOf = (
+  readings: ReturnType<typeof averageLiveReadings>,
+  metric: string,
+) => readings.find((r) => r.metric === metric)?.value;
 
 describe("averageLiveReadings", () => {
   const now = Date.UTC(2026, 0, 1, 0, 7, 30);
@@ -26,7 +33,10 @@ describe("averageLiveReadings", () => {
   });
 
   it("restarts at the bucket boundary and falls back to the latest reading until a new poll lands", () => {
-    const result = averageLiveReadings([reading(at(4, 59), "production_w", 123)], Date.UTC(2026, 0, 1, 0, 5, 10));
+    const result = averageLiveReadings(
+      [reading(at(4, 59), "production_w", 123)],
+      Date.UTC(2026, 0, 1, 0, 5, 10),
+    );
     expect(valueOf(result, "production_w")).toBe(123);
   });
 
@@ -45,11 +55,34 @@ describe("averageLiveReadings", () => {
 
   it("leaves other metrics unchanged", () => {
     const result = averageLiveReadings(
-      [reading(at(5, 30), "grid_export_w", 100), reading(at(6), "grid_export_w", 300), reading(at(6), "battery_soc_pct", 80)],
+      [
+        reading(at(5, 30), "grid_export_w", 100),
+        reading(at(6), "grid_export_w", 300),
+        reading(at(6), "battery_soc_pct", 80),
+      ],
       now,
     );
     // Passed through as-is; the tile grid picks the newest row per metric.
     expect(result.filter((r) => r.metric === "grid_export_w")).toHaveLength(2);
     expect(valueOf(result, "battery_soc_pct")).toBe(80);
+  });
+
+  it("keeps the metrics in their original order", () => {
+    const metrics = [
+      "production_w",
+      "consumption_w",
+      "grid_import_w",
+      "grid_export_w",
+      "battery_soc_pct",
+      "battery_discharge_w",
+    ];
+    const result = averageLiveReadings(
+      metrics.flatMap((metric) => [
+        reading(at(5, 30), metric, 1),
+        reading(at(6), metric, 2),
+      ]),
+      now,
+    );
+    expect(Array.from(new Set(result.map((r) => r.metric)))).toEqual(metrics);
   });
 });
