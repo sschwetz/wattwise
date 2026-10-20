@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,8 +52,14 @@ describe("ConditionalCredits", () => {
     const user = userEvent.setup();
 
     await user.type(screen.getByLabelText("Credit label"), "Low evening import");
-    await user.type(screen.getByLabelText("Credit months"), "1, 2,3");
-    await user.type(screen.getByLabelText("Credit days of week"), "0,1,2,3,4");
+    await user.click(within(screen.getByRole("group", { name: "Credit months" })).getByLabelText("Jan"));
+    await user.click(within(screen.getByRole("group", { name: "Credit months" })).getByLabelText("Feb"));
+    await user.click(within(screen.getByRole("group", { name: "Credit months" })).getByLabelText("Mar"));
+    await user.click(within(screen.getByRole("group", { name: "Credit days of week" })).getByLabelText("Mon"));
+    await user.click(within(screen.getByRole("group", { name: "Credit days of week" })).getByLabelText("Tue"));
+    await user.click(within(screen.getByRole("group", { name: "Credit days of week" })).getByLabelText("Wed"));
+    await user.click(within(screen.getByRole("group", { name: "Credit days of week" })).getByLabelText("Thu"));
+    await user.click(within(screen.getByRole("group", { name: "Credit days of week" })).getByLabelText("Fri"));
     await user.type(screen.getByLabelText("Credit start time"), "17:00");
     await user.type(screen.getByLabelText("Credit end time"), "21:00");
     await user.type(screen.getByLabelText("Average import below (W)"), "300");
@@ -81,8 +87,8 @@ describe("ConditionalCredits", () => {
     const user = userEvent.setup();
 
     await user.type(screen.getByLabelText("Credit label"), "x");
-    await user.type(screen.getByLabelText("Credit months"), "1");
-    await user.type(screen.getByLabelText("Credit days of week"), "0");
+    await user.click(within(screen.getByRole("group", { name: "Credit months" })).getByLabelText("Jan"));
+    await user.click(within(screen.getByRole("group", { name: "Credit days of week" })).getByLabelText("Mon"));
     await user.type(screen.getByLabelText("Credit start time"), "21:00");
     await user.type(screen.getByLabelText("Credit end time"), "17:00");
     await user.type(screen.getByLabelText("Average import below (W)"), "300");

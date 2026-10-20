@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
-import { CHANNEL_SECTIONS, SHORT_DAYS, SHORT_MONTHS, inputClass } from "./rateWindowUi";
+import { CHANNEL_SECTIONS, inputClass } from "./rateWindowUi";
+import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
 import type { RateChannel, RateWindowInput } from "./useRateWindows";
 
 interface FormValues {
@@ -15,8 +16,6 @@ interface FormValues {
 
 type Setter = <K extends keyof FormValues>(key: K) => (value: FormValues[K]) => void;
 
-const MONTH_OPTIONS = SHORT_MONTHS.map((name, i) => ({ value: i + 1, label: name }));
-const DAY_OPTIONS = SHORT_DAYS.map((name, i) => ({ value: i, label: name }));
 
 function localDateString(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -119,29 +118,6 @@ function WindowFields({ values, set }: { values: FormValues; set: Setter }) {
       <Field field={{ label: "Start", value: values.start, onChange: set("start"), type: "time" }} />
       <Field field={{ label: "End", value: values.end, onChange: set("end"), type: "time" }} />
     </div>
-  );
-}
-
-interface Selection {
-  selected: number[];
-  onChange: (selected: number[]) => void;
-}
-
-function CheckboxGroup({ legend, options, selection }: { legend: string; options: { value: number; label: string }[]; selection: Selection }) {
-  const { selected, onChange } = selection;
-  function toggle(value: number) {
-    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value].sort((a, b) => a - b));
-  }
-  return (
-    <fieldset className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink-muted">
-      <legend>{legend}</legend>
-      {options.map((option) => (
-        <label key={option.value} className="flex items-center gap-1">
-          <input type="checkbox" checked={selected.includes(option.value)} onChange={() => toggle(option.value)} />
-          {option.label}
-        </label>
-      ))}
-    </fieldset>
   );
 }
 

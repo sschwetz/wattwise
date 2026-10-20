@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -226,8 +226,14 @@ describe("BillingPage", () => {
     renderPage();
     await screen.findByText(/95\.00c\/day/);
     await userEvent.type(screen.getByPlaceholderText("Window label"), "Summer peak");
-    await userEvent.type(screen.getByPlaceholderText("Months (e.g. 12,1,2)"), "12,1,2");
-    await userEvent.type(screen.getByPlaceholderText("Days of week (0=Mon .. 6=Sun)"), "0,1,2,3,4");
+    await userEvent.click(within(screen.getByRole("group", { name: "Months" })).getByLabelText("Dec"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Months" })).getByLabelText("Jan"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Months" })).getByLabelText("Feb"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Mon"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Tue"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Wed"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Thu"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Fri"));
     await userEvent.type(screen.getByPlaceholderText("Start time (HH:MM)"), "16:00");
     await userEvent.type(screen.getByPlaceholderText("End time (HH:MM)"), "20:00");
     await userEvent.type(screen.getByPlaceholderText("Rate (cents/kW/day)"), "45");
@@ -245,7 +251,7 @@ describe("BillingPage", () => {
     expect(postCall).toBeDefined();
     expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
       label: "Summer peak",
-      months: [12, 1, 2],
+      months: [1, 2, 12],
       days_of_week: [0, 1, 2, 3, 4],
       start_time: "16:00",
       end_time: "20:00",
@@ -298,8 +304,17 @@ describe("BillingPage", () => {
     renderPage();
     await screen.findByText(/95\.00c\/day/);
     await userEvent.type(screen.getByPlaceholderText("Adjustment label"), "Solar soak incentive");
-    await userEvent.type(screen.getByPlaceholderText("Export months (e.g. 12,1,2)"), "11,12,1,2");
-    await userEvent.type(screen.getByPlaceholderText("Export days of week (0=Mon .. 6=Sun)"), "0,1,2,3,4,5,6");
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Nov"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Dec"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Jan"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Feb"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Mon"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Tue"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Wed"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Thu"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Fri"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Sat"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Sun"));
     await userEvent.type(screen.getByPlaceholderText("Export start time (HH:MM)"), "10:00");
     await userEvent.type(screen.getByPlaceholderText("Export end time (HH:MM)"), "15:00");
     await userEvent.type(screen.getByPlaceholderText("Adjustment (+incentive / -disincentive, cents/kWh)"), "5");
@@ -317,7 +332,7 @@ describe("BillingPage", () => {
     expect(postCall).toBeDefined();
     expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
       label: "Solar soak incentive",
-      months: [11, 12, 1, 2],
+      months: [1, 2, 11, 12],
       days_of_week: [0, 1, 2, 3, 4, 5, 6],
       start_time: "10:00",
       end_time: "15:00",
@@ -339,8 +354,17 @@ describe("BillingPage", () => {
     renderPage();
     await screen.findByText(/95\.00c\/day/);
     await userEvent.type(screen.getByPlaceholderText("Adjustment label"), "Solar soak incentive");
-    await userEvent.type(screen.getByPlaceholderText("Export months (e.g. 12,1,2)"), "11,12,1,2");
-    await userEvent.type(screen.getByPlaceholderText("Export days of week (0=Mon .. 6=Sun)"), "0,1,2,3,4,5,6");
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Nov"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Dec"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Jan"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Feb"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Mon"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Tue"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Wed"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Thu"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Fri"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Sat"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Sun"));
     await userEvent.type(screen.getByPlaceholderText("Export start time (HH:MM)"), "10:00");
     await userEvent.type(screen.getByPlaceholderText("Export end time (HH:MM)"), "15:00");
     await userEvent.type(screen.getByPlaceholderText("Adjustment (+incentive / -disincentive, cents/kWh)"), "5");
@@ -544,8 +568,14 @@ describe("BillingPage", () => {
     renderPage();
     await screen.findByText(/95\.00c\/day/);
     await userEvent.type(screen.getByPlaceholderText("Window label"), "Summer peak");
-    await userEvent.type(screen.getByPlaceholderText("Months (e.g. 12,1,2)"), "12,1,2");
-    await userEvent.type(screen.getByPlaceholderText("Days of week (0=Mon .. 6=Sun)"), "0,1,2,3,4");
+    await userEvent.click(within(screen.getByRole("group", { name: "Months" })).getByLabelText("Dec"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Months" })).getByLabelText("Jan"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Months" })).getByLabelText("Feb"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Mon"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Tue"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Wed"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Thu"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Days of week" })).getByLabelText("Fri"));
     await userEvent.type(screen.getByPlaceholderText("Start time (HH:MM)"), "16:00");
     await userEvent.type(screen.getByPlaceholderText("End time (HH:MM)"), "20:00");
     await userEvent.type(screen.getByPlaceholderText("Rate (cents/kW/day)"), "45");

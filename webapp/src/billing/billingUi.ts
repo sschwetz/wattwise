@@ -32,3 +32,7 @@ export function parseIntList(raw: string): number[] {
     .filter((part) => part.length > 0)
     .map(Number);
 }
+
+export function byLabel<T extends { label: string }>(windows: T[] | undefined): T[] {
+  return [...(windows ?? [])].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+}
