@@ -4,6 +4,7 @@ import { ZoomSelectionArea } from "./chartParts";
 import { SWATCH_COLORS, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import {
   buildAxisTickPlan,
+  buildCostAxis,
   buildHistoryChartData,
   formatBucketTick,
   formatTooltipValue,
@@ -107,6 +108,7 @@ export function HistoryChart({
     () => buildHistoryChartData(importReadings, exportReadings, costSeries, range, bucket),
     [importReadings, exportReadings, costSeries, range, bucket],
   );
+  const costAxis = useMemo(() => buildCostAxis(chartData), [chartData]);
   const axisTickPlan = useMemo(() => buildAxisTickPlan(chartData, range), [chartData, range]);
   return (
     <>
@@ -138,6 +140,10 @@ export function HistoryChart({
           <YAxis
             yAxisId="cost"
             orientation="right"
+            ticks={costAxis.ticks}
+            domain={costAxis.domain}
+            tickFormatter={(v: number) => v.toFixed(2)}
+            allowDataOverflow
             stroke="var(--color-ink-muted)"
             fontSize={12}
             tickLine={false}
@@ -158,7 +164,7 @@ export function HistoryChart({
           </Bar>
           <Line
             yAxisId="cost"
-            type="monotone"
+            type="linear"
             dataKey="costDollars"
             name="Cost"
             stroke="var(--color-solar)"
