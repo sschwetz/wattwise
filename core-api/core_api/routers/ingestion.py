@@ -76,6 +76,7 @@ def _upsert_price_interval(db: Session, source_id: int, interval: PriceIntervalI
         price=interval.price,
         price_low=interval.price_low,
         price_high=interval.price_high,
+        spike_status=interval.spike_status,
         is_demand_window=interval.is_demand_window,
     )
     stmt = stmt.on_conflict_do_update(
@@ -85,6 +86,7 @@ def _upsert_price_interval(db: Session, source_id: int, interval: PriceIntervalI
             "price": stmt.excluded.price,
             "price_low": stmt.excluded.price_low,
             "price_high": stmt.excluded.price_high,
+            "spike_status": stmt.excluded.spike_status,
             "is_demand_window": stmt.excluded.is_demand_window,
         },
     )

@@ -8,7 +8,7 @@ from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, 
 
 from core_api.models.identity import SiteAccessRole
 from core_api.models.local_rates import LOCAL_RATE_CHANNELS
-from core_api.models.pricing import PriceChannel
+from core_api.models.pricing import PriceChannel, SpikeStatus
 from core_api.models.readings import EnergyMetric, WeatherMetric
 from core_api.models.sources import SourceKind
 
@@ -278,6 +278,7 @@ class PriceIntervalIn(BaseModel):
     price: decimal.Decimal
     price_low: decimal.Decimal | None = None
     price_high: decimal.Decimal | None = None
+    spike_status: SpikeStatus = SpikeStatus.NONE
     is_demand_window: bool = False
 
     @model_validator(mode="after")
