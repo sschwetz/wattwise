@@ -7,6 +7,7 @@ import { ErrorAlert, ResetZoomButton } from "../dashboard/chartParts";
 import { clipToDay, todayRange, zoomRangeFor } from "../dashboard/dateRange";
 import { formatTooltipValue } from "../dashboard/historyChart";
 import { HistoryChart } from "../dashboard/GridCostChart";
+import { TODAY_CHARTS_SYNC_ID } from "../dashboard/chartStyle";
 import { useGridCostSeries } from "../dashboard/useGridCostSeries";
 import { priceMagnitude } from "../dashboard/priceChart";
 import { signAccent } from "../dashboard/signColors";
@@ -21,6 +22,7 @@ import {
   useLatestEnergyReadings,
   useLatestWeatherReadings,
 } from "../dashboard/useLiveReadings";
+import { averageLiveReadings } from "../dashboard/liveAverages";
 
 const TILE_LABELS: Record<string, string> = {
   production_w: "Production",
@@ -292,12 +294,13 @@ function WeatherTiles({ readings }: { readings: Reading[] }) {
 
 function LiveTiles({ siteId }: { siteId: number }) {
   const energy = useLatestEnergyReadings(siteId);
+  const energyReadings = averageLiveReadings(energy.data, Date.now());
   const weather = useLatestWeatherReadings(siteId);
 
   return (
     <div className="space-y-6" data-testid="live-tiles">
       {energy.isError && <ErrorAlert message="Failed to load live readings." />}
-      <MetricTileGrid readings={energy.data} labels={TILE_LABELS} units={TILE_UNITS} siteId={siteId} />
+      <MetricTileGrid readings={energyReadings} labels={TILE_LABELS} units={TILE_UNITS} siteId={siteId} />
       <BillingPeriodTiles siteId={siteId} />
       <div>
         <p className="mb-3 text-sm font-medium text-ink-muted">Weather</p>
@@ -418,6 +421,7 @@ function TodayChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
         range={range}
         bucket={data.bucket}
         onZoom={(fromTs, toTs) => zoom.set(zoomRangeFor(fromTs, toTs, data.bucket))}
+        syncId={TODAY_CHARTS_SYNC_ID}
       />
     </div>
   );
