@@ -50,6 +50,19 @@ function fetchLatest(siteId: number, path: string, params: Record<string, string
   return apiFetch<Reading[]>(`/api/v1/sites/${siteId}/${path}?${query}`);
 }
 
+export interface LatestReadingTime {
+  ts: string | null;
+}
+
+/** When the site's energy collectors last wrote a reading (null if never). */
+export function useLatestEnergyTime(siteId: number) {
+  return useQuery({
+    queryKey: ["energy-latest", siteId],
+    queryFn: () => apiFetch<LatestReadingTime>(`/api/v1/sites/${siteId}/readings/energy/latest`),
+    refetchInterval: LIVE_POLL_MS,
+  });
+}
+
 export interface LiveReadingsResult {
   data: Reading[];
   isLoading: boolean;

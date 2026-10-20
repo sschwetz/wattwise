@@ -332,6 +332,11 @@ class ReadingOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LatestReadingOut(BaseModel):
+    # None when the site has no readings yet.
+    ts: UtcDatetime | None
+
+
 class PriceReadingOut(ReadingOut):
     # True when this reading sits in a forecast interval that arrived without
     # Amber's advancedPrice band, so its value is the plain perKwh forecast.

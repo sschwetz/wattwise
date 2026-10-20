@@ -26,12 +26,17 @@ export function mockApi(
   activeDemandWindow: Record<string, unknown> | null = null,
   // The current billing period's start/end; null models the 404 for no active cycle.
   billingBounds: { start: string; end: string } | null = null,
+  // When the energy collectors last wrote, for the dashboard heading's freshness line.
+  latestEnergyTs: string | null = null,
 ) {
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (path.endsWith("/billing-period")) {
       return billingBounds
         ? Promise.resolve(billingBounds)
         : Promise.reject(new ApiError(404, "no_active_billing_cycle", "none", null));
+    }
+    if (path.endsWith("/readings/energy/latest")) {
+      return Promise.resolve({ ts: latestEnergyTs });
     }
     if (path.includes("/readings/energy")) {
       const metric = queryParams(path).get("metric");
@@ -67,7 +72,7 @@ export function energyCallPaths(): string[] {
   return vi
     .mocked(apiFetch)
     .mock.calls.map(([path]) => path as string)
-    .filter((path) => path.includes("/readings/energy"));
+    .filter((path) => path.includes("/readings/energy") && !path.endsWith("/latest"));
 }
 
 export function weatherCallPaths(): string[] {

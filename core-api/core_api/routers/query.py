@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Literal
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly_fee_discounts_c, partial_period_discounts_c
@@ -38,7 +38,7 @@ from core_api.models.readings import (
 )
 from core_api.models.sources import Source, SourceKind
 from core_api.readings_query import query_readings
-from core_api.schemas import BillingPeriodBoundsOut, BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, PriceReadingOut, ReadingOut, UtcDatetime
+from core_api.schemas import BillingPeriodBoundsOut, BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, LatestReadingOut, PriceReadingOut, ReadingOut, UtcDatetime
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["query"])
 
@@ -75,6 +75,21 @@ def get_energy_readings(
             )
         )
     return sorted(rows, key=lambda r: r.ts)
+
+
+@router.get("/readings/energy/latest", response_model=LatestReadingOut)
+def get_latest_energy_reading_time(
+    site: Site = Depends(require_site_access),
+    db: Session = Depends(get_db_session),
+) -> LatestReadingOut:
+    """When the site's energy collectors last wrote a reading, so the dashboard
+    can show how stale its data is. Read from raw readings only: a recent
+    reading is never rollup-only."""
+    source_ids = _energy_source_ids(db, site.id)
+    if not source_ids:
+        return LatestReadingOut(ts=None)
+    latest = db.execute(select(func.max(EnergyReading.ts)).where(EnergyReading.source_id.in_(source_ids))).scalar()
+    return LatestReadingOut(ts=latest)
 
 
 @router.get("/readings/weather", response_model=list[ReadingOut])

@@ -8,6 +8,8 @@ The dashboard is the first page of every site. It has four parts, from top to bo
 
 Everything on the page refreshes by itself every 60 seconds. You do not need to reload.
 
+Under the **Dashboard** heading, a small grey line shows `Energy data 14:32:05 · page loaded 3 min ago`. The first part is the time of the newest energy reading in WattWise, so you can tell whether your energy source is still sending data. The second part is how long this browser tab has been loaded, in seconds, minutes or hours. It resets when you reload the page.
+
 ## Live tiles
 
 ![Live tiles showing production, consumption, grid, battery, cost and weather](images/dashboard-live-tiles.png)

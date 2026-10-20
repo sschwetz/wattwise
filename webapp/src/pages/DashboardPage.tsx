@@ -4,6 +4,7 @@ import { ApiError } from "../api/client";
 import { useActiveDemandWindow } from "../billing/useBilling";
 import { compassDirection } from "../dashboard/compass";
 import { ErrorAlert, ResetZoomButton } from "../dashboard/chartParts";
+import { DataFreshness } from "../dashboard/DataFreshness";
 import { clipToDay, todayRange, zoomRangeFor } from "../dashboard/dateRange";
 import { formatTooltipValue } from "../dashboard/historyChart";
 import { HistoryChart } from "../dashboard/GridCostChart";
@@ -450,9 +451,12 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
-      <div className="flex flex-wrap items-baseline">
-        <h1 className="font-display text-2xl font-semibold text-ink">Dashboard</h1>
-        <DemandWindowNotice siteId={parsedSiteId} />
+      <div>
+        <div className="flex flex-wrap items-baseline">
+          <h1 className="font-display text-2xl font-semibold text-ink">Dashboard</h1>
+          <DemandWindowNotice siteId={parsedSiteId} />
+        </div>
+        <DataFreshness siteId={parsedSiteId} />
       </div>
       <LiveTiles siteId={parsedSiteId} />
       <TodayPriceChart siteId={parsedSiteId} zoom={zoom} />

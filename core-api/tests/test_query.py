@@ -68,6 +68,52 @@ def test_get_energy_readings_for_site(client, app_and_db_url):
     assert body[0]["value"] == 1234.0
 
 
+def test_get_latest_energy_reading_time_returns_newest_across_metrics(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_energy_reading(db_url)
+    newest = (datetime.datetime.now(UTC) - datetime.timedelta(minutes=3)).replace(microsecond=0)
+    session = make_session_factory(make_engine(db_url))()
+    source_id = session.query(Source).one().id
+    session.add(EnergyReading(source_id=source_id, ts=newest, metric=EnergyMetric.CONSUMPTION_W, value=500.0))
+    session.commit()
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/readings/energy/latest",
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+
+    assert response.status_code == 200, response.text
+    # Serialised with a UTC offset so a browser does not parse it as local time.
+    assert datetime.datetime.fromisoformat(response.json()["ts"]) == newest
+
+
+def test_get_latest_energy_reading_time_is_null_without_readings(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_energy_reading(db_url)
+    session = make_session_factory(make_engine(db_url))()
+    session.query(EnergyReading).delete()
+    session.commit()
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/readings/energy/latest",
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"ts": None}
+
+
+def test_get_latest_energy_reading_time_requires_site_access(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    _, site_id = seed_energy_reading(db_url)
+
+    response = client.get(f"/api/v1/sites/{site_id}/readings/energy/latest")
+
+    assert response.status_code in (401, 403)
+
+
 def test_get_energy_readings_accepts_naive_datetime_params(client, app_and_db_url):
     """Finding 1/C2: a naive (no offset) start/end must not 500 with
     'can't compare offset-naive and offset-aware datetimes'; it should be
