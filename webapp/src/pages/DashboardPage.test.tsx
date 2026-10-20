@@ -559,6 +559,8 @@ describe("DashboardPage today's charts", () => {
     vi.mocked(apiFetch).mockReset();
   });
 
+  afterEach(() => vi.useRealTimers());
+
   it("shows today's grid and cost chart with a legend", async () => {
     mockApi({});
     renderPage();
@@ -628,7 +630,6 @@ describe("DashboardPage today's charts", () => {
     for (const label of ["Import actual", "Import predicted", "Export actual", "Export predicted"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    vi.useRealTimers();
   });
 
   it("shows the pricing chart above the grid and cost chart", async () => {
@@ -642,6 +643,10 @@ describe("DashboardPage today's charts", () => {
   it.each(["buy", "sell"] as const)(
     "requests today's %s price spanning the full calendar day, including the future",
     async (channel) => {
+      // Pinned to midday: before 4am the page also shows yesterday's chart,
+      // whose window ends in the past.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 9, 20, 12));
       mockApi({});
       renderPage();
       const chartPaths = () =>
