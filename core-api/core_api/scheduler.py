@@ -50,7 +50,8 @@ def build_scheduler(session_factory: sessionmaker[Session], password_file: pathl
         coalesce=True,
     )
     scheduler.add_job(
-        lambda: expire_password_file(password_file),
+        expire_password_file,
+        args=[password_file],
         trigger=CronTrigger(hour=3, minute=17),
         id="expire_admin_password_file",
         max_instances=1,
