@@ -17,12 +17,12 @@
 | **Consumption** | The power your home is using. |
 | **Credit** | A negative cost: you earned more than you spent. Shown in green. |
 | **CT (current transformer)** | A clamp sensor that measures power flowing through a cable. The Envoy uses CTs to measure production and consumption. |
+| **Daily allowance** | Part of an [export adjustment](07-billing.md#export-adjustments): kWh of exports per day, building up through the billing cycle, that are not adjusted. |
 | **Demand charge** | A charge based on your highest average power draw in a billing period, within a demand window. See [Demand charges](07-billing.md#demand-charges). |
 | **Demand window** | A repeating period (months, days, hours) when peak demand is measured. See [Demand windows](07-billing.md#demand-windows). |
 | **Envoy** | The Enphase gateway that talks to your solar inverters and battery. |
 | **Export** | Sending power to the grid. |
 | **Export adjustment** | A bonus or penalty, in cents per kWh, added to your feed-in price during a repeating period. See [Export adjustments](07-billing.md#export-adjustments). |
-| **Daily allowance** | Part of an [export adjustment](07-billing.md#export-adjustments): kWh of exports per day, building up through the billing cycle, that are not adjusted. |
 | **Feed-in (sell) price** | What you are paid per kWh for exporting. Amber publishes it as a negative number. |
 | **Gross cost** | Cost counted as if all consumption were imported and all production exported. See [Net and gross cost](06-dashboard.md#net-and-gross-cost). |
 | **Grid** | The public electricity network. |
