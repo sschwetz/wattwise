@@ -201,3 +201,26 @@ export function formatTooltipValue(value: number, name: string): [string, string
   const direction = value < 0 ? "exported" : "imported";
   return [`${Math.abs(value).toFixed(2)} kWh ${direction}`, name];
 }
+
+const COST_STEPS_DOLLARS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+const MAX_COST_INTERVALS = 5;
+
+const roundToCents = (v: number) => Math.round(v * 100) / 100;
+
+/** Cost axis ticks on whole multiples of a step that is never below 1c. */
+export function buildCostAxis(points: HistoryChartPoint[]): { ticks: number[]; domain: [number, number] } {
+  const values = points.map((p) => p.costDollars);
+  const rawMin = Math.min(0, ...values);
+  const rawMax = Math.max(0, ...values);
+  const step =
+    COST_STEPS_DOLLARS.find((s) => (rawMax - rawMin) / s <= MAX_COST_INTERVALS) ??
+    COST_STEPS_DOLLARS[COST_STEPS_DOLLARS.length - 1];
+  // Round to cents so float error doesn't push a tick off a whole multiple.
+  const lo = roundToCents(Math.floor(rawMin / step + 1e-9) * step);
+  const hi = Math.max(roundToCents(Math.ceil(rawMax / step - 1e-9) * step), lo + step);
+  const ticks: number[] = [];
+  for (let i = 0; lo + i * step <= hi + 1e-9; i++) {
+    ticks.push(roundToCents(lo + i * step));
+  }
+  return { ticks, domain: [lo, hi] };
+}
