@@ -28,7 +28,7 @@ import {
   formatMonths,
   formatTime,
   inputClass,
-    primaryButtonClass,
+  primaryButtonClass,
 } from "../billing/billingUi";
 
 const endLinkClass = "text-sm text-ink-muted underline hover:text-ink";
@@ -113,13 +113,13 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
             : "Failed to create demand window. Please try again."}
         </p>
       )}
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="Window label"
           aria-label="Window label"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
         <CheckboxGroup legend="Months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
@@ -146,13 +146,13 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
           placeholder="Rate (cents/kW/day)"
           aria-label="Rate"
           inputMode="decimal"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
         <button
           type="submit"
           disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
-          className={primaryButtonClass}
+          className={`${primaryButtonClass} col-span-full justify-self-start`}
         >
           Add demand window
         </button>
@@ -212,13 +212,13 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
             : "Failed to create export adjustment window. Please try again."}
         </p>
       )}
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="Adjustment label"
           aria-label="Adjustment label"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
         <CheckboxGroup legend="Export months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
@@ -245,13 +245,13 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
           placeholder="Adjustment (+incentive / -disincentive, cents/kWh)"
           aria-label="Adjustment"
           inputMode="decimal"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
         <button
           type="submit"
           disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
-          className={primaryButtonClass}
+          className={`${primaryButtonClass} col-span-full justify-self-start`}
         >
           Add export adjustment
         </button>
@@ -313,13 +313,13 @@ function MonthlyFeeDiscountWindowForm({ siteId, tariffId }: { siteId: number; ta
             : "Failed to create fee discount. Please try again."}
         </p>
       )}
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="Discount label"
           aria-label="Discount label"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
         <input
@@ -344,11 +344,14 @@ function MonthlyFeeDiscountWindowForm({ siteId, tariffId }: { siteId: number; ta
           placeholder="Discounted fee ($/month)"
           aria-label="Discounted fee"
           inputMode="decimal"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
-        <div className="basis-full" />
-        <button type="submit" disabled={createWindow.isPending} className={primaryButtonClass}>
+        <button
+          type="submit"
+          disabled={createWindow.isPending}
+          className={`${primaryButtonClass} col-span-full justify-self-start`}
+        >
           Add fee discount
         </button>
       </form>

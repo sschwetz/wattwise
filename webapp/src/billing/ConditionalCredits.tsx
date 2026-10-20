@@ -70,13 +70,13 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
             : "Failed to create conditional credit. Please try again."}
         </p>
       )}
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="Credit label"
           aria-label="Credit label"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
         <CheckboxGroup legend="Credit months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
@@ -103,7 +103,7 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
           placeholder="Average import below (W)"
           aria-label="Average import below (W)"
           inputMode="decimal"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
         <input
@@ -112,13 +112,13 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
           placeholder="Credit (cents)"
           aria-label="Credit (cents)"
           inputMode="decimal"
-          className={inputClass}
+          className={`${inputClass} col-span-full`}
           required
         />
         <button
           type="submit"
           disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
-          className={primaryButtonClass}
+          className={`${primaryButtonClass} col-span-full justify-self-start`}
         >
           Add conditional credit
         </button>
