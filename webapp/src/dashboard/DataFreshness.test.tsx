@@ -18,63 +18,61 @@ function renderFreshness() {
   );
 }
 
+const READING_TS = "2026-10-20T04:32:05Z";
+
 describe("DataFreshness", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-10-20T04:34:05Z"));
     vi.mocked(apiFetch).mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("shows the time of the last energy reading and how long the page has been loaded", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ ts: "2026-10-20T04:32:05Z" });
+  it("shows how long ago the energy data changed, its clock time, and how long since the last refresh", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ ts: READING_TS });
     renderFreshness();
 
-    const expectedTime = new Date("2026-10-20T04:32:05Z").toLocaleTimeString([], {
+    const clock = new Date(READING_TS).toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
       hour12: false,
     });
-    expect(await screen.findByText(new RegExp(`Energy data ${expectedTime}`))).toBeInTheDocument();
-    expect(screen.getByText(/page loaded 0 sec ago/)).toBeInTheDocument();
+    expect(await screen.findByText(`Energy data changed 2 min ago (${clock}) · refreshed 0 sec ago`)).toBeInTheDocument();
     expect(vi.mocked(apiFetch).mock.calls[0][0]).toBe("/api/v1/sites/7/readings/energy/latest");
   });
 
-  it("counts up in seconds, then minutes, then hours", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ ts: "2026-10-20T04:32:05Z" });
+  it("counts both ages up, and resets the refresh age when the data is polled again", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ ts: READING_TS });
     renderFreshness();
-    await screen.findByText(/Energy data/);
+    await screen.findByText(/Energy data changed/);
 
     await act(async () => {
       vi.advanceTimersByTime(30_000);
     });
-    expect(screen.getByText(/page loaded 30 sec ago/)).toBeInTheDocument();
+    expect(screen.getByText(/changed 2 min ago .* refreshed 30 sec ago/)).toBeInTheDocument();
 
+    // The 60 s poll fires and returns a newer reading.
+    vi.mocked(apiFetch).mockResolvedValue({ ts: "2026-10-20T04:35:00Z" });
     await act(async () => {
-      vi.advanceTimersByTime(90_000);
+      vi.advanceTimersByTime(31_000);
     });
-    expect(screen.getByText(/page loaded 2 min ago/)).toBeInTheDocument();
-
-    await act(async () => {
-      vi.advanceTimersByTime(3 * 3_600_000);
-    });
-    expect(screen.getByText(/page loaded 3 hours ago/)).toBeInTheDocument();
+    expect(screen.getByText(/changed [5-9] sec ago .* refreshed [0-2] sec ago/)).toBeInTheDocument();
   });
 
   it("says so when the site has no energy data yet", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ ts: null });
     renderFreshness();
 
-    expect(await screen.findByText(/Energy data none yet/)).toBeInTheDocument();
+    expect(await screen.findByText("Energy data none yet · refreshed 0 sec ago")).toBeInTheDocument();
   });
 
-  it("says so when the last energy time cannot be loaded, and still shows the page age", async () => {
+  it("says so when the last energy time cannot be loaded", async () => {
     vi.mocked(apiFetch).mockRejectedValue(new Error("boom"));
     renderFreshness();
 
-    expect(await screen.findByText(/Energy data unavailable/)).toBeInTheDocument();
-    expect(screen.getByText(/page loaded 0 sec ago/)).toBeInTheDocument();
+    expect(await screen.findByText("Energy data unavailable")).toBeInTheDocument();
   });
 });

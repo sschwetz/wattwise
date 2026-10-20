@@ -38,13 +38,13 @@ describe("DashboardPage data freshness", () => {
     vi.mocked(apiFetch).mockReset();
   });
 
-  it("shows when the energy collectors last wrote and the page age under the Dashboard heading", async () => {
+  it("shows when the energy collectors last wrote and the refresh age under the Dashboard heading", async () => {
     mockApi({}, undefined, undefined, undefined, undefined, null, null, null, "2026-10-20T04:32:05Z");
     renderPage();
 
     const heading = screen.getByRole("heading", { name: "Dashboard" });
-    const line = await screen.findByText(/Energy data \d\d:\d\d:\d\d/);
-    expect(line).toHaveTextContent(/page loaded \d+ sec ago/);
+    const line = await screen.findByText(/Energy data changed .*\(\d\d:\d\d:\d\d\)/);
+    expect(line).toHaveTextContent(/refreshed \d+ sec ago/);
     expect(heading.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
