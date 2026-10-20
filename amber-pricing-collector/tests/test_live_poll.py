@@ -29,7 +29,7 @@ def test_poll_one_site_pushes_mapped_intervals_on_success(monkeypatch):
     live_poll.poll_one_site(BASE_URL, 1, "collector-key")
 
     assert len(pushed) == 1
-    assert pushed[0] == [{"channel": "buy", "interval_start": "2026-01-01T00:00:01Z", "interval_end": "2026-01-01T00:05:00Z", "price": "25.0"}]
+    assert pushed[0] == [{"channel": "buy", "interval_start": "2026-01-01T00:00:01Z", "interval_end": "2026-01-01T00:05:00Z", "spike_status": "none", "price": "25.0"}]
 
 
 def test_poll_one_site_requests_enough_forecast_to_cover_the_rest_of_any_day(monkeypatch):
@@ -151,7 +151,7 @@ def test_poll_one_site_recent_pushes_mapped_intervals_on_success(monkeypatch):
 
     live_poll.poll_one_site_recent(BASE_URL, 1, "collector-key")
 
-    assert pushed == [[{"channel": "sell", "interval_start": "2026-01-01T00:00:01Z", "interval_end": "2026-01-01T00:05:00Z", "price": "-5.0"}]]
+    assert pushed == [[{"channel": "sell", "interval_start": "2026-01-01T00:00:01Z", "interval_end": "2026-01-01T00:05:00Z", "spike_status": "none", "price": "-5.0"}]]
 
 
 def test_poll_one_site_recent_skips_when_config_fetch_fails(monkeypatch, caplog):
