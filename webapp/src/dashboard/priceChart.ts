@@ -197,7 +197,9 @@ export function windowSpanWithin(
   return { x1: inside[0], x2: after ?? inside[inside.length - 1] };
 }
 
-export type InstabilityLevel ="spike" | "potential" | "wide-band";
+/** Instability levels, mildest first, so a later index is a worse level. */
+const INSTABILITY_LEVELS = ["wide-band", "potential", "spike"] as const;
+export type InstabilityLevel = (typeof INSTABILITY_LEVELS)[number];
 
 export interface InstabilityWindow {
   from: number;
@@ -207,7 +209,6 @@ export interface InstabilityWindow {
 }
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
-const LEVEL_SEVERITY: Record<InstabilityLevel, number> = { "wide-band": 0, potential: 1, spike: 2 };
 
 function instabilityLevel(point: TodayPricingPoint): InstabilityLevel | null {
   if (point.importSpikeStatus !== "none") return point.importSpikeStatus;
@@ -229,10 +230,22 @@ export function findInstabilityWindows(points: TodayPricingPoint[], intervalMs =
     const last = windows[windows.length - 1];
     if (last && point.ts <= last.to) {
       last.to = point.ts + intervalMs;
-      if (LEVEL_SEVERITY[level] > LEVEL_SEVERITY[last.level]) last.level = level;
+      if (INSTABILITY_LEVELS.indexOf(level) > INSTABILITY_LEVELS.indexOf(last.level)) last.level = level;
     } else {
       windows.push({ from: point.ts, to: point.ts + intervalMs, level });
     }
   }
   return windows;
+}
+
+/** The windows that have something on screen, as x1/x2 spans for ReferenceArea
+ * (see windowSpanWithin) carrying each window's level. */
+export function visibleInstabilitySpans(
+  windows: InstabilityWindow[],
+  timestamps: number[],
+): { x1: number; x2: number; level: InstabilityLevel }[] {
+  return windows.flatMap((window) => {
+    const span = windowSpanWithin(window, timestamps);
+    return span ? [{ ...span, level: window.level }] : [];
+  });
 }

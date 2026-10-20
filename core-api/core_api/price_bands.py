@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core_api.forecast_fallback import _naive_utc
+from core_api.datetime_utils import naive_utc
 from core_api.models.pricing import PriceChannel, PriceInterval, SpikeStatus
 
 
@@ -50,8 +50,8 @@ def interval_bands(
     )
     return [
         IntervalBand(
-            start=_naive_utc(interval_start).replace(second=0, microsecond=0),
-            end=_naive_utc(interval_end),
+            start=naive_utc(interval_start).replace(second=0, microsecond=0),
+            end=naive_utc(interval_end),
             price_low=price_low,
             price_high=price_high,
             spike_status=spike_status,
@@ -61,5 +61,5 @@ def interval_bands(
 
 
 def band_at(ts: datetime.datetime, bands: Sequence[IntervalBand]) -> IntervalBand | None:
-    ts = _naive_utc(ts)
+    ts = naive_utc(ts)
     return next((band for band in bands if band.start <= ts < band.end), None)

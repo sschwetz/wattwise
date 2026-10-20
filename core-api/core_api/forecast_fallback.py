@@ -6,16 +6,10 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from core_api.datetime_utils import naive_utc
 from core_api.models.pricing import PriceChannel, PriceInterval
 
 FallbackRange = tuple[datetime.datetime, datetime.datetime]
-
-
-def _naive_utc(value: datetime.datetime) -> datetime.datetime:
-    """SQLite hands datetimes back naive (always UTC); callers pass aware ones."""
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
 
 
 def fallback_ranges(
@@ -44,11 +38,11 @@ def fallback_ranges(
         PriceInterval.price_low.is_(None),
     )
     return [
-        (_naive_utc(interval_start).replace(second=0, microsecond=0), _naive_utc(interval_end))
+        (naive_utc(interval_start).replace(second=0, microsecond=0), naive_utc(interval_end))
         for interval_start, interval_end in db.execute(stmt)
     ]
 
 
 def in_fallback(ts: datetime.datetime, ranges: Sequence[FallbackRange]) -> bool:
-    ts = _naive_utc(ts)
+    ts = naive_utc(ts)
     return any(range_start <= ts < range_end for range_start, range_end in ranges)

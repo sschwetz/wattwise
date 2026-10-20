@@ -8,11 +8,10 @@ import { InstabilitySummary } from "./InstabilitySummary";
 import {
   buildPriceChartData,
   findInstabilityWindows,
-  type InstabilityLevel,
   mergeImportExportPrices,
   type PriceReading,
   type TodayPricingPoint,
-  windowSpanWithin,
+  visibleInstabilitySpans,
 } from "./priceChart";
 import { type ChartZoom, useChartZoom } from "./useChartZoom";
 import { useTodayPrices } from "./useHistoricalData";
@@ -105,13 +104,6 @@ function RangeLegendSwatch() {
   );
 }
 
-/** Spikes get the danger color; a possible spike or a wide band gets amber. */
-const WINDOW_TINTS: Record<InstabilityLevel, string> = {
-  spike: "var(--color-danger)",
-  potential: "var(--color-solar)",
-  "wide-band": "var(--color-solar)",
-};
-
 function buildTodayPricingChartData(importPrices: PriceReading[], exportPrices: PriceReading[]): TodayPricingPoint[] {
   const now = new Date();
   return mergeImportExportPrices(buildPriceChartData(importPrices, now), buildPriceChartData(exportPrices, now));
@@ -150,13 +142,14 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
   const axisTickPlan = useMemo(() => buildAxisTickPlan(chartData, range), [chartData, range]);
   // The summary covers the whole day; the tinted areas only what is on screen.
   const instabilityWindows = useMemo(() => findInstabilityWindows(fullChartData), [fullChartData]);
-  const visibleSpans = useMemo(() => {
-    const timestamps = chartData.map((p) => p.ts);
-    return instabilityWindows.flatMap((window) => {
-      const span = windowSpanWithin(window, timestamps);
-      return span ? [{ ...span, level: window.level }] : [];
-    });
-  }, [instabilityWindows, chartData]);
+  const visibleSpans = useMemo(
+    () =>
+      visibleInstabilitySpans(
+        instabilityWindows,
+        chartData.map((p) => p.ts),
+      ),
+    [instabilityWindows, chartData],
+  );
 
   return (
     <div className="rounded-xl border border-line bg-surface p-5">
@@ -206,7 +199,7 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
               key={span.x1}
               x1={span.x1}
               x2={span.x2}
-              fill={WINDOW_TINTS[span.level]}
+              fill={span.level === "spike" ? "var(--color-danger)" : "var(--color-solar)"}
               fillOpacity={0.15}
               stroke="none"
               ifOverflow="visible"

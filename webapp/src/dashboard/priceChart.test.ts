@@ -6,6 +6,7 @@ import {
   mergeImportExportPrices,
   type SpikeStatus,
   type TodayPricingPoint,
+  visibleInstabilitySpans,
   windowSpanWithin,
 } from "./priceChart";
 
@@ -328,5 +329,30 @@ describe("windowSpanWithin", () => {
   it("returns null when no chart timestamp falls inside the window", () => {
     expect(windowSpanWithin({ from: 10 * STEP, to: 12 * STEP, level: "spike" }, tss)).toBeNull();
     expect(windowSpanWithin({ from: 0, to: STEP, level: "spike" }, [])).toBeNull();
+  });
+});
+
+describe("visibleInstabilitySpans", () => {
+  const STEP = 300_000;
+  const tss = [0, STEP, 2 * STEP, 3 * STEP];
+
+  it("keeps each visible window's level and drops windows with nothing on screen", () => {
+    const spans = visibleInstabilitySpans(
+      [
+        { from: STEP, to: 2 * STEP, level: "spike" },
+        { from: 20 * STEP, to: 21 * STEP, level: "potential" },
+        { from: 2 * STEP, to: 3 * STEP, level: "wide-band" },
+      ],
+      tss,
+    );
+
+    expect(spans).toEqual([
+      { x1: STEP, x2: 2 * STEP, level: "spike" },
+      { x1: 2 * STEP, x2: 3 * STEP, level: "wide-band" },
+    ]);
+  });
+
+  it("returns nothing for no windows", () => {
+    expect(visibleInstabilitySpans([], tss)).toEqual([]);
   });
 });

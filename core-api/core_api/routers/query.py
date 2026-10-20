@@ -176,9 +176,9 @@ def _price_reading_out(
         metric=reading.channel.value,
         value=float(value),
         forecast_fallback=in_fallback(reading.ts, fallbacks),
-        price_low=None if band is None or band.price_low is None else float(band.price_low),
-        price_high=None if band is None or band.price_high is None else float(band.price_high),
-        spike_status=SpikeStatus.NONE if band is None else band.spike_status,
+        price_low=band.price_low if band else None,
+        price_high=band.price_high if band else None,
+        spike_status=band.spike_status if band else SpikeStatus.NONE,
     )
 
 
