@@ -15,10 +15,12 @@ logger = logging.getLogger("amber_pricing_collector")
 
 CHILD_JOIN_TIMEOUT_SECONDS = 60
 
-# 25h of 5-minute intervals: Amber's "current prices" endpoint only forecasts
-# `next` intervals ahead of now, and the webapp's today-pricing chart wants
-# forecast coverage through the rest of the calendar day no matter what time
-# of day this poll happens to run. Comfortably under Amber's combined
+# Amber's "current prices" endpoint only forecasts `next` intervals ahead of
+# now, and the webapp's today-pricing chart wants forecast coverage through the
+# rest of the calendar day no matter what time of day this poll happens to run.
+# At resolution=5 Amber returns 13 five-minute intervals followed by 30-minute
+# intervals out to about 24 hours (~59 per channel), so 300 is more than it
+# serves and acts as "everything available". Well under Amber's combined
 # previous+next cap of 2048.
 FORECAST_INTERVALS = 300
 

@@ -21,6 +21,9 @@ def test_fetch_current_prices_sends_bearer_auth_and_params():
     assert route.calls[0].request.headers["Authorization"] == f"Bearer {AMBER_API_KEY}"
     assert route.calls[0].request.url.params["previous"] == "1"
     assert route.calls[0].request.url.params["next"] == "12"
+    # Without it Amber returns the site's billing interval (5 or 30 min), and the
+    # interval-count constants in live_poll assume 5-minute intervals.
+    assert route.calls[0].request.url.params["resolution"] == "5"
     assert result == [{"channelType": "general"}]
 
 

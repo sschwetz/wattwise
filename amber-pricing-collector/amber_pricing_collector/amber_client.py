@@ -8,11 +8,11 @@ AMBER_BASE_URL = "https://api.amber.com.au/v1"
 
 
 def fetch_current_prices(
-    amber_site_id: str, amber_api_key: str, *, previous: int = 1, next_count: int = 12
+    amber_site_id: str, amber_api_key: str, *, previous: int = 1, next_count: int = 12, resolution: int = 5
 ) -> list[dict]:
     response = httpx.get(
         f"{AMBER_BASE_URL}/sites/{amber_site_id}/prices/current",
-        params={"previous": previous, "next": next_count},
+        params={"previous": previous, "next": next_count, "resolution": resolution},
         headers={"Authorization": f"Bearer {amber_api_key}"},
         timeout=10,
     )
