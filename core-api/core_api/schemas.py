@@ -392,6 +392,7 @@ class ExportAdjustmentWindowCreate(BaseModel):
     start_time: datetime.time
     end_time: datetime.time
     adjustment_c_per_kwh: decimal.Decimal
+    daily_allowance_kwh: decimal.Decimal = Field(default=decimal.Decimal("0"), ge=0, max_digits=10, decimal_places=4)
 
 
 class ExportAdjustmentWindowOut(ExportAdjustmentWindowCreate):

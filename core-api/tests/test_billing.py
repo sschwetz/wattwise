@@ -86,6 +86,37 @@ def test_create_export_adjustment_window(client, app_and_db_url):
     assert len(listed.json()) == 1
 
 
+def test_create_export_adjustment_window_with_daily_allowance(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = make_owner_and_site(db_url)
+    tariff = client.post(
+        f"/api/v1/sites/{site_id}/tariffs",
+        json={"effective_from": "2026-01-01T00:00:00Z", "service_availability_c_per_day": "80.5"},
+        headers=auth(owner_id),
+    )
+    tariff_id = tariff.json()["id"]
+    url = f"/api/v1/sites/{site_id}/tariffs/{tariff_id}/export-adjustments"
+    body = {
+        "label": "Export fee",
+        "months": [1],
+        "days_of_week": [0],
+        "start_time": "00:00:00",
+        "end_time": "23:59:00",
+        "adjustment_c_per_kwh": "-3.0",
+    }
+
+    with_allowance = client.post(url, json={**body, "daily_allowance_kwh": "10"}, headers=auth(owner_id))
+    assert with_allowance.status_code == 201, with_allowance.text
+    assert with_allowance.json()["daily_allowance_kwh"] == "10.0000"
+
+    without = client.post(url, json=body, headers=auth(owner_id))
+    assert without.status_code == 201, without.text
+    assert without.json()["daily_allowance_kwh"] == "0.0000"
+
+    negative = client.post(url, json={**body, "daily_allowance_kwh": "-1"}, headers=auth(owner_id))
+    assert negative.status_code == 422
+
+
 def test_create_export_adjustment_window_for_tariff_from_another_site_is_404(client, app_and_db_url):
     _, db_url = app_and_db_url
     owner_id, site_id = make_owner_and_site(db_url)
