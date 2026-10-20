@@ -27,3 +27,16 @@ def test_sqlite_engine_still_enforces_foreign_keys(tmp_path):
     engine = make_engine(f"sqlite:///{tmp_path}/fk.db")
 
     assert _pragma(engine, "foreign_keys") == 1
+
+
+def test_sqlite_file_engine_has_room_for_a_burst_of_chart_queries(tmp_path):
+    engine = make_engine(f"sqlite:///{tmp_path}/pool.db")
+
+    # The webapp fires ~15 chart queries at once; with the default 5+10 pool a
+    # slow disk made the extras wait out the 30s pool timeout and return 500.
+    assert engine.pool.size() >= 20
+    assert engine.pool._max_overflow >= 20
+
+
+def test_in_memory_sqlite_engine_still_builds():
+    make_engine("sqlite://")
