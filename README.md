@@ -24,7 +24,7 @@ Documentation for owners, maintainers and AI agents is in [`docs/`](docs/README.
 
 ## Start a development instance
 
-You need Python 3.11 or later with [uv](https://docs.astral.sh/uv/), and Node 22 or later. The steps below run core-api and the webapp natively with hot reload. Docker is only needed for the full-stack option further down.
+You need Python 3.11 or later with [uv](https://docs.astral.sh/uv/), and Node 24 or later. The steps below run core-api and the webapp natively with hot reload. Docker is only needed for the full-stack option further down.
 
 ### 1. Start core-api
 
