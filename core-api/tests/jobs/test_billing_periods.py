@@ -112,16 +112,14 @@ def test_current_billing_period_start_before_first_cycle_starts(site):
     assert current_billing_period_start(cycles, "UTC", datetime.datetime(2026, 1, 1, tzinfo=UTC)) is None
 
 
-def test_current_billing_period_start_falls_back_to_cycle_start_before_first_anchor_day(site):
+def test_current_billing_period_start_is_previous_anchor_day_before_first_anchor_day(site):
     """A cycle created mid-month (anchor_day=1) hasn't reached its first
-    anchor day yet -- billing_periods_for_site models no period there at all
-    (by design: a partial period before the first anchor isn't modeled).
-    The running-cost tile should still show something for that stretch,
-    using the cycle's own effective_from rather than 404ing until the
-    anchor day arrives."""
+    anchor day yet, and billing_periods_for_site models no period there. The
+    running-cost tile still shows that stretch, starting on the anchor day
+    before effective_from (the 1st), not on the day the cycle was added."""
     cycles = [cycle(site.id, datetime.datetime(2026, 10, 7, 9, 29, 44, tzinfo=UTC), anchor_day=1, cycle_months=1)]
     start = current_billing_period_start(cycles, "Australia/Sydney", datetime.datetime(2026, 10, 12, tzinfo=UTC))
-    assert start == datetime.datetime(2026, 10, 7, 9, 29, 44, tzinfo=UTC)
+    assert start == datetime.datetime(2026, 9, 30, 14, 0, tzinfo=UTC)  # 1 Oct 00:00 Sydney, not the 7th
 
 
 def test_current_billing_period_start_after_cycle_ends_with_no_successor(site):
@@ -134,12 +132,12 @@ def test_current_billing_period_start_after_cycle_ends_with_no_successor(site):
     assert start is None
 
 
-def test_partial_first_period_runs_from_effective_from_to_the_first_anchor_day(site):
+def test_partial_first_period_runs_from_the_previous_anchor_day_to_the_first_anchor_day(site):
     effective_from = datetime.datetime(2026, 10, 7, 9, 29, 44, tzinfo=UTC)
     cycles = [cycle(site.id, effective_from, anchor_day=1, cycle_months=1)]
     period = partial_first_period(cycles, "UTC", datetime.datetime(2026, 10, 14, tzinfo=UTC))
     assert period is not None
-    assert period.start == effective_from
+    assert period.start == datetime.datetime(2026, 10, 1, tzinfo=UTC)
     assert period.end == datetime.datetime(2026, 11, 1, tzinfo=UTC)
 
 
@@ -151,4 +149,4 @@ def test_partial_first_period_is_none_once_the_first_anchor_day_has_passed(site)
 def test_partial_first_period_is_none_without_cycles_or_before_the_cycle_starts(site):
     assert partial_first_period([], "UTC", datetime.datetime(2026, 10, 14, tzinfo=UTC)) is None
     cycles = [cycle(site.id, datetime.datetime(2026, 10, 7, tzinfo=UTC), anchor_day=1, cycle_months=1)]
-    assert partial_first_period(cycles, "UTC", datetime.datetime(2026, 10, 1, tzinfo=UTC)) is None
+    assert partial_first_period(cycles, "UTC", datetime.datetime(2026, 9, 30, tzinfo=UTC)) is None

@@ -53,18 +53,33 @@ def _first_anchor_midnight(first_cycle: BillingCycle, tz: zoneinfo.ZoneInfo) -> 
     return local_midnight(start_date, tz)
 
 
+def _previous_anchor_midnight(first_cycle: BillingCycle, tz: zoneinfo.ZoneInfo) -> datetime.datetime:
+    """Local midnight of the anchor day on or before `first_cycle`'s
+    effective_from, e.g. the 1st of the month for anchor day 1, even when the
+    cycle was added on the 7th."""
+    first_local = as_utc(first_cycle.effective_from).astimezone(tz)
+    year, month = first_local.year, first_local.month
+    start_date = _anchor_date(year, month, first_cycle.anchor_day)
+    if start_date > first_local.date():
+        year, month = _add_months(year, month, -1)
+        start_date = _anchor_date(year, month, first_cycle.anchor_day)
+    return local_midnight(start_date, tz)
+
+
 def partial_first_period(
     cycles: list[BillingCycle], site_timezone: str, now: datetime.datetime
 ) -> BillingPeriod | None:
-    """The partial period before the first anchor day: from the earliest
-    cycle's effective_from (the day it was submitted) to that first anchor
-    day. Only returned while `now` is inside it, i.e. the cycle is active but
-    billing_periods_for_site has no period yet. None otherwise."""
+    """The period that contains the earliest cycle's effective_from: from the
+    anchor day on or before it (so anchor day 1 starts on the 1st, not the day
+    the cycle was added) to the first anchor day after it. Only returned while
+    `now` is inside it, i.e. the cycle is active but billing_periods_for_site
+    has no period yet. None otherwise."""
     if not cycles:
         return None
     first_cycle = min(cycles, key=lambda c: as_utc(c.effective_from))
-    start = as_utc(first_cycle.effective_from)
-    end = _first_anchor_midnight(first_cycle, zoneinfo.ZoneInfo(site_timezone)).astimezone(datetime.timezone.utc)
+    tz = zoneinfo.ZoneInfo(site_timezone)
+    start = _previous_anchor_midnight(first_cycle, tz).astimezone(datetime.timezone.utc)
+    end = _first_anchor_midnight(first_cycle, tz).astimezone(datetime.timezone.utc)
     if not start <= now < end:
         return None
     return BillingPeriod(start=start, end=end, cycle=first_cycle)
@@ -102,7 +117,9 @@ def current_billing_period_bounds(
     if active_cycle is None:
         return None
     partial = partial_first_period(cycles, site_timezone, now)
-    return as_utc(active_cycle.effective_from), partial.end if partial is not None else now
+    if partial is not None:
+        return partial.start, partial.end
+    return as_utc(active_cycle.effective_from), now
 
 
 def current_billing_period_start(
