@@ -160,6 +160,12 @@ docker compose exec core-api cat /data/initial-admin-password.txt
 docker compose exec core-api rm /data/initial-admin-password.txt
 ```
 
+If you don't delete the file, a daily cron job removes it once it is 5 days old, then removes its own cron entry. Install the job once on the Docker host, after the first start:
+
+```sh
+python3 deploy/expire_admin_password.py install
+```
+
 ### 3. Update
 
 Back up first (see [`docs/operations.md`](docs/operations.md#backups)), then bump `WATTWISE_VERSION` if you pinned one and run:
