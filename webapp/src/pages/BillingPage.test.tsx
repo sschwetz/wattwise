@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +70,7 @@ const EXPORT_ADJUSTMENT = {
   start_time: "10:00:00",
   end_time: "15:00:00",
   adjustment_c_per_kwh: "5",
+  daily_allowance_kwh: "0.0000",
 };
 
 const MONTHLY_FEE_DISCOUNT = {
@@ -294,6 +295,73 @@ describe("BillingPage", () => {
     expect(item.closest("li")).toHaveTextContent(/-3\.00c\/kWh/);
   });
 
+  it("renders an export adjustment window's daily allowance", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/api/v1/sites/7/tariffs") {
+        return Promise.resolve([ACTIVE_TARIFF]);
+      }
+      if (path === "/api/v1/sites/7/tariffs/1/export-adjustments") {
+        return Promise.resolve([
+          { ...EXPORT_ADJUSTMENT, label: "Export fee", adjustment_c_per_kwh: "-3", daily_allowance_kwh: "10.0000" },
+        ]);
+      }
+      if (path === "/api/v1/sites/7/billing-cycle") {
+        return Promise.resolve([{ id: 1, site_id: 7, effective_from: "2026-01-01T00:00:00Z", effective_to: null, cycle_months: 1, anchor_day: 1 }]);
+      }
+      return Promise.resolve([]);
+    });
+    renderPage();
+    const item = await screen.findByText("Export fee");
+    expect(item.closest("li")).toHaveTextContent(/10 kWh\/day allowance/);
+    // The note depends on the cycles response, so wait for the request and let
+    // its result render before checking the note is absent.
+    await waitFor(() => expect(vi.mocked(apiFetch)).toHaveBeenCalledWith("/api/v1/sites/7/billing-cycle"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByText(/allowance is ignored/)).not.toBeInTheDocument();
+  });
+
+  it("warns that an allowance is ignored while no billing cycle is set", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/api/v1/sites/7/tariffs") {
+        return Promise.resolve([ACTIVE_TARIFF]);
+      }
+      if (path === "/api/v1/sites/7/tariffs/1/export-adjustments") {
+        return Promise.resolve([{ ...EXPORT_ADJUSTMENT, daily_allowance_kwh: "10.0000" }]);
+      }
+      return Promise.resolve([]);
+    });
+    renderPage();
+    expect(await screen.findByText(/allowance is ignored until you set a billing cycle/i)).toBeInTheDocument();
+  });
+
+  it("sends the daily allowance when creating an export adjustment window", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/api/v1/sites/7/tariffs") {
+        return Promise.resolve([ACTIVE_TARIFF]);
+      }
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByText(/95\.00c\/day/);
+    await userEvent.type(screen.getByPlaceholderText("Adjustment label"), "Export fee");
+    await userEvent.click(within(screen.getByRole("group", { name: "Export months" })).getByLabelText("Jan"));
+    await userEvent.click(within(screen.getByRole("group", { name: "Export days of week" })).getByLabelText("Mon"));
+    await userEvent.type(screen.getByPlaceholderText("Export start time (HH:MM)"), "00:00");
+    await userEvent.type(screen.getByPlaceholderText("Export end time (HH:MM)"), "23:59");
+    await userEvent.type(screen.getByPlaceholderText("Adjustment (+incentive / -disincentive, cents/kWh)"), "-3");
+    await userEvent.type(screen.getByPlaceholderText("Daily allowance (kWh, 0 = none)"), "10");
+    await userEvent.click(screen.getByText("Add export adjustment"));
+    const postCall = vi
+      .mocked(apiFetch)
+      .mock.calls.find(
+        ([path, options]) =>
+          path === "/api/v1/sites/7/tariffs/1/export-adjustments" && options?.method === "POST",
+      );
+    expect(JSON.parse(String(postCall?.[1]?.body)).daily_allowance_kwh).toBe(10);
+  });
+
   it("creates an export adjustment window under an existing tariff", async () => {
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path === "/api/v1/sites/7/tariffs") {
@@ -337,6 +405,7 @@ describe("BillingPage", () => {
       start_time: "10:00",
       end_time: "15:00",
       adjustment_c_per_kwh: 5,
+      daily_allowance_kwh: 0,
     });
   });
 

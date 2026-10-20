@@ -9,7 +9,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core_api.jobs.billing_periods import billing_period_days, billing_periods_for_site, effective_billing_cycles_for_site
+from core_api.jobs.billing_periods import BillingPeriod, billing_period_days, billing_periods_for_site, effective_billing_cycles_for_site
 from core_api.jobs.demand_config import (
     conditional_credit_windows_by_tariff,
     credit_window_applies_on,
@@ -23,7 +23,8 @@ from core_api.jobs.demand_config import (
     tariff_effective_at,
     total_export_adjustment_c_per_kwh,
 )
-from core_api.models.billing import ConditionalCreditWindow, SiteTariff
+from core_api.export_allowance_data import allowance_cost_deltas, period_containing, periods_for_allowance_windows
+from core_api.models.billing import ConditionalCreditWindow, ExportAdjustmentWindow, SiteTariff
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
@@ -360,6 +361,24 @@ def partial_period_discounts_c(
     return sum(covering.values(), decimal.Decimal("0"))
 
 
+def _plain_export_adjustment_c_per_kwh(
+    tariffs: list[SiteTariff],
+    windows_by_tariff: dict[int, list[ExportAdjustmentWindow]],
+    minute_utc: datetime.datetime,
+    tz: zoneinfo.ZoneInfo,
+    periods: list[BillingPeriod],
+) -> decimal.Decimal:
+    """Adjustment for windows charged per exported kWh. Windows with an
+    allowance are left out when a billing period covers the minute, since
+    allowance_cost_deltas charges them instead."""
+    tariff = tariff_effective_at(tariffs, minute_utc)
+    if tariff is None:
+        return decimal.Decimal("0")
+    windows = windows_by_tariff.get(tariff.id, [])
+    skip_allowance = period_containing(periods, minute_utc) is not None
+    return total_export_adjustment_c_per_kwh(windows, minute_utc.astimezone(tz), skip_allowance=skip_allowance)
+
+
 def _minute_costs(
     db: Session,
     site_id: int,
@@ -368,6 +387,7 @@ def _minute_costs(
     method: Literal["net", "gross"],
     site_timezone: str,
     tariffs: list[SiteTariff],
+    now: datetime.datetime,
 ) -> tuple[list[_MinuteCost], int]:
     """Per-minute cost rows plus a count of minutes skipped for missing prices.
     Shared by compute_cost (summed into one total) and compute_cost_series
@@ -377,11 +397,15 @@ def _minute_costs(
     _service_charge_rows), so the usage chart compute_cost_series feeds
     isn't skewed by a lump-sum spike at each day's midnight bucket.
     `tariffs` is loaded once by the caller and shared with
-    _service_charge_rows, rather than each querying it separately."""
+    _service_charge_rows, rather than each querying it separately. `now` clips
+    the allowance refunds booked at future midnights."""
     energy_source_ids = _source_ids(db, site_id, SourceKind.ENERGY)
     pricing_source_ids = _source_ids(db, site_id, SourceKind.PRICING)
     export_windows_by_tariff = export_adjustment_windows_by_tariff(db, site_id)
     tz = site_tz(site_timezone)
+    periods = periods_for_allowance_windows(
+        db, site_id, export_windows_by_tariff, site_timezone, start, end
+    )
 
     import_metric = EnergyMetric.GRID_IMPORT_W if method == "net" else EnergyMetric.CONSUMPTION_W
     export_metric = EnergyMetric.GRID_EXPORT_W if method == "net" else EnergyMetric.PRODUCTION_W
@@ -412,12 +436,9 @@ def _minute_costs(
         if import_w:
             cost_c += import_kwh * buy_price
         if export_w:
-            adjustment_c_per_kwh = decimal.Decimal("0")
-            tariff = tariff_effective_at(tariffs, minute_utc)
-            if tariff is not None:
-                at_local = minute_utc.astimezone(tz)
-                windows = export_windows_by_tariff.get(tariff.id, [])
-                adjustment_c_per_kwh = total_export_adjustment_c_per_kwh(windows, at_local)
+            adjustment_c_per_kwh = _plain_export_adjustment_c_per_kwh(
+                tariffs, export_windows_by_tariff, minute_utc, tz, periods
+            )
             # Amber stores the feed-in (sell) price with its raw sign -- negative
             # in the normal case, since the customer is paid to export (positive
             # only during a negative-FiT event). Adding it (not subtracting) is
@@ -428,6 +449,12 @@ def _minute_costs(
             cost_c += export_kwh * (sell_price - adjustment_c_per_kwh)
 
         rows.append(_MinuteCost(ts=minute_utc, cost_c=cost_c, import_kwh=import_kwh, export_kwh=export_kwh))
+
+    zero = decimal.Decimal("0")
+    for ts, delta_c in allowance_cost_deltas(
+        db, site_id, periods, start, end, site_timezone, tariffs, export_windows_by_tariff, now
+    ):
+        rows.append(_MinuteCost(ts=ts, cost_c=delta_c, import_kwh=zero, export_kwh=zero))
 
     return rows, minutes_missing_price
 
@@ -490,7 +517,9 @@ def compute_cost(
     real_now_utc = as_utc(now) if now is not None else datetime.datetime.now(datetime.timezone.utc)
     now_utc = real_now_utc if prorate_fees else None
     tariffs = site_tariffs_for_site(db, site_id)
-    rows, minutes_missing_price = _minute_costs(db, site_id, start, end, method, site_timezone, tariffs)
+    rows, minutes_missing_price = _minute_costs(
+        db, site_id, start, end, method, site_timezone, tariffs, real_now_utc
+    )
 
     total_cost_c = decimal.Decimal("0")
     total_import_kwh = decimal.Decimal("0")
@@ -545,6 +574,7 @@ def compute_cost_series(
     method: Literal["net", "gross"],
     bucket: CostBucket,
     site_timezone: str,
+    now: datetime.datetime | None = None,
 ) -> list[CostSeriesPoint]:
     """Same per-minute cost math as compute_cost, bucketed into a time series
     instead of collapsed into one total -- for charting cost as a trend.
@@ -556,8 +586,9 @@ def compute_cost_series(
     whichever buckets fall inside the DemandWindow pattern that earned
     them, not shown at all until the billing period closes and the charge
     is no longer an estimate."""
+    now_utc = as_utc(now) if now is not None else datetime.datetime.now(datetime.timezone.utc)
     tariffs = site_tariffs_for_site(db, site_id)
-    rows, _minutes_missing_price = _minute_costs(db, site_id, start, end, method, site_timezone, tariffs)
+    rows, _minutes_missing_price = _minute_costs(db, site_id, start, end, method, site_timezone, tariffs, now_utc)
 
     cost_by_bucket: dict[datetime.datetime, decimal.Decimal] = {}
     for row in rows:

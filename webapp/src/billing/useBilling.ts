@@ -48,6 +48,9 @@ export interface ExportAdjustmentWindow {
   // Serialized by core-api as a decimal string, not a JSON number. Signed:
   // positive is an export incentive, negative is a disincentive.
   adjustment_c_per_kwh: string;
+  // Decimal string. kWh of exports per day, accumulating through the billing
+  // period, that are exempt from the adjustment. "0.0000" means no allowance.
+  daily_allowance_kwh: string;
 }
 
 export interface ConditionalCreditWindow {
@@ -109,6 +112,7 @@ interface CreateExportAdjustmentWindowInput {
   start_time: string;
   end_time: string;
   adjustment_c_per_kwh: number;
+  daily_allowance_kwh: number;
 }
 
 interface CreateConditionalCreditWindowInput {

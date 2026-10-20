@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly_fee_discounts_c, partial_period_discounts_c
 from core_api.deps import get_db_session, require_site_access
 from core_api.errors import AppError
+from core_api.export_allowance_data import marginal_adjustment_fn
 from core_api.forecast_fallback import FallbackRange, fallback_ranges, in_fallback
 from core_api.jobs.billing_periods import (
     current_billing_period_bounds,
@@ -20,7 +21,6 @@ from core_api.jobs.billing_periods import (
     partial_first_period,
 )
 from core_api.jobs.demand_config import (
-    adjusted_export_price,
     export_adjustment_windows_by_tariff,
     first_matching_demand_window,
     site_tariffs_for_site,
@@ -137,15 +137,25 @@ def _price_rows(db: Session, source_ids: list[int], channel: PriceChannel, start
     return sorted(rows, key=lambda r: r.ts)
 
 
-def _displayed_price_fn(db: Session, site: Site, channel: PriceChannel) -> Callable[[PriceReading], decimal.Decimal]:
+def _displayed_price_fn(
+    db: Session, site: Site, channel: PriceChannel, start: datetime.datetime, end: datetime.datetime
+) -> Callable[[PriceReading], decimal.Decimal]:
     """The price the dashboard shows for a reading. The export price (e.g. the
     "today's pricing" chart) must reflect any configured incentive/disincentive,
-    the same as the $ cost totals already do -- not just the raw Amber feed."""
+    the same as the $ cost totals already do -- not just the raw Amber feed.
+
+    Amber stores the feed-in price with its raw sign (negative when paid), so
+    the adjustment is subtracted: a positive incentive pushes the price further
+    negative (more revenue) and a negative disincentive pulls it back up. For a
+    window with a daily allowance this is the marginal price: the adjustment
+    shows only once exports so far have used up the allowance so far."""
     if channel != PriceChannel.SELL:
         return lambda r: decimal.Decimal(str(r.value))
     tariffs = site_tariffs_for_site(db, site.id)
     windows_by_tariff = export_adjustment_windows_by_tariff(db, site.id)
-    return lambda r: adjusted_export_price(decimal.Decimal(str(r.value)), tariffs, windows_by_tariff, r.ts, site.timezone)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    adjustment_at = marginal_adjustment_fn(db, site.id, site.timezone, tariffs, windows_by_tariff, start, end, now)
+    return lambda r: decimal.Decimal(str(r.value)) - adjustment_at(r.ts)
 
 
 @router.get("/prices", response_model=list[PriceReadingOut])
@@ -163,7 +173,7 @@ def get_prices(
 
     bands = interval_bands(db, source_ids, channel, start, end)
 
-    value_of = _displayed_price_fn(db, site, channel)
+    value_of = _displayed_price_fn(db, site, channel, start, end)
     return [_price_reading_out(r, value_of(r), fallbacks, bands) for r in rows]
 
 

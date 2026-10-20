@@ -133,16 +133,27 @@ def export_adjustment_windows_by_tariff(db: Session, site_id: int) -> dict[int, 
     return _windows_by_tariff(db, site_id, ExportAdjustmentWindow)
 
 
+def in_export_window_pattern(window: ExportAdjustmentWindow, at_local: datetime.datetime) -> bool:
+    """Public wrapper over _in_time_pattern for export_allowance_data.py."""
+    return _in_time_pattern(window, at_local)
+
+
 def total_export_adjustment_c_per_kwh(
-    windows: list[ExportAdjustmentWindow], at_local: datetime.datetime
+    windows: list[ExportAdjustmentWindow], at_local: datetime.datetime, skip_allowance: bool = False
 ) -> decimal.Decimal:
     """Sum of adjustment_c_per_kwh for every window in `windows` (already
     filtered to one tariff) whose pattern covers the local wall-clock
     instant `at_local`. Windows stack -- unlike a DemandWindow's 'first
     match wins' -- since each is an independent price adjustment rather
-    than a single applicable rate."""
+    than a single applicable rate.
+
+    `skip_allowance` leaves out windows with a daily allowance. The caller
+    sets it when a billing period covers the instant, because those windows
+    are then charged through export_allowance_data instead."""
     total = decimal.Decimal("0")
     for window in windows:
+        if skip_allowance and window.daily_allowance_kwh > 0:
+            continue
         if _in_time_pattern(window, at_local):
             total += window.adjustment_c_per_kwh
     return total
@@ -245,29 +256,6 @@ def demand_window_for_charge(db: Session, charge: DemandCharge, site_timezone: s
         first_matching_demand_window(db, charge.site_id, as_utc(charge.peak_interval_start), site_timezone)
         or configured_window
     )
-
-
-def adjusted_export_price(
-    sell_price: decimal.Decimal,
-    tariffs: list[SiteTariff],
-    windows_by_tariff: dict[int, list[ExportAdjustmentWindow]],
-    at: datetime.datetime,
-    site_timezone: str,
-) -> decimal.Decimal:
-    """The export (feed-in) price at `at`, adjusted by any matching
-    ExportAdjustmentWindow -- same sign convention cost.py's _minute_costs
-    uses: Amber's raw feed-in sign is negative-when-paid, so subtracting a
-    positive incentive pushes the price further negative (more revenue),
-    and subtracting a negative disincentive pulls it back up. Used by both
-    the $ cost calculation and the displayed price series (e.g. the
-    dashboard's 'today's pricing' chart), so a configured incentive shows
-    up everywhere the export price is shown, not just in cost totals."""
-    tariff = tariff_effective_at(tariffs, as_utc(at))
-    if tariff is None:
-        return sell_price
-    at_local = as_utc(at).astimezone(site_tz(site_timezone))
-    windows = windows_by_tariff.get(tariff.id, [])
-    return sell_price - total_export_adjustment_c_per_kwh(windows, at_local)
 
 
 def energy_source_ids_for_site(db: Session, site_id: int) -> list[int]:

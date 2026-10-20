@@ -85,6 +85,12 @@ class ExportAdjustmentWindow(Base):
     start_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
     end_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
     adjustment_c_per_kwh: Mapped[decimal.Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    # kWh of exports per day, accumulating through the billing period, that
+    # are exempt from adjustment_c_per_kwh. 0 means every exported kWh is
+    # adjusted. See export_allowance.py.
+    daily_allowance_kwh: Mapped[decimal.Decimal] = mapped_column(
+        Numeric(10, 4), nullable=False, default=decimal.Decimal("0"), server_default="0"
+    )
 
 
 class ConditionalCreditWindow(Base):

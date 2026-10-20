@@ -293,6 +293,84 @@ def test_get_prices_buy_channel_is_unaffected_by_export_adjustment(client, app_a
     assert body[0]["value"] == 30.0
 
 
+def seed_allowance_window(db_url: str, exported_kwh: int) -> tuple[int, int]:
+    """A UTC site with a 100-year billing period starting 2020-01-01 (so the
+    test cannot straddle a period boundary), one all-day window charging 3c/kWh
+    beyond 0.001 kWh/day (about 2.5 kWh accumulated by now), and `exported_kwh` kWh of
+    grid export 3 hours ago. Sell price readings at 1 hour ago and 1 hour ahead
+    are -10c."""
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="pq-allow-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    effective_from = datetime.datetime(2020, 1, 1, tzinfo=UTC)
+    pricing = Source(site_id=site.id, kind=SourceKind.PRICING, provider="amber", config={}, effective_from=effective_from)
+    energy = Source(site_id=site.id, kind=SourceKind.ENERGY, provider="envoy", config={}, effective_from=effective_from)
+    session.add_all([pricing, energy])
+    session.add(BillingCycle(site_id=site.id, effective_from=effective_from, cycle_months=1200, anchor_day=1))
+    tariff = SiteTariff(site_id=site.id, effective_from=effective_from, service_availability_c_per_day=decimal.Decimal("0"))
+    session.add(tariff)
+    session.commit()
+    session.add(
+        ExportAdjustmentWindow(
+            site_tariff_id=tariff.id,
+            label="Export fee",
+            months=list(range(1, 13)),
+            days_of_week=[0, 1, 2, 3, 4, 5, 6],
+            start_time=datetime.time(0, 0),
+            end_time=datetime.time.max,
+            adjustment_c_per_kwh=decimal.Decimal("-3"),
+            daily_allowance_kwh=decimal.Decimal("0.001"),
+        )
+    )
+    now = datetime.datetime.now(UTC).replace(second=0, microsecond=0)
+    for minute in range(exported_kwh):
+        ts = now - datetime.timedelta(hours=3) + datetime.timedelta(minutes=minute)
+        session.add(EnergyReading(source_id=energy.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=60000.0))
+    for offset_hours in (-1, 1):
+        ts = now + datetime.timedelta(hours=offset_hours)
+        session.add(PriceReading(pricing_source_id=pricing.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("-10.0")))
+    session.commit()
+    ids = (owner.id, site.id)
+    session.close()
+    return ids
+
+
+def _get_sell_prices(client, owner_id, site_id) -> list[float]:
+    now = datetime.datetime.now(UTC)
+    response = client.get(
+        f"/api/v1/sites/{site_id}/prices",
+        params={
+            "channel": "sell",
+            "start": (now - datetime.timedelta(hours=2)).isoformat(),
+            "end": (now + datetime.timedelta(hours=2)).isoformat(),
+        },
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    return [row["value"] for row in response.json()]
+
+
+def test_get_prices_sell_channel_applies_charge_once_the_allowance_is_used_up(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_allowance_window(db_url, exported_kwh=5)
+
+    # 5 kWh exported is past the allowance so far. Both the past reading and
+    # the future one (which assumes no further export) show -10 - (-3) = -7.
+    assert _get_sell_prices(client, owner_id, site_id) == [-7.0, -7.0]
+
+
+def test_get_prices_sell_channel_shows_the_raw_price_while_the_allowance_lasts(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_allowance_window(db_url, exported_kwh=1)
+
+    assert _get_sell_prices(client, owner_id, site_id) == [-10.0, -10.0]
+
+
 def seed_forecast_intervals(db_url: str) -> tuple[int, int]:
     """One settled interval and two forecast intervals on the buy channel: a
     banded forecast and an unbanded one (the fallback). Each has one reading
