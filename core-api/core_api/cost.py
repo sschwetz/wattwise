@@ -23,6 +23,7 @@ from core_api.jobs.demand_config import (
     tariff_effective_at,
     total_export_adjustment_c_per_kwh,
 )
+from core_api.export_allowance_data import allowance_cost_deltas, period_containing, periods_for_allowance_windows
 from core_api.models.billing import ConditionalCreditWindow, SiteTariff
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
@@ -360,6 +361,24 @@ def partial_period_discounts_c(
     return sum(covering.values(), decimal.Decimal("0"))
 
 
+def _plain_export_adjustment_c_per_kwh(
+    tariffs: list[SiteTariff],
+    windows_by_tariff: dict[int, list],
+    minute_utc: datetime.datetime,
+    tz: zoneinfo.ZoneInfo,
+    periods: list,
+) -> decimal.Decimal:
+    """Adjustment for windows charged per exported kWh. Windows with an
+    allowance are left out when a billing period covers the minute, since
+    allowance_cost_deltas charges them instead."""
+    tariff = tariff_effective_at(tariffs, minute_utc)
+    if tariff is None:
+        return decimal.Decimal("0")
+    windows = windows_by_tariff.get(tariff.id, [])
+    skip_allowance = period_containing(periods, minute_utc) is not None
+    return total_export_adjustment_c_per_kwh(windows, minute_utc.astimezone(tz), skip_allowance=skip_allowance)
+
+
 def _minute_costs(
     db: Session,
     site_id: int,
@@ -382,6 +401,9 @@ def _minute_costs(
     pricing_source_ids = _source_ids(db, site_id, SourceKind.PRICING)
     export_windows_by_tariff = export_adjustment_windows_by_tariff(db, site_id)
     tz = site_tz(site_timezone)
+    periods = periods_for_allowance_windows(
+        db, site_id, export_windows_by_tariff, site_timezone, start, end
+    )
 
     import_metric = EnergyMetric.GRID_IMPORT_W if method == "net" else EnergyMetric.CONSUMPTION_W
     export_metric = EnergyMetric.GRID_EXPORT_W if method == "net" else EnergyMetric.PRODUCTION_W
@@ -412,12 +434,9 @@ def _minute_costs(
         if import_w:
             cost_c += import_kwh * buy_price
         if export_w:
-            adjustment_c_per_kwh = decimal.Decimal("0")
-            tariff = tariff_effective_at(tariffs, minute_utc)
-            if tariff is not None:
-                at_local = minute_utc.astimezone(tz)
-                windows = export_windows_by_tariff.get(tariff.id, [])
-                adjustment_c_per_kwh = total_export_adjustment_c_per_kwh(windows, at_local)
+            adjustment_c_per_kwh = _plain_export_adjustment_c_per_kwh(
+                tariffs, export_windows_by_tariff, minute_utc, tz, periods
+            )
             # Amber stores the feed-in (sell) price with its raw sign -- negative
             # in the normal case, since the customer is paid to export (positive
             # only during a negative-FiT event). Adding it (not subtracting) is
@@ -428,6 +447,12 @@ def _minute_costs(
             cost_c += export_kwh * (sell_price - adjustment_c_per_kwh)
 
         rows.append(_MinuteCost(ts=minute_utc, cost_c=cost_c, import_kwh=import_kwh, export_kwh=export_kwh))
+
+    zero = decimal.Decimal("0")
+    for ts, delta_c in allowance_cost_deltas(
+        db, site_id, periods, start, end, site_timezone, tariffs, export_windows_by_tariff
+    ):
+        rows.append(_MinuteCost(ts=ts, cost_c=delta_c, import_kwh=zero, export_kwh=zero))
 
     return rows, minutes_missing_price
 

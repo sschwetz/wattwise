@@ -65,7 +65,8 @@ def _make_monthly_fee_discount(db, tariff, starts_at, ends_at, discounted_fee_c,
 
 
 def _make_export_adjustment(
-    db, tariff, adjustment_c_per_kwh="5.0", months=None, days_of_week=None, start="00:00", end="23:59"
+    db, tariff, adjustment_c_per_kwh="5.0", months=None, days_of_week=None, start="00:00", end="23:59",
+    daily_allowance_kwh="0",
 ) -> ExportAdjustmentWindow:
     window = ExportAdjustmentWindow(
         site_tariff_id=tariff.id,
@@ -75,6 +76,7 @@ def _make_export_adjustment(
         start_time=datetime.time.fromisoformat(start),
         end_time=datetime.time.fromisoformat(end),
         adjustment_c_per_kwh=decimal.Decimal(adjustment_c_per_kwh),
+        daily_allowance_kwh=decimal.Decimal(daily_allowance_kwh),
     )
     db.add(window)
     db.commit()
@@ -395,6 +397,117 @@ def test_compute_cost_series_includes_export_adjustment(db, site):
     )
 
     assert [p.cost_c for p in points] == [decimal.Decimal("-1.3")]
+
+
+def _add_export_kwh(db, energy_source, pricing_source, ts, kwh="1", with_price=True):
+    """One minute of grid export totalling `kwh` (60000 W for one minute is 1 kWh)."""
+    db.add(EnergyReading(source_id=energy_source.id, ts=ts, metric=EnergyMetric.GRID_EXPORT_W, value=float(kwh) * 60000))
+    if with_price:
+        db.add(PriceReading(pricing_source_id=pricing_source.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal("0")))
+    db.commit()
+
+
+def _allowance_setup(db, site, adjustment="-10", allowance="1", start="00:00", end="23:59", with_cycle=True):
+    """A Sydney billing period of 1 Jan - 1 Feb 2026 and one export window
+    charging 10c/kWh beyond 1 kWh/day (unless overridden)."""
+    energy_source = _make_energy_source(db, site)
+    pricing_source = _make_pricing_source(db, site)
+    if with_cycle:
+        _make_billing_cycle(db, site, sydney_local(2026, 1, 1))
+    tariff = _make_tariff(db, site, effective_from=sydney_local(2026, 1, 1), service_c_per_day="0.0")
+    _make_export_adjustment(
+        db, tariff, adjustment_c_per_kwh=adjustment, daily_allowance_kwh=allowance, start=start, end=end
+    )
+    return energy_source, pricing_source
+
+
+def _three_kwh_on_day_one(db, energy_source, pricing_source):
+    noon = sydney_local(2026, 1, 1, 12, 0)
+    for minute in range(3):
+        _add_export_kwh(db, energy_source, pricing_source, noon + datetime.timedelta(minutes=minute))
+
+
+def _cost(db, site, start, end) -> decimal.Decimal:
+    return compute_cost(db, site.id, start, end, method="net", site_timezone=site.timezone).total_cost_c
+
+
+def test_allowance_overage_is_charged_then_cancelled_by_later_days(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site)
+    _three_kwh_on_day_one(db, energy_source, pricing_source)
+    start = sydney_local(2026, 1, 1)
+
+    # Day 1: 3 kWh exported, 1 kWh allowed -> 2 kWh charged at 10c.
+    assert _cost(db, site, start, sydney_local(2026, 1, 2)) == decimal.Decimal("20")
+    # Day 2 adds 1 kWh of allowance, which cancels 1 kWh of the day-1 charge.
+    assert _cost(db, site, start, sydney_local(2026, 1, 3)) == decimal.Decimal("10")
+    # Day 3 cancels the rest.
+    assert _cost(db, site, start, sydney_local(2026, 1, 4)) == decimal.Decimal("0")
+
+
+def test_allowance_cost_over_a_sub_range_is_the_difference_of_its_ends(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site)
+    _three_kwh_on_day_one(db, energy_source, pricing_source)
+
+    # Charged kWh is 1 just before 12:02 and 1 at the start of 3 Jan: no change.
+    assert _cost(db, site, sydney_local(2026, 1, 1, 12, 2), sydney_local(2026, 1, 3)) == decimal.Decimal("0")
+
+
+def test_allowance_balance_resets_at_the_next_billing_period(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site)
+    last_day = sydney_local(2026, 1, 31, 12, 0)
+    for minute in range(40):
+        _add_export_kwh(db, energy_source, pricing_source, last_day + datetime.timedelta(minutes=minute))
+
+    # 40 kWh against 31 days of allowance leaves 9 kWh charged, and the
+    # new period on 1 Feb neither refunds nor repeats it.
+    assert _cost(db, site, sydney_local(2026, 1, 31), sydney_local(2026, 2, 3)) == decimal.Decimal("90")
+
+
+def test_allowance_window_without_a_billing_cycle_adjusts_every_kwh(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site, with_cycle=False)
+    _add_export_kwh(db, energy_source, pricing_source, sydney_local(2026, 1, 1, 12, 0))
+
+    assert _cost(db, site, sydney_local(2026, 1, 1), sydney_local(2026, 1, 2)) == decimal.Decimal("10")
+
+
+def test_allowance_only_counts_exports_inside_the_window_pattern(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site, start="10:00", end="15:00")
+    noon = sydney_local(2026, 1, 1, 12, 0)
+    _add_export_kwh(db, energy_source, pricing_source, noon)
+    _add_export_kwh(db, energy_source, pricing_source, noon + datetime.timedelta(minutes=1))
+    _add_export_kwh(db, energy_source, pricing_source, sydney_local(2026, 1, 1, 20, 0))
+
+    # 2 kWh inside the window, 1 allowed -> 1 kWh charged. The 20:00 export is outside it.
+    assert _cost(db, site, sydney_local(2026, 1, 1), sydney_local(2026, 1, 2)) == decimal.Decimal("10")
+
+
+def test_allowance_counts_export_minutes_that_have_no_sell_price(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site)
+    noon = sydney_local(2026, 1, 1, 12, 0)
+    for minute in range(2):
+        _add_export_kwh(db, energy_source, pricing_source, noon + datetime.timedelta(minutes=minute), with_price=False)
+
+    result = compute_cost(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 2), method="net", site_timezone=site.timezone
+    )
+
+    assert result.minutes_missing_price == 2
+    assert result.total_cost_c == decimal.Decimal("10")
+
+
+def test_compute_cost_series_shows_the_charge_and_the_midnight_refund(db, site):
+    energy_source, pricing_source = _allowance_setup(db, site)
+    _three_kwh_on_day_one(db, energy_source, pricing_source)
+
+    points = compute_cost_series(
+        db, site.id, sydney_local(2026, 1, 1), sydney_local(2026, 1, 3), method="net", bucket="hour",
+        site_timezone=site.timezone,
+    )
+
+    assert [(p.bucket_start, p.cost_c) for p in points] == [
+        (datetime.datetime(2026, 1, 1, 1, 0, tzinfo=UTC), decimal.Decimal("20")),
+        (datetime.datetime(2026, 1, 1, 13, 0, tzinfo=UTC), decimal.Decimal("-10")),
+    ]
 
 
 def test_compute_cost_includes_prorated_share_of_estimated_demand_charge(db, site):
