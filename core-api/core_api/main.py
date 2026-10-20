@@ -62,7 +62,9 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
             scheduler.shutdown(wait=False)
         engine.dispose()
 
-    app = FastAPI(title="Core API", lifespan=lifespan)
+    # root_path is the prefix a reverse proxy strips before forwarding. It only
+    # changes the URLs FastAPI generates, so /docs finds /openapi.json.
+    app = FastAPI(title="Core API", lifespan=lifespan, root_path=get_settings().root_path)
     # The webapp is served from its own origin (a separate nginx container)
     # and calls this API directly from the browser, so without this every
     # request fails CORS before it ever reaches a route.
