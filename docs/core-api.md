@@ -123,6 +123,7 @@ Validation failures use code `validation_error` and HTTP 422. The `code` is stab
 | `demand_interval` | Every 5 minutes | Derives `demand_intervals` for each 5-minute slot | Upsert on (site, interval_start). Recomputes the last 3 hours. |
 | `demand_charge` | Daily 00:10 | Computes `demand_charges` for each billing period | Finalized rows are skipped. Estimated rows are recomputed. |
 | `retention_rollup` | Daily 00:20 | Moves readings older than 365 days into 5-minute rollups and deletes the raw rows | Upsert into rollups, delete after. Cutoff is floored to a bucket boundary. |
+| `expire_admin_password_file` | Daily 03:17, and once at startup | Deletes `initial-admin-password.txt` if it is 5 days old or older | Does nothing when the file is missing. Not a database job: it takes the file path, not a session. |
 
 Times use the container's clock (UTC in the image).
 

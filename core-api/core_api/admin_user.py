@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import pathlib
 import secrets
+import time
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -13,6 +15,8 @@ from core_api.models.identity import User
 from core_api.security import hash_password
 
 logger = logging.getLogger(__name__)
+
+PASSWORD_FILE_MAX_AGE = datetime.timedelta(days=5)
 
 
 def password_file_path(database_url: str) -> pathlib.Path:
@@ -56,3 +60,22 @@ def ensure_admin_user(session_factory: sessionmaker[Session], settings: Settings
         )
     finally:
         db.close()
+
+
+def expire_password_file(password_file: pathlib.Path, max_age: datetime.timedelta = PASSWORD_FILE_MAX_AGE) -> bool:
+    """Deletes the one-time password file once it is older than max_age, so a
+    forgotten file does not sit on the data volume indefinitely. Returns True
+    if it deleted the file. Age is the file's mtime, which is its write time:
+    the file is written once and never touched again."""
+    try:
+        age = time.time() - password_file.stat().st_mtime
+    except FileNotFoundError:
+        return False
+    if age < max_age.total_seconds():
+        return False
+    try:
+        password_file.unlink()
+    except FileNotFoundError:
+        return False
+    logger.warning("Deleted %s: it was older than %s and had not been removed.", password_file, max_age)
+    return True

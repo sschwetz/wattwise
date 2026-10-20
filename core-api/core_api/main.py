@@ -6,7 +6,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from core_api.admin_user import ensure_admin_user
+from core_api.admin_user import ensure_admin_user, expire_password_file, password_file_path
 from core_api.config import get_settings
 from core_api.db import make_engine, make_session_factory
 from core_api.email_sender import EmailSender, SmtpEmailSender
@@ -48,9 +48,13 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.session_factory = session_factory
         ensure_admin_user(session_factory, get_settings(), effective_database_url)
+        # Also checked at startup: a container that was down at the daily run
+        # time would otherwise keep the file until the next 03:17.
+        password_file = password_file_path(effective_database_url)
+        expire_password_file(password_file)
         scheduler = None
         if get_settings().scheduler_enabled:
-            scheduler = build_scheduler(session_factory)
+            scheduler = build_scheduler(session_factory, password_file)
             scheduler.start()
         app.state.scheduler = scheduler
         yield

@@ -76,3 +76,54 @@ def test_boots_do_not_create_a_second_admin_user_once_one_exists(app_and_db_url,
             pass
 
     assert caplog.records == []
+
+
+def _age_file(path: pathlib.Path, days: float) -> None:
+    import os
+    import time
+
+    past = time.time() - days * 86400
+    os.utime(path, (past, past))
+
+
+def test_expire_password_file_keeps_a_file_younger_than_five_days(tmp_path):
+    from core_api.admin_user import expire_password_file
+
+    f = tmp_path / "initial-admin-password.txt"
+    f.write_text("x")
+    _age_file(f, 4.9)
+
+    assert expire_password_file(f) is False
+    assert f.exists()
+
+
+def test_expire_password_file_deletes_a_file_five_days_old(tmp_path):
+    from core_api.admin_user import expire_password_file
+
+    f = tmp_path / "initial-admin-password.txt"
+    f.write_text("x")
+    _age_file(f, 5.1)
+
+    assert expire_password_file(f) is True
+    assert not f.exists()
+
+
+def test_expire_password_file_ignores_a_missing_file(tmp_path):
+    from core_api.admin_user import expire_password_file
+
+    assert expire_password_file(tmp_path / "initial-admin-password.txt") is False
+
+
+def test_boot_deletes_an_expired_password_file(app_and_db_url, monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@example.com")
+    app, db_url = app_and_db_url
+    with TestClient(create_app(database_url=db_url)):
+        pass
+    password_file = _password_file_for(db_url)
+    assert password_file.exists()
+    _age_file(password_file, 6)
+
+    with TestClient(create_app(database_url=db_url)):
+        pass
+
+    assert not password_file.exists()

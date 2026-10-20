@@ -54,7 +54,7 @@ Sign in as `admin@example.com` (or the `ADMIN_EMAIL` set before the first start)
 docker compose exec core-api rm /data/initial-admin-password.txt
 ```
 
-The file exists only if the database had no users at first start.
+The file exists only if the database had no users at first start. If you don't delete the file, Core API deletes it once it is 5 days old. The check runs at every start and daily at 03:17.
 
 ## Day-to-day
 

@@ -62,7 +62,7 @@ On first start, with an empty users table, core-api creates a user and writes it
 cat core-api/initial-admin-password.txt
 ```
 
-The email is `admin@example.com` unless you set `ADMIN_EMAIL` before the first start. Log in, change the password, then delete the file.
+The email is `admin@example.com` unless you set `ADMIN_EMAIL` before the first start. Log in, change the password, then delete the file. If you don't delete the file, Core API deletes it once it is 5 days old.
 
 Password-reset and email-confirmation mail goes to `SMTP_HOST` (default `mail-relay`). That host does not exist in a native run, so those emails fail to send. Log in with the admin password instead, or point `SMTP_HOST` and `SMTP_PORT` at a local catch-all such as [MailHog](https://github.com/mailhog/MailHog).
 
@@ -159,6 +159,8 @@ core-api runs migrations and creates the first user before `/health` answers, an
 docker compose exec core-api cat /data/initial-admin-password.txt
 docker compose exec core-api rm /data/initial-admin-password.txt
 ```
+
+If you don't delete the file, Core API deletes it once it is 5 days old.
 
 ### 3. Update
 

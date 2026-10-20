@@ -67,6 +67,8 @@ docker compose exec core-api cat /data/initial-admin-password.txt
 docker compose exec core-api rm /data/initial-admin-password.txt
 ```
 
+If you don't delete the file, Core API deletes it once it is 5 days old.
+
 Then follow the [first-day checklist](02-getting-started.md#first-day-checklist).
 
 ## Everyday commands
