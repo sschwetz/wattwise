@@ -133,16 +133,27 @@ def export_adjustment_windows_by_tariff(db: Session, site_id: int) -> dict[int, 
     return _windows_by_tariff(db, site_id, ExportAdjustmentWindow)
 
 
+def in_export_window_pattern(window: ExportAdjustmentWindow, at_local: datetime.datetime) -> bool:
+    """Public wrapper over _in_time_pattern for export_allowance_data.py."""
+    return _in_time_pattern(window, at_local)
+
+
 def total_export_adjustment_c_per_kwh(
-    windows: list[ExportAdjustmentWindow], at_local: datetime.datetime
+    windows: list[ExportAdjustmentWindow], at_local: datetime.datetime, skip_allowance: bool = False
 ) -> decimal.Decimal:
     """Sum of adjustment_c_per_kwh for every window in `windows` (already
     filtered to one tariff) whose pattern covers the local wall-clock
     instant `at_local`. Windows stack -- unlike a DemandWindow's 'first
     match wins' -- since each is an independent price adjustment rather
-    than a single applicable rate."""
+    than a single applicable rate.
+
+    `skip_allowance` leaves out windows with a daily allowance. The caller
+    sets it when a billing period covers the instant, because those windows
+    are then charged through export_allowance_data instead."""
     total = decimal.Decimal("0")
     for window in windows:
+        if skip_allowance and window.daily_allowance_kwh > 0:
+            continue
         if _in_time_pattern(window, at_local):
             total += window.adjustment_c_per_kwh
     return total
