@@ -2,6 +2,7 @@ import { type FormEvent, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { BackLink } from "../layout/BackLink";
 import { ConditionalCreditForm, ConditionalCreditList } from "../billing/ConditionalCredits";
+import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
 import { tariffHeading } from "../billing/tariffHeading";
 import { useSources } from "../sources/useSources";
 import {
@@ -22,12 +23,12 @@ import {
 import {
   errorClass,
   formatCents,
+  byLabel,
   formatDaysOfWeek,
   formatMonths,
   formatTime,
   inputClass,
-  parseIntList,
-  primaryButtonClass,
+    primaryButtonClass,
 } from "../billing/billingUi";
 
 const endLinkClass = "text-sm text-ink-muted underline hover:text-ink";
@@ -66,7 +67,7 @@ function DemandWindowsList({ siteId, tariffId }: { siteId: number; tariffId: num
 
   return (
     <ul className="space-y-2">
-      {(windows ?? []).map((w) => (
+      {byLabel(windows).map((w) => (
         <li key={w.id} className="space-y-0.5 rounded-md border border-line/60 px-3 py-1.5">
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-ink">{w.label}</span>
@@ -84,8 +85,8 @@ function DemandWindowsList({ siteId, tariffId }: { siteId: number; tariffId: num
 
 function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: number }) {
   const [label, setLabel] = useState("");
-  const [months, setMonths] = useState("");
-  const [daysOfWeek, setDaysOfWeek] = useState("");
+  const [months, setMonths] = useState<number[]>([]);
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [rate, setRate] = useState("");
@@ -95,8 +96,8 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
     event.preventDefault();
     createWindow.mutate({
       label,
-      months: parseIntList(months),
-      days_of_week: parseIntList(daysOfWeek),
+      months,
+      days_of_week: daysOfWeek,
       start_time: startTime,
       end_time: endTime,
       rate_c_per_kw_per_day: Number(rate),
@@ -121,24 +122,8 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
           className={inputClass}
           required
         />
-        <input
-          value={months}
-          onChange={(e) => setMonths(e.target.value)}
-          placeholder="Months (e.g. 12,1,2)"
-          aria-label="Months"
-          inputMode="numeric"
-          className={inputClass}
-          required
-        />
-        <input
-          value={daysOfWeek}
-          onChange={(e) => setDaysOfWeek(e.target.value)}
-          placeholder="Days of week (0=Mon .. 6=Sun)"
-          aria-label="Days of week"
-          inputMode="numeric"
-          className={inputClass}
-          required
-        />
+        <CheckboxGroup legend="Months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
+        <CheckboxGroup legend="Days of week" options={DAY_OPTIONS} selection={{ selected: daysOfWeek, onChange: setDaysOfWeek }} />
         <input
           value={startTime}
           onChange={(e) => setStartTime(e.target.value)}
@@ -164,7 +149,11 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
           className={inputClass}
           required
         />
-        <button type="submit" disabled={createWindow.isPending} className={primaryButtonClass}>
+        <button
+          type="submit"
+          disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
+          className={primaryButtonClass}
+        >
           Add demand window
         </button>
       </form>
@@ -179,7 +168,7 @@ function ExportAdjustmentWindowsList({ siteId, tariffId }: { siteId: number; tar
 
   return (
     <ul className="space-y-2">
-      {(windows ?? []).map((w) => {
+      {byLabel(windows).map((w) => {
         const allowance = Number(w.daily_allowance_kwh);
         return (
           <li key={w.id} className="space-y-0.5 rounded-md border border-line/60 px-3 py-1.5">
@@ -206,8 +195,8 @@ function ExportAdjustmentWindowsList({ siteId, tariffId }: { siteId: number; tar
 
 function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tariffId: number }) {
   const [label, setLabel] = useState("");
-  const [months, setMonths] = useState("");
-  const [daysOfWeek, setDaysOfWeek] = useState("");
+  const [months, setMonths] = useState<number[]>([]);
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [adjustment, setAdjustment] = useState("");
@@ -218,8 +207,8 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
     event.preventDefault();
     createWindow.mutate({
       label,
-      months: parseIntList(months),
-      days_of_week: parseIntList(daysOfWeek),
+      months,
+      days_of_week: daysOfWeek,
       start_time: startTime,
       end_time: endTime,
       adjustment_c_per_kwh: Number(adjustment),
@@ -245,24 +234,8 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
           className={inputClass}
           required
         />
-        <input
-          value={months}
-          onChange={(e) => setMonths(e.target.value)}
-          placeholder="Export months (e.g. 12,1,2)"
-          aria-label="Export months"
-          inputMode="numeric"
-          className={inputClass}
-          required
-        />
-        <input
-          value={daysOfWeek}
-          onChange={(e) => setDaysOfWeek(e.target.value)}
-          placeholder="Export days of week (0=Mon .. 6=Sun)"
-          aria-label="Export days of week"
-          inputMode="numeric"
-          className={inputClass}
-          required
-        />
+        <CheckboxGroup legend="Export months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
+        <CheckboxGroup legend="Export days of week" options={DAY_OPTIONS} selection={{ selected: daysOfWeek, onChange: setDaysOfWeek }} />
         <input
           value={startTime}
           onChange={(e) => setStartTime(e.target.value)}
@@ -296,7 +269,11 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
           inputMode="decimal"
           className={inputClass}
         />
-        <button type="submit" disabled={createWindow.isPending} className={primaryButtonClass}>
+        <button
+          type="submit"
+          disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
+          className={primaryButtonClass}
+        >
           Add export adjustment
         </button>
       </form>
@@ -309,7 +286,7 @@ function MonthlyFeeDiscountWindowsList({ siteId, tariffId }: { siteId: number; t
 
   return (
     <ul className="space-y-2">
-      {(windows ?? []).map((w) => (
+      {byLabel(windows).map((w) => (
         <li
           key={w.id}
           className={`space-y-0.5 rounded-md border border-line/60 px-3 py-1.5 ${isExpired(w.ends_at) ? disabledClass : ""}`}

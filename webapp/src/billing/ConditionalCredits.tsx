@@ -1,14 +1,15 @@
 import { type FormEvent, useState } from "react";
 import {
+  byLabel,
   errorClass,
   formatCents,
   formatDaysOfWeek,
   formatMonths,
   formatTime,
   inputClass,
-  parseIntList,
   primaryButtonClass,
 } from "./billingUi";
+import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "./CheckboxGroup";
 import { useConditionalCreditWindows, useCreateConditionalCreditWindow } from "./useBilling";
 
 interface TariffProps {
@@ -21,7 +22,7 @@ export function ConditionalCreditList({ siteId, tariffId }: TariffProps) {
 
   return (
     <ul className="space-y-2">
-      {(windows ?? []).map((w) => (
+      {byLabel(windows).map((w) => (
         <li key={w.id} className="space-y-0.5 rounded-md border border-line/60 px-3 py-1.5">
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-ink">{w.label}</span>
@@ -39,8 +40,8 @@ export function ConditionalCreditList({ siteId, tariffId }: TariffProps) {
 
 export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
   const [label, setLabel] = useState("");
-  const [months, setMonths] = useState("");
-  const [daysOfWeek, setDaysOfWeek] = useState("");
+  const [months, setMonths] = useState<number[]>([]);
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [maxAvgImportW, setMaxAvgImportW] = useState("");
@@ -51,8 +52,8 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
     event.preventDefault();
     createWindow.mutate({
       label,
-      months: parseIntList(months),
-      days_of_week: parseIntList(daysOfWeek),
+      months,
+      days_of_week: daysOfWeek,
       start_time: startTime,
       end_time: endTime,
       max_avg_import_w: Number(maxAvgImportW),
@@ -78,24 +79,8 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
           className={inputClass}
           required
         />
-        <input
-          value={months}
-          onChange={(e) => setMonths(e.target.value)}
-          placeholder="Credit months (e.g. 12,1,2)"
-          aria-label="Credit months"
-          inputMode="numeric"
-          className={inputClass}
-          required
-        />
-        <input
-          value={daysOfWeek}
-          onChange={(e) => setDaysOfWeek(e.target.value)}
-          placeholder="Credit days of week (0=Mon .. 6=Sun)"
-          aria-label="Credit days of week"
-          inputMode="numeric"
-          className={inputClass}
-          required
-        />
+        <CheckboxGroup legend="Credit months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
+        <CheckboxGroup legend="Credit days of week" options={DAY_OPTIONS} selection={{ selected: daysOfWeek, onChange: setDaysOfWeek }} />
         <input
           value={startTime}
           onChange={(e) => setStartTime(e.target.value)}
@@ -130,7 +115,11 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
           className={inputClass}
           required
         />
-        <button type="submit" disabled={createWindow.isPending} className={primaryButtonClass}>
+        <button
+          type="submit"
+          disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
+          className={primaryButtonClass}
+        >
           Add conditional credit
         </button>
       </form>
