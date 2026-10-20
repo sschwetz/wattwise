@@ -258,29 +258,6 @@ def demand_window_for_charge(db: Session, charge: DemandCharge, site_timezone: s
     )
 
 
-def adjusted_export_price(
-    sell_price: decimal.Decimal,
-    tariffs: list[SiteTariff],
-    windows_by_tariff: dict[int, list[ExportAdjustmentWindow]],
-    at: datetime.datetime,
-    site_timezone: str,
-) -> decimal.Decimal:
-    """The export (feed-in) price at `at`, adjusted by any matching
-    ExportAdjustmentWindow -- same sign convention cost.py's _minute_costs
-    uses: Amber's raw feed-in sign is negative-when-paid, so subtracting a
-    positive incentive pushes the price further negative (more revenue),
-    and subtracting a negative disincentive pulls it back up. Used by both
-    the $ cost calculation and the displayed price series (e.g. the
-    dashboard's 'today's pricing' chart), so a configured incentive shows
-    up everywhere the export price is shown, not just in cost totals."""
-    tariff = tariff_effective_at(tariffs, as_utc(at))
-    if tariff is None:
-        return sell_price
-    at_local = as_utc(at).astimezone(site_tz(site_timezone))
-    windows = windows_by_tariff.get(tariff.id, [])
-    return sell_price - total_export_adjustment_c_per_kwh(windows, at_local)
-
-
 def energy_source_ids_for_site(db: Session, site_id: int) -> list[int]:
     stmt = select(Source.id).where(Source.site_id == site_id, Source.kind == SourceKind.ENERGY)
     return list(db.execute(stmt).scalars())
