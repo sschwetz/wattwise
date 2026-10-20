@@ -1,10 +1,19 @@
 import { useMemo } from "react";
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ErrorAlert, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
 import { SWATCH_COLORS, TODAY_CHARTS_SYNC_ID, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import { clipToDay, todayRange, zoomRangeFor } from "./dateRange";
 import { buildAxisTickPlan, formatBucketTick } from "./historyChart";
-import { buildPriceChartData, mergeImportExportPrices, type PriceReading, type TodayPricingPoint } from "./priceChart";
+import { InstabilitySummary } from "./InstabilitySummary";
+import {
+  buildPriceChartData,
+  findInstabilityWindows,
+  type InstabilityLevel,
+  mergeImportExportPrices,
+  type PriceReading,
+  type TodayPricingPoint,
+  windowSpanWithin,
+} from "./priceChart";
 import { type ChartZoom, useChartZoom } from "./useChartZoom";
 import { useTodayPrices } from "./useHistoricalData";
 
@@ -39,6 +48,16 @@ function TodayPricingTooltip({
         <p style={{ color: SWATCH_COLORS.gridImport }}>
           Import {importValue.toFixed(1)}c/kWh
           {priceKindSuffix(point.actualImportCentsPerKwh, point.predictedImportCentsPerKwh)}
+        </p>
+      )}
+      {point.importBand && (
+        <p className="text-ink-muted">
+          Range {point.importBand[0].toFixed(1)} to {point.importBand[1].toFixed(1)}c/kWh
+        </p>
+      )}
+      {point.importSpikeStatus !== "none" && (
+        <p className="text-ink-muted">
+          {point.importSpikeStatus === "spike" ? "Price spike" : "Price spike possible"}
         </p>
       )}
       {exportValue != null && (
@@ -77,6 +96,22 @@ function PriceLegendSwatch({
   );
 }
 
+function RangeLegendSwatch() {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span aria-hidden className="h-2.5 w-4 rounded-sm opacity-30" style={{ backgroundColor: SWATCH_COLORS.gridImport }} />
+      Forecast range
+    </span>
+  );
+}
+
+/** Spikes get the danger color; a possible spike or a wide band gets amber. */
+const WINDOW_TINTS: Record<InstabilityLevel, string> = {
+  spike: "var(--color-danger)",
+  potential: "var(--color-solar)",
+  "wide-band": "var(--color-solar)",
+};
+
 function buildTodayPricingChartData(importPrices: PriceReading[], exportPrices: PriceReading[]): TodayPricingPoint[] {
   const now = new Date();
   return mergeImportExportPrices(buildPriceChartData(importPrices, now), buildPriceChartData(exportPrices, now));
@@ -111,7 +146,17 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
     () => chartData.some((p) => p.fallbackImportCentsPerKwh !== null || p.fallbackExportCentsPerKwh !== null),
     [chartData],
   );
+  const hasBand = useMemo(() => chartData.some((p) => p.importBand !== null), [chartData]);
   const axisTickPlan = useMemo(() => buildAxisTickPlan(chartData, range), [chartData, range]);
+  // The summary covers the whole day; the tinted areas only what is on screen.
+  const instabilityWindows = useMemo(() => findInstabilityWindows(fullChartData), [fullChartData]);
+  const visibleSpans = useMemo(() => {
+    const timestamps = chartData.map((p) => p.ts);
+    return instabilityWindows.flatMap((window) => {
+      const span = windowSpanWithin(window, timestamps);
+      return span ? [{ ...span, level: window.level }] : [];
+    });
+  }, [instabilityWindows, chartData]);
 
   return (
     <div className="rounded-xl border border-line bg-surface p-5">
@@ -123,14 +168,16 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
           <PriceLegendSwatch color={SWATCH_COLORS.gridImport} pattern="dashed" label="Import predicted" />
           <PriceLegendSwatch color={SWATCH_COLORS.gridExport} label="Export actual" />
           <PriceLegendSwatch color={SWATCH_COLORS.gridExport} pattern="dashed" label="Export predicted" />
+          {hasBand && <RangeLegendSwatch />}
           {hasFallback && (
             <PriceLegendSwatch color="var(--color-ink-muted)" pattern="dotted" label="Fallback (no advanced forecast)" />
           )}
         </div>
       </div>
       {(isImportError || isExportError) && <ErrorAlert message="Failed to load today's pricing." />}
+      <InstabilitySummary windows={instabilityWindows} />
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={chartData} style={ZOOMABLE_CHART_STYLE} syncId={TODAY_CHARTS_SYNC_ID} syncMethod="value" {...handlers}>
+        <ComposedChart data={chartData} style={ZOOMABLE_CHART_STYLE} syncId={TODAY_CHARTS_SYNC_ID} syncMethod="value" {...handlers}>
           <XAxis
             dataKey="ts"
             ticks={axisTickPlan.ticks}
@@ -154,6 +201,29 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
             }}
           />
           <Tooltip content={(props) => <TodayPricingTooltip {...props} />} />
+          {visibleSpans.map((span) => (
+            <ReferenceArea
+              key={span.x1}
+              x1={span.x1}
+              x2={span.x2}
+              fill={WINDOW_TINTS[span.level]}
+              fillOpacity={0.15}
+              stroke="none"
+              ifOverflow="visible"
+            />
+          ))}
+          {/* The forecast's low-to-high band, behind the lines. */}
+          <Area
+            type="stepAfter"
+            dataKey="importBand"
+            stroke="none"
+            fill={SWATCH_COLORS.gridImport}
+            fillOpacity={0.15}
+            connectNulls={false}
+            isAnimationActive={false}
+            activeDot={false}
+            legendType="none"
+          />
           {/* Piecewise-constant per 5-minute interval, not a smooth trend -- a
               step line matches how the price actually moves. */}
           <Line
@@ -215,7 +285,7 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
             isAnimationActive={false}
           />
           <ZoomSelectionArea selection={selection} />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

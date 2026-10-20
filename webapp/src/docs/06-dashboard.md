@@ -84,6 +84,12 @@ This chart shows your import and export price for every 5 minutes of today, in c
 | Green dashed | **Export predicted**: the export price for the rest of today, from Amber's predicted price or your fixed tariff. |
 | Dotted, in the line's colour | **Fallback**: a future interval where Amber sent no predicted price, so the chart shows Amber's plain forecast instead. It appears only when this happens, and the legend then gets a "Fallback" entry. |
 
+### Forecast range and price instability
+
+With Amber, each predicted import price comes with a range: Amber's low and high estimate for that interval. The chart shades it behind the red dashed line, and the legend gets a "Forecast range" entry. A wide shaded band means Amber is less sure of the price. Hover over a point to see the range in cents.
+
+The chart also tints stretches of the day where Amber has flagged a possible price spike (amber) or an actual spike (red), or where the range is wider than 20 cents per kWh (amber). When there are any, a line above the chart says when, for example `Price instability expected 16:30 to 19:00`. On a normal day there is no tint and no line. This covers import prices only. It does not appear with a fixed tariff.
+
 Drag across the chart to zoom into a stretch of the day, and press **Reset zoom** to go back. Hover over a point for the exact price. The chart always shows today and does not change with the date range on the Reporting page. It needs a pricing source, either [Amber](05-sources.md#connecting-amber-electric) or a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
 
 Prices are shown as plain positive rates. WattWise stores the sell price as a negative number when you are being paid, as Amber publishes it, and the chart shows its size instead.

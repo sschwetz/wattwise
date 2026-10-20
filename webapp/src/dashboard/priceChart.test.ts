@@ -6,6 +6,7 @@ import {
   mergeImportExportPrices,
   type SpikeStatus,
   type TodayPricingPoint,
+  windowSpanWithin,
 } from "./priceChart";
 
 describe("buildPriceChartData", () => {
@@ -291,5 +292,24 @@ describe("findInstabilityWindows", () => {
 
   it("skips points that already have an actual price", () => {
     expect(findInstabilityWindows([point(0, { actualImportCentsPerKwh: 30, importSpikeStatus: "spike" })])).toEqual([]);
+  });
+});
+
+describe("windowSpanWithin", () => {
+  const STEP = 300_000;
+  const tss = [0, STEP, 2 * STEP, 3 * STEP];
+
+  it("returns the first and last chart timestamps the window covers", () => {
+    expect(windowSpanWithin({ from: STEP, to: 3 * STEP, level: "spike" }, tss)).toEqual({ x1: STEP, x2: 2 * STEP });
+  });
+
+  it("clips a window that runs past the visible range to what is visible", () => {
+    expect(windowSpanWithin({ from: 2 * STEP, to: 10 * STEP, level: "spike" }, tss)).toEqual({ x1: 2 * STEP, x2: 3 * STEP });
+    expect(windowSpanWithin({ from: -5 * STEP, to: STEP, level: "spike" }, tss)).toEqual({ x1: 0, x2: 0 });
+  });
+
+  it("returns null when no chart timestamp falls inside the window", () => {
+    expect(windowSpanWithin({ from: 10 * STEP, to: 12 * STEP, level: "spike" }, tss)).toBeNull();
+    expect(windowSpanWithin({ from: 0, to: STEP, level: "spike" }, [])).toBeNull();
   });
 });

@@ -178,7 +178,19 @@ export function mergeImportExportPrices(
   return Array.from(byTs.values()).sort((a, b) => a.ts - b.ts);
 }
 
-export type InstabilityLevel = "spike" | "potential" | "wide-band";
+/** The first and last chart timestamps inside [window.from, window.to), for
+ * drawing a ReferenceArea on the chart's category x-axis, which only accepts
+ * timestamps that exist in the data. Null when none of `timestamps` (sorted)
+ * fall inside the window, e.g. when zoomed away from it. */
+export function windowSpanWithin(
+  window: { from: number; to: number },
+  timestamps: number[],
+): { x1: number; x2: number } | null {
+  const inside = timestamps.filter((ts) => ts >= window.from && ts < window.to);
+  return inside.length === 0 ? null : { x1: inside[0], x2: inside[inside.length - 1] };
+}
+
+export type InstabilityLevel ="spike" | "potential" | "wide-band";
 
 export interface InstabilityWindow {
   from: number;
