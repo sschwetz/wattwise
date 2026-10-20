@@ -4,6 +4,9 @@ from __future__ import annotations
 import datetime
 import decimal
 
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
 from core_api.db import make_engine, make_session_factory
 from core_api.models.billing import (
     BillingCycle,
@@ -15,7 +18,7 @@ from core_api.models.billing import (
     SiteTariff,
 )
 from core_api.models.identity import Site, User
-from core_api.models.pricing import PriceChannel, PriceInterval, PriceReading
+from core_api.models.pricing import PriceChannel, PriceInterval, PriceReading, SpikeStatus
 from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
 from core_api.security import create_access_token
@@ -391,6 +394,70 @@ def test_get_prices_sell_channel_flags_fallback(client, app_and_db_url):
     )
     assert response.status_code == 200, response.text
     assert [r["forecast_fallback"] for r in response.json()] == [False, False, True]
+
+
+def _get_buy_prices(client, owner_id, site_id):
+    now = datetime.datetime.now(UTC)
+    return client.get(
+        f"/api/v1/sites/{site_id}/prices",
+        params={
+            "channel": "buy",
+            "start": (now - datetime.timedelta(hours=1)).isoformat(),
+            "end": (now + datetime.timedelta(hours=1)).isoformat(),
+        },
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+
+
+def test_get_prices_returns_band_and_spike_status_for_forecast_rows(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_forecast_intervals(db_url)
+    session = make_session_factory(make_engine(db_url))()
+    banded = session.query(PriceInterval).filter(PriceInterval.price_low.is_not(None)).one()
+    banded.spike_status = SpikeStatus.POTENTIAL
+    session.commit()
+    session.close()
+
+    rows = _get_buy_prices(client, owner_id, site_id).json()
+    # settled (-10 min), banded forecast (+10, potential), fallback forecast (+20)
+    assert [(r["price_low"], r["price_high"], r["spike_status"]) for r in rows] == [
+        (None, None, "none"),
+        (20.0, 30.0, "potential"),
+        (None, None, "none"),
+    ]
+
+
+def test_get_prices_without_interval_rows_returns_band_defaults(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_price_reading(db_url)
+    now = datetime.datetime.now(UTC)
+    response = client.get(
+        f"/api/v1/sites/{site_id}/prices",
+        params={"channel": "buy", "start": (now - datetime.timedelta(hours=2)).isoformat(), "end": now.isoformat()},
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    row = response.json()[0]
+    assert (row["price_low"], row["price_high"], row["spike_status"]) == (None, None, "none")
+
+
+def test_get_prices_reads_price_intervals_in_a_fixed_number_of_queries(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_forecast_intervals(db_url)
+    statements: list[str] = []
+
+    def count(conn, cursor, statement, parameters, context, executemany):
+        if "FROM price_intervals" in statement:
+            statements.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", count)
+    try:
+        response = _get_buy_prices(client, owner_id, site_id)
+    finally:
+        event.remove(Engine, "before_cursor_execute", count)
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == 3
+    # One for the fallback ranges, one for the bands -- not one per reading.
+    assert len(statements) == 2
 
 
 def test_get_cost_for_site(client, app_and_db_url):

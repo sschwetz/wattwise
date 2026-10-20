@@ -342,6 +342,12 @@ class PriceReadingOut(ReadingOut):
     # True when this reading sits in a forecast interval that arrived without
     # Amber's advancedPrice band, so its value is the plain perKwh forecast.
     forecast_fallback: bool = False
+    # Amber's advancedPrice band for the reading's interval, raw (not adjusted
+    # like `value` is on the sell channel). None for settled intervals and
+    # fallback forecasts.
+    price_low: float | None = None
+    price_high: float | None = None
+    spike_status: SpikeStatus = SpikeStatus.NONE
 
 
 class SiteTariffCreate(BaseModel):

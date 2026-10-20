@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly_fee_discounts_c, partial_period_discounts_c
 from core_api.deps import get_db_session, require_site_access
 from core_api.errors import AppError
-from core_api.forecast_fallback import fallback_ranges, in_fallback
+from core_api.forecast_fallback import FallbackRange, fallback_ranges, in_fallback
 from core_api.jobs.billing_periods import (
     current_billing_period_bounds,
     effective_billing_cycles_for_site,
@@ -27,7 +27,7 @@ from core_api.jobs.demand_config import (
 )
 from core_api.models.billing import DemandCharge, DemandWindow
 from core_api.models.identity import Site
-from core_api.models.pricing import PriceChannel, PriceReading, PriceReadingRollup5m
+from core_api.models.pricing import PriceChannel, PriceReading, PriceReadingRollup5m, SpikeStatus
 from core_api.models.readings import (
     EnergyMetric,
     EnergyReading,
@@ -37,6 +37,7 @@ from core_api.models.readings import (
     WeatherReadingRollup5m,
 )
 from core_api.models.sources import Source, SourceKind
+from core_api.price_bands import IntervalBand, band_at, interval_bands
 from core_api.readings_query import query_readings
 from core_api.schemas import BillingPeriodBoundsOut, BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, LatestReadingOut, PriceReadingOut, ReadingOut, UtcDatetime
 
@@ -160,16 +161,25 @@ def get_prices(
     rows = _price_rows(db, source_ids, channel, start, end)
     fallbacks = fallback_ranges(db, source_ids, channel, start, end, datetime.datetime.now(datetime.timezone.utc))
 
+    bands = interval_bands(db, source_ids, channel, start, end)
+
     value_of = _displayed_price_fn(db, site, channel)
-    return [
-        PriceReadingOut(
-            ts=r.ts,
-            metric=r.channel.value,
-            value=float(value_of(r)),
-            forecast_fallback=in_fallback(r.ts, fallbacks),
-        )
-        for r in rows
-    ]
+    return [_price_reading_out(r, value_of(r), fallbacks, bands) for r in rows]
+
+
+def _price_reading_out(
+    reading: PriceReading, value: decimal.Decimal, fallbacks: list[FallbackRange], bands: list[IntervalBand]
+) -> PriceReadingOut:
+    band = band_at(reading.ts, bands)
+    return PriceReadingOut(
+        ts=reading.ts,
+        metric=reading.channel.value,
+        value=float(value),
+        forecast_fallback=in_fallback(reading.ts, fallbacks),
+        price_low=None if band is None or band.price_low is None else float(band.price_low),
+        price_high=None if band is None or band.price_high is None else float(band.price_high),
+        spike_status=SpikeStatus.NONE if band is None else band.spike_status,
+    )
 
 
 @router.get("/cost", response_model=CostOut)
