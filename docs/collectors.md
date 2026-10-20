@@ -94,7 +94,7 @@ Rain is the one stateful field. The device reports rain since midnight, so the c
 
 | Loop | File | Cadence | Fetches | Purpose |
 |---|---|---|---|---|
-| Live | `live_poll.py` | Every 5 min, aligned to Amber's publish time | 1 closed interval and 300 forecast intervals | Current price and the rest of the day's forecast for the chart |
+| Live | `live_poll.py` | Every 5 min, aligned to Amber's publish time | 1 closed interval and 300 forecast intervals | Current price and the rest of the day's forecast for the chart. Forecast intervals use Amber's `advancedPrice.predicted` as the price and also store its `low` and `high` |
 | Recent | `live_poll.py` | Every minute (2 s buffer) | Last 3 closed intervals | Amber sometimes revises a price after an interval closes. This picks up the revision within a minute. |
 | Backfill | `backfill.py` | 1 minute after startup, then every 12 hours | History in 7-day chunks | Fill days missing since the site's first data. A day counts as missing when it holds under 95% of its 5-minute intervals, so a day with only forecast rows is refilled. Records a gap marker for days Amber has none. |
 

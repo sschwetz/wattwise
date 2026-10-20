@@ -53,7 +53,8 @@ for less than a full day. Returns only `ActualInterval` entries (the historical 
 | `startTime`, `endTime` | UTC ISO8601. **Boundaries have a 1-second stagger** — e.g. `23:55:01Z` → `00:00:00Z` for a 5-minute interval. Not a bug; pass through as-is. |
 | `duration` | Interval length in minutes (5 or 30) |
 | `perKwh` | Price in **cents/kWh** — confirmed against Core API's `cost.py`, which treats `PriceInterval.price` as cents (`total_cost_c += import_kwh * buy_price`). No conversion needed. |
-| `spotPerKwh`, `renewables`, `spikeStatus`, `descriptor`, `estimate`, `range`, `advancedPrice` | Not mapped — no corresponding Core API field, not needed for the stated purpose |
+| `advancedPrice` (`low`, `predicted`, `high`) | On forecast intervals only: `predicted` replaces `perKwh` as `price`, and `low`/`high` are sent as `price_low`/`price_high`. Added 2026-10-20, see `2026-10-20-amber-advanced-price-design.md`. |
+| `spotPerKwh`, `renewables`, `spikeStatus`, `descriptor`, `estimate`, `range` | Not mapped — no corresponding Core API field, not needed for the stated purpose |
 | `tariffInformation.demandWindow` | **Not used.** This reflects Amber's own view of the billing period, not this system's network (poles-and-wires) demand tariff, which is configured locally per site via Core API's own `SiteTariff`/`DemandWindow`. The collector never reads `tariffInformation` at all. |
 
 ## Field mapping → Core API `PriceIntervalIn`

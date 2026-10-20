@@ -41,6 +41,10 @@ class PriceInterval(Base):
     interval_start: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     interval_end: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     price: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    # Low/high of Amber's advancedPrice forecast band; NULL for intervals
+    # that carry no band (settled actuals, other providers).
+    price_low: Mapped[decimal.Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    price_high: Mapped[decimal.Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     is_demand_window: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 

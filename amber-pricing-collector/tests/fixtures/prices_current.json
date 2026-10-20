@@ -74,5 +74,20 @@
         "spikeStatus": "none",
         "descriptor": "low",
         "estimate": false
+    },
+    {
+        "type": "ForecastInterval",
+        "date": "2026-09-30",
+        "duration": 5,
+        "startTime": "2026-09-30T00:05:01Z",
+        "endTime": "2026-09-30T00:10:00Z",
+        "nemTime": "2026-09-30T10:10:00+10:00",
+        "perKwh": 0.21,
+        "renewables": 95.98940277005903,
+        "spotPerKwh": 0.00111,
+        "channelType": "feedIn",
+        "spikeStatus": "none",
+        "descriptor": "low",
+        "advancedPrice": {"low": -0.5, "predicted": 0.35, "high": 1.2}
     }
 ]

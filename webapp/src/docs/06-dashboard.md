@@ -77,9 +77,9 @@ This chart shows your import and export price for every 5 minutes of today, in c
 | Line | Meaning |
 |------|---------|
 | Red solid | **Import actual**: what buying power cost in intervals that have finished. |
-| Red dashed | **Import predicted**: the price for the rest of today. With Amber this is Amber's forecast. With a fixed tariff it is the rate your windows set. |
+| Red dashed | **Import predicted**: the price for the rest of today. With Amber this is Amber's predicted price. With a fixed tariff it is the rate your windows set. |
 | Green solid | **Export actual**: what you were paid for exporting. |
-| Green dashed | **Export predicted**: the export price for the rest of today, from Amber's forecast or your fixed tariff. |
+| Green dashed | **Export predicted**: the export price for the rest of today, from Amber's predicted price or your fixed tariff. |
 
 Drag across the chart to zoom into a stretch of the day, and press **Reset zoom** to go back. Hover over a point for the exact price. The chart always shows today and does not change with the date range on the Reporting page. It needs a pricing source, either [Amber](05-sources.md#connecting-amber-electric) or a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
 

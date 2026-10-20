@@ -349,3 +349,53 @@ def test_ingest_price_interval_fan_out_floors_staggered_start_to_whole_minute(cl
         r.ts.isoformat() for r in readings
     ]
     assert [r.ts.minute for r in readings] == [55, 56, 57, 58, 59]
+
+
+def test_ingest_price_interval_stores_low_and_high(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+    headers = {"X-Collector-Key": PRICING_COLLECTOR_KEY}
+    common = {
+        "channel": "sell",
+        "interval_start": "2026-01-01T00:00:00Z",
+        "interval_end": "2026-01-01T00:05:00Z",
+    }
+
+    first = {"intervals": [{**common, "price": "0.35", "price_low": "-0.5", "price_high": "1.2"}]}
+    client.post(f"/api/v1/sources/{source_id}/prices", json=first, headers=headers)
+    revised = {"intervals": [{**common, "price": "0.40", "price_low": "-0.3", "price_high": "1.5"}]}
+    response = client.post(f"/api/v1/sources/{source_id}/prices", json=revised, headers=headers)
+    assert response.status_code == 202, response.text
+
+    from core_api.models.pricing import PriceInterval
+
+    session = make_session_factory(make_engine(db_url))()
+    interval = session.query(PriceInterval).one()
+    session.close()
+    assert (str(interval.price), str(interval.price_low), str(interval.price_high)) == ("0.4000", "-0.3000", "1.5000")
+
+
+def test_ingest_price_interval_without_range_leaves_low_and_high_null(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+    headers = {"X-Collector-Key": PRICING_COLLECTOR_KEY}
+    common = {
+        "channel": "buy",
+        "interval_start": "2026-01-01T00:00:00Z",
+        "interval_end": "2026-01-01T00:05:00Z",
+    }
+
+    forecast = {"intervals": [{**common, "price": "7.02", "price_low": "6.34", "price_high": "7.95"}]}
+    client.post(f"/api/v1/sources/{source_id}/prices", json=forecast, headers=headers)
+    actual = {"intervals": [{**common, "price": "7.37"}]}
+    response = client.post(f"/api/v1/sources/{source_id}/prices", json=actual, headers=headers)
+    assert response.status_code == 202, response.text
+
+    from core_api.models.pricing import PriceInterval
+
+    session = make_session_factory(make_engine(db_url))()
+    interval = session.query(PriceInterval).one()
+    session.close()
+    assert str(interval.price) == "7.3700"
+    assert interval.price_low is None
+    assert interval.price_high is None

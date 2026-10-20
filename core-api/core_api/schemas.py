@@ -276,6 +276,8 @@ class PriceIntervalIn(BaseModel):
     interval_start: UtcDatetime
     interval_end: UtcDatetime
     price: decimal.Decimal
+    price_low: decimal.Decimal | None = None
+    price_high: decimal.Decimal | None = None
     is_demand_window: bool = False
 
     @model_validator(mode="after")
