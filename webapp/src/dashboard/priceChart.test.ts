@@ -212,6 +212,16 @@ describe("buildPriceChartData band", () => {
     expect(point.band).toEqual([-14.6, -12.4]);
   });
 
+  it("keeps the band on future intervals only, not under the solid actual line", () => {
+    const past = { ...reading(20, 30), ts: "2026-10-08T00:00:00Z" };
+    const current = { ...reading(20, 30), ts: "2026-10-08T00:05:00Z" }; // the interval `now` is inside
+    const future = reading(20, 30);
+
+    const points = buildPriceChartData([past, current, future], now);
+
+    expect(points.map((p) => p.band)).toEqual([null, null, [20, 30]]);
+  });
+
   it("has no band when low or high is missing, and treats a missing spike status as none", () => {
     const points = buildPriceChartData(
       [reading(null, null), { ts: "2026-10-08T00:15:00Z", metric: "buy", value: 25 }],
@@ -299,13 +309,20 @@ describe("windowSpanWithin", () => {
   const STEP = 300_000;
   const tss = [0, STEP, 2 * STEP, 3 * STEP];
 
-  it("returns the first and last chart timestamps the window covers", () => {
-    expect(windowSpanWithin({ from: STEP, to: 3 * STEP, level: "spike" }, tss)).toEqual({ x1: STEP, x2: 2 * STEP });
+  it("runs from the window's first timestamp to the first one after it, so the last interval is tinted too", () => {
+    expect(windowSpanWithin({ from: STEP, to: 3 * STEP, level: "spike" }, tss)).toEqual({ x1: STEP, x2: 3 * STEP });
   });
 
-  it("clips a window that runs past the visible range to what is visible", () => {
+  it("gives a one-interval window a width: it ends at the next timestamp", () => {
+    expect(windowSpanWithin({ from: STEP, to: 2 * STEP, level: "spike" }, tss)).toEqual({ x1: STEP, x2: 2 * STEP });
+  });
+
+  it("ends at the last visible timestamp when the window runs past the visible range", () => {
     expect(windowSpanWithin({ from: 2 * STEP, to: 10 * STEP, level: "spike" }, tss)).toEqual({ x1: 2 * STEP, x2: 3 * STEP });
-    expect(windowSpanWithin({ from: -5 * STEP, to: STEP, level: "spike" }, tss)).toEqual({ x1: 0, x2: 0 });
+  });
+
+  it("starts at the first visible timestamp when the window began before the visible range", () => {
+    expect(windowSpanWithin({ from: -5 * STEP, to: STEP, level: "spike" }, tss)).toEqual({ x1: 0, x2: STEP });
   });
 
   it("returns null when no chart timestamp falls inside the window", () => {

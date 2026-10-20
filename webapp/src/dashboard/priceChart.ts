@@ -100,7 +100,9 @@ export function buildPriceChartData(readings: PriceReading[], now: Date): PriceP
       actualCentsPerKwh: i <= lastActualIndex ? value : null,
       predictedCentsPerKwh: i >= lastActualIndex && !isFallback ? value : null,
       fallbackCentsPerKwh: isFallback || (nextIsFallback && i >= lastActualIndex) ? value : null,
-      band,
+      // The band belongs to the forecast: a settled or in-progress interval
+      // can still carry one, but the solid actual line is what it paid.
+      band: i <= lastActualIndex ? null : band,
       spikeStatus,
     };
   });
@@ -178,16 +180,21 @@ export function mergeImportExportPrices(
   return Array.from(byTs.values()).sort((a, b) => a.ts - b.ts);
 }
 
-/** The first and last chart timestamps inside [window.from, window.to), for
- * drawing a ReferenceArea on the chart's category x-axis, which only accepts
- * timestamps that exist in the data. Null when none of `timestamps` (sorted)
- * fall inside the window, e.g. when zoomed away from it. */
+/** The x1/x2 for a ReferenceArea over [window.from, window.to) on the chart's
+ * category x-axis, which only accepts timestamps that exist in the data. x1 is
+ * the first timestamp inside the window. x2 is the first one at or after
+ * window.to, so the last interval is covered and a one-interval window has a
+ * width; when the window runs past the data it is the last timestamp inside.
+ * Null when none of `timestamps` (sorted) fall inside the window, e.g. when
+ * zoomed away from it. */
 export function windowSpanWithin(
   window: { from: number; to: number },
   timestamps: number[],
 ): { x1: number; x2: number } | null {
   const inside = timestamps.filter((ts) => ts >= window.from && ts < window.to);
-  return inside.length === 0 ? null : { x1: inside[0], x2: inside[inside.length - 1] };
+  if (inside.length === 0) return null;
+  const after = timestamps.find((ts) => ts >= window.to);
+  return { x1: inside[0], x2: after ?? inside[inside.length - 1] };
 }
 
 export type InstabilityLevel ="spike" | "potential" | "wide-band";

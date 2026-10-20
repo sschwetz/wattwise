@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import sqlite3
 
-from core_api.bootstrap import run_migrations
+from alembic import command
+from alembic.config import Config
+
+from core_api.bootstrap import ALEMBIC_INI, CORE_API_ROOT, run_migrations
 from core_api.models import Base
 
 
@@ -50,3 +53,52 @@ def test_amber_api_key_column_exists_and_defaults_null(db):
     db.commit()
     db.refresh(u)
     assert u.amber_api_key == "psk_example_token"
+
+
+SPIKE_STATUS_REVISION = "b4d7e1a9c3f2"
+BEFORE_SPIKE_STATUS_REVISION = "f1a8c3d5e7b2"
+
+
+def _price_interval_columns(db_path) -> list[str]:
+    con = sqlite3.connect(db_path)
+    try:
+        return [row[1] for row in con.execute("pragma table_info(price_intervals)")]
+    finally:
+        con.close()
+
+
+def test_spike_status_migration_upgrades_existing_rows_and_downgrades(tmp_path, monkeypatch):
+    db_path = tmp_path / "spike_status.db"
+    url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("script_location", str(CORE_API_ROOT / "alembic"))
+    command.upgrade(config, BEFORE_SPIKE_STATUS_REVISION)
+    assert "spike_status" not in _price_interval_columns(db_path)
+
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            "insert into price_intervals (pricing_source_id, channel, interval_start, interval_end, price, is_demand_window) "
+            "values (1, 'buy', '2026-01-01 00:00:00', '2026-01-01 00:05:00', 7.0, 0)"
+        )
+        con.commit()
+    finally:
+        con.close()
+
+    command.upgrade(config, SPIKE_STATUS_REVISION)
+    con = sqlite3.connect(db_path)
+    try:
+        assert con.execute("select spike_status from price_intervals").fetchone() == ("none",)
+        try:
+            con.execute("update price_intervals set spike_status = 'bogus'")
+            raised = False
+        except sqlite3.IntegrityError:
+            raised = True
+    finally:
+        con.close()
+    assert raised, "the check constraint should reject an unknown spike_status"
+
+    command.downgrade(config, BEFORE_SPIKE_STATUS_REVISION)
+    assert "spike_status" not in _price_interval_columns(db_path)
+    assert "price_low" in _price_interval_columns(db_path)
