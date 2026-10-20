@@ -27,10 +27,6 @@ export interface PriceReading extends Reading {
 
 export type SpikeStatus = "none" | "potential" | "spike";
 
-/** A forecast band wider than this many c/kWh counts as unstable. A starting
- * value: on a normal day about 5% of general-channel bands are wider. */
-export const BAND_WIDTH_THRESHOLD_CENTS = 20;
-
 /** [min, max] of the band. Amber's low and high are ordered by confidence, not
  * by number, so on the export channel low can sit above high. */
 function orderedBand(low: number | null | undefined, high: number | null | undefined): [number, number] | null {
@@ -198,7 +194,7 @@ export function windowSpanWithin(
 }
 
 /** Instability levels, mildest first, so a later index is a worse level. */
-const INSTABILITY_LEVELS = ["wide-band", "potential", "spike"] as const;
+const INSTABILITY_LEVELS = ["potential", "spike"] as const;
 export type InstabilityLevel = (typeof INSTABILITY_LEVELS)[number];
 
 export interface InstabilityWindow {
@@ -210,22 +206,16 @@ export interface InstabilityWindow {
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
-function instabilityLevel(point: TodayPricingPoint): InstabilityLevel | null {
-  if (point.importSpikeStatus !== "none") return point.importSpikeStatus;
-  const band = point.importBand;
-  return band !== null && band[1] - band[0] > BAND_WIDTH_THRESHOLD_CENTS ? "wide-band" : null;
-}
-
 /** Runs of consecutive unstable forecast points on the import channel, merged
- * into windows. A point is unstable when Amber flags it (potential or spike)
- * or its forecast band is wider than BAND_WIDTH_THRESHOLD_CENTS. Points that
+ * into windows. A point is unstable only when Amber flags it (potential or
+ * spike); the width of the forecast band does not count. Points that
  * already have an actual price are settled and skipped. A flagged point that
  * does not start where the previous window ends begins a new window. Expects
  * `points` sorted by ts. */
 export function findInstabilityWindows(points: TodayPricingPoint[], intervalMs = FIVE_MINUTES_MS): InstabilityWindow[] {
   const windows: InstabilityWindow[] = [];
   for (const point of points) {
-    const level = point.actualImportCentsPerKwh === null ? instabilityLevel(point) : null;
+    const level = point.actualImportCentsPerKwh === null && point.importSpikeStatus !== "none" ? point.importSpikeStatus : null;
     if (level === null) continue;
     const last = windows[windows.length - 1];
     if (last && point.ts <= last.to) {

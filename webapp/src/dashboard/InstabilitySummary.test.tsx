@@ -26,7 +26,7 @@ describe("InstabilitySummary", () => {
       <InstabilitySummary
         windows={[
           { from: first, to: first + 30 * MINUTE_MS, level: "potential" },
-          { from: second, to: second + 45 * MINUTE_MS, level: "wide-band" },
+          { from: second, to: second + 45 * MINUTE_MS, level: "potential" },
         ]}
         timeZone="UTC"
       />,

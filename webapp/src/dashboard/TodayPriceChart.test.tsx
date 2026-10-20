@@ -42,12 +42,28 @@ describe("TodayPriceChart instability", () => {
     expect(screen.getByText(/^Price instability expected /)).toBeInTheDocument();
   });
 
-  it("shows the range legend but no summary when bands are narrow and nothing is flagged", () => {
-    mockPrices([forecast(0, { price_low: 22, price_high: 26 }), forecast(1, { price_low: 22, price_high: 27 })]);
+  it("shows the range legend but no summary or spike legend when nothing is flagged, even with a wide band", () => {
+    mockPrices([forecast(0, { price_low: 22, price_high: 60 }), forecast(1, { price_low: 22, price_high: 27 })]);
     renderChart();
 
     expect(screen.getByText("Forecast range")).toBeInTheDocument();
     expect(screen.queryByText(/Price instability/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Price spike/)).not.toBeInTheDocument();
+  });
+
+  it("names a possible spike in the legend", () => {
+    mockPrices([forecast(0, { spike_status: "potential" }), forecast(1)]);
+    renderChart();
+
+    expect(screen.getByText("Price spike possible")).toBeInTheDocument();
+    expect(screen.queryByText("Price spike")).not.toBeInTheDocument();
+  });
+
+  it("names an actual spike in the legend", () => {
+    mockPrices([forecast(0, { spike_status: "spike" }), forecast(1)]);
+    renderChart();
+
+    expect(screen.getByText("Price spike")).toBeInTheDocument();
   });
 
   it("shows neither when no forecast has a band or a flag", () => {
