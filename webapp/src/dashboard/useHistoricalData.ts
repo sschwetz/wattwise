@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../api/client";
 import { LIVE_POLL_MS, type EnergyMetric, type PriceChannel, type Reading } from "./useLiveReadings";
 import type { PriceReading } from "./priceChart";
+import { dayRangeOffset } from "./dateRange";
 
 export interface CostSummary {
   total_cost_c: number;
@@ -135,15 +136,12 @@ export function useBillingPeriodBounds(siteId: number) {
  * forecast, since nothing else could have produced it yet. It does flag
  * forecast rows that fell back to perKwh (`forecast_fallback`).
  */
-export function useTodayPrices(siteId: number, channel: PriceChannel) {
+export function useTodayPrices(siteId: number, channel: PriceChannel, dayOffset = 0) {
   return useQuery({
-    queryKey: ["prices", siteId, "today", channel],
+    queryKey: ["prices", siteId, "today", channel, dayOffset],
     queryFn: () => {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setDate(end.getDate() + 1);
-      const params = new URLSearchParams({ channel, start: start.toISOString(), end: end.toISOString() });
+      const { from, to } = dayRangeOffset(dayOffset);
+      const params = new URLSearchParams({ channel, start: from.toISOString(), end: to.toISOString() });
       return apiFetch<PriceReading[]>(`/api/v1/sites/${siteId}/prices?${params}`);
     },
     refetchInterval: LIVE_POLL_MS,
