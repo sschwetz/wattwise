@@ -174,21 +174,32 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
 
 function ExportAdjustmentWindowsList({ siteId, tariffId }: { siteId: number; tariffId: number }) {
   const { data: windows } = useExportAdjustmentWindows(siteId, tariffId);
+  const { data: cycles } = useBillingCycles(siteId);
+  const noBillingCycle = cycles !== undefined && cycles.length === 0;
 
   return (
     <ul className="space-y-2">
-      {(windows ?? []).map((w) => (
-        <li key={w.id} className="space-y-0.5 rounded-md border border-line/60 px-3 py-1.5">
-          <div className="flex items-baseline justify-between gap-2 text-sm">
-            <span className="text-ink">{w.label}</span>
-            <span className="font-display tabular-nums text-ink">{formatSignedCents(w.adjustment_c_per_kwh)}c/kWh</span>
-          </div>
-          <p className="text-xs text-ink-muted">
-            {formatTime(w.start_time)}–{formatTime(w.end_time)} · {formatDaysOfWeek(w.days_of_week)} ·{" "}
-            {formatMonths(w.months)}
-          </p>
-        </li>
-      ))}
+      {(windows ?? []).map((w) => {
+        const allowance = Number(w.daily_allowance_kwh);
+        return (
+          <li key={w.id} className="space-y-0.5 rounded-md border border-line/60 px-3 py-1.5">
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="text-ink">{w.label}</span>
+              <span className="font-display tabular-nums text-ink">{formatSignedCents(w.adjustment_c_per_kwh)}c/kWh</span>
+            </div>
+            <p className="text-xs text-ink-muted">
+              {formatTime(w.start_time)}–{formatTime(w.end_time)} · {formatDaysOfWeek(w.days_of_week)} ·{" "}
+              {formatMonths(w.months)}
+              {allowance > 0 && ` · ${allowance} kWh/day allowance`}
+            </p>
+            {allowance > 0 && noBillingCycle && (
+              <p className="text-xs text-ink-muted">
+                The allowance is ignored until you set a billing cycle, so every exported kWh is adjusted.
+              </p>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -200,6 +211,7 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [adjustment, setAdjustment] = useState("");
+  const [allowance, setAllowance] = useState("");
   const createWindow = useCreateExportAdjustmentWindow(siteId, tariffId);
 
   function handleSubmit(event: FormEvent) {
@@ -211,6 +223,7 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
       start_time: startTime,
       end_time: endTime,
       adjustment_c_per_kwh: Number(adjustment),
+      daily_allowance_kwh: Number(allowance || "0"),
     });
   }
 
@@ -274,6 +287,14 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
           inputMode="decimal"
           className={inputClass}
           required
+        />
+        <input
+          value={allowance}
+          onChange={(e) => setAllowance(e.target.value)}
+          placeholder="Daily allowance (kWh, 0 = none)"
+          aria-label="Daily allowance"
+          inputMode="decimal"
+          className={inputClass}
         />
         <button type="submit" disabled={createWindow.isPending} className={primaryButtonClass}>
           Add export adjustment

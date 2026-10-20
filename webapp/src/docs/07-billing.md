@@ -85,8 +85,20 @@ An **export adjustment** raises or lowers your feed-in price during a repeating 
 | **Adjustment label** | A name. |
 | **Export months**, **Export days of week**, **Export start time**, **Export end time** | Same format as a demand window. |
 | **Adjustment** | Cents per kWh. Positive is an incentive, negative is a disincentive. |
+| **Daily allowance** | kWh of exports per day that are not adjusted. Leave it at 0 if there is none. |
 
 Click **Add export adjustment**. If several adjustments cover the same minute, they add together.
+
+#### Daily allowance
+
+Some export tariffs charge a fee per kWh exported but include a free amount each day, for example "10 kWh a day free, then 3c/kWh". Enter `-3` as the adjustment and `10` as the daily allowance.
+
+The allowance builds up through the billing period. On day 3 you have 30 kWh of allowance in total, whatever you exported on days 1 and 2. Allowance you have not used also counts backwards: if you export 30 kWh on day 1 you are charged for 20 kWh, and that charge drops to 10 kWh on day 2 and to 0 on day 3 if you export nothing more. The count starts again at the start of each [billing cycle](#billing-cycles).
+
+- Only exports inside the adjustment's months, days and times use up the allowance.
+- The allowance counts grid export, the same as the [net](06-dashboard.md#net-and-gross-cost) cost.
+- Without a billing cycle the allowance is ignored and every exported kWh is adjusted.
+- On the export price graphs the adjustment appears only once your exports so far have used up the allowance so far. For times in the future the graph assumes you export nothing more.
 
 ### Conditional credits
 
