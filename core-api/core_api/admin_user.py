@@ -62,20 +62,18 @@ def ensure_admin_user(session_factory: sessionmaker[Session], settings: Settings
         db.close()
 
 
-def expire_password_file(password_file: pathlib.Path, max_age: datetime.timedelta = PASSWORD_FILE_MAX_AGE) -> bool:
-    """Deletes the one-time password file once it is older than max_age, so a
-    forgotten file does not sit on the data volume indefinitely. Returns True
-    if it deleted the file. Age is the file's mtime, which is its write time:
-    the file is written once and never touched again."""
+def expire_password_file(password_file: pathlib.Path) -> bool:
+    """Deletes the one-time password file once it is older than
+    PASSWORD_FILE_MAX_AGE, so a forgotten file does not sit on the data volume
+    indefinitely. Returns True if it deleted the file. Age is the file's
+    mtime, which is its write time: the file is written once and never
+    touched again."""
     try:
         age = time.time() - password_file.stat().st_mtime
     except FileNotFoundError:
         return False
-    if age < max_age.total_seconds():
+    if age < PASSWORD_FILE_MAX_AGE.total_seconds():
         return False
-    try:
-        password_file.unlink()
-    except FileNotFoundError:
-        return False
-    logger.warning("Deleted %s: it was older than %s and had not been removed.", password_file, max_age)
+    password_file.unlink(missing_ok=True)
+    logger.warning("Deleted %s: it was older than %s and had not been removed.", password_file, PASSWORD_FILE_MAX_AGE)
     return True
