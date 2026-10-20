@@ -332,6 +332,12 @@ class ReadingOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PriceReadingOut(ReadingOut):
+    # True when this reading sits in a forecast interval that arrived without
+    # Amber's advancedPrice band, so its value is the plain perKwh forecast.
+    forecast_fallback: bool = False
+
+
 class SiteTariffCreate(BaseModel):
     effective_from: UtcDatetime
     effective_to: UtcDatetime | None = None

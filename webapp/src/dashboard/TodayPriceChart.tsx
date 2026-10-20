@@ -4,10 +4,16 @@ import { ErrorAlert, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
 import { SWATCH_COLORS, TODAY_CHARTS_SYNC_ID, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import { clipToDay, todayRange, zoomRangeFor } from "./dateRange";
 import { buildAxisTickPlan, formatBucketTick } from "./historyChart";
-import { buildPriceChartData, mergeImportExportPrices, type TodayPricingPoint } from "./priceChart";
+import { buildPriceChartData, mergeImportExportPrices, type PriceReading, type TodayPricingPoint } from "./priceChart";
 import { type ChartZoom, useChartZoom } from "./useChartZoom";
 import { useTodayPrices } from "./useHistoricalData";
-import type { Reading } from "./useLiveReadings";
+
+/** Which series a tooltip value came from: actual shows nothing, a predicted
+ * value is labelled, and a value with neither is the fallback series. */
+function priceKindSuffix(actual: number | null, predicted: number | null): string {
+  if (actual !== null) return "";
+  return predicted !== null ? " (predicted)" : " (fallback: no advanced forecast)";
+}
 
 function TodayPricingTooltip({
   active,
@@ -19,8 +25,10 @@ function TodayPricingTooltip({
   payload?: ReadonlyArray<{ payload?: TodayPricingPoint }>;
 }) {
   const point = payload?.[0]?.payload;
-  const importValue = point?.actualImportCentsPerKwh ?? point?.predictedImportCentsPerKwh;
-  const exportValue = point?.actualExportCentsPerKwh ?? point?.predictedExportCentsPerKwh;
+  const importValue =
+    point?.actualImportCentsPerKwh ?? point?.predictedImportCentsPerKwh ?? point?.fallbackImportCentsPerKwh;
+  const exportValue =
+    point?.actualExportCentsPerKwh ?? point?.predictedExportCentsPerKwh ?? point?.fallbackExportCentsPerKwh;
   if (!active || !point || label === undefined || (importValue == null && exportValue == null)) {
     return null;
   }
@@ -29,36 +37,47 @@ function TodayPricingTooltip({
       <p className="mb-1 text-ink-muted">{formatBucketTick(Number(label), "5min")}</p>
       {importValue != null && (
         <p style={{ color: SWATCH_COLORS.gridImport }}>
-          Import {importValue.toFixed(1)}c/kWh{point.actualImportCentsPerKwh === null && " (predicted)"}
+          Import {importValue.toFixed(1)}c/kWh
+          {priceKindSuffix(point.actualImportCentsPerKwh, point.predictedImportCentsPerKwh)}
         </p>
       )}
       {exportValue != null && (
         <p style={{ color: SWATCH_COLORS.gridExport }}>
-          Export {exportValue.toFixed(1)}c/kWh{point.actualExportCentsPerKwh === null && " (predicted)"}
+          Export {exportValue.toFixed(1)}c/kWh
+          {priceKindSuffix(point.actualExportCentsPerKwh, point.predictedExportCentsPerKwh)}
         </p>
       )}
     </div>
   );
 }
 
-function PriceLegendSwatch({ color, dashed, label }: { color: string; dashed?: boolean; label: string }) {
+const SWATCH_PATTERNS = {
+  dashed: (color: string) => `repeating-linear-gradient(to right, ${color} 0 4px, transparent 4px 7px)`,
+  dotted: (color: string) => `repeating-linear-gradient(to right, ${color} 0 1px, transparent 1px 4px)`,
+};
+
+function PriceLegendSwatch({
+  color,
+  pattern,
+  label,
+}: {
+  color: string;
+  pattern?: keyof typeof SWATCH_PATTERNS;
+  label: string;
+}) {
   return (
     <span className="flex items-center gap-1.5">
       <span
         aria-hidden
         className="h-0.5 w-4"
-        style={
-          dashed
-            ? { backgroundImage: `repeating-linear-gradient(to right, ${color} 0 4px, transparent 4px 7px)` }
-            : { backgroundColor: color }
-        }
+        style={pattern ? { backgroundImage: SWATCH_PATTERNS[pattern](color) } : { backgroundColor: color }}
       />
       {label}
     </span>
   );
 }
 
-function buildTodayPricingChartData(importPrices: Reading[], exportPrices: Reading[]): TodayPricingPoint[] {
+function buildTodayPricingChartData(importPrices: PriceReading[], exportPrices: PriceReading[]): TodayPricingPoint[] {
   const now = new Date();
   return mergeImportExportPrices(buildPriceChartData(importPrices, now), buildPriceChartData(exportPrices, now));
 }
@@ -88,6 +107,10 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
         : fullChartData,
     [fullChartData, zoom.range, range],
   );
+  const hasFallback = useMemo(
+    () => chartData.some((p) => p.fallbackImportCentsPerKwh !== null || p.fallbackExportCentsPerKwh !== null),
+    [chartData],
+  );
   const axisTickPlan = useMemo(() => buildAxisTickPlan(chartData, range), [chartData, range]);
 
   return (
@@ -97,9 +120,12 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
         <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted">
           {zoom.range && <ResetZoomButton onClick={() => zoom.set(null)} />}
           <PriceLegendSwatch color={SWATCH_COLORS.gridImport} label="Import actual" />
-          <PriceLegendSwatch color={SWATCH_COLORS.gridImport} dashed label="Import predicted" />
+          <PriceLegendSwatch color={SWATCH_COLORS.gridImport} pattern="dashed" label="Import predicted" />
           <PriceLegendSwatch color={SWATCH_COLORS.gridExport} label="Export actual" />
-          <PriceLegendSwatch color={SWATCH_COLORS.gridExport} dashed label="Export predicted" />
+          <PriceLegendSwatch color={SWATCH_COLORS.gridExport} pattern="dashed" label="Export predicted" />
+          {hasFallback && (
+            <PriceLegendSwatch color="var(--color-ink-muted)" pattern="dotted" label="Fallback (no advanced forecast)" />
+          )}
         </div>
       </div>
       {(isImportError || isExportError) && <ErrorAlert message="Failed to load today's pricing." />}
@@ -163,6 +189,26 @@ export function TodayPriceChart({ siteId, zoom }: { siteId: number; zoom: ChartZ
             dataKey="predictedExportCentsPerKwh"
             stroke={SWATCH_COLORS.gridExport}
             strokeDasharray="4 3"
+            strokeWidth={2}
+            dot={false}
+            connectNulls={false}
+            isAnimationActive={false}
+          />
+          <Line
+            type="stepAfter"
+            dataKey="fallbackImportCentsPerKwh"
+            stroke={SWATCH_COLORS.gridImport}
+            strokeDasharray="1 3"
+            strokeWidth={2}
+            dot={false}
+            connectNulls={false}
+            isAnimationActive={false}
+          />
+          <Line
+            type="stepAfter"
+            dataKey="fallbackExportCentsPerKwh"
+            stroke={SWATCH_COLORS.gridExport}
+            strokeDasharray="1 3"
             strokeWidth={2}
             dot={false}
             connectNulls={false}

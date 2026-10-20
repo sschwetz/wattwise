@@ -12,6 +12,13 @@ function fiveMinBucketStart(ts: string): number {
   return date.getTime();
 }
 
+/** A price reading as /prices returns it. `forecast_fallback` is true when
+ * the reading sits in a forecast interval that arrived without Amber's
+ * advancedPrice band, so its value is the plain perKwh forecast. */
+export interface PriceReading extends Reading {
+  forecast_fallback?: boolean;
+}
+
 export interface PricePoint {
   ts: number;
   /** null outside the actual (elapsed) segment, so the two Line components
@@ -21,18 +28,29 @@ export interface PricePoint {
    * actualCentsPerKwh at the actual/predicted boundary so the two line
    * segments visually connect instead of leaving a gap. */
   predictedCentsPerKwh: number | null;
+  /** The fallback segment: future intervals priced from perKwh because Amber
+   * sent no advancedPrice. Null elsewhere, except the last predicted point
+   * before a fallback run, which both series share so the dotted segment
+   * connects to the dashed one. */
+  fallbackCentsPerKwh: number | null;
+}
+
+interface BucketValue {
+  value: number;
+  isFallback: boolean;
 }
 
 /** Builds one point per 5-minute interval, split into an actual (solid) and
  * predicted (dashed) segment purely by comparing each interval's timestamp to
  * `now` -- a reading timestamped later than now can only be forecast-origin,
- * since nothing else could have produced it yet (see useTodayPrices). */
-export function buildPriceChartData(readings: Reading[], now: Date): PricePoint[] {
-  const valueByBucket = new Map<number, number>();
+ * since nothing else could have produced it yet (see useTodayPrices).
+ * Intervals the backend flags as fallback go on a third (dotted) segment. */
+export function buildPriceChartData(readings: PriceReading[], now: Date): PricePoint[] {
+  const valueByBucket = new Map<number, BucketValue>();
   for (const reading of readings) {
     const key = fiveMinBucketStart(reading.ts);
     if (!valueByBucket.has(key)) {
-      valueByBucket.set(key, reading.value);
+      valueByBucket.set(key, { value: reading.value, isFallback: reading.forecast_fallback === true });
     }
   }
 
@@ -45,19 +63,25 @@ export function buildPriceChartData(readings: Reading[], now: Date): PricePoint[
     }
   }
 
-  return sorted.map(([ts, value], i) => ({
-    ts,
-    actualCentsPerKwh: i <= lastActualIndex ? value : null,
-    predictedCentsPerKwh: i >= lastActualIndex ? value : null,
-  }));
+  return sorted.map(([ts, { value, isFallback }], i) => {
+    const nextIsFallback = sorted[i + 1]?.[1].isFallback === true;
+    return {
+      ts,
+      actualCentsPerKwh: i <= lastActualIndex ? value : null,
+      predictedCentsPerKwh: i >= lastActualIndex && !isFallback ? value : null,
+      fallbackCentsPerKwh: isFallback || (nextIsFallback && i >= lastActualIndex) ? value : null,
+    };
+  });
 }
 
 export interface TodayPricingPoint {
   ts: number;
   actualImportCentsPerKwh: number | null;
   predictedImportCentsPerKwh: number | null;
+  fallbackImportCentsPerKwh: number | null;
   actualExportCentsPerKwh: number | null;
   predictedExportCentsPerKwh: number | null;
+  fallbackExportCentsPerKwh: number | null;
 }
 
 /** Amber's feed-in (sell) price is stored negative in the normal case -- the
@@ -88,8 +112,10 @@ export function mergeImportExportPrices(
         ts,
         actualImportCentsPerKwh: null,
         predictedImportCentsPerKwh: null,
+        fallbackImportCentsPerKwh: null,
         actualExportCentsPerKwh: null,
         predictedExportCentsPerKwh: null,
+        fallbackExportCentsPerKwh: null,
       };
       byTs.set(ts, point);
     }
@@ -100,11 +126,13 @@ export function mergeImportExportPrices(
     const point = pointAt(p.ts);
     point.actualImportCentsPerKwh = p.actualCentsPerKwh;
     point.predictedImportCentsPerKwh = p.predictedCentsPerKwh;
+    point.fallbackImportCentsPerKwh = p.fallbackCentsPerKwh;
   }
   for (const p of exportPoints) {
     const point = pointAt(p.ts);
     point.actualExportCentsPerKwh = priceMagnitude(p.actualCentsPerKwh);
     point.predictedExportCentsPerKwh = priceMagnitude(p.predictedCentsPerKwh);
+    point.fallbackExportCentsPerKwh = priceMagnitude(p.fallbackCentsPerKwh);
   }
 
   return Array.from(byTs.values()).sort((a, b) => a.ts - b.ts);

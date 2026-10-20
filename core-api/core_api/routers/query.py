@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import decimal
+from collections.abc import Callable
 from typing import Literal
 
 from fastapi import APIRouter, Depends
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly_fee_discounts_c, partial_period_discounts_c
 from core_api.deps import get_db_session, require_site_access
 from core_api.errors import AppError
+from core_api.forecast_fallback import fallback_ranges, in_fallback
 from core_api.jobs.billing_periods import (
     current_billing_period_bounds,
     effective_billing_cycles_for_site,
@@ -36,7 +38,7 @@ from core_api.models.readings import (
 )
 from core_api.models.sources import Source, SourceKind
 from core_api.readings_query import query_readings
-from core_api.schemas import BillingPeriodBoundsOut, BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, ReadingOut, UtcDatetime
+from core_api.schemas import BillingPeriodBoundsOut, BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, PriceReadingOut, ReadingOut, UtcDatetime
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["query"])
 
@@ -100,16 +102,7 @@ def get_weather_readings(
     )
 
 
-@router.get("/prices", response_model=list[ReadingOut])
-def get_prices(
-    channel: PriceChannel,
-    start: UtcDatetime,
-    end: UtcDatetime,
-    site: Site = Depends(require_site_access),
-    db: Session = Depends(get_db_session),
-) -> list[ReadingOut]:
-    stmt = select(Source.id).where(Source.site_id == site.id, Source.kind == SourceKind.PRICING)
-    source_ids = list(db.execute(stmt).scalars().all())
+def _price_rows(db: Session, source_ids: list[int], channel: PriceChannel, start: datetime.datetime, end: datetime.datetime) -> list:
     rows: list = []
     for source_id in source_ids:
         rows.extend(
@@ -125,25 +118,42 @@ def get_prices(
                 metric_value=channel,
             )
         )
-    sorted_rows = sorted(rows, key=lambda r: r.ts)
+    return sorted(rows, key=lambda r: r.ts)
 
+
+def _displayed_price_fn(db: Session, site: Site, channel: PriceChannel) -> Callable[[PriceReading], decimal.Decimal]:
+    """The price the dashboard shows for a reading. The export price (e.g. the
+    "today's pricing" chart) must reflect any configured incentive/disincentive,
+    the same as the $ cost totals already do -- not just the raw Amber feed."""
     if channel != PriceChannel.SELL:
-        return [ReadingOut(ts=r.ts, metric=r.channel.value, value=float(r.value)) for r in sorted_rows]
-
-    # The export price shown here (e.g. the dashboard's "today's pricing"
-    # chart) must reflect any configured incentive/disincentive, the same
-    # as the $ cost totals already do -- not just the raw Amber feed.
+        return lambda r: decimal.Decimal(str(r.value))
     tariffs = site_tariffs_for_site(db, site.id)
     windows_by_tariff = export_adjustment_windows_by_tariff(db, site.id)
+    return lambda r: adjusted_export_price(decimal.Decimal(str(r.value)), tariffs, windows_by_tariff, r.ts, site.timezone)
+
+
+@router.get("/prices", response_model=list[PriceReadingOut])
+def get_prices(
+    channel: PriceChannel,
+    start: UtcDatetime,
+    end: UtcDatetime,
+    site: Site = Depends(require_site_access),
+    db: Session = Depends(get_db_session),
+) -> list[PriceReadingOut]:
+    stmt = select(Source.id).where(Source.site_id == site.id, Source.kind == SourceKind.PRICING)
+    source_ids = list(db.execute(stmt).scalars().all())
+    rows = _price_rows(db, source_ids, channel, start, end)
+    fallbacks = fallback_ranges(db, source_ids, channel, start, end, datetime.datetime.now(datetime.timezone.utc))
+
+    value_of = _displayed_price_fn(db, site, channel)
     return [
-        ReadingOut(
+        PriceReadingOut(
             ts=r.ts,
             metric=r.channel.value,
-            value=float(
-                adjusted_export_price(decimal.Decimal(str(r.value)), tariffs, windows_by_tariff, r.ts, site.timezone)
-            ),
+            value=float(value_of(r)),
+            forecast_fallback=in_fallback(r.ts, fallbacks),
         )
-        for r in sorted_rows
+        for r in rows
     ]
 
 

@@ -15,7 +15,7 @@ from core_api.models.billing import (
     SiteTariff,
 )
 from core_api.models.identity import Site, User
-from core_api.models.pricing import PriceChannel, PriceReading
+from core_api.models.pricing import PriceChannel, PriceInterval, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
 from core_api.security import create_access_token
@@ -242,6 +242,109 @@ def test_get_prices_buy_channel_is_unaffected_by_export_adjustment(client, app_a
     body = response.json()
     assert len(body) == 1
     assert body[0]["value"] == 30.0
+
+
+def seed_forecast_intervals(db_url: str) -> tuple[int, int]:
+    """One settled interval and two forecast intervals on the buy channel: a
+    banded forecast and an unbanded one (the fallback). Each has one reading
+    at its whole-minute start."""
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="pq-fallback-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    source = Source(
+        site_id=site.id,
+        kind=SourceKind.PRICING,
+        provider="amber",
+        config={},
+        effective_from=datetime.datetime(2020, 1, 1, tzinfo=UTC),
+    )
+    session.add(source)
+    session.commit()
+    base = datetime.datetime.now(UTC).replace(second=0, microsecond=0)
+    five = datetime.timedelta(minutes=5)
+    one_second = datetime.timedelta(seconds=1)
+    # (offset from now, price_low): settled (no band), forecast with band, forecast without band
+    for i, (offset, low) in enumerate([(-10, None), (10, decimal.Decimal("20")), (20, None)]):
+        start = base + datetime.timedelta(minutes=offset)
+        session.add(
+            PriceInterval(
+                pricing_source_id=source.id,
+                channel=PriceChannel.BUY,
+                interval_start=start + one_second,
+                interval_end=start + five,
+                price=decimal.Decimal("25"),
+                price_low=low,
+                price_high=None if low is None else decimal.Decimal("30"),
+            )
+        )
+        session.add(PriceReading(pricing_source_id=source.id, ts=start, channel=PriceChannel.BUY, value=decimal.Decimal("25")))
+    session.commit()
+    ids = (owner.id, site.id)
+    session.close()
+    return ids
+
+
+def test_get_prices_flags_only_future_readings_without_a_band(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_forecast_intervals(db_url)
+    now = datetime.datetime.now(UTC)
+    response = client.get(
+        f"/api/v1/sites/{site_id}/prices",
+        params={
+            "channel": "buy",
+            "start": (now - datetime.timedelta(hours=1)).isoformat(),
+            "end": (now + datetime.timedelta(hours=1)).isoformat(),
+        },
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    # settled (-10 min), banded forecast (+10), fallback forecast (+20)
+    assert [r["forecast_fallback"] for r in response.json()] == [False, False, True]
+
+
+def test_get_prices_without_interval_rows_flags_nothing(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_price_reading(db_url)
+    now = datetime.datetime.now(UTC)
+    response = client.get(
+        f"/api/v1/sites/{site_id}/prices",
+        params={
+            "channel": "buy",
+            "start": (now - datetime.timedelta(hours=2)).isoformat(),
+            "end": now.isoformat(),
+        },
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert [r["forecast_fallback"] for r in response.json()] == [False]
+
+
+def test_get_prices_sell_channel_flags_fallback(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = seed_forecast_intervals(db_url)
+    session = make_session_factory(make_engine(db_url))()
+    for interval in session.query(PriceInterval).all():
+        interval.channel = PriceChannel.SELL
+    for reading in session.query(PriceReading).all():
+        reading.channel = PriceChannel.SELL
+    session.commit()
+    session.close()
+    now = datetime.datetime.now(UTC)
+    response = client.get(
+        f"/api/v1/sites/{site_id}/prices",
+        params={
+            "channel": "sell",
+            "start": (now - datetime.timedelta(hours=1)).isoformat(),
+            "end": (now + datetime.timedelta(hours=1)).isoformat(),
+        },
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    assert [r["forecast_fallback"] for r in response.json()] == [False, False, True]
 
 
 def test_get_cost_for_site(client, app_and_db_url):

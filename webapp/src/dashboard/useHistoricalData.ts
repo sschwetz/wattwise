@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../api/client";
 import { LIVE_POLL_MS, type EnergyMetric, type PriceChannel, type Reading } from "./useLiveReadings";
+import type { PriceReading } from "./priceChart";
 
 export interface CostSummary {
   total_cost_c: number;
@@ -131,7 +132,8 @@ export function useBillingPeriodBounds(siteId: number) {
  * doesn't flag which rows are forecast-origin (see core-api's PriceReading --
  * a forecast row is overwritten in place once the real actual value lands),
  * but that's fine here: a row timestamped later than "now" can only be a
- * forecast, since nothing else could have produced it yet.
+ * forecast, since nothing else could have produced it yet. It does flag
+ * forecast rows that fell back to perKwh (`forecast_fallback`).
  */
 export function useTodayPrices(siteId: number, channel: PriceChannel) {
   return useQuery({
@@ -142,7 +144,7 @@ export function useTodayPrices(siteId: number, channel: PriceChannel) {
       const end = new Date(start);
       end.setDate(end.getDate() + 1);
       const params = new URLSearchParams({ channel, start: start.toISOString(), end: end.toISOString() });
-      return apiFetch<Reading[]>(`/api/v1/sites/${siteId}/prices?${params}`);
+      return apiFetch<PriceReading[]>(`/api/v1/sites/${siteId}/prices?${params}`);
     },
     refetchInterval: LIVE_POLL_MS,
   });

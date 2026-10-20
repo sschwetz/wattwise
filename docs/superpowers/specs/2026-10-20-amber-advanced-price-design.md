@@ -59,3 +59,11 @@ A new Alembic migration adds both columns. Its `down_revision` is `e8b2c4d6f1a9`
 
 - Replace the `advancedPrice` row in the "Not mapped" list in `docs/superpowers/specs/2026-09-30-pricing-collector-design.md` with the new mapping.
 - Update `docs/collectors.md`, `docs/how-it-works.md` and `webapp/src/docs/05-sources.md` where they describe the forecast, if they say it uses `perKwh`.
+
+## Addendum: fallback marking (2026-10-20)
+
+Amber stops sending `advancedPrice` at the end of its forecast window, so the last forecast interval falls back to `perKwh` and sits well off its neighbours (observed 33.8 beside 18.8). The 24-hour window is kept, and the fallback is shown instead of hidden.
+
+- `GET /sites/{id}/prices` returns `forecast_fallback` on each reading. It is true when the reading falls in a `price_intervals` row that starts after now and has `price_low` `NULL`. The flag is computed at query time in `core_api/forecast_fallback.py`, so there is no migration. Settled and current intervals are never flagged.
+- The Today's Pricing chart draws flagged intervals as a dotted line in the channel's colour, adds a legend entry only when one is present, and labels the tooltip "fallback: no advanced forecast".
+- The chart covers the rest of today and the fallback interval is about 24 hours ahead, so it normally falls outside the chart. It shows only if Amber drops `advancedPrice` for nearer intervals.
