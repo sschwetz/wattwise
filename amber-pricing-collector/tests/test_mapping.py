@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import pathlib
 
+import pytest
+
 from amber_pricing_collector.mapping import map_price_intervals
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -67,7 +69,15 @@ def test_controlled_load_maps_correctly():
         }
     ]
     mapped = map_price_intervals(intervals)
-    assert mapped == [{"channel": "controlled_load", "interval_start": "2026-09-30T00:00:01Z", "interval_end": "2026-09-30T00:05:00Z", "price": "12.3"}]
+    assert mapped == [
+        {
+            "channel": "controlled_load",
+            "interval_start": "2026-09-30T00:00:01Z",
+            "interval_end": "2026-09-30T00:05:00Z",
+            "price": "12.3",
+            "spike_status": "none",
+        }
+    ]
 
 
 def test_forecast_uses_predicted_price_with_low_and_high():
@@ -106,3 +116,29 @@ def test_advanced_price_missing_a_key_is_skipped_not_fatal():
     ]
     mapped = map_price_intervals(intervals)
     assert len(mapped) == 6
+
+
+def _spiking_interval(**overrides) -> dict:
+    return {
+        "channelType": "general",
+        "startTime": "2026-09-30T00:10:01Z",
+        "endTime": "2026-09-30T00:15:00Z",
+        "perKwh": 5.0,
+        **overrides,
+    }
+
+
+@pytest.mark.parametrize("status", ["none", "potential", "spike"])
+def test_spike_status_is_forwarded(status):
+    mapped = map_price_intervals([_spiking_interval(spikeStatus=status)])
+    assert mapped[0]["spike_status"] == status
+
+
+def test_unknown_spike_status_maps_to_none():
+    mapped = map_price_intervals([_spiking_interval(spikeStatus="somethingNew")])
+    assert mapped[0]["spike_status"] == "none"
+
+
+def test_missing_spike_status_maps_to_none():
+    mapped = map_price_intervals([_spiking_interval()])
+    assert mapped[0]["spike_status"] == "none"

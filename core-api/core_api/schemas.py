@@ -8,7 +8,7 @@ from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, 
 
 from core_api.models.identity import SiteAccessRole
 from core_api.models.local_rates import LOCAL_RATE_CHANNELS
-from core_api.models.pricing import PriceChannel
+from core_api.models.pricing import PriceChannel, SpikeStatus
 from core_api.models.readings import EnergyMetric, WeatherMetric
 from core_api.models.sources import SourceKind
 
@@ -278,6 +278,7 @@ class PriceIntervalIn(BaseModel):
     price: decimal.Decimal
     price_low: decimal.Decimal | None = None
     price_high: decimal.Decimal | None = None
+    spike_status: SpikeStatus = SpikeStatus.NONE
     is_demand_window: bool = False
 
     @model_validator(mode="after")
@@ -341,6 +342,12 @@ class PriceReadingOut(ReadingOut):
     # True when this reading sits in a forecast interval that arrived without
     # Amber's advancedPrice band, so its value is the plain perKwh forecast.
     forecast_fallback: bool = False
+    # Amber's advancedPrice band for the reading's interval, raw (not adjusted
+    # like `value` is on the sell channel). None for settled intervals and
+    # fallback forecasts.
+    price_low: float | None = None
+    price_high: float | None = None
+    spike_status: SpikeStatus = SpikeStatus.NONE
 
 
 class SiteTariffCreate(BaseModel):

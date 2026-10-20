@@ -5,6 +5,14 @@ import logging
 logger = logging.getLogger("amber_pricing_collector")
 
 CHANNEL_MAP = {"general": "buy", "feedIn": "sell", "controlledLoad": "controlled_load"}
+SPIKE_STATUSES = frozenset({"none", "potential", "spike"})
+
+
+def _spike_status(interval: dict) -> str:
+    """Amber's spikeStatus, or "none" when it is missing or not one Core API
+    accepts -- an unfamiliar value must not get the whole interval rejected."""
+    status = interval.get("spikeStatus")
+    return status if status in SPIKE_STATUSES else "none"
 
 
 def _price_fields(interval: dict) -> dict:
@@ -45,6 +53,7 @@ def map_price_intervals(intervals: list[dict]) -> list[dict]:
                     "channel": CHANNEL_MAP[channel_type],
                     "interval_start": interval["startTime"],
                     "interval_end": interval["endTime"],
+                    "spike_status": _spike_status(interval),
                     **_price_fields(interval),
                 }
             )

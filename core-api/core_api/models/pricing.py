@@ -18,6 +18,14 @@ class PriceChannel(str, enum.Enum):
     DEMAND = "demand"
 
 
+class SpikeStatus(str, enum.Enum):
+    """Amber's spikeStatus: whether an interval may spike or is spiking now."""
+
+    NONE = "none"
+    POTENTIAL = "potential"
+    SPIKE = "spike"
+
+
 # All price channels are continuous values (no state-type price channel
 # exists), so all average today -- mirrors ENERGY_METRIC_AGGREGATION /
 # WEATHER_METRIC_AGGREGATION's lookup-table pattern (spec: 'Retention &
@@ -34,7 +42,10 @@ class PriceInterval(Base):
     schema, since the spec doesn't name a surrogate id for this table."""
 
     __tablename__ = "price_intervals"
-    __table_args__ = (enum_check("channel", PriceChannel, "ck_price_intervals_channel"),)
+    __table_args__ = (
+        enum_check("channel", PriceChannel, "ck_price_intervals_channel"),
+        enum_check("spike_status", SpikeStatus, "ck_price_intervals_spike_status"),
+    )
 
     pricing_source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"), primary_key=True)
     channel: Mapped[PriceChannel] = mapped_column(str_enum(PriceChannel, length=32), primary_key=True)
@@ -45,6 +56,9 @@ class PriceInterval(Base):
     # that carry no band (settled actuals, other providers).
     price_low: Mapped[decimal.Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     price_high: Mapped[decimal.Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    spike_status: Mapped[SpikeStatus] = mapped_column(
+        str_enum(SpikeStatus, length=16), nullable=False, default=SpikeStatus.NONE, server_default=SpikeStatus.NONE.value
+    )
     is_demand_window: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 

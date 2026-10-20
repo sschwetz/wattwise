@@ -399,3 +399,59 @@ def test_ingest_price_interval_without_range_leaves_low_and_high_null(client, ap
     assert str(interval.price) == "7.3700"
     assert interval.price_low is None
     assert interval.price_high is None
+
+
+SPIKE_INTERVAL = {
+    "channel": "buy",
+    "interval_start": "2026-01-01T00:00:00Z",
+    "interval_end": "2026-01-01T00:05:00Z",
+    "price": "7.02",
+}
+
+
+def _post_price(client, source_id, interval):
+    return client.post(
+        f"/api/v1/sources/{source_id}/prices",
+        json={"intervals": [interval]},
+        headers={"X-Collector-Key": PRICING_COLLECTOR_KEY},
+    )
+
+
+def _stored_spike_status(db_url):
+    from core_api.models.pricing import PriceInterval
+
+    session = make_session_factory(make_engine(db_url))()
+    interval = session.query(PriceInterval).one()
+    session.close()
+    return interval.spike_status
+
+
+def test_price_interval_stores_spike_status(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+    response = _post_price(client, source_id, {**SPIKE_INTERVAL, "spike_status": "potential"})
+    assert response.status_code == 202, response.text
+    assert _stored_spike_status(db_url).value == "potential"
+
+
+def test_price_interval_without_spike_status_defaults_to_none(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+    response = _post_price(client, source_id, SPIKE_INTERVAL)
+    assert response.status_code == 202, response.text
+    assert _stored_spike_status(db_url).value == "none"
+
+
+def test_later_actual_resets_spike_status(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+    _post_price(client, source_id, {**SPIKE_INTERVAL, "spike_status": "spike"})
+    _post_price(client, source_id, SPIKE_INTERVAL)
+    assert _stored_spike_status(db_url).value == "none"
+
+
+def test_price_interval_rejects_unknown_spike_status(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_pricing_source(db_url)
+    response = _post_price(client, source_id, {**SPIKE_INTERVAL, "spike_status": "bogus"})
+    assert response.status_code == 422
