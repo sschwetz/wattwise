@@ -56,14 +56,6 @@ docker compose exec core-api rm /data/initial-admin-password.txt
 
 The file exists only if the database had no users at first start.
 
-To delete it automatically if it is still there after 5 days, run this once on the Docker host, from the repo directory:
-
-```bash
-python3 deploy/expire_admin_password.py install
-```
-
-That adds a daily cron entry (03:17) for `deploy/expire_admin_password.py`. The script deletes the file once it is 5 days old, then removes its own cron entry. It also removes the entry if you deleted the file by hand first. Output goes to `/tmp/wattwise-expire-admin-password.log`.
-
 ## Day-to-day
 
 ### Is it working?
