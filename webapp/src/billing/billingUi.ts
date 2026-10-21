@@ -42,7 +42,11 @@ export function byLabel<T extends { label: string }>(windows: T[] | undefined): 
   return [...(windows ?? [])].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
 }
 
+export function isPast(iso: string): boolean {
+  return Date.parse(iso) <= Date.now();
+}
+
 /** Has this item's end date passed? An item with no end date has not. */
 export function hasEnded(item: { effective_to: string | null }): boolean {
-  return item.effective_to !== null && Date.parse(item.effective_to) <= Date.now();
+  return item.effective_to !== null && isPast(item.effective_to);
 }

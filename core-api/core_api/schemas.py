@@ -363,6 +363,14 @@ class DateRangeCheck(BaseModel):
         return self
 
 
+class DatedWindowCreate(DateRangeCheck):
+    """The optional dates of a tariff window. A missing effective_from becomes
+    the tariff's start."""
+
+    effective_from: UtcDatetime | None = None
+    effective_to: UtcDatetime | None = None
+
+
 class SiteTariffCreate(DateRangeCheck):
     effective_from: UtcDatetime
     effective_to: UtcDatetime | None = None
@@ -381,13 +389,10 @@ class SiteTariffUpdate(BaseModel):
     effective_to: UtcDatetime
 
 
-class WindowUpdate(BaseModel):
-    effective_to: UtcDatetime
+WindowUpdate = SiteTariffUpdate
 
 
-class DemandWindowCreate(DateRangeCheck):
-    effective_from: UtcDatetime | None = None
-    effective_to: UtcDatetime | None = None
+class DemandWindowCreate(DatedWindowCreate):
     label: str
     months: list[int]
     days_of_week: list[int]
@@ -405,9 +410,7 @@ class DemandWindowOut(DemandWindowCreate):
     model_config = {"from_attributes": True}
 
 
-class ExportAdjustmentWindowCreate(DateRangeCheck):
-    effective_from: UtcDatetime | None = None
-    effective_to: UtcDatetime | None = None
+class ExportAdjustmentWindowCreate(DatedWindowCreate):
     label: str
     months: list[int]
     days_of_week: list[int]
@@ -442,9 +445,7 @@ def _check_time_pattern(
         raise ValueError("start_time and end_time must be whole minutes")
 
 
-class ConditionalCreditWindowCreate(DateRangeCheck):
-    effective_from: UtcDatetime | None = None
-    effective_to: UtcDatetime | None = None
+class ConditionalCreditWindowCreate(DatedWindowCreate):
     label: str = Field(min_length=1, max_length=100)
     months: list[int] = Field(min_length=1)
     days_of_week: list[int] = Field(min_length=1)

@@ -5,8 +5,8 @@ import { ConditionalCreditForm, ConditionalCreditList } from "../billing/Conditi
 import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
 import { tariffHeading } from "../billing/tariffHeading";
 import { DateRangeFields, EndAction, WindowDates } from "../billing/DateFields";
-import { todayIn, useDateRange, useSiteTimeZone } from "../billing/dateHooks";
-import { displayEndDate, suggestStart } from "../billing/dates";
+import { useDateRange, useSiteTimeZone } from "../billing/dateHooks";
+import { displayEndDate, formatDay } from "../billing/dates";
 import { useSources } from "../sources/useSources";
 import {
   useBillingCycles,
@@ -34,6 +34,7 @@ import {
   formatMonths,
   formatTime,
   hasEnded,
+  isPast,
   inputClass,
   primaryButtonClass,
 } from "../billing/billingUi";
@@ -42,14 +43,6 @@ function isActive(entity: { effective_to: string | null }): boolean {
   return !entity.effective_to;
 }
 
-/** A "YYYY-MM-DD" calendar day in the viewer's locale format. */
-function formatDay(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString();
-}
-
-function isExpired(endsAt: string): boolean {
-  return new Date(endsAt).getTime() <= Date.now();
-}
 
 function formatSignedCents(value: string): string {
   const n = Number(value);
@@ -106,8 +99,7 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
   const [rate, setRate] = useState("");
   const createWindow = useCreateDemandWindow(siteId, tariffId);
   const { data: windows } = useDemandWindows(siteId, tariffId);
-  const timeZone = useSiteTimeZone(siteId);
-  const { range, toInput } = useDateRange(suggestStart(windows ?? [], timeZone, todayIn(timeZone)), timeZone);
+  const { range, toInput } = useDateRange(windows, siteId);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -230,8 +222,7 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
   const [allowance, setAllowance] = useState("");
   const createWindow = useCreateExportAdjustmentWindow(siteId, tariffId);
   const { data: windows } = useExportAdjustmentWindows(siteId, tariffId);
-  const timeZone = useSiteTimeZone(siteId);
-  const { range, toInput } = useDateRange(suggestStart(windows ?? [], timeZone, todayIn(timeZone)), timeZone);
+  const { range, toInput } = useDateRange(windows, siteId);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -321,17 +312,17 @@ function MonthlyFeeDiscountWindowsList({ siteId, tariffId }: { siteId: number; t
       {byLabel(windows).map((w) => (
         <li
           key={w.id}
-          className={`space-y-0.5 rounded-md border border-line/60 px-3 py-1.5 ${isExpired(w.ends_at) ? disabledClass : ""}`}
+          className={`space-y-0.5 rounded-md border border-line/60 px-3 py-1.5 ${isPast(w.ends_at) ? disabledClass : ""}`}
         >
           <div className="flex items-baseline justify-between gap-2 text-sm">
-            <span className={isExpired(w.ends_at) ? "line-through" : "text-ink"}>{w.label}</span>
+            <span className={isPast(w.ends_at) ? "line-through" : "text-ink"}>{w.label}</span>
             <span
-              className={`font-display tabular-nums ${isExpired(w.ends_at) ? "line-through" : "text-ink"}`}
+              className={`font-display tabular-nums ${isPast(w.ends_at) ? "line-through" : "text-ink"}`}
             >
               -{formatCentsAsDollars(w.discounted_fee_c)}/month
             </span>
           </div>
-          <p className={isExpired(w.ends_at) ? "text-xs" : "text-xs text-ink-muted"}>
+          <p className={isPast(w.ends_at) ? "text-xs" : "text-xs text-ink-muted"}>
             {new Date(w.starts_at).toLocaleDateString()} – {new Date(w.ends_at).toLocaleDateString()}
           </p>
         </li>
@@ -421,7 +412,7 @@ function TariffSection({ siteId }: { siteId: number }) {
   const createTariff = useCreateTariff(siteId);
   const endTariff = useEndTariff(siteId);
   const timeZone = useSiteTimeZone(siteId);
-  const { range, toInput } = useDateRange(suggestStart(tariffs ?? [], timeZone, todayIn(timeZone)), timeZone);
+  const { range, toInput } = useDateRange(tariffs, siteId);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -559,7 +550,7 @@ function BillingCycleSection({ siteId }: { siteId: number }) {
   const createCycle = useCreateBillingCycle(siteId);
   const endCycle = useEndBillingCycle(siteId);
   const timeZone = useSiteTimeZone(siteId);
-  const { range, toInput } = useDateRange(suggestStart(cycles ?? [], timeZone, todayIn(timeZone)), timeZone);
+  const { range, toInput } = useDateRange(cycles, siteId);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();

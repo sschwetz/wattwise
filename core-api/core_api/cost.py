@@ -334,7 +334,7 @@ def _conditional_credit_total_c(
             continue
         local_date = midnight.astimezone(tz).date()
         for window in windows_by_tariff.get(tariff.id, []):
-            if window_in_force(window, midnight) and credit_window_applies_on(window, local_date):
+            if credit_window_applies_on(window, local_date) and window_in_force(window, midnight):
                 total_c += _window_credit_c(db, energy_source_ids, window, local_date, tz, real_now_utc)
     return total_c
 

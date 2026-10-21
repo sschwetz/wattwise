@@ -111,7 +111,7 @@ def first_matching_demand_window(
     at_local = at.astimezone(site_tz(site_timezone))
     stmt = select(DemandWindow).where(DemandWindow.site_tariff_id == tariff.id).order_by(DemandWindow.id)
     for window in db.execute(stmt).scalars():
-        if window_in_force(window, at) and in_demand_window_pattern(window, at_local):
+        if in_demand_window_pattern(window, at_local) and window_in_force(window, at):
             return window
     return None
 
@@ -168,7 +168,7 @@ def total_export_adjustment_c_per_kwh(
     for window in windows:
         if skip_allowance and window.daily_allowance_kwh > 0:
             continue
-        if window_in_force(window, at_local) and _in_time_pattern(window, at_local):
+        if _in_time_pattern(window, at_local) and window_in_force(window, at_local):
             total += window.adjustment_c_per_kwh
     return total
 

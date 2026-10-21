@@ -54,6 +54,11 @@ def _earliest_change(old_end, new_end):
     return new_end if old_end is None else min(as_utc(old_end), new_end)
 
 
+def _require_end_after_start(start, end) -> None:
+    if as_utc(end) <= as_utc(start):
+        raise AppError(422, "invalid_dates", "effective_to must be after effective_from")
+
+
 def _reject_overlap(rows, start, end, *, what: str, exclude_id: int | None = None) -> None:
     """422 if [start, end) overlaps another row's span. `end` None is open ended."""
     for row in rows:
@@ -84,8 +89,8 @@ def _create_dated_window(db: Session, site: Site, tariff_id: int, model_cls: typ
     data = payload.model_dump()
     start = as_utc(data["effective_from"] or tariff.effective_from)
     end = data["effective_to"]
-    if end is not None and end <= start:
-        raise AppError(422, "invalid_dates", "effective_to must be after effective_from")
+    if end is not None:
+        _require_end_after_start(start, end)
     _check_window_inside_tariff(tariff, start, end)
     row = model_cls(site_tariff_id=tariff.id, **{**data, "effective_from": start})
     db.add(row)
@@ -101,8 +106,7 @@ def _end_dated_window(db: Session, site: Site, tariff_id: int, window_id: int, m
     window = db.get(model_cls, window_id)
     if window is None or window.site_tariff_id != tariff.id:
         raise AppError(404, "not_found", f"Window {window_id} not found")
-    if payload.effective_to <= as_utc(window.effective_from):
-        raise AppError(422, "invalid_dates", "effective_to must be after the window's start")
+    _require_end_after_start(window.effective_from, payload.effective_to)
     _check_window_inside_tariff(tariff, as_utc(window.effective_from), payload.effective_to)
     if model_cls is DemandWindow:
         invalidate_demand_data(db, site.id, _earliest_change(window.effective_to, payload.effective_to))
@@ -164,8 +168,7 @@ def update_tariff(
     """Closing effective_to is the delete-equivalent for this effective-dated
     entity (spec's design principle, already applied to Source)."""
     tariff = _get_owned_tariff(db, site, tariff_id)
-    if payload.effective_to <= as_utc(tariff.effective_from):
-        raise AppError(422, "invalid_dates", "effective_to must be after the tariff's start")
+    _require_end_after_start(tariff.effective_from, payload.effective_to)
     siblings = db.execute(select(SiteTariff).where(SiteTariff.site_id == site.id)).scalars().all()
     _reject_overlap(siblings, as_utc(tariff.effective_from), payload.effective_to, what="tariff", exclude_id=tariff.id)
     invalidate_demand_data(db, site.id, _earliest_change(tariff.effective_to, payload.effective_to))
@@ -335,8 +338,7 @@ def update_billing_cycle(
     cycle = db.get(BillingCycle, cycle_id)
     if cycle is None or cycle.site_id != site.id:
         raise AppError(404, "not_found", f"Billing cycle {cycle_id} not found")
-    if payload.effective_to <= as_utc(cycle.effective_from):
-        raise AppError(422, "invalid_dates", "effective_to must be after the cycle's start")
+    _require_end_after_start(cycle.effective_from, payload.effective_to)
     siblings = db.execute(select(BillingCycle).where(BillingCycle.site_id == site.id)).scalars().all()
     _reject_overlap(siblings, as_utc(cycle.effective_from), payload.effective_to, what="billing cycle", exclude_id=cycle.id)
     invalidate_demand_data(db, site.id, _earliest_change(cycle.effective_to, payload.effective_to))

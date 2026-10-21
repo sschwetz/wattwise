@@ -114,8 +114,8 @@ def _window_export_kwh(
         if (
             tariff is not None
             and tariff.id == tariff_id
-            and window_in_force(window, ts)
             and in_export_window_pattern(window, ts.astimezone(tz))
+            and window_in_force(window, ts)
         ):
             counted[ts] = kwh
     return counted

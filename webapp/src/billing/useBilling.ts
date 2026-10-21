@@ -253,7 +253,7 @@ export function useCreateConditionalCreditWindow(siteId: number, tariffId: numbe
   });
 }
 
-function useEndWindow(siteId: number, tariffId: number, path: string, queryKeyName: string) {
+function useEndWindow(siteId: number, tariffId: number, path: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, effective_to }: EndInput) =>
@@ -262,22 +262,22 @@ function useEndWindow(siteId: number, tariffId: number, path: string, queryKeyNa
         body: JSON.stringify({ effective_to }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [queryKeyName, siteId, tariffId] });
+      queryClient.invalidateQueries({ queryKey: [path, siteId, tariffId] });
       queryClient.invalidateQueries({ queryKey: ["demand-charges", siteId] });
     },
   });
 }
 
 export function useEndDemandWindow(siteId: number, tariffId: number) {
-  return useEndWindow(siteId, tariffId, "demand-windows", "demand-windows");
+  return useEndWindow(siteId, tariffId, "demand-windows");
 }
 
 export function useEndExportAdjustmentWindow(siteId: number, tariffId: number) {
-  return useEndWindow(siteId, tariffId, "export-adjustments", "export-adjustments");
+  return useEndWindow(siteId, tariffId, "export-adjustments");
 }
 
 export function useEndConditionalCreditWindow(siteId: number, tariffId: number) {
-  return useEndWindow(siteId, tariffId, "conditional-credits", "conditional-credits");
+  return useEndWindow(siteId, tariffId, "conditional-credits");
 }
 
 export function useMonthlyFeeDiscountWindows(siteId: number, tariffId: number) {

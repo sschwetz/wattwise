@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { displayEndDate, endOfDayIso, localDate } from "./dates";
+import { displayEndDate, endOfDayIso, formatDay, localDate } from "./dates";
 import { type DateRangeValue, todayIn } from "./dateHooks";
 import { endLinkClass, inputClass, primaryButtonClass } from "./billingUi";
 
@@ -85,10 +85,6 @@ interface WindowDatesProps {
   timeZone: string;
   onEnd: (effectiveTo: string) => void;
   pending?: boolean;
-}
-
-function formatDay(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString();
 }
 
 /** A window's dates, with an End link while it has no end date. */

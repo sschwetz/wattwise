@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { EndAction } from "../billing/DateFields";
 import { useSiteTimeZone } from "../billing/dateHooks";
-import { displayEndDate } from "../billing/dates";
+import { displayEndDate, formatDay } from "../billing/dates";
 import { AddWindowForm } from "./AddWindowForm";
 import { type CoverageGap, findCoverageGaps } from "./rateCoverage";
 import { CHANNEL_SECTIONS, SHORT_DAYS, SHORT_MONTHS, channelTitle, errorClass, inputClass } from "./rateWindowUi";
@@ -93,7 +93,7 @@ function WindowSummary({ window, timeZone }: { window: RateWindow; timeZone: str
       {window.effective_to && (
         <span className="text-ink-muted">
           {" "}
-          (ended {new Date(`${displayEndDate(window.effective_to, timeZone)}T00:00:00`).toLocaleDateString()})
+          (ended {formatDay(displayEndDate(window.effective_to, timeZone))})
         </span>
       )}
     </span>

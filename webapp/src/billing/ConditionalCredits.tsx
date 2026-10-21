@@ -13,8 +13,7 @@ import {
 } from "./billingUi";
 import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "./CheckboxGroup";
 import { DateRangeFields, WindowDates } from "./DateFields";
-import { todayIn, useDateRange, useSiteTimeZone } from "./dateHooks";
-import { suggestStart } from "./dates";
+import { useDateRange, useSiteTimeZone } from "./dateHooks";
 import { useConditionalCreditWindows, useCreateConditionalCreditWindow, useEndConditionalCreditWindow } from "./useBilling";
 
 interface TariffProps {
@@ -61,8 +60,7 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
   const [creditC, setCreditC] = useState("");
   const createWindow = useCreateConditionalCreditWindow(siteId, tariffId);
   const { data: windows } = useConditionalCreditWindows(siteId, tariffId);
-  const timeZone = useSiteTimeZone(siteId);
-  const { range, toInput } = useDateRange(suggestStart(windows ?? [], timeZone, todayIn(timeZone)), timeZone);
+  const { range, toInput } = useDateRange(windows, siteId);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();

@@ -72,3 +72,8 @@ export function suggestStart(items: { effective_to: string | null }[], timeZone:
   const latest = ends.reduce((a, b) => (Date.parse(a) >= Date.parse(b) ? a : b));
   return addDays(displayEndDate(latest, timeZone), 1);
 }
+
+/** A "YYYY-MM-DD" calendar day in the viewer's locale format. */
+export function formatDay(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString();
+}
