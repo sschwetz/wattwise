@@ -180,3 +180,36 @@ def test_ending_a_window_of_another_tariff_is_404(client, owner_site):
     response = _patch(client, owner_site, f"tariffs/{second}/demand-windows/{window_id}", {"effective_to": "2026-08-01T00:00:00Z"})
 
     assert response.status_code == 404
+
+
+def test_adding_a_demand_window_into_a_finalized_period_clears_its_stored_charge(client, owner_site, app_and_db_url):
+    import datetime
+
+    from core_api.db import make_engine, make_session_factory
+    from core_api.models.billing import DemandCharge, DemandInterval
+
+    _, db_url = app_and_db_url
+    tariff_id = _tariff(client, owner_site)
+    slot = datetime.datetime(2026, 3, 10, tzinfo=datetime.timezone.utc)
+    session = make_session_factory(make_engine(db_url))()
+    session.add(DemandInterval(site_id=owner_site[1], interval_start=slot, interval_end=slot + datetime.timedelta(minutes=5), rolling_sum_w=1.0))
+    session.flush()
+    session.add(
+        DemandCharge(
+            site_id=owner_site[1],
+            billing_period_start=datetime.datetime(2026, 3, 1, tzinfo=datetime.timezone.utc),
+            billing_period_end=datetime.datetime(2026, 4, 1, tzinfo=datetime.timezone.utc),
+            peak_interval_start=slot,
+            peak_avg_import_w=1.0,
+            rate_applied="45.0",
+            charge_amount="100",
+            is_estimated=False,
+        )
+    )
+    session.commit()
+
+    response = _post(client, owner_site, f"tariffs/{tariff_id}/demand-windows", {**DEMAND, "effective_from": "2026-03-15T00:00:00Z"})
+
+    assert response.status_code == 201, response.text
+    assert session.query(DemandCharge).count() == 0
+    session.close()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,24 @@ from core_api.models.billing import DemandCharge, DemandInterval
 from core_api.models.identity import Site
 from core_api.models.readings import EnergyReading
 from core_api.time_utils import as_utc
+
+
+def invalidate_demand_data(db: Session, site_id: int, from_instant: datetime.datetime) -> None:
+    """Drop stored demand data from `from_instant` onward so the demand jobs
+    rebuild it after a tariff, demand window or billing cycle date change.
+
+    Each 5-minute interval stores the rate applied to its slot, and the
+    interval job only re-derives the last few hours, so intervals are deleted
+    from `from_instant` to the end: the job resumes from the last one left
+    and walks forward to now. Every charge whose period ends after
+    `from_instant` goes too, which also covers each charge whose peak interval
+    was just deleted. The caller commits."""
+    db.execute(
+        delete(DemandCharge).where(DemandCharge.site_id == site_id, DemandCharge.billing_period_end > from_instant)
+    )
+    db.execute(
+        delete(DemandInterval).where(DemandInterval.site_id == site_id, DemandInterval.interval_start >= from_instant)
+    )
 
 
 def run_demand_charge_job(db: Session, now: datetime.datetime) -> None:

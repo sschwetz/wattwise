@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from core_api.deps import get_db_session, require_site_access, require_site_owner
 from core_api.errors import AppError
+from core_api.jobs.demand_charge_job import invalidate_demand_data
 from core_api.models.billing import (
     BillingCycle,
     ConditionalCreditWindow,
@@ -46,6 +47,13 @@ def _get_owned_tariff(db: Session, site: Site, tariff_id: int) -> SiteTariff:
     return tariff
 
 
+def _earliest_change(old_end, new_end):
+    """The first instant whose dates differ when an item's end moves from
+    `old_end` to `new_end`; an old end of None is open ended."""
+    new_end = as_utc(new_end)
+    return new_end if old_end is None else min(as_utc(old_end), new_end)
+
+
 def _reject_overlap(rows, start, end, *, what: str, exclude_id: int | None = None) -> None:
     """422 if [start, end) overlaps another row's span. `end` None is open ended."""
     for row in rows:
@@ -81,6 +89,8 @@ def _create_dated_window(db: Session, site: Site, tariff_id: int, model_cls: typ
     _check_window_inside_tariff(tariff, start, end)
     row = model_cls(site_tariff_id=tariff.id, **{**data, "effective_from": start})
     db.add(row)
+    if model_cls is DemandWindow:
+        invalidate_demand_data(db, site.id, start)
     db.commit()
     db.refresh(row)
     return row
@@ -94,6 +104,8 @@ def _end_dated_window(db: Session, site: Site, tariff_id: int, window_id: int, m
     if payload.effective_to <= as_utc(window.effective_from):
         raise AppError(422, "invalid_dates", "effective_to must be after the window's start")
     _check_window_inside_tariff(tariff, as_utc(window.effective_from), payload.effective_to)
+    if model_cls is DemandWindow:
+        invalidate_demand_data(db, site.id, _earliest_change(window.effective_to, payload.effective_to))
     window.effective_to = payload.effective_to
     db.commit()
     db.refresh(window)
@@ -129,6 +141,7 @@ def create_tariff(
     _reject_overlap(existing, payload.effective_from, payload.effective_to, what="tariff")
     tariff = SiteTariff(site_id=site.id, **payload.model_dump())
     db.add(tariff)
+    invalidate_demand_data(db, site.id, payload.effective_from)
     db.commit()
     db.refresh(tariff)
     return tariff
@@ -155,6 +168,7 @@ def update_tariff(
         raise AppError(422, "invalid_dates", "effective_to must be after the tariff's start")
     siblings = db.execute(select(SiteTariff).where(SiteTariff.site_id == site.id)).scalars().all()
     _reject_overlap(siblings, as_utc(tariff.effective_from), payload.effective_to, what="tariff", exclude_id=tariff.id)
+    invalidate_demand_data(db, site.id, _earliest_change(tariff.effective_to, payload.effective_to))
     tariff.effective_to = payload.effective_to
     db.commit()
     db.refresh(tariff)
@@ -296,6 +310,7 @@ def create_billing_cycle(
     _reject_overlap(existing, payload.effective_from, payload.effective_to, what="billing cycle")
     cycle = BillingCycle(site_id=site.id, **payload.model_dump())
     db.add(cycle)
+    invalidate_demand_data(db, site.id, payload.effective_from)
     db.commit()
     db.refresh(cycle)
     return cycle
@@ -324,6 +339,7 @@ def update_billing_cycle(
         raise AppError(422, "invalid_dates", "effective_to must be after the cycle's start")
     siblings = db.execute(select(BillingCycle).where(BillingCycle.site_id == site.id)).scalars().all()
     _reject_overlap(siblings, as_utc(cycle.effective_from), payload.effective_to, what="billing cycle", exclude_id=cycle.id)
+    invalidate_demand_data(db, site.id, _earliest_change(cycle.effective_to, payload.effective_to))
     cycle.effective_to = payload.effective_to
     db.commit()
     db.refresh(cycle)
