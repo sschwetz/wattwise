@@ -14,6 +14,10 @@ class CoreApiError(Exception):
 
 
 PROVIDER = "amber"
+# Core API waits up to 30s for a held SQLite write lock (busy_timeout in
+# core_api/db.py). A shorter timeout abandons pushes the server is about to
+# complete, which happens whenever the host's disk stalls.
+LIVE_PUSH_TIMEOUT_SECONDS = 35
 
 
 def _headers(collector_key: str) -> dict[str, str]:
@@ -50,11 +54,16 @@ def fetch_source_config(base_url: str, source_id: int, collector_key: str) -> di
 
 
 def push_price_intervals(
-    base_url: str, source_id: int, collector_key: str, intervals: list[dict], *, timeout: float = 10
+    base_url: str,
+    source_id: int,
+    collector_key: str,
+    intervals: list[dict],
+    *,
+    timeout: float = LIVE_PUSH_TIMEOUT_SECONDS,
 ) -> None:
     """Push a batch of mapped intervals. `timeout` is configurable because the server
     fans each interval out to one row per covered minute: a live-poll tick is a handful
-    of rows and fits the 10s default, but a backfill chunk can be thousands, and a
+    of rows and fits the default, but a backfill chunk can be thousands, and a
     timeout there is unrecoverable (the next cycle re-fetches the identical chunk)."""
     response = _request(
         "POST",

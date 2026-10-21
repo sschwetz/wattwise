@@ -403,6 +403,75 @@ def test_poll_once_skips_push_but_does_not_raise_when_core_api_unreachable(monke
     assert result_config == config  # no crash, cycle just skipped
 
 
+def _stub_one_reading(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
+    monkeypatch.setattr(
+        main_module,
+        "map_production_readings",
+        lambda data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}],
+    )
+    monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
+
+
+def test_poll_once_resends_readings_from_a_failed_push_with_the_next_cycle(monkeypatch):
+    _stub_one_reading(monkeypatch)
+    main_module._pending_readings.clear()
+    batch_sizes = []
+
+    def _push(base_url, source_id, key, readings):
+        batch_sizes.append(len(readings))
+        if len(batch_sizes) == 1:
+            raise CoreApiError("timed out")
+
+    monkeypatch.setattr(main_module, "push_energy_readings", _push)
+    config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
+
+    for _ in range(3):
+        main_module.poll_once(SETTINGS, 1, config)
+
+    assert batch_sizes == [1, 2, 1]
+
+
+def test_poll_once_keeps_failed_readings_per_source(monkeypatch):
+    _stub_one_reading(monkeypatch)
+    main_module._pending_readings.clear()
+    pushed = {}
+
+    def _push(base_url, source_id, key, readings):
+        pushed.setdefault(source_id, []).append(len(readings))
+        if source_id == 1 and len(pushed[1]) == 1:
+            raise CoreApiError("timed out")
+
+    monkeypatch.setattr(main_module, "push_energy_readings", _push)
+    config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
+
+    main_module.poll_once(SETTINGS, 1, config)
+    main_module.poll_once(SETTINGS, 2, config)
+
+    assert pushed == {1: [1], 2: [1]}
+
+
+def test_poll_once_drops_the_oldest_readings_past_the_backlog_cap(monkeypatch):
+    _stub_one_reading(monkeypatch)
+    main_module._pending_readings.clear()
+    monkeypatch.setattr(main_module, "MAX_PENDING_READINGS", 3)
+    sent = []
+
+    def _push(base_url, source_id, key, readings):
+        sent.append(len(readings))
+        raise CoreApiError("down")
+
+    monkeypatch.setattr(main_module, "push_energy_readings", _push)
+    config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
+
+    for _ in range(6):
+        main_module.poll_once(SETTINGS, 1, config)
+
+    # The backlog is capped at 3; each batch adds the cycle's fresh reading.
+    assert sent == [1, 2, 3, 4, 4, 4]
+
+
 def test_main_polls_every_discovered_source_each_cycle(monkeypatch):
     monkeypatch.setattr(main_module, "get_settings", lambda: SETTINGS)
     monkeypatch.setattr(

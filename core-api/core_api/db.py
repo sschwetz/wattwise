@@ -8,10 +8,23 @@ from sqlalchemy.orm import Session, sessionmaker
 from core_api.config import get_settings
 
 
+def _pool_options(url: str) -> dict:
+    """Pool sizing for file-backed SQLite.
+
+    Handlers run in a 40-thread pool and hold a connection while they wait on
+    a write lock. The default 5+10 pool made a burst of ~15 chart queries
+    queue for the 30s pool timeout and return 500 when the disk stalled.
+    In-memory SQLite uses a different pool class that takes no size options.
+    """
+    if not url.startswith("sqlite") or url in ("sqlite://", "sqlite:///:memory:"):
+        return {}
+    return {"pool_size": 20, "max_overflow": 20}
+
+
 def make_engine(database_url: str | None = None) -> Engine:
     url = database_url or get_settings().database_url
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    engine = create_engine(url, connect_args=connect_args)
+    engine = create_engine(url, connect_args=connect_args, **_pool_options(url))
 
     if url.startswith("sqlite"):
         @event.listens_for(engine, "connect")

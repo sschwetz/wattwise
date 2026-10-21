@@ -3,6 +3,12 @@ from __future__ import annotations
 import httpx
 
 
+# Core API waits up to 30s for a held SQLite write lock (busy_timeout in
+# core_api/db.py). A shorter timeout abandons pushes the server is about to
+# complete, which happens whenever the host's disk stalls.
+PUSH_TIMEOUT_SECONDS = 35
+
+
 class CoreApiError(Exception):
     """Raised on any failure talking to Core API — a non-success response or
     a transport failure (connection refused, timeout, DNS, etc.). Callers
@@ -40,7 +46,7 @@ def push_weather_readings(base_url: str, source_id: int, collector_key: str, rea
         f"{base_url}/api/v1/sources/{source_id}/readings/weather",
         headers={"X-Collector-Key": collector_key},
         json=payload,
-        timeout=10,
+        timeout=PUSH_TIMEOUT_SECONDS,
     )
     if response.status_code != 202:
         raise CoreApiError(f"Failed to push readings: {response.status_code} {response.text}")

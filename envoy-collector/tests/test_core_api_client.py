@@ -96,6 +96,18 @@ def test_push_energy_readings_sends_batch_as_iso_timestamps():
 
 
 @respx.mock
+def test_push_energy_readings_waits_longer_than_core_apis_lock_wait():
+    # Core API waits up to 30s for a held SQLite write lock, so a shorter
+    # client timeout abandons pushes the server is about to complete.
+    route = respx.post(f"{BASE_URL}/api/v1/sources/1/readings/energy").mock(
+        return_value=httpx.Response(202, json={"ingested": 0})
+    )
+    push_energy_readings(BASE_URL, 1, "my-key", [])
+
+    assert route.calls[0].request.extensions["timeout"]["read"] > 30
+
+
+@respx.mock
 def test_push_energy_readings_raises_on_non_202():
     respx.post(f"{BASE_URL}/api/v1/sources/1/readings/energy").mock(return_value=httpx.Response(422))
     with pytest.raises(CoreApiError):

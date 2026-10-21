@@ -38,6 +38,13 @@ _last_renewal_attempt: dict[int, float] = {}
 # answering on the Envoy's address. The webapp's SourcesPage.tsx repeats this
 # value (CERT_REPIN_WINDOW_DAYS) in its certificate expiry text.
 CERT_REPIN_WINDOW = datetime.timedelta(days=100)
+# Readings whose push failed, per source, sent again with the next cycle's.
+# Core API upserts on (source, ts, metric), so a batch that was in fact
+# stored after the timeout is harmless to send twice. Held in memory only: a
+# collector restart drops them. Capped so a long outage can't grow without
+# bound or produce a batch Core API can't take; the oldest are dropped first.
+MAX_PENDING_READINGS = 5000
+_pending_readings: dict[int, list[dict]] = {}
 
 
 def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
@@ -315,10 +322,16 @@ def poll_once(settings: Settings, source_id: int, config: dict) -> dict:
         logger.exception("Failed to poll Envoy this cycle for source %s", source_id)
         return config
 
+    batch = _pending_readings.pop(source_id, []) + readings
     try:
-        push_energy_readings(settings.core_api_url, source_id, settings.collector_key, readings)
+        push_energy_readings(settings.core_api_url, source_id, settings.collector_key, batch)
     except CoreApiError:
-        logger.exception("Failed to push readings to Core API this cycle for source %s", source_id)
+        logger.exception(
+            "Failed to push %s readings to Core API this cycle for source %s; will resend next cycle",
+            len(batch),
+            source_id,
+        )
+        _pending_readings[source_id] = batch[-MAX_PENDING_READINGS:]
     return config
 
 

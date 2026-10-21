@@ -12,6 +12,14 @@ from weatherlink_local_collector.weatherlink_client import fetch_current_conditi
 
 logger = logging.getLogger("weatherlink_local_collector")
 
+# Readings whose push failed, per source, sent again with the next cycle's.
+# Core API upserts on (source, ts, metric), so a batch that was in fact stored
+# after the timeout is harmless to send twice. rain_mm is never kept: a failed
+# push rolls the rain baseline back, so the next cycle's rain_mm already covers
+# the missed rain. Held in memory only, and capped; the oldest are dropped first.
+MAX_PENDING_READINGS = 5000
+_pending_readings: dict[int, list[dict]] = {}
+
 
 def _map_iss_or_empty(conditions: list[dict], ts: datetime.datetime, rain_state: RainState) -> list[dict]:
     try:
@@ -52,11 +60,18 @@ def poll_once(settings: Settings, source_id: int, config: dict, rain_state: Rain
     if not readings:
         return
 
+    batch = _pending_readings.pop(source_id, []) + readings
     try:
-        push_weather_readings(settings.core_api_url, source_id, settings.collector_key, readings)
+        push_weather_readings(settings.core_api_url, source_id, settings.collector_key, batch)
     except Exception:
         rain_state.last_daily_mm = prev_rain_baseline
-        logger.exception("Failed to push readings to Core API this cycle for source %s", source_id)
+        logger.exception(
+            "Failed to push %s readings to Core API this cycle for source %s; will resend next cycle",
+            len(batch),
+            source_id,
+        )
+        kept = [r for r in batch if r["metric"] != "rain_mm"]
+        _pending_readings[source_id] = kept[-MAX_PENDING_READINGS:]
 
 
 @dataclass
