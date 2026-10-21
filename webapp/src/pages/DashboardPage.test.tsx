@@ -672,6 +672,8 @@ describe("DashboardPage demand window notice", () => {
     mockApi({}, undefined, undefined, undefined, undefined, undefined, {
       id: 1,
       site_tariff_id: 1,
+      effective_from: "2026-01-01T00:00:00Z",
+      effective_to: null,
       label: "Peak",
       months: [1],
       days_of_week: [0],

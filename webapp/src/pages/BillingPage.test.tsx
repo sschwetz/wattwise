@@ -52,6 +52,8 @@ const ACTIVE_TARIFF = {
 const DEMAND_WINDOW = {
   id: 1,
   site_tariff_id: 1,
+  effective_from: "2026-01-01T00:00:00Z",
+  effective_to: null,
   label: "Summer peak",
   months: [12, 1, 2],
   days_of_week: [0, 1, 2, 3, 4],
@@ -64,6 +66,8 @@ const DEMAND_WINDOW = {
 const EXPORT_ADJUSTMENT = {
   id: 1,
   site_tariff_id: 1,
+  effective_from: "2026-01-01T00:00:00Z",
+  effective_to: null,
   label: "Solar soak incentive",
   months: [11, 12, 1, 2],
   days_of_week: [0, 1, 2, 3, 4, 5, 6],
@@ -76,6 +80,8 @@ const EXPORT_ADJUSTMENT = {
 const MONTHLY_FEE_DISCOUNT = {
   id: 1,
   site_tariff_id: 1,
+  effective_from: "2026-01-01T00:00:00Z",
+  effective_to: null,
   label: "New customer promo",
   starts_at: "2026-01-01T00:00:00Z",
   ends_at: "2026-04-01T00:00:00Z",
@@ -251,6 +257,7 @@ describe("BillingPage", () => {
       );
     expect(postCall).toBeDefined();
     expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
+      effective_from: expect.any(String),
       label: "Summer peak",
       months: [1, 2, 12],
       days_of_week: [0, 1, 2, 3, 4],
@@ -399,6 +406,7 @@ describe("BillingPage", () => {
       );
     expect(postCall).toBeDefined();
     expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
+      effective_from: expect.any(String),
       label: "Solar soak incentive",
       months: [1, 2, 11, 12],
       days_of_week: [0, 1, 2, 3, 4, 5, 6],

@@ -4,7 +4,8 @@ import { BackLink } from "../layout/BackLink";
 import { ConditionalCreditForm, ConditionalCreditList } from "../billing/ConditionalCredits";
 import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
 import { tariffHeading } from "../billing/tariffHeading";
-import { DateRangeFields, EndAction, todayIn, useDateRange, useSiteTimeZone } from "../billing/DateFields";
+import { DateRangeFields, EndAction, WindowDates } from "../billing/DateFields";
+import { todayIn, useDateRange, useSiteTimeZone } from "../billing/dateHooks";
 import { displayEndDate, suggestStart } from "../billing/dates";
 import { useSources } from "../sources/useSources";
 import {
@@ -17,6 +18,8 @@ import {
   useDemandCharges,
   useDemandWindows,
   useEndBillingCycle,
+  useEndDemandWindow,
+  useEndExportAdjustmentWindow,
   useEndTariff,
   useExportAdjustmentWindows,
   useMonthlyFeeDiscountWindows,
@@ -26,17 +29,14 @@ import {
   errorClass,
   formatCents,
   byLabel,
+  disabledClass,
   formatDaysOfWeek,
   formatMonths,
   formatTime,
+  hasEnded,
   inputClass,
   primaryButtonClass,
 } from "../billing/billingUi";
-
-// Applied to anything shown but no longer active (e.g. an expired fee
-// discount window) -- kept visible rather than removed, but visually
-// struck through and muted.
-const disabledClass = "text-ink-muted line-through";
 
 function isActive(entity: { effective_to: string | null }): boolean {
   return !entity.effective_to;
@@ -70,11 +70,13 @@ function dollarsToCents(value: string): number {
 
 function DemandWindowsList({ siteId, tariffId }: { siteId: number; tariffId: number }) {
   const { data: windows } = useDemandWindows(siteId, tariffId);
+  const endWindow = useEndDemandWindow(siteId, tariffId);
+  const timeZone = useSiteTimeZone(siteId);
 
   return (
     <ul className="space-y-2">
       {byLabel(windows).map((w) => (
-        <li key={w.id} className="space-y-0.5 rounded-md border border-line/60 px-3 py-1.5">
+        <li key={w.id} className={`space-y-0.5 rounded-md border border-line/60 px-3 py-1.5 ${hasEnded(w) ? disabledClass : ""}`}>
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-ink">{w.label}</span>
             <span className="font-display tabular-nums text-ink">{formatCents(w.rate_c_per_kw_per_day)}c/kW/day</span>
@@ -83,6 +85,12 @@ function DemandWindowsList({ siteId, tariffId }: { siteId: number; tariffId: num
             {formatTime(w.start_time)}–{formatTime(w.end_time)} · {formatDaysOfWeek(w.days_of_week)} ·{" "}
             {formatMonths(w.months)} · every {w.measurement_interval_minutes} min
           </p>
+          <WindowDates
+            window={w}
+            timeZone={timeZone}
+            pending={endWindow.isPending}
+            onEnd={(effective_to) => endWindow.mutate({ id: w.id, effective_to })}
+          />
         </li>
       ))}
     </ul>
@@ -97,10 +105,14 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
   const [endTime, setEndTime] = useState("");
   const [rate, setRate] = useState("");
   const createWindow = useCreateDemandWindow(siteId, tariffId);
+  const { data: windows } = useDemandWindows(siteId, tariffId);
+  const timeZone = useSiteTimeZone(siteId);
+  const { range, toInput } = useDateRange(suggestStart(windows ?? [], timeZone, todayIn(timeZone)), timeZone);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     createWindow.mutate({
+      ...toInput(),
       label,
       months,
       days_of_week: daysOfWeek,
@@ -128,6 +140,7 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
           className={`${inputClass} col-span-full`}
           required
         />
+        <DateRangeFields range={range} name="Demand window" />
         <CheckboxGroup legend="Months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
         <CheckboxGroup legend="Days of week" options={DAY_OPTIONS} selection={{ selected: daysOfWeek, onChange: setDaysOfWeek }} />
         <input
@@ -170,6 +183,8 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
 function ExportAdjustmentWindowsList({ siteId, tariffId }: { siteId: number; tariffId: number }) {
   const { data: windows } = useExportAdjustmentWindows(siteId, tariffId);
   const { data: cycles } = useBillingCycles(siteId);
+  const endWindow = useEndExportAdjustmentWindow(siteId, tariffId);
+  const timeZone = useSiteTimeZone(siteId);
   const noBillingCycle = cycles !== undefined && cycles.length === 0;
 
   return (
@@ -177,7 +192,7 @@ function ExportAdjustmentWindowsList({ siteId, tariffId }: { siteId: number; tar
       {byLabel(windows).map((w) => {
         const allowance = Number(w.daily_allowance_kwh);
         return (
-          <li key={w.id} className="space-y-0.5 rounded-md border border-line/60 px-3 py-1.5">
+          <li key={w.id} className={`space-y-0.5 rounded-md border border-line/60 px-3 py-1.5 ${hasEnded(w) ? disabledClass : ""}`}>
             <div className="flex items-baseline justify-between gap-2 text-sm">
               <span className="text-ink">{w.label}</span>
               <span className="font-display tabular-nums text-ink">{formatSignedCents(w.adjustment_c_per_kwh)}c/kWh</span>
@@ -192,6 +207,12 @@ function ExportAdjustmentWindowsList({ siteId, tariffId }: { siteId: number; tar
                 The allowance is ignored until you set a billing cycle, so every exported kWh is adjusted.
               </p>
             )}
+            <WindowDates
+              window={w}
+              timeZone={timeZone}
+              pending={endWindow.isPending}
+              onEnd={(effective_to) => endWindow.mutate({ id: w.id, effective_to })}
+            />
           </li>
         );
       })}
@@ -208,10 +229,14 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
   const [adjustment, setAdjustment] = useState("");
   const [allowance, setAllowance] = useState("");
   const createWindow = useCreateExportAdjustmentWindow(siteId, tariffId);
+  const { data: windows } = useExportAdjustmentWindows(siteId, tariffId);
+  const timeZone = useSiteTimeZone(siteId);
+  const { range, toInput } = useDateRange(suggestStart(windows ?? [], timeZone, todayIn(timeZone)), timeZone);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     createWindow.mutate({
+      ...toInput(),
       label,
       months,
       days_of_week: daysOfWeek,
@@ -240,6 +265,7 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
           className={`${inputClass} col-span-full`}
           required
         />
+        <DateRangeFields range={range} name="Export adjustment" />
         <CheckboxGroup legend="Export months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
         <CheckboxGroup legend="Export days of week" options={DAY_OPTIONS} selection={{ selected: daysOfWeek, onChange: setDaysOfWeek }} />
         <input

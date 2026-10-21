@@ -1,18 +1,7 @@
 import { type FormEvent, useState } from "react";
-import { useSites } from "../sites/useSites";
-import { endOfDayIso, localDate, startOfDayIso } from "./dates";
+import { displayEndDate, endOfDayIso, localDate } from "./dates";
+import { type DateRangeValue, todayIn } from "./dateHooks";
 import { endLinkClass, inputClass, primaryButtonClass } from "./billingUi";
-
-/** The site's time zone, or the browser's while the site list is loading. */
-export function useSiteTimeZone(siteId: number): string {
-  const { data } = useSites();
-  const site = Array.isArray(data) ? data.find((s) => s.id === siteId) : undefined;
-  return site?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-}
-
-export function todayIn(timeZone: string): string {
-  return localDate(new Date().toISOString(), timeZone);
-}
 
 interface DateInputProps {
   label: string;
@@ -37,13 +26,6 @@ export function DateInput({ label, value, onChange, required }: DateInputProps) 
   );
 }
 
-export interface DateRangeValue {
-  start: string;
-  end: string;
-  onStartChange: (value: string) => void;
-  onEndChange: (value: string) => void;
-}
-
 /** The start date (required) and last day (optional) of a new item. `name`
  * prefixes the labels when a page has several such forms. */
 export function DateRangeFields({ range, name = "" }: { range: DateRangeValue; name?: string }) {
@@ -57,22 +39,10 @@ export function DateRangeFields({ range, name = "" }: { range: DateRangeValue; n
   );
 }
 
-/** The state behind DateRangeFields. The start date follows `suggested` until
- * the user types one. `toInput` gives the API fields for the chosen dates. */
-export function useDateRange(suggested: string, timeZone: string) {
-  const [typedStart, setStart] = useState<string | null>(null);
-  const [end, setEnd] = useState("");
-  const start = typedStart ?? suggested;
-  const range: DateRangeValue = { start, end, onStartChange: setStart, onEndChange: setEnd };
-  const toInput = () => ({
-    effective_from: startOfDayIso(start, timeZone),
-    ...(end ? { effective_to: endOfDayIso(end, timeZone) } : {}),
-  });
-  return { range, toInput };
-}
-
 interface EndActionProps {
   label: string;
+  /** Names the button for assistive technology when `label` alone is not enough. */
+  ariaLabel?: string;
   timeZone: string;
   onConfirm: (effectiveTo: string) => void;
   pending?: boolean;
@@ -80,7 +50,7 @@ interface EndActionProps {
 
 /** A link that opens an End date field; Confirm end sends the instant the
  * item stops applying, which is 00:00 local on the day after that date. */
-export function EndAction({ label, timeZone, onConfirm, pending }: EndActionProps) {
+export function EndAction({ label, ariaLabel, timeZone, onConfirm, pending }: EndActionProps) {
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(() => todayIn(timeZone));
 
@@ -92,7 +62,7 @@ export function EndAction({ label, timeZone, onConfirm, pending }: EndActionProp
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className={endLinkClass}>
+      <button type="button" onClick={() => setOpen(true)} aria-label={ariaLabel} className={endLinkClass}>
         {label}
       </button>
     );
@@ -107,5 +77,38 @@ export function EndAction({ label, timeZone, onConfirm, pending }: EndActionProp
         Cancel
       </button>
     </form>
+  );
+}
+
+interface WindowDatesProps {
+  window: { label: string; effective_from: string; effective_to: string | null };
+  timeZone: string;
+  onEnd: (effectiveTo: string) => void;
+  pending?: boolean;
+}
+
+function formatDay(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString();
+}
+
+/** A window's dates, with an End link while it has no end date. */
+export function WindowDates({ window, timeZone, onEnd, pending }: WindowDatesProps) {
+  const from = formatDay(localDate(window.effective_from, timeZone));
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs text-ink-muted">
+      <span>
+        from {from}
+        {window.effective_to && ` until ${formatDay(displayEndDate(window.effective_to, timeZone))}`}
+      </span>
+      {!window.effective_to && (
+        <EndAction
+          label="End"
+          ariaLabel={`End ${window.label}`}
+          timeZone={timeZone}
+          onConfirm={onEnd}
+          pending={pending}
+        />
+      )}
+    </div>
   );
 }
