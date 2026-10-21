@@ -238,6 +238,46 @@ def test_rain_delta_recovers_after_failed_push(monkeypatch):
     assert rain_state.last_daily_mm == pytest.approx(14.0)
 
 
+def test_failed_push_resends_non_rain_readings_with_the_next_cycle(monkeypatch):
+    main_module._pending_readings.clear()
+    rain_state = RainState(last_daily_mm=10.0)
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: _rain_conditions(60))
+
+    def _raise_core_api(*a, **k):
+        raise CoreApiError("timed out")
+
+    monkeypatch.setattr(main_module, "push_weather_readings", _raise_core_api)
+    main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, rain_state)
+
+    pushed = []
+    monkeypatch.setattr(
+        main_module, "push_weather_readings", lambda base_url, source_id, key, readings: pushed.append(readings)
+    )
+    main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, rain_state)
+
+    metrics = [r["metric"] for r in pushed[0]]
+    # Rain is recovered through the baseline rollback, so resending the failed
+    # cycle's rain_mm as well would count it twice.
+    assert metrics.count("rain_mm") == 1
+    assert metrics.count("temp_c") == 2
+    assert pushed[0][0]["ts"] <= pushed[0][-1]["ts"]
+
+
+def test_failed_pushes_drop_the_oldest_readings_past_the_backlog_cap(monkeypatch):
+    main_module._pending_readings.clear()
+    monkeypatch.setattr(main_module, "MAX_PENDING_READINGS", 5)
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+
+    def _raise_core_api(*a, **k):
+        raise CoreApiError("down")
+
+    monkeypatch.setattr(main_module, "push_weather_readings", _raise_core_api)
+    for _ in range(5):
+        main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
+
+    assert len(main_module._pending_readings[1]) == 5
+
+
 def test_main_retries_discovery_until_a_source_appears(monkeypatch):
     monkeypatch.setattr(main_module, "get_settings", lambda: SETTINGS)
     attempts = {"n": 0}
