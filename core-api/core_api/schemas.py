@@ -350,7 +350,20 @@ class PriceReadingOut(ReadingOut):
     spike_status: SpikeStatus = SpikeStatus.NONE
 
 
-class SiteTariffCreate(BaseModel):
+class DateRangeCheck(BaseModel):
+    """Rejects an effective_to that is not after effective_from, for the
+    schemas that carry both. effective_from may be None where the API fills
+    it in (the tariff window schemas)."""
+
+    @model_validator(mode="after")
+    def _check_dates(self) -> DateRangeCheck:
+        start, end = getattr(self, "effective_from", None), getattr(self, "effective_to", None)
+        if start is not None and end is not None and end <= start:
+            raise ValueError("effective_to must be after effective_from")
+        return self
+
+
+class SiteTariffCreate(DateRangeCheck):
     effective_from: UtcDatetime
     effective_to: UtcDatetime | None = None
     service_availability_c_per_day: decimal.Decimal
@@ -368,7 +381,13 @@ class SiteTariffUpdate(BaseModel):
     effective_to: UtcDatetime
 
 
-class DemandWindowCreate(BaseModel):
+class WindowUpdate(BaseModel):
+    effective_to: UtcDatetime
+
+
+class DemandWindowCreate(DateRangeCheck):
+    effective_from: UtcDatetime | None = None
+    effective_to: UtcDatetime | None = None
     label: str
     months: list[int]
     days_of_week: list[int]
@@ -381,11 +400,14 @@ class DemandWindowCreate(BaseModel):
 class DemandWindowOut(DemandWindowCreate):
     id: int
     site_tariff_id: int
+    effective_from: UtcDatetime
 
     model_config = {"from_attributes": True}
 
 
-class ExportAdjustmentWindowCreate(BaseModel):
+class ExportAdjustmentWindowCreate(DateRangeCheck):
+    effective_from: UtcDatetime | None = None
+    effective_to: UtcDatetime | None = None
     label: str
     months: list[int]
     days_of_week: list[int]
@@ -398,6 +420,7 @@ class ExportAdjustmentWindowCreate(BaseModel):
 class ExportAdjustmentWindowOut(ExportAdjustmentWindowCreate):
     id: int
     site_tariff_id: int
+    effective_from: UtcDatetime
 
     model_config = {"from_attributes": True}
 
@@ -419,7 +442,9 @@ def _check_time_pattern(
         raise ValueError("start_time and end_time must be whole minutes")
 
 
-class ConditionalCreditWindowCreate(BaseModel):
+class ConditionalCreditWindowCreate(DateRangeCheck):
+    effective_from: UtcDatetime | None = None
+    effective_to: UtcDatetime | None = None
     label: str = Field(min_length=1, max_length=100)
     months: list[int] = Field(min_length=1)
     days_of_week: list[int] = Field(min_length=1)
@@ -440,6 +465,7 @@ class ConditionalCreditWindowCreate(BaseModel):
 class ConditionalCreditWindowOut(ConditionalCreditWindowCreate):
     id: int
     site_tariff_id: int
+    effective_from: UtcDatetime
 
     model_config = {"from_attributes": True}
 
@@ -494,7 +520,7 @@ class LocalRateWindowOut(LocalRateWindowCreate):
     model_config = {"from_attributes": True}
 
 
-class BillingCycleCreate(BaseModel):
+class BillingCycleCreate(DateRangeCheck):
     effective_from: UtcDatetime
     effective_to: UtcDatetime | None = None
     cycle_months: int = Field(gt=0)

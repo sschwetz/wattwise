@@ -15,6 +15,7 @@ from core_api.models.billing import (
     SiteTariff,
 )
 from core_api.models.identity import Site
+from core_api.time_utils import as_utc
 from core_api.schemas import (
     BillingCycleCreate,
     BillingCycleOut,
@@ -30,6 +31,7 @@ from core_api.schemas import (
     SiteTariffCreate,
     SiteTariffOut,
     SiteTariffUpdate,
+    WindowUpdate,
 )
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["billing"])
@@ -42,6 +44,60 @@ def _get_owned_tariff(db: Session, site: Site, tariff_id: int) -> SiteTariff:
     if tariff is None or tariff.site_id != site.id:
         raise AppError(404, "not_found", f"Tariff {tariff_id} not found")
     return tariff
+
+
+def _reject_overlap(rows, start, end, *, what: str, exclude_id: int | None = None) -> None:
+    """422 if [start, end) overlaps another row's span. `end` None is open ended."""
+    for row in rows:
+        if row.id == exclude_id:
+            continue
+        row_end = None if row.effective_to is None else as_utc(row.effective_to)
+        if (row_end is None or start < row_end) and (end is None or as_utc(row.effective_from) < end):
+            raise AppError(422, "overlap", f"That {what} would overlap another one. End the earlier {what} first.")
+
+
+def _check_window_inside_tariff(tariff: SiteTariff, start, end) -> None:
+    """A window starts inside its tariff and, when the tariff has an end,
+    does not end after it. An open-ended window is allowed under an ended
+    tariff: it stops applying when the tariff does."""
+    if start < as_utc(tariff.effective_from):
+        raise AppError(422, "window_outside_tariff", "The window cannot start before its tariff starts")
+    if tariff.effective_to is None:
+        return
+    tariff_end = as_utc(tariff.effective_to)
+    if start >= tariff_end or (end is not None and end > tariff_end):
+        raise AppError(422, "window_outside_tariff", "The window cannot run past the end of its tariff")
+
+
+def _create_dated_window(db: Session, site: Site, tariff_id: int, model_cls: type, payload):
+    """Create-under-an-owned-tariff for the window types with their own dates.
+    A missing effective_from becomes the tariff's start."""
+    tariff = _get_owned_tariff(db, site, tariff_id)
+    data = payload.model_dump()
+    start = as_utc(data["effective_from"] or tariff.effective_from)
+    end = data["effective_to"]
+    if end is not None and end <= start:
+        raise AppError(422, "invalid_dates", "effective_to must be after effective_from")
+    _check_window_inside_tariff(tariff, start, end)
+    row = model_cls(site_tariff_id=tariff.id, **{**data, "effective_from": start})
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _end_dated_window(db: Session, site: Site, tariff_id: int, window_id: int, model_cls: type, payload: WindowUpdate):
+    tariff = _get_owned_tariff(db, site, tariff_id)
+    window = db.get(model_cls, window_id)
+    if window is None or window.site_tariff_id != tariff.id:
+        raise AppError(404, "not_found", f"Window {window_id} not found")
+    if payload.effective_to <= as_utc(window.effective_from):
+        raise AppError(422, "invalid_dates", "effective_to must be after the window's start")
+    _check_window_inside_tariff(tariff, as_utc(window.effective_from), payload.effective_to)
+    window.effective_to = payload.effective_to
+    db.commit()
+    db.refresh(window)
+    return window
 
 
 def _create_tariff_child(db: Session, site: Site, tariff_id: int, model_cls: type, payload):
@@ -69,6 +125,8 @@ def create_tariff(
     site: Site = Depends(require_site_owner),
     db: Session = Depends(get_db_session),
 ) -> SiteTariff:
+    existing = db.execute(select(SiteTariff).where(SiteTariff.site_id == site.id)).scalars().all()
+    _reject_overlap(existing, payload.effective_from, payload.effective_to, what="tariff")
     tariff = SiteTariff(site_id=site.id, **payload.model_dump())
     db.add(tariff)
     db.commit()
@@ -93,6 +151,10 @@ def update_tariff(
     """Closing effective_to is the delete-equivalent for this effective-dated
     entity (spec's design principle, already applied to Source)."""
     tariff = _get_owned_tariff(db, site, tariff_id)
+    if payload.effective_to <= as_utc(tariff.effective_from):
+        raise AppError(422, "invalid_dates", "effective_to must be after the tariff's start")
+    siblings = db.execute(select(SiteTariff).where(SiteTariff.site_id == site.id)).scalars().all()
+    _reject_overlap(siblings, as_utc(tariff.effective_from), payload.effective_to, what="tariff", exclude_id=tariff.id)
     tariff.effective_to = payload.effective_to
     db.commit()
     db.refresh(tariff)
@@ -110,7 +172,7 @@ def create_demand_window(
     site: Site = Depends(require_site_owner),
     db: Session = Depends(get_db_session),
 ) -> DemandWindow:
-    return _create_tariff_child(db, site, tariff_id, DemandWindow, payload)
+    return _create_dated_window(db, site, tariff_id, DemandWindow, payload)
 
 
 @router.get("/tariffs/{tariff_id}/demand-windows", response_model=list[DemandWindowOut])
@@ -133,7 +195,7 @@ def create_export_adjustment_window(
     site: Site = Depends(require_site_owner),
     db: Session = Depends(get_db_session),
 ) -> ExportAdjustmentWindow:
-    return _create_tariff_child(db, site, tariff_id, ExportAdjustmentWindow, payload)
+    return _create_dated_window(db, site, tariff_id, ExportAdjustmentWindow, payload)
 
 
 @router.get("/tariffs/{tariff_id}/export-adjustments", response_model=list[ExportAdjustmentWindowOut])
@@ -156,7 +218,7 @@ def create_conditional_credit_window(
     site: Site = Depends(require_site_owner),
     db: Session = Depends(get_db_session),
 ) -> ConditionalCreditWindow:
-    return _create_tariff_child(db, site, tariff_id, ConditionalCreditWindow, payload)
+    return _create_dated_window(db, site, tariff_id, ConditionalCreditWindow, payload)
 
 
 @router.get("/tariffs/{tariff_id}/conditional-credits", response_model=list[ConditionalCreditWindowOut])
@@ -166,6 +228,39 @@ def list_conditional_credit_windows(
     db: Session = Depends(get_db_session),
 ) -> list[ConditionalCreditWindow]:
     return _list_tariff_children(db, site, tariff_id, ConditionalCreditWindow)
+
+
+@router.patch("/tariffs/{tariff_id}/demand-windows/{window_id}", response_model=DemandWindowOut)
+def end_demand_windows(
+    tariff_id: int,
+    window_id: int,
+    payload: WindowUpdate,
+    site: Site = Depends(require_site_owner),
+    db: Session = Depends(get_db_session),
+) -> DemandWindow:
+    return _end_dated_window(db, site, tariff_id, window_id, DemandWindow, payload)
+
+
+@router.patch("/tariffs/{tariff_id}/export-adjustments/{window_id}", response_model=ExportAdjustmentWindowOut)
+def end_export_adjustments(
+    tariff_id: int,
+    window_id: int,
+    payload: WindowUpdate,
+    site: Site = Depends(require_site_owner),
+    db: Session = Depends(get_db_session),
+) -> ExportAdjustmentWindow:
+    return _end_dated_window(db, site, tariff_id, window_id, ExportAdjustmentWindow, payload)
+
+
+@router.patch("/tariffs/{tariff_id}/conditional-credits/{window_id}", response_model=ConditionalCreditWindowOut)
+def end_conditional_credits(
+    tariff_id: int,
+    window_id: int,
+    payload: WindowUpdate,
+    site: Site = Depends(require_site_owner),
+    db: Session = Depends(get_db_session),
+) -> ConditionalCreditWindow:
+    return _end_dated_window(db, site, tariff_id, window_id, ConditionalCreditWindow, payload)
 
 
 @router.post(
@@ -197,6 +292,8 @@ def create_billing_cycle(
     site: Site = Depends(require_site_owner),
     db: Session = Depends(get_db_session),
 ) -> BillingCycle:
+    existing = db.execute(select(BillingCycle).where(BillingCycle.site_id == site.id)).scalars().all()
+    _reject_overlap(existing, payload.effective_from, payload.effective_to, what="billing cycle")
     cycle = BillingCycle(site_id=site.id, **payload.model_dump())
     db.add(cycle)
     db.commit()
@@ -223,6 +320,10 @@ def update_billing_cycle(
     cycle = db.get(BillingCycle, cycle_id)
     if cycle is None or cycle.site_id != site.id:
         raise AppError(404, "not_found", f"Billing cycle {cycle_id} not found")
+    if payload.effective_to <= as_utc(cycle.effective_from):
+        raise AppError(422, "invalid_dates", "effective_to must be after the cycle's start")
+    siblings = db.execute(select(BillingCycle).where(BillingCycle.site_id == site.id)).scalars().all()
+    _reject_overlap(siblings, as_utc(cycle.effective_from), payload.effective_to, what="billing cycle", exclude_id=cycle.id)
     cycle.effective_to = payload.effective_to
     db.commit()
     db.refresh(cycle)
