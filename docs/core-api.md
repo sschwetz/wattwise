@@ -71,8 +71,10 @@ All paths are under `/api/v1`. "Owner" means `require_site_owner`, "Viewer" mean
 | Sources | `POST/GET /sites/{id}/sources`, `GET/PATCH/DELETE /sites/{id}/sources/{sid}` | Owner for writes. Viewers get a copy with device credentials removed. |
 | Rate windows | `POST/GET /sites/{id}/sources/{sid}/rate-windows`, `PATCH/DELETE .../{window_id}` | Owner for writes |
 | Tariffs | `POST/GET /sites/{id}/tariffs`, `PATCH .../tariffs/{tid}` | Owner for writes |
-| Tariff windows | `POST/GET /sites/{id}/tariffs/{tid}/demand-windows`, `/export-adjustments`, `/conditional-credits`, `/monthly-fee-discounts` | Owner for writes |
+| Tariff windows | `POST/GET /sites/{id}/tariffs/{tid}/demand-windows`, `/export-adjustments`, `/conditional-credits`, `/monthly-fee-discounts`. The first three also take `PATCH .../{window_id}` with `effective_to` to end a window. | Owner for writes |
 | Billing cycle | `POST/GET /sites/{id}/billing-cycle`, `PATCH .../billing-cycle/{cid}` | Owner for writes |
+
+Tariffs, billing cycles and the three dated window types take `effective_from` and an optional `effective_to` (a half-open span, in UTC). A window created without `effective_from` takes its tariff's start. Dates where the end is not after the start, a tariff or billing cycle overlapping another, and a window outside its tariff all return 422.
 
 ### Reading data (web app)
 
