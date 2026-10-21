@@ -4,6 +4,8 @@ import { BackLink } from "../layout/BackLink";
 import { ConditionalCreditForm, ConditionalCreditList } from "../billing/ConditionalCredits";
 import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
 import { tariffHeading } from "../billing/tariffHeading";
+import { DateRangeFields, EndAction, todayIn, useDateRange, useSiteTimeZone } from "../billing/DateFields";
+import { displayEndDate, suggestStart } from "../billing/dates";
 import { useSources } from "../sources/useSources";
 import {
   useBillingCycles,
@@ -31,7 +33,6 @@ import {
   primaryButtonClass,
 } from "../billing/billingUi";
 
-const endLinkClass = "text-sm text-ink-muted underline hover:text-ink";
 // Applied to anything shown but no longer active (e.g. an expired fee
 // discount window) -- kept visible rather than removed, but visually
 // struck through and muted.
@@ -39,6 +40,11 @@ const disabledClass = "text-ink-muted line-through";
 
 function isActive(entity: { effective_to: string | null }): boolean {
   return !entity.effective_to;
+}
+
+/** A "YYYY-MM-DD" calendar day in the viewer's locale format. */
+function formatDay(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString();
 }
 
 function isExpired(endsAt: string): boolean {
@@ -388,11 +394,13 @@ function TariffSection({ siteId }: { siteId: number }) {
   const [expandedTariffId, setExpandedTariffId] = useState<number | null>(null);
   const createTariff = useCreateTariff(siteId);
   const endTariff = useEndTariff(siteId);
+  const timeZone = useSiteTimeZone(siteId);
+  const { range, toInput } = useDateRange(suggestStart(tariffs ?? [], timeZone, todayIn(timeZone)), timeZone);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     createTariff.mutate({
-      effective_from: new Date().toISOString(),
+      ...toInput(),
       service_availability_c_per_day: Number(serviceAvailability),
       ...(monthlyFee.trim() !== "" ? { monthly_fee_c: dollarsToCents(monthlyFee) } : {}),
     });
@@ -440,9 +448,12 @@ function TariffSection({ siteId }: { siteId: number }) {
                   )}{" "}
                   from {new Date(tariff.effective_from).toLocaleDateString()}
                 </span>
-                <button onClick={() => endTariff.mutate(tariff.id)} className={endLinkClass}>
-                  End this tariff
-                </button>
+                <EndAction
+                  label="End this tariff"
+                  timeZone={timeZone}
+                  pending={endTariff.isPending}
+                  onConfirm={(effective_to) => endTariff.mutate({ id: tariff.id, effective_to })}
+                />
               </div>
               <div className="space-y-2">
                 <DemandWindowsList siteId={siteId} tariffId={tariff.id} />
@@ -469,7 +480,7 @@ function TariffSection({ siteId }: { siteId: number }) {
                   {formatCents(tariff.service_availability_c_per_day)}c/day
                 </span>{" "}
                 from {new Date(tariff.effective_from).toLocaleDateString()} until{" "}
-                {tariff.effective_to && new Date(tariff.effective_to).toLocaleDateString()}
+                {tariff.effective_to && formatDay(displayEndDate(tariff.effective_to, timeZone))}
               </button>
               {expandedTariffId === tariff.id && (
                 <div className="border-t border-line/40 p-3 space-y-2">
@@ -488,7 +499,8 @@ function TariffSection({ siteId }: { siteId: number }) {
           {createTariff.error instanceof Error ? createTariff.error.message : "Failed to create tariff. Please try again."}
         </p>
       )}
-      <form onSubmit={handleSubmit} className="flex items-end gap-2">
+      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+        <DateRangeFields range={range} />
         <input
           value={serviceAvailability}
           onChange={(e) => setServiceAvailability(e.target.value)}
@@ -520,11 +532,13 @@ function BillingCycleSection({ siteId }: { siteId: number }) {
   const [anchorDay, setAnchorDay] = useState("");
   const createCycle = useCreateBillingCycle(siteId);
   const endCycle = useEndBillingCycle(siteId);
+  const timeZone = useSiteTimeZone(siteId);
+  const { range, toInput } = useDateRange(suggestStart(cycles ?? [], timeZone, todayIn(timeZone)), timeZone);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     createCycle.mutate({
-      effective_from: new Date().toISOString(),
+      ...toInput(),
       cycle_months: Number(cycleMonths),
       anchor_day: Number(anchorDay),
     });
@@ -545,12 +559,15 @@ function BillingCycleSection({ siteId }: { siteId: number }) {
             <span className="text-ink">
               Every {cycle.cycle_months} month(s), anchored on day {cycle.anchor_day}, from{" "}
               {new Date(cycle.effective_from).toLocaleDateString()}
-              {cycle.effective_to && ` until ${new Date(cycle.effective_to).toLocaleDateString()}`}
+              {cycle.effective_to && ` until ${formatDay(displayEndDate(cycle.effective_to, timeZone))}`}
             </span>
             {isActive(cycle) && (
-              <button onClick={() => endCycle.mutate(cycle.id)} className={endLinkClass}>
-                End this cycle
-              </button>
+              <EndAction
+                label="End this cycle"
+                timeZone={timeZone}
+                pending={endCycle.isPending}
+                onConfirm={(effective_to) => endCycle.mutate({ id: cycle.id, effective_to })}
+              />
             )}
           </li>
         ))}
@@ -562,7 +579,8 @@ function BillingCycleSection({ siteId }: { siteId: number }) {
             : "Failed to create billing cycle. Please try again."}
         </p>
       )}
-      <form onSubmit={handleSubmit} className="flex items-end gap-2">
+      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+        <DateRangeFields range={range} name="Cycle" />
         <input
           value={cycleMonths}
           onChange={(e) => setCycleMonths(e.target.value)}

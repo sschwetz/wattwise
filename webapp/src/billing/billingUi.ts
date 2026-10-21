@@ -2,6 +2,7 @@ export const inputClass =
   "rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
 export const primaryButtonClass =
   "rounded-md bg-solar px-3 py-1.5 text-sm font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
+export const endLinkClass = "text-sm text-ink-muted underline hover:text-ink";
 export const errorClass = "rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

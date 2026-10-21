@@ -620,6 +620,7 @@ describe("BillingPage", () => {
     renderPage();
     await screen.findByText(/95\.00c\/day/);
     await userEvent.click(screen.getByText("End this tariff"));
+    await userEvent.click(screen.getByText("Confirm end"));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not end tariff");
   });
 
@@ -684,6 +685,7 @@ describe("BillingPage", () => {
     renderPage();
     await screen.findByText(/Every 3 month/);
     await userEvent.click(screen.getByText("End this cycle"));
+    await userEvent.click(screen.getByText("Confirm end"));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not end billing cycle");
   });
 

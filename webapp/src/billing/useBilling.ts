@@ -27,6 +27,8 @@ export interface MonthlyFeeDiscountWindow {
 export interface DemandWindow {
   id: number;
   site_tariff_id: number;
+  effective_from: string;
+  effective_to: string | null;
   label: string;
   months: number[];
   days_of_week: number[];
@@ -40,6 +42,8 @@ export interface DemandWindow {
 export interface ExportAdjustmentWindow {
   id: number;
   site_tariff_id: number;
+  effective_from: string;
+  effective_to: string | null;
   label: string;
   months: number[];
   days_of_week: number[];
@@ -56,6 +60,8 @@ export interface ExportAdjustmentWindow {
 export interface ConditionalCreditWindow {
   id: number;
   site_tariff_id: number;
+  effective_from: string;
+  effective_to: string | null;
   label: string;
   months: number[];
   days_of_week: number[];
@@ -85,6 +91,7 @@ export interface DemandCharge {
 
 interface CreateTariffInput {
   effective_from: string;
+  effective_to?: string;
   service_availability_c_per_day: number;
   monthly_fee_c?: number;
 }
@@ -97,6 +104,8 @@ interface CreateMonthlyFeeDiscountWindowInput {
 }
 
 interface CreateDemandWindowInput {
+  effective_from?: string;
+  effective_to?: string;
   label: string;
   months: number[];
   days_of_week: number[];
@@ -106,6 +115,8 @@ interface CreateDemandWindowInput {
 }
 
 interface CreateExportAdjustmentWindowInput {
+  effective_from?: string;
+  effective_to?: string;
   label: string;
   months: number[];
   days_of_week: number[];
@@ -116,6 +127,8 @@ interface CreateExportAdjustmentWindowInput {
 }
 
 interface CreateConditionalCreditWindowInput {
+  effective_from?: string;
+  effective_to?: string;
   label: string;
   months: number[];
   days_of_week: number[];
@@ -127,8 +140,15 @@ interface CreateConditionalCreditWindowInput {
 
 interface CreateBillingCycleInput {
   effective_from: string;
+  effective_to?: string;
   cycle_months: number;
   anchor_day: number;
+}
+
+/** Ends an item on the instant `effective_to`, as UTC ISO. */
+export interface EndInput {
+  id: number;
+  effective_to: string;
 }
 
 export function useTariffs(siteId: number) {
@@ -155,13 +175,14 @@ export function useCreateTariff(siteId: number) {
 export function useEndTariff(siteId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (tariffId: number) =>
-      apiFetch<SiteTariff>(`/api/v1/sites/${siteId}/tariffs/${tariffId}`, {
+    mutationFn: ({ id, effective_to }: EndInput) =>
+      apiFetch<SiteTariff>(`/api/v1/sites/${siteId}/tariffs/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ effective_to: new Date().toISOString() }),
+        body: JSON.stringify({ effective_to }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tariffs", siteId] });
+      queryClient.invalidateQueries({ queryKey: ["demand-charges", siteId] });
     },
   });
 }
@@ -232,6 +253,33 @@ export function useCreateConditionalCreditWindow(siteId: number, tariffId: numbe
   });
 }
 
+function useEndWindow(siteId: number, tariffId: number, path: string, queryKeyName: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, effective_to }: EndInput) =>
+      apiFetch<unknown>(`/api/v1/sites/${siteId}/tariffs/${tariffId}/${path}/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ effective_to }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [queryKeyName, siteId, tariffId] });
+      queryClient.invalidateQueries({ queryKey: ["demand-charges", siteId] });
+    },
+  });
+}
+
+export function useEndDemandWindow(siteId: number, tariffId: number) {
+  return useEndWindow(siteId, tariffId, "demand-windows", "demand-windows");
+}
+
+export function useEndExportAdjustmentWindow(siteId: number, tariffId: number) {
+  return useEndWindow(siteId, tariffId, "export-adjustments", "export-adjustments");
+}
+
+export function useEndConditionalCreditWindow(siteId: number, tariffId: number) {
+  return useEndWindow(siteId, tariffId, "conditional-credits", "conditional-credits");
+}
+
 export function useMonthlyFeeDiscountWindows(siteId: number, tariffId: number) {
   return useQuery({
     queryKey: ["monthly-fee-discounts", siteId, tariffId],
@@ -278,13 +326,14 @@ export function useCreateBillingCycle(siteId: number) {
 export function useEndBillingCycle(siteId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (cycleId: number) =>
-      apiFetch<BillingCycle>(`/api/v1/sites/${siteId}/billing-cycle/${cycleId}`, {
+    mutationFn: ({ id, effective_to }: EndInput) =>
+      apiFetch<BillingCycle>(`/api/v1/sites/${siteId}/billing-cycle/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ effective_to: new Date().toISOString() }),
+        body: JSON.stringify({ effective_to }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["billing-cycles", siteId] });
+      queryClient.invalidateQueries({ queryKey: ["demand-charges", siteId] });
     },
   });
 }
