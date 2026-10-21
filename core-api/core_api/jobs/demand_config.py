@@ -36,6 +36,20 @@ def tariff_effective_at(tariffs: list[SiteTariff], at: datetime.datetime) -> Sit
     return None
 
 
+class _DatedWindow(Protocol):
+    effective_from: datetime.datetime | None
+    effective_to: datetime.datetime | None
+
+
+def window_in_force(window: _DatedWindow, at: datetime.datetime) -> bool:
+    """Is `at` inside the window's [effective_from, effective_to)? A missing
+    bound is open, which also covers a window built in code without dates."""
+    at = as_utc(at)
+    if window.effective_from is not None and as_utc(window.effective_from) > at:
+        return False
+    return window.effective_to is None or at < as_utc(window.effective_to)
+
+
 def site_tariffs_for_site(db: Session, site_id: int) -> list[SiteTariff]:
     """All of a site's SiteTariff rows, ordered newest-effective-first --
     the shape tariff_effective_at expects."""
@@ -97,7 +111,7 @@ def first_matching_demand_window(
     at_local = at.astimezone(site_tz(site_timezone))
     stmt = select(DemandWindow).where(DemandWindow.site_tariff_id == tariff.id).order_by(DemandWindow.id)
     for window in db.execute(stmt).scalars():
-        if in_demand_window_pattern(window, at_local):
+        if window_in_force(window, at) and in_demand_window_pattern(window, at_local):
             return window
     return None
 
@@ -111,7 +125,7 @@ def any_configured_demand_window(db: Session, site_id: int, at: datetime.datetim
     if tariff is None:
         return None
     stmt = select(DemandWindow).where(DemandWindow.site_tariff_id == tariff.id).order_by(DemandWindow.id)
-    return db.execute(stmt).scalars().first()
+    return next((w for w in db.execute(stmt).scalars() if window_in_force(w, at)), None)
 
 
 def _windows_by_tariff(db: Session, site_id: int, model_cls: type) -> dict[int, list]:
@@ -154,7 +168,7 @@ def total_export_adjustment_c_per_kwh(
     for window in windows:
         if skip_allowance and window.daily_allowance_kwh > 0:
             continue
-        if _in_time_pattern(window, at_local):
+        if window_in_force(window, at_local) and _in_time_pattern(window, at_local):
             total += window.adjustment_c_per_kwh
     return total
 
