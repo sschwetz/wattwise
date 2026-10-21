@@ -16,7 +16,7 @@ const PATH = "/api/v1/sites/7/tariffs/3/conditional-credits";
 // The form also reads the tariff's windows (to suggest a start date) and the
 // site list (for its time zone), so a mock answers by path.
 function mockPaths(onPost: (init: RequestInit) => unknown) {
-  vi.mocked(apiFetch).mockImplementation(((path: string, init?: RequestInit) => {
+  vi.mocked(apiFetch).mockImplementation(((_path: string, init?: RequestInit) => {
     if (init?.method === "POST") return Promise.resolve(onPost(init));
     return Promise.resolve([]);
   }) as never);

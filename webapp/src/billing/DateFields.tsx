@@ -62,7 +62,7 @@ export function EndAction({ label, ariaLabel, timeZone, onConfirm, pending }: En
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} aria-label={ariaLabel} className={endLinkClass}>
+      <button type="button" onClick={() => setOpen(true)} disabled={pending} aria-label={ariaLabel} className={endLinkClass}>
         {label}
       </button>
     );

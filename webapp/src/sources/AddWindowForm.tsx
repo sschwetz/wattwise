@@ -1,13 +1,16 @@
 import { type FormEvent, useState } from "react";
 import { CHANNEL_SECTIONS, inputClass } from "./rateWindowUi";
 import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
-import type { RateChannel, RateWindowInput } from "./useRateWindows";
+import { todayIn } from "../billing/dateHooks";
+import { endOfDayIso, startOfDayIso, suggestStart } from "../billing/dates";
+import type { RateChannel, RateWindow, RateWindowInput } from "./useRateWindows";
 
 interface FormValues {
   channel: RateChannel;
   label: string;
   rate: string;
-  from: string;
+  from: string | null;
+  to: string;
   start: string;
   end: string;
   months: number[];
@@ -17,27 +20,13 @@ interface FormValues {
 type Setter = <K extends keyof FormValues>(key: K) => (value: FormValues[K]) => void;
 
 
-function localDateString(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-/** A window starting today starts now: core-api rejects a start before the end
- * of a window the user has just ended. A window added with today's date
- * starts at the current instant; the collector rounds its start up to the
- * next whole minute. */
-function effectiveFromFor(dateString: string): string {
-  const now = new Date();
-  if (dateString === localDateString(now)) return now.toISOString();
-  return new Date(`${dateString}T00:00:00`).toISOString();
-}
-
 function initialValues(): FormValues {
   return {
     channel: "buy",
     label: "",
     rate: "",
-    from: localDateString(new Date()),
+    from: null,
+    to: "",
     start: "00:00",
     end: "00:00",
     months: MONTH_OPTIONS.map((o) => o.value),
@@ -45,12 +34,14 @@ function initialValues(): FormValues {
   };
 }
 
-function toWindowInput(values: FormValues): RateWindowInput {
+/** The dates are calendar days in the site's time zone. `from` is the day the
+ * form shows, which is the suggested one until the user types another. */
+function toWindowInput(values: FormValues, from: string, timeZone: string): RateWindowInput {
   return {
     channel: values.channel,
     label: values.label.trim(),
-    effective_from: effectiveFromFor(values.from),
-    effective_to: null,
+    effective_from: startOfDayIso(from, timeZone),
+    effective_to: values.to ? endOfDayIso(values.to, timeZone) : null,
     months: values.months,
     days_of_week: values.days,
     start_time: `${values.start}:00`,
@@ -71,10 +62,11 @@ interface FieldSpec {
   value: string;
   onChange: (value: string) => void;
   type?: "text" | "number" | "date" | "time";
+  required?: boolean;
 }
 
 function Field({ field }: { field: FieldSpec }) {
-  const { label, value, onChange, type = "text" } = field;
+  const { label, value, onChange, type = "text", required = true } = field;
   const numberProps = type === "number" ? { step: "0.0001", min: "0" } : {};
   return (
     <label className="flex flex-col text-ink-muted">
@@ -84,7 +76,7 @@ function Field({ field }: { field: FieldSpec }) {
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        required
+        required={required}
         autoComplete="off"
         className={inputClass}
         {...numberProps}
@@ -108,33 +100,44 @@ function DirectionSelect({ value, onChange }: { value: RateChannel; onChange: (c
   );
 }
 
-function WindowFields({ values, set }: { values: FormValues; set: Setter }) {
+function WindowFields({ values, from, set }: { values: FormValues; from: string; set: Setter }) {
   return (
     <div className="flex flex-wrap items-end gap-2">
       <DirectionSelect value={values.channel} onChange={set("channel")} />
       <Field field={{ label: "Window label", value: values.label, onChange: set("label") }} />
       <Field field={{ label: "Rate (c/kWh)", value: values.rate, onChange: set("rate"), type: "number" }} />
-      <Field field={{ label: "From", value: values.from, onChange: set("from"), type: "date" }} />
+      <Field field={{ label: "Start date", value: from, onChange: set("from"), type: "date" }} />
+      <Field field={{ label: "End date (optional)", value: values.to, onChange: set("to"), type: "date", required: false }} />
       <Field field={{ label: "Start", value: values.start, onChange: set("start"), type: "time" }} />
       <Field field={{ label: "End", value: values.end, onChange: set("end"), type: "time" }} />
     </div>
   );
 }
 
-export function AddWindowForm({ onAdd, isPending }: { onAdd: (input: RateWindowInput, onAdded: () => void) => void; isPending: boolean }) {
+interface AddWindowFormProps {
+  onAdd: (input: RateWindowInput, onAdded: () => void) => void;
+  isPending: boolean;
+  /** The source's windows, to suggest a start date after the latest ended one. */
+  windows: RateWindow[];
+  timeZone: string;
+}
+
+export function AddWindowForm({ onAdd, isPending, windows, timeZone }: AddWindowFormProps) {
   const { values, set, clear } = useWindowForm();
+  const sameDirection = windows.filter((w) => w.channel === values.channel);
+  const from = values.from ?? suggestStart(sameDirection, timeZone, todayIn(timeZone));
   const canSubmit = !isPending && values.label.trim() !== "" && values.months.length > 0 && values.days.length > 0;
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (canSubmit) onAdd(toWindowInput(values), clear);
+    if (canSubmit) onAdd(toWindowInput(values, from, timeZone), clear);
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2 border-t border-line pt-3 text-sm">
-      <WindowFields values={values} set={set} />
+      <WindowFields values={values} from={from} set={set} />
       <p className="text-xs text-ink-muted">Start and end at the same time cover the whole day. An end before the start runs past midnight.</p>
-      <p className="text-xs text-ink-muted">To change a rate, End the old window, then add the new one starting today or later.</p>
+      <p className="text-xs text-ink-muted">To change a rate, End the old window on its last day, then add the new one starting the next day.</p>
       <CheckboxGroup legend="Months" options={MONTH_OPTIONS} selection={{ selected: values.months, onChange: set("months") }} />
       <CheckboxGroup legend="Days" options={DAY_OPTIONS} selection={{ selected: values.days, onChange: set("days") }} />
       <button
