@@ -107,12 +107,12 @@ def test_push_price_intervals_raises_core_api_error_on_connection_failure():
 
 
 @respx.mock
-def test_push_price_intervals_defaults_to_ten_second_timeout():
-    """Backward compatibility for the live-poll call site, which pushes at most one
-    5-minute tick's worth of intervals and should stay on the short timeout."""
+def test_push_price_intervals_default_timeout_outlasts_core_apis_lock_wait():
+    """The live-poll call site uses the default. Core API waits up to 30s for a held
+    SQLite write lock, so a shorter timeout abandons pushes the server then completes."""
     route = respx.post(f"{BASE_URL}/api/v1/sources/1/prices").mock(return_value=httpx.Response(202, json={"ingested": 0}))
     push_price_intervals(BASE_URL, 1, "my-key", [])
-    assert route.calls[0].request.extensions["timeout"] == {"connect": 10, "read": 10, "write": 10, "pool": 10}
+    assert route.calls[0].request.extensions["timeout"]["read"] > 30
 
 
 @respx.mock
