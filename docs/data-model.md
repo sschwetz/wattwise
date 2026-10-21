@@ -167,13 +167,15 @@ All time-series tables use the same shape: the key is the source, the timestamp 
 | Table | Purpose |
 |---|---|
 | `site_tariffs` | Effective-dated. Holds the service charge (c/day) and an optional monthly fee. A later tariff does not rewrite history. |
-| `demand_windows` | Months, days of week, time range, rate (c/kW/day) and the measurement interval (default 30 min). First matching window wins. |
+| `demand_windows` | Months, days of week, time range, rate (c/kW/day) and the measurement interval (default 30 min). First matching window wins. Has `effective_from` and `effective_to`, like the next two tables. |
 | `export_adjustment_windows` | Same pattern. Matching windows stack (their values add). |
 | `conditional_credit_windows` | A flat credit for each day whose average grid import over the window is below a limit. Windows stack. Computed on request, never stored per day. |
 | `monthly_fee_discount_windows` | A dated span that replaces the monthly fee. First match wins. |
 | `billing_cycles` | Cycle length in months and an anchor day (1 to 31). Effective-dated. |
 | `demand_intervals` | Derived every 5 minutes: a rolling sum of grid import for demand-window slots. |
 | `demand_charges` | One row per site per billing period. `is_estimated` is true until the period has closed and every 5-minute slot has readings. |
+
+The three tariff windows with a pattern (`demand_windows`, `export_adjustment_windows`, `conditional_credit_windows`) have their own `effective_from` (required) and `effective_to`, a half-open span like `site_tariffs`. A window applies only at instants inside its span. A user enters a start date and an end date (the last day applied); `effective_to` is stored as 00:00 local on the day after. Tariffs and billing cycles of one site may not overlap. When dates change, `demand_charges` and `demand_intervals` from the earliest changed instant onward are deleted and rebuilt by the demand jobs.
 
 Window patterns (`months`, `days_of_week`, `start_time`, `end_time`) share one rule set. Days are `0` for Monday to `6` for Sunday and months are `1` to `12`. Start is included and end is excluded. For local rate windows only, equal start and end times mean the whole day and an end before the start runs past midnight.
 

@@ -53,7 +53,22 @@ class BillingCycle(Base):
     anchor_day: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
-class DemandWindow(Base):
+WINDOW_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+
+
+class DatedWindowMixin:
+    """The dates a tariff window applies: [effective_from, effective_to), the
+    same half-open span SiteTariff uses. The API fills effective_from from the
+    tariff when a client omits it; the epoch default only covers rows built
+    directly in code."""
+
+    effective_from: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=WINDOW_EPOCH
+    )
+    effective_to: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DemandWindow(DatedWindowMixin, Base):
     __tablename__ = "demand_windows"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -67,7 +82,7 @@ class DemandWindow(Base):
     measurement_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
 
 
-class ExportAdjustmentWindow(Base):
+class ExportAdjustmentWindow(DatedWindowMixin, Base):
     """A time-based incentive (positive) or disincentive (negative) applied
     to the export (feed-in) price during a recurring months/days-of-week/
     time-of-day window -- same pattern shape as DemandWindow, attached to a
@@ -93,7 +108,7 @@ class ExportAdjustmentWindow(Base):
     )
 
 
-class ConditionalCreditWindow(Base):
+class ConditionalCreditWindow(DatedWindowMixin, Base):
     """A flat credit earned on each matching day whose average grid import
     over [start_time, end_time) is strictly below max_avg_import_w. Same
     months/days-of-week/time-of-day pattern as ExportAdjustmentWindow,

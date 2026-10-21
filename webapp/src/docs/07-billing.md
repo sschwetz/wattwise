@@ -34,27 +34,39 @@ The **Cost** total and the billing period tiles include all six parts. The cost 
 
 ## Tariffs
 
-A **tariff** is a set of fixed charges that applies from the moment you add it until you end it.
+A **tariff** is a set of fixed charges that applies from a start date until an end date. You choose both dates, so a change of retailer or a new financial year can be entered on the day it takes effect.
 
 The section heading names your price supplier: "Amber Tariffs" with an Amber source, "Origin Fixed Tariffs" with a local source called Origin Fixed, and "Tariffs" with neither. The supply charge, monthly fee, billing cycle, demand windows, export adjustments, conditional credits and fee discounts on this page apply to every kind of pricing source. Per-kWh rates for a local source are set in [Sources](05-sources.md#setting-up-a-fixed-tariff).
+
+### Dates
+
+Every date on this page is a calendar day in the [site's time zone](04-sites.md#creating-a-site).
+
+- **Start date**: the first day the item applies. It starts at 00:00 on that day.
+- **End date**: the last day the item applies. An item ending on 30 June covers all of 30 June, and its replacement starts on 1 July.
+- Dates can be in the past or the future. An item with no end date runs until you end it.
+- The form suggests a start date: the day after the latest ended item of the same kind. You can overwrite it.
+- A tariff and a billing cycle cannot overlap another one of the same kind. End the earlier one first.
+
+When you add or end a tariff, demand window or billing cycle with a date in the past, WattWise discards the stored [demand charges](#demand-charges) from that date onward and works them out again. They reappear within a few minutes of the next background run.
 
 ### Adding a tariff
 
 1. In the **Tariffs** card, fill in the form at the bottom:
+   - **Start date**: the first day the tariff applies. It is filled in for you after an ended tariff.
+   - **End date (optional)**: the last day, if you already know it.
    - **Service availability (cents/day)**: your daily supply charge, for example `98.45`.
    - **Monthly fee ($/month)**: optional. Leave it empty if your bill has no monthly account fee.
 2. Click **Add tariff**.
-
-The tariff starts at the moment you click the button.
 
 ### Changing a tariff
 
 Tariffs are not edited in place, so past bills keep their original rates.
 
-1. Click **End this tariff** on the active tariff.
-2. Add a new tariff with the new numbers.
+1. Click **End this tariff** on the active tariff, choose its **End date** and click **Confirm end**.
+2. Add a new tariff with the new numbers. Its **Start date** is already set to the day after the old one ended.
 
-Ended tariffs stay in the list, struck through. Click one to see its windows. Always end the old tariff before you add its replacement.
+Ended tariffs stay in the list, struck through, with the last day they applied. Click one to see its windows.
 
 > **Note:** Demand windows, export adjustments, conditional credits and fee discounts belong to one tariff. The forms for them appear under an active tariff once it exists. When you add a replacement tariff, enter them again under the new one.
 
@@ -72,6 +84,8 @@ Add one under an active tariff:
 | **Start time** / **End time** | 24-hour times as `HH:MM`, for example `16:00` and `21:00`. |
 | **Rate** | Cents per kW per day. |
 
+Each window form also has a **Start date** and an optional **End date**, with the same meaning as for a tariff. A window must start on or after its tariff's start and cannot end after its tariff's end. To change a rate on a given day, click **End** on the old window, choose its last day and click **Confirm end**, then add the new window. Ended windows stay in the list, struck through. Windows added before dates existed take their tariff's dates.
+
 Click **Add demand window**. The list shows each window as, for example, `16:00–21:00 · Mon, Tue, Wed, Thu, Fri · Dec, Jan, Feb · every 30 min`. The "every 30 min" is the measurement interval: WattWise averages your grid import over 30-minute spans and takes the highest one.
 
 While a window is in effect, the [dashboard](06-dashboard.md#demand-window-notice) shows **DEMAND WINDOW ACTIVE**. Times use the [site's time zone](04-sites.md#creating-a-site).
@@ -87,7 +101,7 @@ An **export adjustment** raises or lowers your feed-in price during a repeating 
 | **Adjustment** | Cents per kWh. Positive is an incentive, negative is a disincentive. |
 | **Daily allowance** | kWh of exports per day that are not adjusted. Leave it blank or 0 if there is none. |
 
-Click **Add export adjustment**. If several adjustments cover the same minute, they add together.
+Click **Add export adjustment**. It has the same **Start date**, **End date (optional)** and **End** controls as a demand window. If several adjustments cover the same minute, they add together.
 
 #### Daily allowance
 
@@ -113,7 +127,7 @@ A **conditional credit** takes a fixed amount off your bill on each day that you
 | **Average import below (W)** | The limit in watts. |
 | **Credit (cents)** | The amount for each qualifying day. |
 
-Click **Add conditional credit**. On each matching day, WattWise averages your grid import from the start time up to the end time. If the average is below the limit, that day earns the credit.
+Click **Add conditional credit**. It has the same **Start date**, **End date (optional)** and **End** controls as a demand window. On each matching day, WattWise averages your grid import from the start time up to the end time. If the average is below the limit, that day earns the credit.
 
 - The test uses power drawn from the grid only. Power you export does not offset it, and it does not change with the [net or gross](06-dashboard.md#net-and-gross-cost) setting.
 - Equal to the limit does not qualify.
@@ -143,9 +157,10 @@ A **billing cycle** tells WattWise when your bill closes. It drives the **Billin
 1. In the **Billing cycle** card, enter:
    - **Cycle length (months)**: `1` for monthly, `3` for quarterly.
    - **Anchor day (1-31)**: the day of the month each bill period starts, for example `15`.
+   - **Start date** and **End date (optional)**: as for a tariff.
 2. Click **Add billing cycle**.
 
-The list shows it as, for example, *Every 1 month(s), anchored on day 15, from 13/10/2026*. To change it, click **End this cycle** and add a new one. Periods that were already worked out keep the old cycle.
+The list shows it as, for example, *Every 1 month(s), anchored on day 15, from 13/10/2026*. To change it, click **End this cycle**, choose the last day and click **Confirm end**, then add a new one. A change moves the period boundaries, so WattWise works out the demand charges again from the earliest changed date.
 
 Without a billing cycle, the dashboard hides the **Billing Period** tile and no demand charges are calculated.
 

@@ -17,6 +17,8 @@ export function useSites() {
   return useQuery({
     queryKey: ["sites"],
     queryFn: () => apiFetch<Site[]>("/api/v1/sites"),
+    // Many billing components read the site's time zone; share one fetch.
+    staleTime: 60_000,
   });
 }
 

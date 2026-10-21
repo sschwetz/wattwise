@@ -1,4 +1,7 @@
 import { useMemo, useState } from "react";
+import { EndAction } from "../billing/DateFields";
+import { useSiteTimeZone } from "../billing/dateHooks";
+import { displayEndDate, formatDay } from "../billing/dates";
 import { AddWindowForm } from "./AddWindowForm";
 import { type CoverageGap, findCoverageGaps } from "./rateCoverage";
 import { CHANNEL_SECTIONS, SHORT_DAYS, SHORT_MONTHS, channelTitle, errorClass, inputClass } from "./rateWindowUi";
@@ -41,7 +44,9 @@ function toInput(window: RateWindow, overrides: Partial<RateWindowInput>): RateW
 }
 
 interface WindowActions {
-  onEnd: (window: RateWindow) => void;
+  /** Ends the window at `effectiveTo`, the start of the day after its last day. */
+  onEnd: (window: RateWindow, effectiveTo: string) => void;
+  timeZone: string;
   /** Sends the window back with only its rate changed; `onSaved` runs on success. */
   onEditRate: (window: RateWindow, rate: number, onSaved: () => void) => void;
   onDelete: (window: RateWindow) => void;
@@ -50,7 +55,7 @@ interface WindowActions {
 
 /** The three window changes. Each one clears every earlier result first, so at
  * most one error is ever shown and it belongs to the latest change. */
-function useWindowChanges(siteId: number, sourceId: number) {
+function useWindowChanges(siteId: number, sourceId: number, timeZone: string) {
   const createWindow = useCreateRateWindow(siteId, sourceId);
   const replaceWindow = useReplaceRateWindow(siteId, sourceId);
   const deleteWindow = useDeleteRateWindow(siteId, sourceId);
@@ -58,10 +63,11 @@ function useWindowChanges(siteId: number, sourceId: number) {
   const resetAll = () => all.forEach((m) => m.reset());
 
   const actions: WindowActions = {
-    onEnd: (window) => {
+    onEnd: (window, effectiveTo) => {
       resetAll();
-      replaceWindow.mutate({ windowId: window.id, input: toInput(window, { effective_to: new Date().toISOString() }) });
+      replaceWindow.mutate({ windowId: window.id, input: toInput(window, { effective_to: effectiveTo }) });
     },
+    timeZone,
     onEditRate: (window, rate, onSaved) => {
       resetAll();
       replaceWindow.mutate({ windowId: window.id, input: toInput(window, { rate_c_per_kwh: rate }) }, { onSuccess: onSaved });
@@ -80,12 +86,15 @@ function useWindowChanges(siteId: number, sourceId: number) {
   return { actions, onAdd, error };
 }
 
-function WindowSummary({ window }: { window: RateWindow }) {
+function WindowSummary({ window, timeZone }: { window: RateWindow; timeZone: string }) {
   return (
     <span className="text-ink">
       <span className="font-medium">{window.label}</span> — {formatRate(window.rate_c_per_kwh)} — {describePattern(window)}
       {window.effective_to && (
-        <span className="text-ink-muted"> (ended {new Date(window.effective_to).toLocaleDateString()})</span>
+        <span className="text-ink-muted">
+          {" "}
+          (ended {formatDay(displayEndDate(window.effective_to, timeZone))})
+        </span>
       )}
     </span>
   );
@@ -103,7 +112,15 @@ function RowButtons({ window, actions, onEdit }: { window: RateWindow; actions: 
   return (
     <span className="flex shrink-0 gap-3">
       {button("Edit rate", "Edit rate of", onEdit)}
-      {canEnd && button("End", "End", () => actions.onEnd(window))}
+      {canEnd && (
+        <EndAction
+          label="End"
+          ariaLabel={`End ${window.label}`}
+          timeZone={actions.timeZone}
+          pending={actions.isPending}
+          onConfirm={(effectiveTo) => actions.onEnd(window, effectiveTo)}
+        />
+      )}
       {button("Delete", "Delete", () => actions.onDelete(window))}
     </span>
   );
@@ -136,7 +153,7 @@ function WindowRow({ window, actions }: { window: RateWindow; actions: WindowAct
   return (
     <li className="space-y-1 rounded-md border border-line px-2 py-1">
       <div className="flex justify-between gap-2">
-        <WindowSummary window={window} />
+        <WindowSummary window={window} timeZone={actions.timeZone} />
         <RowButtons window={window} actions={actions} onEdit={() => setEditing(true)} />
       </div>
       {editing && <RateEditor window={window} actions={actions} onClose={() => setEditing(false)} />}
@@ -173,7 +190,8 @@ function CoverageWarning({ gaps }: { gaps: CoverageGap[] }) {
 
 export function RateWindowsPanel({ siteId, sourceId }: { siteId: number; sourceId: number }) {
   const { data: windows, isError: loadFailed } = useRateWindows(siteId, sourceId);
-  const { actions, onAdd, error } = useWindowChanges(siteId, sourceId);
+  const timeZone = useSiteTimeZone(siteId);
+  const { actions, onAdd, error } = useWindowChanges(siteId, sourceId, timeZone);
   const gaps = useMemo(() => findCoverageGaps(windows ?? []), [windows]);
 
   return (
@@ -187,7 +205,7 @@ export function RateWindowsPanel({ siteId, sourceId }: { siteId: number; sourceI
           <ChannelSection key={channel} title={title} windows={windows.filter((w) => w.channel === channel)} actions={actions} />
         ))}
       {error && <p role="alert" className={errorClass}>{error.message}</p>}
-      <AddWindowForm onAdd={onAdd} isPending={actions.isPending} />
+      <AddWindowForm onAdd={onAdd} isPending={actions.isPending} windows={windows ?? []} timeZone={timeZone} />
     </div>
   );
 }

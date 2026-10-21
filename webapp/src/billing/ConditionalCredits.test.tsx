@@ -13,6 +13,19 @@ vi.mock("../api/client", async (importOriginal) => {
 
 const PATH = "/api/v1/sites/7/tariffs/3/conditional-credits";
 
+// The form also reads the tariff's windows (to suggest a start date) and the
+// site list (for its time zone), so a mock answers by path.
+function mockPaths(onPost: (init: RequestInit) => unknown) {
+  vi.mocked(apiFetch).mockImplementation(((_path: string, init?: RequestInit) => {
+    if (init?.method === "POST") return Promise.resolve(onPost(init));
+    return Promise.resolve([]);
+  }) as never);
+}
+
+function postCall() {
+  return vi.mocked(apiFetch).mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+}
+
 function renderWithClient(ui: ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
@@ -28,6 +41,8 @@ describe("ConditionalCredits", () => {
       {
         id: 1,
         site_tariff_id: 3,
+        effective_from: "2026-01-01T00:00:00Z",
+        effective_to: null,
         label: "Low evening import",
         months: [1, 2, 3],
         days_of_week: [0, 1, 2, 3, 4],
@@ -47,7 +62,7 @@ describe("ConditionalCredits", () => {
   });
 
   it("posts the parsed form values", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce({});
+    mockPaths(() => ({}));
     renderWithClient(<ConditionalCreditForm siteId={7} tariffId={3} />);
     const user = userEvent.setup();
 
@@ -66,11 +81,10 @@ describe("ConditionalCredits", () => {
     await user.type(screen.getByLabelText("Credit (cents)"), "50");
     await user.click(screen.getByRole("button", { name: "Add conditional credit" }));
 
-    expect(apiFetch).toHaveBeenCalledTimes(1);
-    const [path, init] = vi.mocked(apiFetch).mock.calls[0];
+    const [path, init] = postCall() ?? [];
     expect(path).toBe(PATH);
-    expect((init as RequestInit).method).toBe("POST");
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      effective_from: expect.any(String),
       label: "Low evening import",
       months: [1, 2, 3],
       days_of_week: [0, 1, 2, 3, 4],
@@ -82,7 +96,9 @@ describe("ConditionalCredits", () => {
   });
 
   it("shows the API error message when the create fails", async () => {
-    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("start_time must be before end_time"));
+    mockPaths(() => {
+      throw new Error("start_time must be before end_time");
+    });
     renderWithClient(<ConditionalCreditForm siteId={7} tariffId={3} />);
     const user = userEvent.setup();
 

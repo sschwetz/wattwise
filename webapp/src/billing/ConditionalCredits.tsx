@@ -1,16 +1,20 @@
 import { type FormEvent, useState } from "react";
 import {
   byLabel,
+  disabledClass,
   errorClass,
   formatCents,
   formatDaysOfWeek,
   formatMonths,
   formatTime,
+  hasEnded,
   inputClass,
   primaryButtonClass,
 } from "./billingUi";
 import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "./CheckboxGroup";
-import { useConditionalCreditWindows, useCreateConditionalCreditWindow } from "./useBilling";
+import { DateRangeFields, WindowDates } from "./DateFields";
+import { useDateRange, useSiteTimeZone } from "./dateHooks";
+import { useConditionalCreditWindows, useCreateConditionalCreditWindow, useEndConditionalCreditWindow } from "./useBilling";
 
 interface TariffProps {
   siteId: number;
@@ -19,11 +23,13 @@ interface TariffProps {
 
 export function ConditionalCreditList({ siteId, tariffId }: TariffProps) {
   const { data: windows } = useConditionalCreditWindows(siteId, tariffId);
+  const endWindow = useEndConditionalCreditWindow(siteId, tariffId);
+  const timeZone = useSiteTimeZone(siteId);
 
   return (
     <ul className="space-y-2">
       {byLabel(windows).map((w) => (
-        <li key={w.id} className="space-y-0.5 rounded-md border border-line/60 px-3 py-1.5">
+        <li key={w.id} className={`space-y-0.5 rounded-md border border-line/60 px-3 py-1.5 ${hasEnded(w) ? disabledClass : ""}`}>
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-ink">{w.label}</span>
             <span className="font-display tabular-nums text-ink">{formatCents(w.credit_c)}c credit</span>
@@ -32,6 +38,12 @@ export function ConditionalCreditList({ siteId, tariffId }: TariffProps) {
             Average import below {Number(w.max_avg_import_w)} W · {formatTime(w.start_time)}–{formatTime(w.end_time)}{" "}
             · {formatDaysOfWeek(w.days_of_week)} · {formatMonths(w.months)}
           </p>
+          <WindowDates
+            window={w}
+            timeZone={timeZone}
+            pending={endWindow.isPending}
+            onEnd={(effective_to) => endWindow.mutate({ id: w.id, effective_to })}
+          />
         </li>
       ))}
     </ul>
@@ -47,10 +59,13 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
   const [maxAvgImportW, setMaxAvgImportW] = useState("");
   const [creditC, setCreditC] = useState("");
   const createWindow = useCreateConditionalCreditWindow(siteId, tariffId);
+  const { data: windows } = useConditionalCreditWindows(siteId, tariffId);
+  const { range, toInput } = useDateRange(windows, siteId);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     createWindow.mutate({
+      ...toInput(),
       label,
       months,
       days_of_week: daysOfWeek,
@@ -79,6 +94,7 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
           className={`${inputClass} col-span-full`}
           required
         />
+        <DateRangeFields range={range} name="Credit" />
         <CheckboxGroup legend="Credit months" options={MONTH_OPTIONS} selection={{ selected: months, onChange: setMonths }} />
         <CheckboxGroup legend="Credit days of week" options={DAY_OPTIONS} selection={{ selected: daysOfWeek, onChange: setDaysOfWeek }} />
         <input

@@ -21,6 +21,7 @@ from core_api.jobs.demand_config import (
     monthly_fee_discount_windows_by_tariff,
     site_tariffs_for_site,
     tariff_effective_at,
+    window_in_force,
     total_export_adjustment_c_per_kwh,
 )
 from core_api.export_allowance_data import allowance_cost_deltas, period_containing, periods_for_allowance_windows
@@ -333,7 +334,7 @@ def _conditional_credit_total_c(
             continue
         local_date = midnight.astimezone(tz).date()
         for window in windows_by_tariff.get(tariff.id, []):
-            if credit_window_applies_on(window, local_date):
+            if credit_window_applies_on(window, local_date) and window_in_force(window, midnight):
                 total_c += _window_credit_c(db, energy_source_ids, window, local_date, tz, real_now_utc)
     return total_c
 

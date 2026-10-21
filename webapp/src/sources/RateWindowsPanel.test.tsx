@@ -20,6 +20,13 @@ function renderPanel() {
   );
 }
 
+// The panel reads the site's time zone from the site list; a fixed zone keeps
+// the apiFetch call order these tests count on.
+vi.mock("../billing/dateHooks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../billing/dateHooks")>()),
+  useSiteTimeZone: () => "Australia/Sydney",
+}));
+
 const LIST_PATH = "/api/v1/sites/7/sources/3/rate-windows";
 
 function postBody(): Record<string, unknown> {
@@ -30,6 +37,16 @@ function postBody(): Record<string, unknown> {
 async function expectRefetch() {
   await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(3));
   expect(vi.mocked(apiFetch).mock.calls[2][0]).toBe(LIST_PATH);
+}
+
+// End opens a date field; 2026-06-30 as the last day ends the window at the
+// start of 1 July in Sydney.
+const ENDED_AT = "2026-06-30T14:00:00.000Z";
+
+async function endWindow(user: ReturnType<typeof userEvent.setup>, name = "End Peak") {
+  await user.click(await screen.findByRole("button", { name }));
+  fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-06-30" } });
+  await user.click(screen.getByRole("button", { name: "Confirm end" }));
 }
 
 function win(overrides: Partial<RateWindow>): RateWindow {
@@ -114,7 +131,7 @@ describe("RateWindowsPanel", () => {
 
     await user.type(await screen.findByLabelText("Window label"), "Flat");
     await user.type(screen.getByLabelText("Rate (c/kWh)"), "30");
-    await user.click(screen.getByRole("button", { name: "End Peak" }));
+    await endWindow(user);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Add window" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "End Peak" })).toBeDisabled();
@@ -147,25 +164,7 @@ describe("RateWindowsPanel", () => {
     expect(screen.getByLabelText("Rate (c/kWh)")).toHaveValue(null);
   });
 
-  it("starts a window added for today at the current time, not at midnight", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce([]).mockResolvedValueOnce(win({})).mockResolvedValueOnce([]);
-    const user = userEvent.setup();
-    renderPanel();
-
-    await screen.findByRole("heading", { name: "Import" });
-    await user.type(screen.getByLabelText("Window label"), "New rate");
-    await user.type(screen.getByLabelText("Rate (c/kWh)"), "30");
-    const before = Date.now();
-    await user.click(screen.getByRole("button", { name: "Add window" }));
-
-    const effectiveFrom = Date.parse(postBody().effective_from as string);
-    const midnight = new Date();
-    midnight.setHours(0, 0, 0, 0);
-    expect(effectiveFrom).not.toBe(midnight.getTime());
-    expect(effectiveFrom).toBeGreaterThanOrEqual(before);
-  });
-
-  it("starts a window added for a future date at local midnight", async () => {
+  it("starts a window on the chosen date at midnight in the site's time zone", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce([]).mockResolvedValueOnce(win({})).mockResolvedValueOnce([]);
     const user = userEvent.setup();
     renderPanel();
@@ -173,10 +172,34 @@ describe("RateWindowsPanel", () => {
     await screen.findByRole("heading", { name: "Import" });
     await user.type(screen.getByLabelText("Window label"), "Next year");
     await user.type(screen.getByLabelText("Rate (c/kWh)"), "30");
-    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2099-01-15" } });
+    fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2099-01-15" } });
     await user.click(screen.getByRole("button", { name: "Add window" }));
 
-    expect(postBody().effective_from).toBe(new Date("2099-01-15T00:00:00").toISOString());
+    expect(postBody().effective_from).toBe("2099-01-14T13:00:00.000Z");
+    expect(postBody().effective_to).toBeNull();
+  });
+
+  it("ends a new window on the last day chosen", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]).mockResolvedValueOnce(win({})).mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByRole("heading", { name: "Import" });
+    await user.type(screen.getByLabelText("Window label"), "Winter");
+    await user.type(screen.getByLabelText("Rate (c/kWh)"), "30");
+    fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-04-01" } });
+    fireEvent.change(screen.getByLabelText("End date (optional)"), { target: { value: "2026-06-30" } });
+    await user.click(screen.getByRole("button", { name: "Add window" }));
+
+    expect(postBody().effective_to).toBe(ENDED_AT);
+  });
+
+  it("suggests the day after the latest ended window of the chosen direction", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([win({ effective_to: ENDED_AT })]);
+    renderPanel();
+
+    await screen.findByRole("heading", { name: "Import" });
+    expect(screen.getByLabelText("Start date")).toHaveValue("2026-07-01");
   });
 
   it("will not add a window whose label is only spaces", async () => {
@@ -211,12 +234,12 @@ describe("RateWindowsPanel", () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(await screen.findByRole("button", { name: "End Peak" }));
+    await endWindow(user);
 
     const patch = vi.mocked(apiFetch).mock.calls[1];
     expect(patch[0]).toBe("/api/v1/sites/7/sources/3/rate-windows/1");
     const body = JSON.parse((patch[1] as RequestInit).body as string);
-    expect(body.effective_to).not.toBeNull();
+    expect(body.effective_to).toBe(ENDED_AT);
     expect(body.rate_c_per_kwh).toBe(32.5);
     await expectRefetch();
   });
@@ -237,7 +260,7 @@ describe("RateWindowsPanel", () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(await screen.findByRole("button", { name: "End Peak" }));
+    await endWindow(user);
     expect(await screen.findByRole("alert")).toHaveTextContent("Ending failed");
 
     await user.click(screen.getByRole("button", { name: "Delete Peak" }));
@@ -339,7 +362,7 @@ describe("RateWindowsPanel", () => {
       const user = userEvent.setup();
       renderPanel();
 
-      await user.click(await screen.findByRole("button", { name: "End Peak" }));
+      await endWindow(user);
 
       await waitFor(() => expect(screen.getByRole("button", { name: "Edit rate of Peak" })).toBeDisabled());
     });

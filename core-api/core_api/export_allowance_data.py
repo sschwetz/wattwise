@@ -28,6 +28,7 @@ from core_api.jobs.demand_config import (
     in_export_window_pattern,
     tariff_effective_at,
     total_export_adjustment_c_per_kwh,
+    window_in_force,
 )
 from core_api.models.billing import BillingCycle, ExportAdjustmentWindow, SiteTariff
 from core_api.models.readings import EnergyMetric, EnergyReading
@@ -110,7 +111,12 @@ def _window_export_kwh(
     counted = {}
     for ts, kwh in exports.items():
         tariff = tariff_effective_at(tariffs, ts)
-        if tariff is not None and tariff.id == tariff_id and in_export_window_pattern(window, ts.astimezone(tz)):
+        if (
+            tariff is not None
+            and tariff.id == tariff_id
+            and in_export_window_pattern(window, ts.astimezone(tz))
+            and window_in_force(window, ts)
+        ):
             counted[ts] = kwh
     return counted
 
@@ -124,6 +130,17 @@ class AllowanceSpan(NamedTuple):
     window: ExportAdjustmentWindow
     start: datetime.datetime
     end: datetime.datetime
+
+
+def _clip_to_window(
+    window: ExportAdjustmentWindow, start: datetime.datetime, end: datetime.datetime
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """`start` and `end` narrowed to the window's own dates."""
+    if window.effective_from is not None:
+        start = max(start, as_utc(window.effective_from))
+    if window.effective_to is not None:
+        end = min(end, as_utc(window.effective_to))
+    return start, end
 
 
 def allowance_window_spans(
@@ -149,7 +166,9 @@ def allowance_window_spans(
             if start >= end:
                 continue
             for window in (w for w in windows if w.daily_allowance_kwh > 0):
-                yield AllowanceSpan(period, tariff_id, window, start, end)
+                window_start, window_end = _clip_to_window(window, start, end)
+                if window_start < window_end:
+                    yield AllowanceSpan(period, tariff_id, window, window_start, window_end)
 
 
 def allowance_cost_deltas(

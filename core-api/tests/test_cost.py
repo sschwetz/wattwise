@@ -1425,3 +1425,21 @@ def test_series_leaves_the_credit_out(db, site):
     )
 
     assert all(p.cost_c >= 0 for p in points)
+
+
+def test_credit_is_not_earned_before_the_windows_start_date(db, site):
+    _, tariff = _credit_setup(db, site, watts=200)
+    window = db.query(ConditionalCreditWindow).one()
+    window.effective_from = sydney_local(2026, 1, 8)
+    db.commit()
+
+    assert _credit_total(db, site) == decimal.Decimal("0")
+
+
+def test_credit_is_not_earned_after_the_windows_end_date(db, site):
+    _credit_setup(db, site, watts=200)
+    window = db.query(ConditionalCreditWindow).one()
+    window.effective_to = sydney_local(*CREDIT_DAY)
+    db.commit()
+
+    assert _credit_total(db, site) == decimal.Decimal("0")
