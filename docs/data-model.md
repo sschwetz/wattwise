@@ -125,13 +125,15 @@ All time-series tables use the same shape: the key is the source, the timestamp 
 | `battery_discharge_w` | W | Written only while discharging, as a positive number |
 | `battery_soc_pct` | % | State of charge, averaged across battery units |
 
+The collector rounds every weather value to one decimal place before storing it.
+
 | Weather metric | Unit |
 |---|---|
 | `temp_c` | °C |
 | `humidity_pct` | % |
 | `wind_speed_kph` | km/h (1-minute average) |
 | `wind_direction_deg` | degrees (1-minute average) |
-| `rain_mm` | mm since the previous reading |
+| `rain_mm` | mm since the previous reading. The deltas add up to the day's total, which the dashboard sums from local midnight |
 | `solar_radiation_wm2` | W/m² |
 | `barometric_pressure_hpa` | hPa |
 

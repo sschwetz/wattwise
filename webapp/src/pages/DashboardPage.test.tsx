@@ -495,6 +495,52 @@ describe("DashboardPage battery tile background", () => {
     expect(await screen.findByText("55 %")).toBeInTheDocument();
   });
 
+  it("shows today's rain as the sum of the rain readings since midnight", async () => {
+    mockApi({}, undefined, {
+      rain_mm: [
+        { ts: "2026-10-01T00:00:00Z", metric: "rain_mm", value: 0.2 },
+        { ts: "2026-10-01T00:01:00Z", metric: "rain_mm", value: 0.1 },
+        { ts: "2026-10-01T00:02:00Z", metric: "rain_mm", value: 0 },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("0.3 mm")).toBeInTheDocument();
+    expect(screen.getByText("Rain today")).toBeInTheDocument();
+  });
+
+  it("keeps showing today's rain after the rain stops", async () => {
+    mockApi({}, undefined, {
+      rain_mm: [
+        { ts: "2026-10-01T00:00:00Z", metric: "rain_mm", value: 0.2 },
+        { ts: "2026-10-01T00:01:00Z", metric: "rain_mm", value: 0 },
+        { ts: "2026-10-01T00:02:00Z", metric: "rain_mm", value: 0 },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("0.2 mm")).toBeInTheDocument();
+  });
+
+  it("rounds the rain total to one decimal place", async () => {
+    mockApi({}, undefined, {
+      rain_mm: [
+        { ts: "2026-10-01T00:00:00Z", metric: "rain_mm", value: 0.1 },
+        { ts: "2026-10-01T00:01:00Z", metric: "rain_mm", value: 0.2 },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("0.3 mm")).toBeInTheDocument();
+  });
+
+  it("asks for rain from local midnight, not the live 5-minute window", async () => {
+    mockApi({});
+    renderPage();
+    await waitFor(() => expect(weatherCallPaths().some((p) => queryParams(p).get("metric") === "rain_mm")).toBe(true));
+
+    const rainPath = weatherCallPaths().find((p) => queryParams(p).get("metric") === "rain_mm") as string;
+    const start = new Date(queryParams(rainPath).get("start") as string);
+    expect([start.getHours(), start.getMinutes(), start.getSeconds()]).toEqual([0, 0, 0]);
+  });
+
   it("rounds temperature and barometric pressure to one decimal place", async () => {
     mockApi({}, undefined, {
       temp_c: [{ ts: "2026-10-01T00:00:00Z", metric: "temp_c", value: 21.456 }],

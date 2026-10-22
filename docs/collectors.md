@@ -86,7 +86,9 @@ See [How it works, section 1](how-it-works.md#1-a-meter-reading-reaches-the-dash
 | `rainfall_daily` (clicks) | `rain_mm` | Clicks × rain-cup size, then **minus the previous poll's total** |
 | `bar_sea_level` (inHg) | `barometric_pressure_hpa` | × 33.8639 |
 
-Rain is the one stateful field. The device reports rain since midnight, so the collector keeps the last total and sends the difference. The first poll after a start sends no rain reading. If a push fails, the baseline rolls back so the rain is reported next time instead of lost. A null field is skipped alone, because Core API rejects a whole batch that contains a null.
+Every value is rounded to one decimal place after conversion. The readings are for people to read, not for modelling.
+
+Rain is the one stateful field. The device reports rain since midnight, so the collector keeps the last total (rounded to 0.1 mm) and sends the difference. Rounding the total, not each click, keeps the sum of the differences equal to the day's total on gauges with 0.254 mm clicks. The first poll after a start sends no rain reading. If a push fails, the baseline rolls back so the rain is reported next time instead of lost. A null field is skipped alone, because Core API rejects a whole batch that contains a null.
 
 ## Amber pricing collector
 

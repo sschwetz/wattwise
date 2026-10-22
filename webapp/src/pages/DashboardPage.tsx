@@ -23,6 +23,7 @@ import {
   useCurrentPrice,
   useLatestEnergyReadings,
   useLatestWeatherReadings,
+  useTodayRain,
 } from "../dashboard/useLiveReadings";
 import { averageLiveReadings } from "../dashboard/liveAverages";
 
@@ -52,7 +53,6 @@ const TILE_UNITS: Record<string, string> = {
 const WEATHER_TILE_LABELS: Record<string, string> = {
   temp_c: "Temperature",
   humidity_pct: "Humidity",
-  rain_mm: "Rain",
   solar_radiation_wm2: "Solar radiation",
   barometric_pressure_hpa: "Barometric pressure",
 };
@@ -60,7 +60,6 @@ const WEATHER_TILE_LABELS: Record<string, string> = {
 const WEATHER_TILE_UNITS: Record<string, string> = {
   temp_c: "°C",
   humidity_pct: "%",
-  rain_mm: "mm",
   solar_radiation_wm2: "W/m²",
   barometric_pressure_hpa: "hPa",
 };
@@ -272,7 +271,7 @@ function windTileValue(speed: Reading, direction: Reading | undefined): string {
  * barometric pressure round to one decimal place, and wind speed/direction
  * merge into a single tile (e.g. "12.3 km/h NE") instead of two.
  */
-function WeatherTiles({ readings }: { readings: Reading[] }) {
+function WeatherTiles({ readings, rainTodayMm }: { readings: Reading[]; rainTodayMm?: number | null }) {
   const latest = latestByMetric(readings);
   const windSpeed = latest.get("wind_speed_kph");
   const windDirection = latest.get("wind_direction_deg");
@@ -290,6 +289,7 @@ function WeatherTiles({ readings }: { readings: Reading[] }) {
           value={`${formatMetricValue(metric, reading.value)} ${WEATHER_TILE_UNITS[metric] ?? ""}`}
         />
       ))}
+      {rainTodayMm != null && <Tile label="Rain today" value={`${rainTodayMm.toFixed(1)} mm`} />}
     </div>
   );
 }
@@ -298,6 +298,7 @@ function LiveTiles({ siteId }: { siteId: number }) {
   const energy = useLatestEnergyReadings(siteId);
   const energyReadings = averageLiveReadings(energy.data, Date.now());
   const weather = useLatestWeatherReadings(siteId);
+  const rain = useTodayRain(siteId);
 
   return (
     <div className="space-y-6" data-testid="live-tiles">
@@ -306,8 +307,8 @@ function LiveTiles({ siteId }: { siteId: number }) {
       <BillingPeriodTiles siteId={siteId} />
       <div>
         <p className="mb-3 text-sm font-medium text-ink-muted">Weather</p>
-        {weather.isError && <ErrorAlert message="Failed to load live weather." />}
-        <WeatherTiles readings={weather.data} />
+        {(weather.isError || rain.isError) && <ErrorAlert message="Failed to load live weather." />}
+        <WeatherTiles readings={weather.data} rainTodayMm={rain.data} />
       </div>
     </div>
   );

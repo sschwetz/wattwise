@@ -48,9 +48,9 @@ def test_rain_size_zero_is_reserved_and_raises():
 def test_temp_humidity_wind_conversions():
     readings = map_iss_readings(iss_entry(), TS, RainState())
     by_metric = {r["metric"]: r["value"] for r in readings}
-    assert by_metric["temp_c"] == pytest.approx((72.8 - 32) * 5 / 9)
+    assert by_metric["temp_c"] == 22.7  # (72.8 - 32) * 5 / 9 = 22.67
     assert by_metric["humidity_pct"] == 57.3
-    assert by_metric["wind_speed_kph"] == pytest.approx(4.43 * 1.609344)
+    assert by_metric["wind_speed_kph"] == 7.1  # 4.43 * 1.609344 = 7.13
     assert by_metric["wind_direction_deg"] == 41
 
 
@@ -112,4 +112,33 @@ def test_map_iss_readings_raises_for_unsupported_rain_size():
 def test_map_barometer_readings_converts_inhg_to_hpa():
     readings = map_barometer_readings(barometer_entry(), TS)
     by_metric = {r["metric"]: r["value"] for r in readings}
-    assert by_metric["barometric_pressure_hpa"] == pytest.approx(30.422 * 33.8639)
+    assert by_metric["barometric_pressure_hpa"] == 1030.2  # 30.422 * 33.8639 = 1030.21
+
+
+def test_rain_is_rounded_to_one_decimal_place():
+    rain_state = RainState()
+    map_iss_readings(iss_entry(rainfall_daily=0, rain_size=1), TS, rain_state)
+
+    readings = map_iss_readings(iss_entry(rainfall_daily=1, rain_size=1), TS, rain_state)
+    by_metric = {r["metric"]: r["value"] for r in readings}
+    assert by_metric["rain_mm"] == 0.3  # one 0.254mm tip
+    assert rain_state.last_daily_mm == 0.3
+
+
+def test_rounded_rain_deltas_add_up_to_the_rounded_daily_total():
+    rain_state = RainState()
+    map_iss_readings(iss_entry(rainfall_daily=0, rain_size=1), TS, rain_state)
+
+    deltas = []
+    for tips in range(1, 11):  # ten single-tip polls, 0.254mm each = 2.54mm
+        readings = map_iss_readings(iss_entry(rainfall_daily=tips, rain_size=1), TS, rain_state)
+        deltas.append(next(r["value"] for r in readings if r["metric"] == "rain_mm"))
+    assert sum(deltas) == pytest.approx(2.5)
+
+
+def test_every_reading_is_rounded_to_one_decimal_place():
+    readings = map_iss_readings(iss_entry(solar_rad=123.456), TS, RainState())
+    readings += map_barometer_readings(barometer_entry(), TS)
+    assert readings
+    for reading in readings:
+        assert reading["value"] == round(reading["value"], 1), reading["metric"]
