@@ -18,9 +18,9 @@ export function ZoomSelectionArea({ selection, yAxisId }: { selection: ZoomSelec
       yAxisId={yAxisId}
       x1={selection.x1}
       x2={selection.x2}
-      fill="var(--color-solar)"
+      fill="var(--chart-blue)"
       fillOpacity={0.15}
-      stroke="var(--color-solar)"
+      stroke="var(--chart-blue)"
       strokeOpacity={0.5}
     />
   );

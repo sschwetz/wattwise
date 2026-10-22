@@ -21,8 +21,18 @@
   --color-grid-soft: light-dark(#e7eefc, #16233f);
   --color-danger: #e5484d;
   --color-danger-soft: light-dark(#fde8e8, #3a1317);
-  /* Salmon: power drawn from the grid into the battery. */
-  --color-grid-charge: light-dark(#f2705f, #ff9a8a);
+
+  /* Chart series: one fixed-order categorical palette, each hue stepped for the
+     light and dark surface and checked with the dataviz validator. Separate
+     from the tile accents above so charts stay readable. */
+  --chart-yellow: light-dark(#eda100, #c98500);
+  --chart-magenta: light-dark(#e87ba4, #d55181);
+  --chart-blue: light-dark(#2a78d6, #3987e5);
+  --chart-aqua: light-dark(#1baf7a, #199e70);
+  --chart-orange: light-dark(#eb6834, #d95926);
+  --chart-red: light-dark(#e34948, #e66767);
+  /* Battery charge fill: neutral so the flow lines on top stand out. */
+  --chart-soc: light-dark(#c3cad9, #34415e);
 }
 
 :root {
