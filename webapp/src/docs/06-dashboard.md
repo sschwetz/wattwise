@@ -62,7 +62,7 @@ Fixed daily and monthly fees are included in proportion to how much of the day h
 
 ## Weather tiles
 
-Under the live tiles, **Weather** shows the latest reading from your WeatherLink station: **Temperature** (°C), **Humidity**, **Rain**, **Solar radiation** (W/m²), **Barometric pressure** (hPa) and **Wind speed** with a compass direction, for example `12.3 km/h NE`. These tiles need a [weather source](05-sources.md#connecting-a-weatherlink-live-station).
+Under the live tiles, **Weather** shows the latest reading from your WeatherLink station: **Temperature** (°C), **Humidity**, **Solar radiation** (W/m²), **Barometric pressure** (hPa) and **Wind speed** with a compass direction, for example `12.3 km/h NE`. **Rain today** is the total since midnight, rounded to 0.1 mm, so it stays put after the rain stops and resets overnight. These tiles need a [weather source](05-sources.md#connecting-a-weatherlink-live-station).
 
 ## Demand window notice
 

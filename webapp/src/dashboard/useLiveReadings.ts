@@ -1,5 +1,6 @@
 import { queryOptions, useQueries, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
+import { startOfDay } from "./dateRange";
 
 export interface Reading {
   ts: string;
@@ -94,10 +95,16 @@ export function useLatestEnergyReadings(siteId: number): LiveReadingsResult {
   return combineLiveResults(results);
 }
 
+/**
+ * rain_mm is the rain since the previous poll, so its latest reading is
+ * almost always 0. It is shown as a running total by useTodayRain instead.
+ */
+const LATEST_WEATHER_METRICS = WEATHER_METRICS.filter((metric) => metric !== "rain_mm");
+
 /** Same fan-out shape as useLatestEnergyReadings, one request per weather metric. */
 export function useLatestWeatherReadings(siteId: number): LiveReadingsResult {
   const results = useQueries({
-    queries: WEATHER_METRICS.map((metric) =>
+    queries: LATEST_WEATHER_METRICS.map((metric) =>
       queryOptions({
         queryKey: ["weather-readings", siteId, "latest", metric],
         queryFn: () => fetchLatest(siteId, "readings/weather", { metric }),
@@ -106,6 +113,28 @@ export function useLatestWeatherReadings(siteId: number): LiveReadingsResult {
     ),
   });
   return combineLiveResults(results);
+}
+
+/** Total rain (mm, one decimal place) since local midnight; null when no rain reading exists yet today. */
+export function useTodayRain(siteId: number) {
+  return useQuery({
+    queryKey: ["weather-readings", siteId, "today-rain"],
+    queryFn: async (): Promise<number | null> => {
+      const end = new Date();
+      const params = new URLSearchParams({
+        metric: "rain_mm",
+        start: startOfDay(end).toISOString(),
+        end: end.toISOString(),
+      });
+      const readings = await apiFetch<Reading[]>(`/api/v1/sites/${siteId}/readings/weather?${params}`);
+      if (readings.length === 0) {
+        return null;
+      }
+      const total = readings.reduce((sum, reading) => sum + reading.value, 0);
+      return Math.round(total * 10) / 10;
+    },
+    refetchInterval: LIVE_POLL_MS,
+  });
 }
 
 export type PriceChannel = "buy" | "sell";
