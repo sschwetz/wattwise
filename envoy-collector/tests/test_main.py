@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import threading
 
 import pytest
 
@@ -287,6 +288,32 @@ def test_poll_once_passes_battery_net_w_computed_from_real_battery_fetch(monkeyp
     main_module.poll_once(SETTINGS, 1, config)
 
     assert received["battery_net_w"] == pytest.approx(2000.0)
+
+
+def test_poll_once_requests_production_and_battery_at_the_same_time(monkeypatch):
+    # Both fakes wait for the other at a barrier. Run one after the other, the
+    # first would time out and the cycle would fail.
+    barrier = threading.Barrier(2, timeout=2)
+    met = []
+
+    def fake_fetch_production(host, token, cert_fingerprint):
+        barrier.wait()
+        met.append("production")
+        return {"production": []}
+
+    def fake_fetch_battery_power(host, token, cert_fingerprint):
+        barrier.wait()
+        met.append("battery")
+        return {"devices:": []}
+
+    monkeypatch.setattr(main_module, "fetch_production", fake_fetch_production)
+    monkeypatch.setattr(main_module, "fetch_battery_power", fake_fetch_battery_power)
+    monkeypatch.setattr(main_module, "push_energy_readings", lambda base_url, source_id, key, readings: None)
+
+    config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
+    main_module.poll_once(SETTINGS, 1, config)
+
+    assert sorted(met) == ["battery", "production"]
 
 
 def test_poll_once_passes_none_battery_net_w_when_battery_fetch_fails(monkeypatch):
