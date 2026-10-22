@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Area, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ErrorAlert, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
-import { SWATCH_COLORS, TODAY_CHARTS_SYNC_ID, ZOOMABLE_CHART_STYLE } from "./chartStyle";
+import { ErrorAlert, LegendSwatch, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
+import { AXIS_PROPS, SWATCH_COLORS, TODAY_CHARTS_SYNC_ID, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import { clipToDay, dayRangeOffset, type PricingDayOffset, zoomRangeFor } from "./dateRange";
 import { buildAxisTickPlan, formatBucketTick } from "./historyChart";
 import { InstabilitySummary } from "./InstabilitySummary";
@@ -66,32 +66,6 @@ function TodayPricingTooltip({
         </p>
       )}
     </div>
-  );
-}
-
-const SWATCH_PATTERNS = {
-  dashed: (color: string) => `repeating-linear-gradient(to right, ${color} 0 4px, transparent 4px 7px)`,
-  dotted: (color: string) => `repeating-linear-gradient(to right, ${color} 0 1px, transparent 1px 4px)`,
-};
-
-function PriceLegendSwatch({
-  color,
-  pattern,
-  label,
-}: {
-  color: string;
-  pattern?: keyof typeof SWATCH_PATTERNS;
-  label: string;
-}) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span
-        aria-hidden
-        className="h-0.5 w-4"
-        style={pattern ? { backgroundImage: SWATCH_PATTERNS[pattern](color) } : { backgroundColor: color }}
-      />
-      {label}
-    </span>
   );
 }
 
@@ -187,16 +161,16 @@ export function TodayPriceChart({
         <h2 className="font-display text-lg font-semibold text-ink">{title}</h2>
         <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted">
           {zoom.range && <ResetZoomButton onClick={() => zoom.set(null)} />}
-          <PriceLegendSwatch color={SWATCH_COLORS.gridImport} label="Import actual" />
-          <PriceLegendSwatch color={SWATCH_COLORS.gridImport} pattern="dashed" label="Import predicted" />
-          <PriceLegendSwatch color={SWATCH_COLORS.gridExport} label="Export actual" />
-          <PriceLegendSwatch color={SWATCH_COLORS.gridExport} pattern="dashed" label="Export predicted" />
+          <LegendSwatch shape="line" color={SWATCH_COLORS.gridImport} label="Import actual" />
+          <LegendSwatch shape="line" color={SWATCH_COLORS.gridImport} pattern="dashed" label="Import predicted" />
+          <LegendSwatch shape="line" color={SWATCH_COLORS.gridExport} label="Export actual" />
+          <LegendSwatch shape="line" color={SWATCH_COLORS.gridExport} pattern="dashed" label="Export predicted" />
           {hasBand && <RangeLegendSwatch />}
           {(["potential", "spike"] as const).map(
             (level) => visibleSpans.some((span) => span.level === level) && <SpikeLegendSwatch key={level} level={level} />,
           )}
           {hasFallback && (
-            <PriceLegendSwatch color="var(--color-ink-muted)" pattern="dotted" label="Fallback (no advanced forecast)" />
+            <LegendSwatch shape="line" color="var(--color-ink-muted)" pattern="dotted" label="Fallback (no advanced forecast)" />
           )}
         </div>
       </div>
@@ -208,24 +182,9 @@ export function TodayPriceChart({
             dataKey="ts"
             ticks={axisTickPlan.ticks}
             tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
-            stroke="var(--color-ink-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
+            {...AXIS_PROPS}
           />
-          <YAxis
-            stroke="var(--color-ink-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-            width={48}
-            label={{
-              value: "c/kWh",
-              angle: -90,
-              position: "insideLeft",
-              style: { fill: "var(--color-ink-muted)", fontSize: 12, textAnchor: "middle" },
-            }}
-          />
+          <YAxis {...yAxisProps("c/kWh")} />
           <Tooltip content={(props) => <TodayPricingTooltip {...props} />} />
           {visibleSpans.map((span) => (
             <ReferenceArea
