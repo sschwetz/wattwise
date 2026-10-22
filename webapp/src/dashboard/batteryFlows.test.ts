@@ -20,14 +20,14 @@ describe("splitBatteryFlows", () => {
 });
 
 describe("buildBatteryChartData", () => {
-  it("zero-fills every 5-minute bucket and leaves SOC change null without data", () => {
+  it("zero-fills every 5-minute bucket and leaves SOC null without data", () => {
     const data = buildBatteryChartData(empty, RANGE);
     expect(data).toHaveLength(3);
-    expect(data[0].socChangePct).toBeNull();
+    expect(data[0].socPct).toBeNull();
     expect(data[0].solarToBatteryKw).toBe(0);
   });
 
-  it("shows SOC change against the previous bucket's last reading", () => {
+  it("shows the last SOC reading in each bucket", () => {
     const data = buildBatteryChartData(
       {
         ...empty,
@@ -39,7 +39,7 @@ describe("buildBatteryChartData", () => {
       },
       RANGE,
     );
-    expect(data.map((p) => p.socChangePct)).toEqual([null, -1, null]);
+    expect(data.map((p) => p.socPct)).toEqual([52, 51, null]);
   });
 
   it("averages kW over the bucket's five minutes", () => {
@@ -54,5 +54,20 @@ describe("buildBatteryChartData", () => {
     // One minute at 5 kW over five minutes averages 1 kW.
     expect(data[0].solarToBatteryKw).toBeCloseTo(1);
     expect(data[0].gridToBatteryKw).toBe(0);
+  });
+});
+
+describe("battery to grid sign", () => {
+  it("plots battery-to-grid power below zero", () => {
+    const data = buildBatteryChartData(
+      {
+        ...empty,
+        discharge: [reading("2026-10-08T07:00:00Z", 5000)],
+        gridExport: [reading("2026-10-08T07:00:00Z", 5000)],
+      },
+      RANGE,
+    );
+    expect(data[0].batteryToGridKw).toBeCloseTo(-1);
+    expect(data[0].batteryToHouseKw).toBe(0);
   });
 });

@@ -106,9 +106,9 @@ This chart and Today's Pricing above it share one zoom. Drag across either to zo
 
 Below the grid and cost chart, the Battery chart shows today in 5-minute steps. It shares the zoom and hover position with the two charts above it. It appears only once your site has reported a battery reading today.
 
-- **Amber bars** are the change in battery charge over each 5 minutes, in percentage points (left axis).
+- **Amber bars** are the battery's charge level at the end of each 5 minutes, from 0 to 100% (left axis).
 - **Solid lines** are power going into the battery, in kW (right axis): solar in green and grid in salmon.
-- **Dashed lines** are power coming out of the battery: to the house in blue and to the grid in green.
+- **Dashed lines** are power coming out of the battery: to the house in blue and to the grid in green. The to-the-grid line is drawn below zero, the way grid export is on the chart above.
 
 The collectors report total battery charge and discharge, not where the energy came from or went. WattWise estimates the split for each minute. Charging counts as solar up to the solar surplus (production minus consumption), and the rest as grid. Discharging counts as going to the grid up to that minute's export, and the rest as going to the house.
 
