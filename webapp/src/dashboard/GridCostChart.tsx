@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Bar, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ZoomSelectionArea } from "./chartParts";
-import { SWATCH_COLORS, ZOOMABLE_CHART_STYLE } from "./chartStyle";
+import { LegendSwatch, ZoomSelectionArea } from "./chartParts";
+import { AXIS_PROPS, SWATCH_COLORS, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import {
   buildAxisTickPlan,
   buildCostAxis,
@@ -18,28 +18,6 @@ import {
   type DateRange,
 } from "./useHistoricalData";
 import type { Reading } from "./useLiveReadings";
-
-function LegendSwatch({
-  color,
-  label,
-  textColor,
-}: {
-  color: string;
-  label: string;
-  /** Inline text color, e.g. for a live reading whose sign the text itself
-   * should convey (red/green). Defaults to the neutral ink-muted token --
-   * the static legend and the Grid tooltip row keep that default. */
-  textColor?: string;
-}) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span aria-hidden className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-      <span className={textColor ? undefined : "text-ink-muted"} style={textColor ? { color: textColor } : undefined}>
-        {label}
-      </span>
-    </span>
-  );
-}
 
 /** Built in plain HTML/Tailwind rather than recharts' own <Legend>, so its text
  * always renders in the theme's ink tokens -- never a series color -- and reads
@@ -118,43 +96,16 @@ export function HistoryChart({
             dataKey="ts"
             ticks={axisTickPlan.ticks}
             tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
-            stroke="var(--color-ink-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
+            {...AXIS_PROPS}
           />
-          <YAxis
-            yAxisId="grid"
-            stroke="var(--color-ink-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-            width={48}
-            label={{
-              value: "kWh",
-              angle: -90,
-              position: "insideLeft",
-              style: { fill: "var(--color-ink-muted)", fontSize: 12, textAnchor: "middle" },
-            }}
-          />
+          <YAxis yAxisId="grid" {...yAxisProps("kWh")} />
           <YAxis
             yAxisId="cost"
-            orientation="right"
             ticks={costAxis.ticks}
             domain={costAxis.domain}
             tickFormatter={(v: number) => v.toFixed(2)}
             allowDataOverflow
-            stroke="var(--color-ink-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-            width={48}
-            label={{
-              value: "$",
-              angle: -90,
-              position: "insideRight",
-              style: { fill: "var(--color-ink-muted)", fontSize: 12, textAnchor: "middle" },
-            }}
+            {...yAxisProps("$", "right")}
           />
           <Tooltip content={(props) => <HistoryChartTooltip {...props} bucket={bucket} />} />
           <Bar yAxisId="grid" dataKey="gridKwh" name="Grid" radius={2}>
