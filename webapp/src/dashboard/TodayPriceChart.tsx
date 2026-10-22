@@ -79,8 +79,8 @@ function RangeLegendSwatch() {
 }
 
 const SPIKE_LEVELS = {
-  potential: { color: "var(--color-solar)", label: "Price spike possible" },
-  spike: { color: "var(--color-danger)", label: "Price spike" },
+  potential: { color: "var(--chart-yellow)", label: "Price spike possible" },
+  spike: { color: "var(--chart-red)", label: "Price spike" },
 } as const;
 
 function SpikeLegendSwatch({ level }: { level: keyof typeof SPIKE_LEVELS }) {

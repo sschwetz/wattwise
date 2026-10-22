@@ -118,7 +118,7 @@ export function HistoryChart({
             type="linear"
             dataKey="costDollars"
             name="Cost"
-            stroke="var(--color-solar)"
+            stroke={SWATCH_COLORS.cost}
             strokeWidth={2}
             dot={false}
           />

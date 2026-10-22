@@ -4,14 +4,14 @@
 // and export), so relying on recharts' own item color would leave the
 // tooltip/legend with no color of their own to fall back on.
 export const SWATCH_COLORS = {
-  gridImport: "var(--color-danger)",
-  gridExport: "var(--color-flow)",
-  cost: "var(--color-solar)",
-  batterySoc: "var(--color-solar)",
-  solarToBattery: "var(--color-flow)",
-  gridToBattery: "var(--color-grid-charge)",
-  batteryToHouse: "var(--color-grid)",
-  batteryToGrid: "var(--color-flow)",
+  gridImport: "var(--chart-orange)",
+  gridExport: "var(--chart-aqua)",
+  cost: "var(--chart-blue)",
+  batterySoc: "var(--chart-soc)",
+  solarToBattery: "var(--chart-yellow)",
+  gridToBattery: "var(--chart-magenta)",
+  batteryToHouse: "var(--chart-blue)",
+  batteryToGrid: "var(--chart-aqua)",
 } as const;
 
 export const ZOOMABLE_CHART_STYLE = { userSelect: "none", cursor: "crosshair" } as const;
