@@ -159,20 +159,7 @@ export function TodayPriceChart({
     <div className="rounded-xl border border-line bg-surface p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-lg font-semibold text-ink">{title}</h2>
-        <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted">
-          {zoom.range && <ResetZoomButton onClick={() => zoom.set(null)} />}
-          <LegendSwatch shape="line" color={SWATCH_COLORS.gridImport} label="Import actual" />
-          <LegendSwatch shape="line" color={SWATCH_COLORS.gridImport} pattern="dashed" label="Import predicted" />
-          <LegendSwatch shape="line" color={SWATCH_COLORS.gridExport} label="Export actual" />
-          <LegendSwatch shape="line" color={SWATCH_COLORS.gridExport} pattern="dashed" label="Export predicted" />
-          {hasBand && <RangeLegendSwatch />}
-          {(["potential", "spike"] as const).map(
-            (level) => visibleSpans.some((span) => span.level === level) && <SpikeLegendSwatch key={level} level={level} />,
-          )}
-          {hasFallback && (
-            <LegendSwatch shape="line" color="var(--color-ink-muted)" pattern="dotted" label="Fallback (no advanced forecast)" />
-          )}
-        </div>
+        {zoom.range && <ResetZoomButton onClick={() => zoom.set(null)} />}
       </div>
       {(isImportError || isExportError) && <ErrorAlert message={`Failed to load ${title.toLowerCase()}.`} />}
       <InstabilitySummary windows={instabilityWindows} />
@@ -272,6 +259,19 @@ export function TodayPriceChart({
           <ZoomSelectionArea selection={selection} />
         </ComposedChart>
       </ResponsiveContainer>
+      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-ink-muted">
+        <LegendSwatch shape="line" color={SWATCH_COLORS.gridImport} label="Import actual" />
+        <LegendSwatch shape="line" color={SWATCH_COLORS.gridImport} pattern="dashed" label="Import predicted" />
+        <LegendSwatch shape="line" color={SWATCH_COLORS.gridExport} label="Export actual" />
+        <LegendSwatch shape="line" color={SWATCH_COLORS.gridExport} pattern="dashed" label="Export predicted" />
+        {hasBand && <RangeLegendSwatch />}
+        {(["potential", "spike"] as const).map(
+          (level) => visibleSpans.some((span) => span.level === level) && <SpikeLegendSwatch key={level} level={level} />,
+        )}
+        {hasFallback && (
+          <LegendSwatch shape="line" color="var(--color-ink-muted)" pattern="dotted" label="Fallback (no advanced forecast)" />
+        )}
+      </div>
     </div>
   );
 }
