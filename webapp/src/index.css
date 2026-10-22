@@ -21,6 +21,8 @@
   --color-grid-soft: light-dark(#e7eefc, #16233f);
   --color-danger: #e5484d;
   --color-danger-soft: light-dark(#fde8e8, #3a1317);
+  /* Salmon: power drawn from the grid into the battery. */
+  --color-grid-charge: light-dark(#f2705f, #ff9a8a);
 }
 
 :root {

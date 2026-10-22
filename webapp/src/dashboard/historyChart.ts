@@ -20,7 +20,7 @@ export function bucketStartMs(ts: string, bucket: CostBucket): number {
   return bucketStartFromMs(new Date(ts).getTime(), bucket);
 }
 
-function bucketStartFromMs(ms: number, bucket: CostBucket): number {
+export function bucketStartFromMs(ms: number, bucket: CostBucket): number {
   const date = new Date(ms);
   if (bucket === "5min") {
     date.setUTCMinutes(Math.floor(date.getUTCMinutes() / 5) * 5, 0, 0);

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useActiveDemandWindow } from "../billing/useBilling";
@@ -7,8 +7,10 @@ import { ErrorAlert, ResetZoomButton } from "../dashboard/chartParts";
 import { DataFreshness } from "../dashboard/DataFreshness";
 import { clipToDay, dayRangeOffset, pricingDayOffsets, todayRange, zoomRangeFor } from "../dashboard/dateRange";
 import { formatTooltipValue } from "../dashboard/historyChart";
+import { BatteryChart } from "../dashboard/BatteryChart";
 import { HistoryChart } from "../dashboard/GridCostChart";
 import { TODAY_CHARTS_SYNC_ID } from "../dashboard/chartStyle";
+import { useBatteryChartData } from "../dashboard/useBatteryChartData";
 import { useGridCostSeries } from "../dashboard/useGridCostSeries";
 import { priceMagnitude } from "../dashboard/priceChart";
 import { signAccent } from "../dashboard/signColors";
@@ -16,7 +18,7 @@ import { Tile } from "../dashboard/Tile";
 import { useNow } from "../dashboard/useNow";
 import { TodayPriceChart } from "../dashboard/TodayPriceChart";
 import { type ChartZoom } from "../dashboard/useChartZoom";
-import { type DateRange, useBillingPeriodCost, useTodayCost } from "../dashboard/useHistoricalData";
+import { type DateRange, useBillingPeriodCost, useHistoricalEnergyReadings, useTodayCost } from "../dashboard/useHistoricalData";
 import {
   type PriceChannel,
   type Reading,
@@ -399,24 +401,58 @@ function GridPriceTile({ siteId, direction }: { siteId: number; direction: "impo
   return <Tile label={label} value={`${priceMagnitude(price.value).toFixed(1)}c/kWh`} accent={accent} glow={accent} />;
 }
 
+/** Today's range clipped to the shared zoom, plus the whole day. */
+function useTodayZoomRange(zoom: ChartZoom) {
+  const day = useMemo(() => todayRange(), []);
+  const range = useMemo(() => clipToDay(zoom.range, day), [zoom.range, day]);
+  return { day, range };
+}
+
+/** The card around a today chart: optional title, an error line, and the
+ * shared zoom's reset button while zoomed. */
+function TodayChartCard({
+  testId,
+  title,
+  error,
+  zoom,
+  children,
+}: {
+  testId: string;
+  title?: string;
+  /** Message to show when the chart's data failed to load. */
+  error?: string;
+  zoom: ChartZoom;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-surface p-5" data-testid={testId}>
+      {title && <h2 className="mb-4 font-display text-lg font-semibold text-ink">{title}</h2>}
+      {error && <ErrorAlert message={error} />}
+      {zoom.range && (
+        <div className="mb-2 flex justify-end">
+          <ResetZoomButton onClick={() => zoom.set(null)} />
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 /**
  * Grid flow and cost for today only, with no controls or totals -- always
  * today at 5-minute intervals, independent of the history card's range. It
  * follows the shared zoom with the history chart.
  */
 function TodayChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
-  const day = useMemo(() => todayRange(), []);
-  const range = useMemo(() => clipToDay(zoom.range, day), [zoom.range, day]);
+  const { range } = useTodayZoomRange(zoom);
   const data = useGridCostSeries(siteId, range, "net");
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-5" data-testid="today-chart">
-      {(data.readingsFailed || data.costSeriesFailed) && <ErrorAlert message="Failed to load today's chart." />}
-      {zoom.range && (
-        <div className="mb-2 flex justify-end">
-          <ResetZoomButton onClick={() => zoom.set(null)} />
-        </div>
-      )}
+    <TodayChartCard
+      testId="today-chart"
+      error={data.readingsFailed || data.costSeriesFailed ? "Failed to load today's chart." : undefined}
+      zoom={zoom}
+    >
       <HistoryChart
         importReadings={data.importReadings}
         exportReadings={data.exportReadings}
@@ -426,7 +462,36 @@ function TodayChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
         onZoom={(fromTs, toTs) => zoom.set(zoomRangeFor(fromTs, toTs, data.bucket))}
         syncId={TODAY_CHARTS_SYNC_ID}
       />
-    </div>
+    </TodayChartCard>
+  );
+}
+
+/** Today's battery charge change and battery power flows at 5-minute
+ * intervals, sharing the zoom and hover with the grid and pricing charts.
+ * Hidden until the site has reported a battery charge reading today; the
+ * check uses the whole day, so zooming in never hides the chart. */
+function TodayBatteryChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
+  const { day, range } = useTodayZoomRange(zoom);
+  const { data, failed } = useBatteryChartData(siteId, range);
+  const { data: socToday } = useHistoricalEnergyReadings(siteId, day, "battery_soc_pct");
+  if (!socToday?.length) {
+    return null;
+  }
+
+  return (
+    <TodayChartCard
+      testId="battery-chart"
+      title="Battery"
+      error={failed ? "Failed to load the battery chart." : undefined}
+      zoom={zoom}
+    >
+      <BatteryChart
+        data={data}
+        range={range}
+        onZoom={(fromTs, toTs) => zoom.set(zoomRangeFor(fromTs, toTs, "5min"))}
+        syncId={TODAY_CHARTS_SYNC_ID}
+      />
+    </TodayChartCard>
   );
 }
 
@@ -485,6 +550,7 @@ export function DashboardPage() {
       <LiveTiles siteId={parsedSiteId} />
       <PricingCharts siteId={parsedSiteId} zoom={zoom} />
       <TodayChart siteId={parsedSiteId} zoom={zoom} />
+      <TodayBatteryChart siteId={parsedSiteId} zoom={zoom} />
     </div>
   );
 }

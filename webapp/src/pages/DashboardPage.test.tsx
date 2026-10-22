@@ -743,3 +743,24 @@ describe("DashboardPage demand window notice", () => {
     expect(screen.queryByText(/DEMAND WINDOW ACTIVE/)).not.toBeInTheDocument();
   });
 });
+
+describe("DashboardPage battery chart", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  it("shows the Battery chart when the site has battery readings today", async () => {
+    mockApi({
+      battery_soc_pct: [{ ts: new Date().toISOString(), metric: "battery_soc_pct", value: 60 }],
+    });
+    renderPage();
+    expect(await screen.findByTestId("battery-chart")).toBeInTheDocument();
+  });
+
+  it("hides the Battery chart when the site has no battery readings", async () => {
+    mockApi({});
+    renderPage();
+    await screen.findByTestId("today-chart");
+    expect(screen.queryByTestId("battery-chart")).not.toBeInTheDocument();
+  });
+});
