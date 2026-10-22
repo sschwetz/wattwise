@@ -7,9 +7,14 @@ export const SWATCH_COLORS = {
   gridImport: "var(--color-danger)",
   gridExport: "var(--color-flow)",
   cost: "var(--color-solar)",
+  batterySocChange: "var(--color-solar)",
+  solarToBattery: "var(--color-flow)",
+  gridToBattery: "var(--color-grid-charge)",
+  batteryToHouse: "var(--color-grid)",
+  batteryToGrid: "var(--color-flow)",
 } as const;
 
 export const ZOOMABLE_CHART_STYLE = { userSelect: "none", cursor: "crosshair" } as const;
 
-/** The two "today" charts on the dashboard share one hover position. */
+/** The "today" charts on the dashboard share one hover position. */
 export const TODAY_CHARTS_SYNC_ID = "today-charts";

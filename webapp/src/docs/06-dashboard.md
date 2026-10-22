@@ -2,7 +2,7 @@
 
 [Contents](index.md) · Previous: [Sources](05-sources.md) · Next: [Billing](07-billing.md)
 
-The dashboard is the first page of every site. It has four parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing) and [today's grid and cost chart](#todays-grid-and-cost-chart). The history chart is on the [Reporting page](#reporting-page).
+The dashboard is the first page of every site. It has five parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing), [today's grid and cost chart](#todays-grid-and-cost-chart) and the [battery chart](#battery-chart). The history chart is on the [Reporting page](#reporting-page).
 
 ![The full dashboard: live tiles, weather, today's pricing chart and today's grid and cost chart](images/dashboard-overview.png)
 
@@ -101,6 +101,16 @@ Prices are shown as plain positive rates. WattWise stores the sell price as a ne
 A chart of grid energy and cost for today, with no controls or totals. It always shows today in 5-minute bars, whatever the Reporting page is set to, and uses the Net cost method. Red bars are import, green bars are export, and the amber line is cost.
 
 This chart and Today's Pricing above it share one zoom. Drag across either to zoom both to that time span, then press **Reset zoom** on either to clear it.
+
+## Battery chart
+
+Below the grid and cost chart, the Battery chart shows today in 5-minute steps. It shares the zoom and hover position with the two charts above it. It appears only once your site has reported a battery reading today.
+
+- **Amber bars** are the change in battery charge over each 5 minutes, in percentage points (left axis).
+- **Solid lines** are power going into the battery, in kW (right axis): solar in green and grid in salmon.
+- **Dashed lines** are power coming out of the battery: to the house in blue and to the grid in green.
+
+The collectors report total battery charge and discharge, not where the energy came from or went. WattWise estimates the split for each minute. Charging counts as solar up to the solar surplus (production minus consumption), and the rest as grid. Discharging counts as going to the grid up to that minute's export, and the rest as going to the house.
 
 ## Reporting page
 
