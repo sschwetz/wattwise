@@ -29,7 +29,8 @@ def rain_size_mm_per_tip(rain_size: int) -> float:
 
 def map_iss_readings(iss: dict, ts: datetime.datetime, rain_state: RainState) -> list[dict]:
     """Map a data_structure_type=1 (outdoor ISS) entry to {ts, metric, value}
-    dicts, and update rain_state in place.
+    dicts, and update rain_state in place. Every value is rounded to one
+    decimal place: the readings are for people to read, not for modelling.
 
     Uses the 1-minute rolling average for wind (wind_speed_avg_last_1_min /
     wind_dir_scalar_avg_last_1_min), not the instantaneous "last" reading —
@@ -52,17 +53,21 @@ def map_iss_readings(iss: dict, ts: datetime.datetime, rain_state: RainState) ->
     for source_key, metric, transform in field_specs:
         value = iss[source_key]
         if value is not None:
-            readings.append({"ts": ts, "metric": metric, "value": transform(value)})
+            readings.append({"ts": ts, "metric": metric, "value": round(transform(value), 1)})
 
     mm_per_tip = rain_size_mm_per_tip(iss["rain_size"])
-    current_daily_mm = iss["rainfall_daily"] * mm_per_tip
+    # Round the running total, not each tip: rounding every 0.254mm tip on its
+    # own would drift, while deltas of rounded totals add up exactly to the
+    # rounded daily total. The delta is rounded again only to drop float noise
+    # such as 0.30000000000000004.
+    current_daily_mm = round(iss["rainfall_daily"] * mm_per_tip, 1)
     if rain_state.last_daily_mm is not None:
         delta = current_daily_mm - rain_state.last_daily_mm
         if delta < 0:
             # local-midnight reset: the new count IS this cycle's rain, not
             # (new - old_from_yesterday).
             delta = current_daily_mm
-        readings.append({"ts": ts, "metric": "rain_mm", "value": delta})
+        readings.append({"ts": ts, "metric": "rain_mm", "value": round(delta, 1)})
     rain_state.last_daily_mm = current_daily_mm
 
     return readings
@@ -73,5 +78,5 @@ def map_barometer_readings(barometer: dict, ts: datetime.datetime) -> list[dict]
     sea-level-adjusted reading), not bar_absolute — the standard
     meteorological convention for comparing pressure across locations."""
     return [
-        {"ts": ts, "metric": "barometric_pressure_hpa", "value": barometer["bar_sea_level"] * 33.8639}
+        {"ts": ts, "metric": "barometric_pressure_hpa", "value": round(barometer["bar_sea_level"] * 33.8639, 1)}
     ]
