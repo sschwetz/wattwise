@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from envoy_collector.config import Settings, get_settings
 from envoy_collector.core_api_client import (
@@ -247,9 +248,20 @@ def _fetch_and_map(config: dict, ts: datetime.datetime) -> list[dict]:
     be) so its instantaneous power can be threaded into
     map_production_readings — see that function's docstring for why
     Envoy's own consumption figure needs that correction on a site with a
-    battery."""
-    production = fetch_production(config["host"], config.get("token", ""), config["cert_fingerprint"])
-    battery_json = _fetch_battery_json_or_none(config)
+    battery.
+
+    Both requests are sent at the same time. Every figure is instantaneous
+    power, so fetching them one after the other leaves a gap between the two
+    samples; the battery correction then subtracts a battery reading from a
+    different moment than the consumption figure it corrects, which can push
+    house consumption below zero."""
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        production_future = pool.submit(
+            fetch_production, config["host"], config.get("token", ""), config["cert_fingerprint"]
+        )
+        battery_future = pool.submit(_fetch_battery_json_or_none, config)
+        production = production_future.result()
+        battery_json = battery_future.result()
     battery_readings = map_battery_readings(battery_json, ts) if battery_json is not None else []
     net_w = battery_net_w(battery_json) if battery_json is not None else None
     production_readings = map_production_readings(
