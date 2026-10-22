@@ -7,7 +7,7 @@ export const SWATCH_COLORS = {
   gridImport: "var(--color-danger)",
   gridExport: "var(--color-flow)",
   cost: "var(--color-solar)",
-  batterySocChange: "var(--color-solar)",
+  batterySoc: "var(--color-solar)",
   solarToBattery: "var(--color-flow)",
   gridToBattery: "var(--color-grid-charge)",
   batteryToHouse: "var(--color-grid)",

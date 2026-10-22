@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Bar, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { BatteryChartPoint } from "./batteryFlows";
 import { LegendSwatch, ZoomSelectionArea } from "./chartParts";
 import { AXIS_PROPS, SWATCH_COLORS, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
@@ -17,7 +17,7 @@ const SERIES = [
 function BatteryChartLegend() {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-4 text-xs">
-      <LegendSwatch shape="box" color={SWATCH_COLORS.batterySocChange} label="Battery change (%)" />
+      <LegendSwatch shape="box" color={SWATCH_COLORS.batterySoc} label="Battery charge (%)" />
       {SERIES.map((s) => (
         <LegendSwatch key={s.key} shape="line" pattern={s.dashed ? "dashed" : undefined} color={s.color} label={`${s.label} (kW)`} />
       ))}
@@ -41,11 +41,11 @@ function BatteryTooltip({
   return (
     <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-lg">
       <p className="mb-1 text-ink-muted">{formatBucketTick(Number(label), "5min")}</p>
-      {point.socChangePct !== null && (
+      {point.socPct !== null && (
         <LegendSwatch
           shape="box"
-          color={SWATCH_COLORS.batterySocChange}
-          label={`Battery change ${point.socChangePct > 0 ? "+" : ""}${point.socChangePct.toFixed(1)}%`}
+          color={SWATCH_COLORS.batterySoc}
+          label={`Battery charge ${point.socPct.toFixed(0)}%`}
         />
       )}
       {SERIES.map((s) => (
@@ -54,7 +54,7 @@ function BatteryTooltip({
           shape="line"
           pattern={s.dashed ? "dashed" : undefined}
           color={s.color}
-          label={`${s.label} ${point[s.key].toFixed(2)} kW`}
+          label={`${s.label} ${Math.abs(point[s.key]).toFixed(2)} kW`}
         />
       ))}
     </div>
@@ -62,7 +62,7 @@ function BatteryTooltip({
 }
 
 /**
- * Battery charge change per 5 minutes (bars, %) against the power flowing
+ * Battery charge level (bars, 0 to 100%) over the day against the power flowing
  * into the battery from solar and the grid and out of it to the house and
  * the grid (lines, kW). Drag to zoom; the zoom and hover are shared with the
  * page's other today charts through `onZoom` and `syncId`.
@@ -90,14 +90,15 @@ export function BatteryChart({
             tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
             {...AXIS_PROPS}
           />
-          <YAxis yAxisId="pct" {...yAxisProps("%")} />
+          <YAxis yAxisId="pct" domain={[0, 100]} {...yAxisProps("%")} />
           <YAxis yAxisId="kw" {...yAxisProps("kW", "right")} />
           <Tooltip content={(props) => <BatteryTooltip {...props} />} />
+          <ReferenceLine yAxisId="kw" y={0} stroke="var(--color-line)" />
           <Bar
             yAxisId="pct"
-            dataKey="socChangePct"
-            name="Battery change"
-            fill={SWATCH_COLORS.batterySocChange}
+            dataKey="socPct"
+            name="Battery charge"
+            fill={SWATCH_COLORS.batterySoc}
             radius={2}
             isAnimationActive={false}
           />

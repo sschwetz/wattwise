@@ -13,11 +13,12 @@ interface BatteryChartInputs {
 
 export interface BatteryChartPoint {
   ts: number;
-  /** Change in battery charge over the bucket, in percentage points; null with no SOC data. */
-  socChangePct: number | null;
+  /** Battery state of charge at the end of the bucket, 0 to 100; null with no SOC data. */
+  socPct: number | null;
   solarToBatteryKw: number;
   gridToBatteryKw: number;
   batteryToHouseKw: number;
+  /** Negative: power leaving the battery for the grid plots below zero, like grid export. */
   batteryToGridKw: number;
 }
 
@@ -70,22 +71,6 @@ function lastSocByBucket(soc: Reading[]): Map<number, number> {
   return last;
 }
 
-/** SOC change per bucket: its last reading minus the last reading of the
- * nearest earlier bucket that has one. The first bucket with data has no
- * earlier reading, so it shows no change. */
-function socChanges(soc: Reading[], starts: number[]): Map<number, number> {
-  const last = lastSocByBucket(soc);
-  const changes = new Map<number, number>();
-  let previous: number | undefined;
-  for (const ts of starts) {
-    const value = last.get(ts);
-    if (value === undefined) continue;
-    if (previous !== undefined) changes.set(ts, value - previous);
-    previous = value;
-  }
-  return changes;
-}
-
 type FlowKw = Pick<BatteryChartPoint, `${keyof Flows}Kw`>;
 
 const zeroFlowKw = (): FlowKw => ({ solarToBatteryKw: 0, gridToBatteryKw: 0, batteryToHouseKw: 0, batteryToGridKw: 0 });
@@ -121,7 +106,10 @@ function averageFlowsByBucket(inputs: BatteryChartInputs): Map<number, FlowKw> {
 
 export function buildBatteryChartData(inputs: BatteryChartInputs, range: DateRange): BatteryChartPoint[] {
   const starts = enumerateBucketStarts(range, BUCKET);
-  const changes = socChanges(inputs.soc, starts);
+  const soc = lastSocByBucket(inputs.soc);
   const flows = averageFlowsByBucket(inputs);
-  return starts.map((ts) => ({ ts, socChangePct: changes.get(ts) ?? null, ...(flows.get(ts) ?? zeroFlowKw()) }));
+  return starts.map((ts) => {
+    const flow = flows.get(ts) ?? zeroFlowKw();
+    return { ts, socPct: soc.get(ts) ?? null, ...flow, batteryToGridKw: 0 - flow.batteryToGridKw };
+  });
 }
