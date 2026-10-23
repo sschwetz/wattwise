@@ -246,6 +246,33 @@ def test_map_livedata_includes_grid_relay_state():
     assert m["grid_relay_state"] == 0
 
 
+def test_map_livedata_ensemble_source_takes_battery_from_ensemble_json():
+    # Live battery -44 W is ignored; the ensemble fixture sums to -6326 W, soc 93.25.
+    s = make_sample(production_w=1000.0, grid_w=200.0, battery_w=-44.0, soc=10)
+    rows = map_livedata_readings([s], TS, battery_source="ensemble", battery_json=load_fixture("ensemble_power.json"))
+    m = metrics(rows)
+    assert m["battery_charge_w"] == pytest.approx(6326.0)
+    assert m["battery_soc_pct"] == pytest.approx(93.25)
+    assert "battery_discharge_w" not in m
+    assert m["consumption_w"] == pytest.approx(1000.0 + 200.0 - 6326.0)
+
+
+def test_map_livedata_ensemble_source_without_battery_json_writes_no_battery_rows():
+    s = make_sample(production_w=1000.0, grid_w=200.0, battery_w=-44.0)
+    m = metrics(map_livedata_readings([s], TS, battery_source="ensemble", battery_json=None))
+    assert not {"battery_charge_w", "battery_discharge_w", "battery_soc_pct"} & m.keys()
+    assert m["consumption_w"] == pytest.approx(1200.0)
+
+
+def test_map_livedata_livedata_source_ignores_battery_json():
+    s = make_sample(production_w=1000.0, grid_w=200.0, battery_w=-44.0, soc=10)
+    rows = map_livedata_readings([s], TS, battery_source="livedata", battery_json=load_fixture("ensemble_power.json"))
+    m = metrics(rows)
+    assert m["battery_charge_w"] == pytest.approx(44.0)
+    assert m["battery_soc_pct"] == 10
+    assert m["consumption_w"] == pytest.approx(1156.0)
+
+
 def test_map_meter_readings_counters_and_voltages():
     rows = map_meter_readings(load_fixture("meters.json"), load_fixture("meter_readings.json"), TS)
     assert metrics(rows) == {

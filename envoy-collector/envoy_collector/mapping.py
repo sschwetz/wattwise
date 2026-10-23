@@ -128,6 +128,12 @@ def parse_livedata(status_json: dict) -> LiveSample:
     disagreed with the phase figures on the owner's gateway. A site counts
     as having a battery when enc_agg_energy or acb_agg_energy is above zero;
     otherwise battery power is 0.
+
+    The per-phase battery figure is not yet checked against the gateway's
+    own battery readout (see "Open check" in
+    docs/superpowers/specs/2026-10-24-envoy-live-data-design.md). Until it
+    is, the LIVE_BATTERY_SOURCE setting defaults to "ensemble" and these
+    battery fields are only used when it is set to "livedata".
     """
     meters = status_json["meters"]
     has_battery = (meters.get("enc_agg_energy") or 0) > 0 or (meters.get("acb_agg_energy") or 0) > 0
@@ -153,39 +159,60 @@ def _battery_rows(battery_w: float, soc: float, ts: datetime.datetime) -> list[d
     return rows
 
 
+def _live_battery(
+    samples: list[LiveSample], ts: datetime.datetime, battery_source: str, battery_json: dict | None
+) -> tuple[float, list[dict]]:
+    """Return (battery power in watts, battery rows) for a minute of live samples.
+
+    "ensemble" takes both from an /ivp/ensemble/power response; None there
+    means no battery data this minute (power 0, no rows). "livedata"
+    averages the samples' battery power and takes the last sample's soc.
+    """
+    if battery_source == "ensemble":
+        if battery_json is None:
+            return 0.0, []
+        return battery_net_w(battery_json) or 0.0, map_battery_readings(battery_json, ts)
+    last = samples[-1]
+    if not last.has_battery:
+        return 0.0, []
+    battery = sum(s.battery_w for s in samples) / len(samples)
+    return battery, _battery_rows(battery, last.soc, ts)
+
+
 def map_livedata_readings(
     samples: list[LiveSample],
     ts: datetime.datetime,
     invert_consumption_ct: bool = False,
+    *,
+    battery_source: str = "livedata",
+    battery_json: dict | None = None,
 ) -> list[dict]:
     """Average a minute of LiveSamples into {ts, metric, value} dicts.
 
-    Power figures are averaged across the samples; battery_soc_pct and
-    grid_relay_state take the last sample's value. consumption_w is
-    production + grid + battery rather than the feed's own load figure.
-    invert_consumption_ct flips the grid sign and the production + grid
-    term (a reversed consumption CT clamp); battery power is not flipped.
-    A batteryless site gets no battery rows and counts battery as 0.
+    Power figures are averaged across the samples; grid_relay_state takes
+    the last sample's value. consumption_w is production + grid + battery
+    rather than the feed's own load figure. invert_consumption_ct flips the
+    grid sign and the production + grid term (a reversed consumption CT
+    clamp); battery power is not flipped.
+
+    battery_source picks where battery figures come from (see _live_battery):
+    "livedata" uses the samples, "ensemble" uses battery_json. A site with
+    no battery data gets no battery rows and counts battery as 0.
     """
     if not samples:
         return []
-    last = samples[-1]
     n = len(samples)
     production = sum(s.production_w for s in samples) / n
-    battery = sum(s.battery_w for s in samples) / n
-
     sign = -1 if invert_consumption_ct else 1
     grid = sign * sum(s.grid_w for s in samples) / n
-    consumption = sign * production + grid + (battery if last.has_battery else 0.0)
+    battery, battery_rows = _live_battery(samples, ts, battery_source, battery_json)
     rows = [
         {"ts": ts, "metric": "production_w", "value": production},
-        {"ts": ts, "metric": "consumption_w", "value": consumption},
+        {"ts": ts, "metric": "consumption_w", "value": sign * production + grid + battery},
         {"ts": ts, "metric": "grid_import_w" if grid >= 0 else "grid_export_w", "value": abs(grid)},
-        {"ts": ts, "metric": "grid_relay_state", "value": last.relay_state},
+        {"ts": ts, "metric": "grid_relay_state", "value": samples[-1].relay_state},
     ]
-    if last.has_battery:
-        rows.extend(_battery_rows(battery, last.soc, ts))
-    return rows
+    return rows + battery_rows
 
 
 def map_meter_readings(

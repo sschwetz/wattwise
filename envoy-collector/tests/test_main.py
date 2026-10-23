@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import threading
 
@@ -1019,6 +1020,7 @@ def _no_meter_calls(monkeypatch):
     """Keeps poll_once off the network for meters; tests that care override these."""
     monkeypatch.setattr(main_module, "fetch_meters", lambda host, token, fp: [])
     monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, fp: [])
+    monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, fp: {"devices:": []})
     main_module._meters_cache.clear()
     main_module._samplers.clear()
     yield
@@ -1121,6 +1123,65 @@ def test_poll_once_without_sampler_is_unchanged(monkeypatch):
 
     assert calls == [1]
     assert pushed == [[{"ts": None, "metric": "production_w", "value": 7.0}]]
+
+
+ENSEMBLE = {"devices:": [{"real_power_mw": 1500000, "soc": 80}]}
+
+
+def _battery_sample() -> LiveSample:
+    return LiveSample(
+        last_update=1, production_w=1000.0, grid_w=100.0, battery_w=-44.0, soc=10.0, relay_state=1, has_battery=True
+    )
+
+
+def test_poll_once_ensemble_mode_takes_live_battery_rows_from_ensemble_fetch(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    calls = _stub_fetch_and_map(monkeypatch, [])
+    monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, fp: ENSEMBLE)
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED), FakeSampler([_battery_sample()]))
+
+    assert calls == []
+    values = _values(pushed[0])
+    assert values["battery_discharge_w"] == 1500.0
+    assert values["battery_soc_pct"] == 80
+    assert "battery_charge_w" not in values
+    assert values["consumption_w"] == 2600.0
+
+
+@pytest.mark.parametrize("error", [RuntimeError("down"), EnvoyAuthError("401")])
+def test_poll_once_ensemble_fetch_failure_still_pushes_live_rows(monkeypatch, error):
+    pushed = _capture_pushes(monkeypatch)
+    _stub_fetch_and_map(monkeypatch, [])
+
+    def failing(host, token, fp):
+        raise error
+
+    monkeypatch.setattr(main_module, "fetch_battery_power", failing)
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED), FakeSampler([_battery_sample()]))
+
+    assert _values(pushed[0]) == {
+        "production_w": 1000.0,
+        "consumption_w": 1100.0,
+        "grid_import_w": 100.0,
+        "grid_relay_state": 1,
+    }
+
+
+def test_poll_once_livedata_mode_does_not_fetch_ensemble(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    _stub_fetch_and_map(monkeypatch, [])
+
+    def unexpected(host, token, fp):
+        raise AssertionError("ensemble fetched in livedata mode")
+
+    monkeypatch.setattr(main_module, "fetch_battery_power", unexpected)
+    settings = dataclasses.replace(SETTINGS, live_battery_source="livedata")
+
+    main_module.poll_once(settings, 1, dict(PINNED), FakeSampler([_battery_sample()]))
+
+    assert _values(pushed[0])["battery_charge_w"] == 44.0
 
 
 METERS = [

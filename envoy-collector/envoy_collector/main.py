@@ -342,7 +342,23 @@ def _meter_readings_or_empty(source_id: int, config: dict, ts: datetime.datetime
         return []
 
 
-def _live_readings(config: dict, ts: datetime.datetime, sampler: LiveSampler | None) -> list[dict]:
+def _live_battery_json(settings: Settings, source_id: int, config: dict) -> dict | None:
+    """The /ivp/ensemble/power response for the live path when
+    LIVE_BATTERY_SOURCE is "ensemble", else None. Any failure, a rejected
+    token included, gives None: this minute then has no battery rows. The
+    token is not refreshed from here; the next fallback poll does that."""
+    if settings.live_battery_source != "ensemble":
+        return None
+    try:
+        return _fetch_battery_json_or_none(config)
+    except EnvoyAuthError:
+        logger.warning("Envoy rejected our token reading battery data for source %s; no battery rows this minute", source_id)
+        return None
+
+
+def _live_readings(
+    settings: Settings, source_id: int, config: dict, ts: datetime.datetime, sampler: LiveSampler | None
+) -> list[dict]:
     """The minute's averaged live-feed readings, or [] when there is no
     sampler, it is stale, or it collected nothing (the first minute after a
     restart). The sampler is drained either way so old samples never pile up."""
@@ -352,7 +368,13 @@ def _live_readings(config: dict, ts: datetime.datetime, sampler: LiveSampler | N
     samples = sampler.drain()
     if not fresh or not samples:
         return []
-    return map_livedata_readings(samples, ts, bool(config.get("invert_consumption_ct")))
+    return map_livedata_readings(
+        samples,
+        ts,
+        bool(config.get("invert_consumption_ct")),
+        battery_source=settings.live_battery_source,
+        battery_json=_live_battery_json(settings, source_id, config),
+    )
 
 
 def _collect_readings(
@@ -361,7 +383,7 @@ def _collect_readings(
     """Returns (config to use next cycle, power readings or None if this
     cycle should be skipped). Uses the live feed when it has samples and
     otherwise polls the Envoy's production and battery endpoints."""
-    live = _live_readings(config, ts, sampler)
+    live = _live_readings(settings, source_id, config, ts, sampler)
     if live:
         return config, live
     try:

@@ -51,3 +51,27 @@ def test_get_settings_raises_if_required_var_missing(monkeypatch):
 
     with pytest.raises(RuntimeError):
         get_settings()
+
+
+def _base_env(monkeypatch):
+    monkeypatch.setenv("CORE_API_URL", "http://localhost:8000")
+    monkeypatch.setenv("COLLECTOR_KEY", "k")
+
+
+def test_live_battery_source_defaults_to_ensemble(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.delenv("LIVE_BATTERY_SOURCE", raising=False)
+    assert get_settings().live_battery_source == "ensemble"
+
+
+def test_live_battery_source_accepts_livedata(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LIVE_BATTERY_SOURCE", "livedata")
+    assert get_settings().live_battery_source == "livedata"
+
+
+def test_live_battery_source_rejects_other_values(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LIVE_BATTERY_SOURCE", "meters")
+    with pytest.raises(RuntimeError, match="LIVE_BATTERY_SOURCE must be 'ensemble' or 'livedata'"):
+        get_settings()

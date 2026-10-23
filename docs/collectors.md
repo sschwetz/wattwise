@@ -28,7 +28,7 @@ Rules every collector follows:
 
 - **Stateless where possible.** Config comes from Core API on each refresh. The only memory is small and per process (Envoy renewal timers, the weather collector's rain baseline, the local collector's per-source "done today" record). A restart is always safe.
 - **One failure never stops the rest.** A source that errors is logged and skipped, and the loop continues with the others.
-- **Configuration is two variables.** `CORE_API_URL` and `COLLECTOR_KEY` are required. The Envoy and WeatherLink collectors also read `POLL_INTERVAL_SECONDS` (default 60) and `DISCOVERY_REFRESH_SECONDS` (default 300). The Envoy collector also reads `LIVE_SAMPLE_SECONDS` (default 3) and `LIVE_STALE_SECONDS` (default 30); see [Live-data sampling](#live-data-sampling).
+- **Configuration is two variables.** `CORE_API_URL` and `COLLECTOR_KEY` are required. The Envoy and WeatherLink collectors also read `POLL_INTERVAL_SECONDS` (default 60) and `DISCOVERY_REFRESH_SECONDS` (default 300). The Envoy collector also reads `LIVE_SAMPLE_SECONDS` (default 3), `LIVE_STALE_SECONDS` (default 30) and `LIVE_BATTERY_SOURCE` (default `ensemble`); see [Live-data sampling](#live-data-sampling).
 - **The key identifies the kind, not the source.** Adding another home needs no new key.
 - **Pricing collectors send `X-Collector-Provider`**, and ask for `provider=amber` or `provider=local` during discovery, so each sees only its own sources.
 - **Writes are idempotent.** The same reading or price can be sent twice.
@@ -71,6 +71,8 @@ The refresh loop also renews proactively when the token has fewer than 14 days l
 ### Live-data sampling
 
 A background sampler per source reads the gateway's `/ivp/livedata/status` every `LIVE_SAMPLE_SECONDS` (default 3). Each minute the collector averages those samples into that minute's readings. If the feed has had no new reading for `LIVE_STALE_SECONDS` (default 30), or returns nothing, that minute uses single-sample polls of `/production.json` and `/ivp/ensemble/power` instead.
+
+`LIVE_BATTERY_SOURCE` picks where a live minute's battery figures come from. With `ensemble` (the default) the collector reads `/ivp/ensemble/power` once a minute and takes battery power, state of charge and the battery term in `consumption_w` from it; if that call fails, the minute has no battery rows and battery power counts as 0. With `livedata` it uses the feed's per-phase storage power and `soc` instead. The default stays `ensemble` until the battery sign check in the [design spec](superpowers/specs/2026-10-24-envoy-live-data-design.md#pending-live-verification) passes. Any other value stops the collector at startup.
 
 If the feed freezes while the calls still succeed, the sampler POSTs `{"enable": 1}` to `/ivp/livedata/stream`, at most once per `LIVE_STALE_SECONDS`.
 

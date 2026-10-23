@@ -78,6 +78,12 @@ discharge).
   gateway's response, which has not been seen; the plan tests it only against
   a made-up response.
 - `invert_consumption_ct` applies as it does today.
+- `LIVE_BATTERY_SOURCE` picks where the live path's battery figures come
+  from. `ensemble` (the default) reads `/ivp/ensemble/power` once a minute
+  and takes `battery_charge_w` / `battery_discharge_w`, `battery_soc_pct` and
+  the battery term in `consumption_w` from it; if that call fails, the minute
+  has no battery rows and battery power counts as 0. `livedata` uses the
+  per-phase storage figures and `soc` from the feed as described above.
 
 Open check, before trusting the battery figures. In the owner's samples
 (battery idle at 10% charge) `storage.agg_p_mw` was +37 to +76 W while the
@@ -182,7 +188,8 @@ A failed `/ivp/meters/readings` call drops only these rows for that minute.
 - `mapping.py`: `map_livedata_readings(samples, ts, invert_consumption_ct)`
   and `map_meter_readings(meters, readings, ts)` (counters and voltages).
 - A sampler module with the thread, the sample list and the keepalive.
-- `config.py`: `LIVE_SAMPLE_SECONDS`, `LIVE_STALE_SECONDS`.
+- `config.py`: `LIVE_SAMPLE_SECONDS`, `LIVE_STALE_SECONDS`,
+  `LIVE_BATTERY_SOURCE`.
 - `main.py`: `poll_once` uses live readings when fresh, otherwise
   `_fetch_and_map`; it adds the meter readings either way. The
   `/ivp/meters` result is cached per source and refetched on a 401 or a
@@ -203,6 +210,9 @@ clock and a fake `fetch_livedata`.
   A follow-up could sample it in the fast loop and store the maximum.
 - `grid_relay_state` is stored every minute, not only on change, so the
   rollup and charts need no special case.
+- `LIVE_BATTERY_SOURCE` defaults to `ensemble` until the battery sign check
+  under "Pending live verification" passes. If it does, switching the
+  default to `livedata` is the intended end state.
 - Sample interval default of 3 seconds and stale threshold of 30 seconds.
 - Counters come from the CT meters, not the inverter totals, matching
   `production_w`.
