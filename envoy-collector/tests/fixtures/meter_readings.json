@@ -1,0 +1,23 @@
+[
+  {
+    "eid": 704643328,
+    "actEnergyDlvd": 2449808.591,
+    "actEnergyRcvd": 0.0,
+    "voltage": 717.102,
+    "channels": [{"voltage": 238.336}, {"voltage": 239.727}, {"voltage": 239.039}]
+  },
+  {
+    "eid": 704643584,
+    "actEnergyDlvd": 957182.412,
+    "actEnergyRcvd": 1269929.026,
+    "voltage": 717.241,
+    "channels": [{"voltage": 238.232}, {"voltage": 239.839}, {"voltage": 239.17}]
+  },
+  {
+    "eid": 1023410688,
+    "actEnergyDlvd": 0.0,
+    "actEnergyRcvd": 0.0,
+    "voltage": 0.0,
+    "channels": [{"voltage": 0.0}, {"voltage": 0.0}, {"voltage": 0.0}]
+  }
+]

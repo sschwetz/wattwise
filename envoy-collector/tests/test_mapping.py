@@ -6,7 +6,15 @@ import pathlib
 
 import pytest
 
-from envoy_collector.mapping import battery_net_w, map_battery_readings, map_production_readings
+from envoy_collector.mapping import (
+    LiveSample,
+    battery_net_w,
+    map_battery_readings,
+    map_livedata_readings,
+    map_meter_readings,
+    map_production_readings,
+    parse_livedata,
+)
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 TS = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.timezone.utc)
@@ -136,3 +144,131 @@ def test_consumption_matches_live_observed_bug_report():
     readings = map_production_readings(production, TS, battery_net_w=15360.0)
     by_metric = {r["metric"]: r["value"] for r in readings}
     assert by_metric["consumption_w"] == pytest.approx(1241.0)
+
+
+def make_sample(**overrides) -> LiveSample:
+    fields = dict(
+        last_update=1, production_w=0.0, grid_w=0.0, battery_w=0.0, soc=50, relay_state=1, has_battery=True
+    )
+    fields.update(overrides)
+    return LiveSample(**fields)
+
+
+def metrics(rows: list[dict]) -> dict:
+    return {r["metric"]: r["value"] for r in rows}
+
+
+def test_parse_livedata_converts_milliwatts_and_sums_phase_storage():
+    s = parse_livedata(load_fixture("livedata_status.json"))
+    assert s.production_w == pytest.approx(5.394)
+    assert s.grid_w == pytest.approx(1121.227)
+    assert s.battery_w == pytest.approx(-44.0)
+    assert s.soc == 10
+    assert s.relay_state == 1
+    assert s.last_update == 1792768566
+    assert s.has_battery is True
+
+
+def test_battery_sum_ignores_the_aggregate_storage_figure():
+    status = load_fixture("livedata_status.json")
+    status["meters"]["storage"]["agg_p_mw"] = 999999
+    assert parse_livedata(status).battery_w == pytest.approx(-44.0)
+
+
+def test_parse_livedata_batteryless_site():
+    status = load_fixture("livedata_status.json")
+    status["meters"]["enc_agg_energy"] = 0
+    status["meters"]["acb_agg_energy"] = 0
+    s = parse_livedata(status)
+    assert s.has_battery is False
+    assert s.battery_w == 0.0
+
+
+def test_parse_livedata_single_phase_sums_only_present_phase_keys():
+    status = load_fixture("livedata_status.json")
+    status["meters"]["storage"] = {"agg_p_mw": 5000, "agg_p_ph_a_mw": 2000}
+    assert parse_livedata(status).battery_w == pytest.approx(2.0)
+
+
+def test_map_livedata_empty_list():
+    assert map_livedata_readings([], TS) == []
+
+
+def test_map_livedata_averages_samples():
+    rows = map_livedata_readings([make_sample(production_w=100.0, soc=40), make_sample(production_w=300.0, soc=42)], TS)
+    m = metrics(rows)
+    assert m["production_w"] == 200
+    assert m["battery_soc_pct"] == 42
+    assert all(r["ts"] == TS for r in rows)
+
+
+def test_map_livedata_splits_grid_import_and_export():
+    m = metrics(map_livedata_readings([make_sample(grid_w=500.0)], TS))
+    assert m["grid_import_w"] == 500.0 and "grid_export_w" not in m
+    m = metrics(map_livedata_readings([make_sample(grid_w=-500.0)], TS))
+    assert m["grid_export_w"] == 500.0 and "grid_import_w" not in m
+
+
+def test_map_livedata_consumption_is_production_plus_grid_plus_battery():
+    s = parse_livedata(load_fixture("livedata_status.json"))
+    assert metrics(map_livedata_readings([s], TS))["consumption_w"] == pytest.approx(1082.621)
+
+
+def test_map_livedata_charging_yields_battery_charge_w():
+    m = metrics(map_livedata_readings([make_sample(battery_w=-44.0)], TS))
+    assert m["battery_charge_w"] == 44.0
+    assert "battery_discharge_w" not in m
+
+
+def test_map_livedata_discharging_yields_battery_discharge_w():
+    m = metrics(map_livedata_readings([make_sample(battery_w=800.0)], TS))
+    assert m["battery_discharge_w"] == 800.0
+    assert "battery_charge_w" not in m
+
+
+def test_map_livedata_batteryless_writes_no_battery_rows():
+    m = metrics(map_livedata_readings([make_sample(has_battery=False, production_w=10.0, grid_w=5.0)], TS))
+    assert not {"battery_charge_w", "battery_discharge_w", "battery_soc_pct"} & m.keys()
+    assert m["consumption_w"] == 15.0
+
+
+def test_map_livedata_invert_consumption_ct():
+    # Raw grid -300 flips to +300 (import); consumption = -(1000 + -300) + 200.
+    s = make_sample(production_w=1000.0, grid_w=-300.0, battery_w=200.0)
+    m = metrics(map_livedata_readings([s], TS, invert_consumption_ct=True))
+    assert m["grid_import_w"] == 300.0
+    assert m["consumption_w"] == -500.0
+    assert m["battery_discharge_w"] == 200.0
+
+
+def test_map_livedata_includes_grid_relay_state():
+    m = metrics(map_livedata_readings([make_sample(relay_state=1), make_sample(relay_state=0)], TS))
+    assert m["grid_relay_state"] == 0
+
+
+def test_map_meter_readings_counters_and_voltages():
+    rows = map_meter_readings(load_fixture("meters.json"), load_fixture("meter_readings.json"), TS)
+    assert metrics(rows) == {
+        "production_wh_lifetime": 2449808.591,
+        "grid_import_wh_lifetime": 957182.412,
+        "grid_export_wh_lifetime": 1269929.026,
+        "grid_voltage_ph_a_v": 238.232,
+        "grid_voltage_ph_b_v": 239.839,
+        "grid_voltage_ph_c_v": 239.17,
+    }
+    assert all(r["ts"] == TS for r in rows)
+
+
+def test_map_meter_readings_skips_disabled_meter():
+    meters = load_fixture("meters.json")
+    meters[1]["state"] = "disabled"
+    m = metrics(map_meter_readings(meters, load_fixture("meter_readings.json"), TS))
+    assert set(m) == {"production_wh_lifetime"}
+
+
+def test_map_meter_readings_single_phase_gives_only_ph_a():
+    meters = load_fixture("meters.json")
+    meters[1]["phaseCount"] = 1
+    m = metrics(map_meter_readings(meters, load_fixture("meter_readings.json"), TS))
+    assert m["grid_voltage_ph_a_v"] == 238.232
+    assert "grid_voltage_ph_b_v" not in m and "grid_voltage_ph_c_v" not in m
