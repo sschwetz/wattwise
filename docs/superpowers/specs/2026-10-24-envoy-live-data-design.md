@@ -208,3 +208,10 @@ clock and a fake `fetch_livedata`.
   `production_w`.
 - `consumption_wh_lifetime` and the "today" counters are not stored; both
   can be derived from the stored lifetime values.
+
+## Pending live verification
+
+The owner still has to run these two checks against the real gateway. No results are recorded yet.
+
+- [ ] Battery sign. While the battery is charging, then while it is discharging, compare the per-phase sum of `storage.agg_p_ph_*_mw`, the aggregate `storage.agg_p_mw` and the summed `real_power_mw` from `/ivp/ensemble/power`. Compare all three with the Enphase app, which shows charge as positive. If the per-phase sum disagrees with `/ivp/ensemble/power`, take battery figures from `/ivp/ensemble/power` and only the state of charge and CT figures from the live feed.
+- [ ] Keepalive. Leave the Enphase mobile app closed for a few hours. Check whether `connection.sc_stream` stays enabled and `last_update` keeps advancing. If the feed never freezes, remove the keepalive code.

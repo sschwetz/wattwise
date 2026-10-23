@@ -28,7 +28,7 @@ Rules every collector follows:
 
 - **Stateless where possible.** Config comes from Core API on each refresh. The only memory is small and per process (Envoy renewal timers, the weather collector's rain baseline, the local collector's per-source "done today" record). A restart is always safe.
 - **One failure never stops the rest.** A source that errors is logged and skipped, and the loop continues with the others.
-- **Configuration is two variables.** `CORE_API_URL` and `COLLECTOR_KEY` are required. The Envoy and WeatherLink collectors also read `POLL_INTERVAL_SECONDS` (default 60) and `DISCOVERY_REFRESH_SECONDS` (default 300).
+- **Configuration is two variables.** `CORE_API_URL` and `COLLECTOR_KEY` are required. The Envoy and WeatherLink collectors also read `POLL_INTERVAL_SECONDS` (default 60) and `DISCOVERY_REFRESH_SECONDS` (default 300). The Envoy collector also reads `LIVE_SAMPLE_SECONDS` (default 3) and `LIVE_STALE_SECONDS` (default 30); see [Live-data sampling](#live-data-sampling).
 - **The key identifies the kind, not the source.** Adding another home needs no new key.
 - **Pricing collectors send `X-Collector-Provider`**, and ask for `provider=amber` or `provider=local` during discovery, so each sees only its own sources.
 - **Writes are idempotent.** The same reading or price can be sent twice.
@@ -67,6 +67,18 @@ flowchart TD
 ```
 
 The refresh loop also renews proactively when the token has fewer than 14 days left.
+
+### Live-data sampling
+
+A background sampler per source reads the gateway's `/ivp/livedata/status` every `LIVE_SAMPLE_SECONDS` (default 3). Each minute the collector averages those samples into that minute's readings. If the feed has had no new reading for `LIVE_STALE_SECONDS` (default 30), or returns nothing, that minute uses single-sample polls of `/production.json` and `/ivp/ensemble/power` instead.
+
+If the feed freezes while the calls still succeed, the sampler POSTs `{"enable": 1}` to `/ivp/livedata/stream`, at most once per `LIVE_STALE_SECONDS`.
+
+Samples live in memory only. A restart loses at most the current minute's samples, and that minute falls back to a single reading.
+
+Once a minute the collector also reads `/ivp/meters/readings` and stores the metrics listed under [Metrics](data-model.md#metrics) (lifetime counters, grid voltage, relay state).
+
+Deploy Core API before the collector. Core API accepts the new metrics through an Alembic migration, and it rejects them until that migration has run.
 
 ### Battery and sign handling
 
