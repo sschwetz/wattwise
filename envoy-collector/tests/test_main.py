@@ -1142,8 +1142,9 @@ def test_poll_once_ensemble_mode_takes_live_battery_rows_from_ensemble_fetch(mon
     pushed = _capture_pushes(monkeypatch)
     calls = _stub_fetch_and_map(monkeypatch, [])
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, fp: ENSEMBLE)
+    settings = dataclasses.replace(SETTINGS, live_battery_source="ensemble")
 
-    main_module.poll_once(SETTINGS, 1, dict(PINNED), FakeSampler([_battery_sample()]))
+    main_module.poll_once(settings, 1, dict(PINNED), FakeSampler([_battery_sample()]))
 
     assert calls == []
     values = _values(pushed[0])
@@ -1162,8 +1163,9 @@ def test_poll_once_ensemble_fetch_failure_still_pushes_live_rows(monkeypatch, er
         raise error
 
     monkeypatch.setattr(main_module, "fetch_battery_power", failing)
+    settings = dataclasses.replace(SETTINGS, live_battery_source="ensemble")
 
-    main_module.poll_once(SETTINGS, 1, dict(PINNED), FakeSampler([_battery_sample()]))
+    main_module.poll_once(settings, 1, dict(PINNED), FakeSampler([_battery_sample()]))
 
     assert _values(pushed[0]) == {
         "production_w": 1000.0,

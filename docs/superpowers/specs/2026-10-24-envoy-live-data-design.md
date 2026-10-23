@@ -83,11 +83,11 @@ discharge).
   a made-up response.
 - `invert_consumption_ct` applies as it does today.
 - `LIVE_BATTERY_SOURCE` picks where the live path's battery figures come
-  from. `ensemble` (the default) reads `/ivp/ensemble/power` once a minute
-  and takes `battery_charge_w` / `battery_discharge_w`, `battery_soc_pct` and
-  the battery term in `consumption_w` from it; if that call fails, the minute
-  has no battery rows and battery power counts as 0. `livedata` uses the
-  per-phase storage figures and `soc` from the feed as described above.
+  from. `livedata` (the default) uses the per-phase storage figures and `soc`
+  from the feed as described above. `ensemble` reads `/ivp/ensemble/power`
+  once a minute and takes `battery_charge_w` / `battery_discharge_w`,
+  `battery_soc_pct` and the battery term in `consumption_w` from it; if that
+  call fails, the minute has no battery rows and battery power counts as 0.
 
 Open check, before trusting the battery figures. In the owner's samples
 (battery idle at 10% charge) `storage.agg_p_mw` was +37 to +76 W while the
@@ -215,9 +215,10 @@ clock and a fake `fetch_livedata`.
 - `grid_relay_state` is stored on every minute the live feed supplies the
   readings, not only on change, so the rollup and charts need no special
   case. Fallback minutes have no relay reading and write no row.
-- `LIVE_BATTERY_SOURCE` defaults to `ensemble` until the battery sign check
-  under "Pending live verification" passes. If it does, switching the
-  default to `livedata` is the intended end state.
+- `LIVE_BATTERY_SOURCE` defaults to `livedata`. The plan first shipped
+  `ensemble` as the default until the battery sign check under "Pending live
+  verification" passed; the owner chose `livedata` before running the check
+  and will set `ensemble` if the figures look wrong.
 - Sample interval default of 3 seconds and stale threshold of 30 seconds.
 - Counters come from the CT meters, not the inverter totals, matching
   `production_w`.
