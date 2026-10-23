@@ -120,6 +120,14 @@ class LiveSample:
     has_battery: bool
 
 
+def _required_mw(meters: dict, section: str) -> float:
+    """meters[section]["agg_p_mw"], raising ValueError when the feed sends null for it."""
+    value = meters[section]["agg_p_mw"]
+    if value is None:
+        raise ValueError("unexpected null in live feed")
+    return value
+
+
 def parse_livedata(status_json: dict) -> LiveSample:
     """Convert a /ivp/livedata/status response into a LiveSample.
 
@@ -129,7 +137,9 @@ def parse_livedata(status_json: dict) -> LiveSample:
     as having a battery when enc_agg_energy, acb_agg_energy or soc is above
     zero, or any per-phase storage power is non-zero, so a drained battery
     (stored energy and soc both 0) still counts while it draws power.
-    Otherwise battery power is 0.
+    Otherwise battery power is 0. A null per-phase storage value counts as
+    0; a null pv or grid power raises ValueError, which the sampler treats
+    as a malformed response.
 
     The per-phase battery figure is not yet checked against the gateway's
     own battery readout (see "Open check" in
@@ -139,7 +149,7 @@ def parse_livedata(status_json: dict) -> LiveSample:
     """
     meters = status_json["meters"]
     storage = meters.get("storage", {})
-    phase_mw = [v for k, v in storage.items() if _STORAGE_PHASE_KEY.match(k)]
+    phase_mw = [v or 0 for k, v in storage.items() if _STORAGE_PHASE_KEY.match(k)]
     battery_mw = sum(phase_mw)
     has_battery = (
         any((meters.get(key) or 0) > 0 for key in ("enc_agg_energy", "acb_agg_energy", "soc"))
@@ -147,8 +157,8 @@ def parse_livedata(status_json: dict) -> LiveSample:
     )
     return LiveSample(
         last_update=meters["last_update"],
-        production_w=meters["pv"]["agg_p_mw"] / 1000,
-        grid_w=meters["grid"]["agg_p_mw"] / 1000,
+        production_w=_required_mw(meters, "pv") / 1000,
+        grid_w=_required_mw(meters, "grid") / 1000,
         battery_w=battery_mw / 1000 if has_battery else 0.0,
         soc=meters["soc"],
         relay_state=meters["main_relay_state"],

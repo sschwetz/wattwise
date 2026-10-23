@@ -197,6 +197,20 @@ def test_parse_livedata_drained_battery_with_phase_power_has_battery():
     assert s.battery_w == pytest.approx(-15.0)
 
 
+def test_parse_livedata_null_phase_storage_counts_as_zero():
+    status = load_fixture("livedata_status.json")
+    status["meters"]["storage"]["agg_p_ph_b_mw"] = None
+    assert parse_livedata(status).battery_w == pytest.approx(-29.0)
+
+
+@pytest.mark.parametrize("section", ["pv", "grid"])
+def test_parse_livedata_null_pv_or_grid_raises(section):
+    status = load_fixture("livedata_status.json")
+    status["meters"][section]["agg_p_mw"] = None
+    with pytest.raises(ValueError, match="unexpected null in live feed"):
+        parse_livedata(status)
+
+
 def test_parse_livedata_soc_alone_means_battery():
     status = _zero_battery_status()
     status["meters"]["soc"] = 5

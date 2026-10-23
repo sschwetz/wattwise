@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import replace
 
 from envoy_collector.failure_log import FailureLog
 from envoy_collector.mapping import LiveSample, parse_livedata
+
+# Most samples held between drains; the oldest are dropped past this. At the
+# default 3-second interval that is 30 minutes, so it only matters if
+# poll_once stops draining.
+MAX_SAMPLES = 600
 
 
 class LiveSampler:
@@ -45,7 +51,7 @@ class LiveSampler:
         self._stale = stale_seconds
         self._clock = clock
         self._lock = threading.Lock()
-        self._samples: list[LiveSample] = []
+        self._samples: deque[LiveSample] = deque(maxlen=MAX_SAMPLES)
         self._last_update: int | None = None
         self._last_sample_at: float | None = None
         self._has_battery = False
@@ -120,7 +126,8 @@ class LiveSampler:
     def drain(self) -> list[LiveSample]:
         """Return the samples collected since the last call and clear them."""
         with self._lock:
-            samples, self._samples = self._samples, []
+            samples = list(self._samples)
+            self._samples.clear()
         return samples
 
     def is_fresh(self) -> bool:

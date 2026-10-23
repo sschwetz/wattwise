@@ -70,6 +70,29 @@ def test_live_battery_source_accepts_livedata(monkeypatch):
     assert get_settings().live_battery_source == "livedata"
 
 
+def test_live_sample_seconds_must_be_at_least_one(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LIVE_SAMPLE_SECONDS", "0")
+    monkeypatch.delenv("LIVE_STALE_SECONDS", raising=False)
+    with pytest.raises(RuntimeError, match="LIVE_SAMPLE_SECONDS"):
+        get_settings()
+
+
+def test_live_stale_seconds_must_not_be_below_sample_seconds(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LIVE_SAMPLE_SECONDS", "10")
+    monkeypatch.setenv("LIVE_STALE_SECONDS", "5")
+    with pytest.raises(RuntimeError, match="LIVE_STALE_SECONDS"):
+        get_settings()
+
+
+def test_live_stale_seconds_equal_to_sample_seconds_is_allowed(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LIVE_SAMPLE_SECONDS", "10")
+    monkeypatch.setenv("LIVE_STALE_SECONDS", "10")
+    assert get_settings().live_stale_seconds == 10
+
+
 def test_live_battery_source_rejects_other_values(monkeypatch):
     _base_env(monkeypatch)
     monkeypatch.setenv("LIVE_BATTERY_SOURCE", "meters")

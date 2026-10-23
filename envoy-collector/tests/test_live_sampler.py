@@ -10,7 +10,7 @@ import time
 import pytest
 
 from envoy_collector.failure_log import FAILURE_LOG_INTERVAL_SECONDS
-from envoy_collector.live_sampler import LiveSampler
+from envoy_collector.live_sampler import MAX_SAMPLES, LiveSampler
 from envoy_collector.mapping import LiveSample
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -95,6 +95,16 @@ def test_batteryless_site_stays_without_battery():
     h.step(_no_battery_status(1))
     h.step(_no_battery_status(2))
     assert [s.has_battery for s in h.sampler.drain()] == [False, False]
+
+
+def test_sample_list_is_capped_keeping_the_newest():
+    h = Harness()
+    for n in range(1, MAX_SAMPLES + 6):
+        h.step(status(n))
+    drained = h.sampler.drain()
+    assert len(drained) == MAX_SAMPLES
+    assert drained[0].last_update == 6
+    assert drained[-1].last_update == MAX_SAMPLES + 5
 
 
 def test_drain_returns_samples_once_and_clears():
@@ -182,6 +192,15 @@ def test_malformed_response_is_swallowed_and_not_a_frozen_feed():
     h.step(bad)
     assert h.keepalives == []
     assert [s.last_update for s in h.sampler.drain()] == [1]
+
+
+def test_null_power_in_live_feed_is_treated_as_malformed():
+    h = Harness()
+    bad = status(1)
+    bad["meters"]["grid"]["agg_p_mw"] = None
+    h.step(bad)
+    assert h.sampler.is_fresh() is False
+    assert h.sampler.drain() == []
 
 
 def test_keepalive_failure_does_not_raise():
