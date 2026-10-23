@@ -450,6 +450,7 @@ function TodayChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
   return (
     <TodayChartCard
       testId="today-chart"
+      title="Import / Export"
       error={data.readingsFailed || data.costSeriesFailed ? "Failed to load today's chart." : undefined}
       zoom={zoom}
     >
