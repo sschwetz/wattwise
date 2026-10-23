@@ -128,7 +128,7 @@ All time-series tables use the same shape: the key is the source, the timestamp 
 | `grid_import_wh_lifetime` | Wh | Lifetime import counter from the grid meter. Stored unmodified and not validated. No chart uses it yet. |
 | `grid_export_wh_lifetime` | Wh | Lifetime export counter from the grid meter. Stored unmodified and not validated. No chart uses it yet. |
 | `grid_voltage_ph_a_v`, `grid_voltage_ph_b_v`, `grid_voltage_ph_c_v` | V | Grid voltage per phase. One row per phase the grid meter reports. |
-| `grid_relay_state` | 0 or 1 | Main relay state from the live feed. Written every minute. |
+| `grid_relay_state` | 0 or 1 | Main relay state from the live feed. Written on each minute the live feed supplies the readings, not on fallback minutes. |
 
 The collector rounds every weather value to one decimal place before storing it.
 

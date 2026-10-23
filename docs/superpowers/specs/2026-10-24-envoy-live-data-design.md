@@ -212,8 +212,9 @@ clock and a fake `fetch_livedata`.
 - The SSE stream is left out. Voltage is read from `/ivp/meters/readings`
   once a minute, so a short over-voltage spike between polls can be missed.
   A follow-up could sample it in the fast loop and store the maximum.
-- `grid_relay_state` is stored every minute, not only on change, so the
-  rollup and charts need no special case.
+- `grid_relay_state` is stored on every minute the live feed supplies the
+  readings, not only on change, so the rollup and charts need no special
+  case. Fallback minutes have no relay reading and write no row.
 - `LIVE_BATTERY_SOURCE` defaults to `ensemble` until the battery sign check
   under "Pending live verification" passes. If it does, switching the
   default to `livedata` is the intended end state.

@@ -28,7 +28,7 @@ Rules every collector follows:
 
 - **Stateless where possible.** Config comes from Core API on each refresh. The only memory is small and per process (Envoy renewal timers, the weather collector's rain baseline, the local collector's per-source "done today" record). A restart is always safe.
 - **One failure never stops the rest.** A source that errors is logged and skipped, and the loop continues with the others.
-- **Configuration is two variables.** `CORE_API_URL` and `COLLECTOR_KEY` are required. The Envoy and WeatherLink collectors also read `POLL_INTERVAL_SECONDS` (default 60) and `DISCOVERY_REFRESH_SECONDS` (default 300). The Envoy collector also reads `LIVE_SAMPLE_SECONDS` (default 3), `LIVE_STALE_SECONDS` (default 30) and `LIVE_BATTERY_SOURCE` (default `ensemble`); see [Live-data sampling](#live-data-sampling).
+- **Configuration is environment variables.** `CORE_API_URL` and `COLLECTOR_KEY` are required; the rest have defaults. The Envoy and WeatherLink collectors also read `POLL_INTERVAL_SECONDS` (default 60) and `DISCOVERY_REFRESH_SECONDS` (default 300). The Envoy collector also reads `LIVE_SAMPLE_SECONDS` (default 3), `LIVE_STALE_SECONDS` (default 30) and `LIVE_BATTERY_SOURCE` (default `ensemble`); see [Live-data sampling](#live-data-sampling).
 - **The key identifies the kind, not the source.** Adding another home needs no new key.
 - **Pricing collectors send `X-Collector-Provider`**, and ask for `provider=amber` or `provider=local` during discovery, so each sees only its own sources.
 - **Writes are idempotent.** The same reading or price can be sent twice.
@@ -80,7 +80,11 @@ Samples live in memory only. A restart loses at most the current minute's sample
 
 Once a minute the collector also reads `/ivp/meters/readings` and stores the metrics listed under [Metrics](data-model.md#metrics) (lifetime counters, grid voltage, relay state).
 
-Deploy Core API before the collector. Core API accepts the new metrics through an Alembic migration, and it rejects them until that migration has run.
+Deploy Core API before the collector. Core API accepts the new metrics through an Alembic migration, and it rejects them until that migration has run. Rolling back works the other way: roll the collector back first. If Core API's migration is downgraded while the new collector is still running, every push from it fails with 422, because each batch carries metric names Core API no longer accepts.
+
+`LIVE_SAMPLE_SECONDS` must be at least 1, and `LIVE_STALE_SECONDS` must be at least `LIVE_SAMPLE_SECONDS`; otherwise the collector stops at startup with an error naming the variable.
+
+Repeated failures of the live feed, the keepalive or the meter reads log one error with a traceback, then at most one warning every 10 minutes with the number of failures since the last line. A success ends the streak.
 
 ### Battery and sign handling
 
