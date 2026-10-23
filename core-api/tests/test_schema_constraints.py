@@ -9,7 +9,12 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from core_api.models.billing import BillingCycle, DemandCharge, DemandInterval
 from core_api.models.identity import Site, SiteAccess, SiteAccessRole, User
-from core_api.models.readings import EnergyMetric, EnergyReading
+from core_api.models.readings import (
+    ENERGY_METRIC_AGGREGATION,
+    AggregationMethod,
+    EnergyMetric,
+    EnergyReading,
+)
 from core_api.models.sources import Source, SourceKind
 from tests.conftest import UTC
 
@@ -253,3 +258,38 @@ def test_email_change_token_round_trip(db, user):
     db.commit()
     db.refresh(token)
     assert token.used_at is None
+
+
+NEW_LIVE_METRICS = [
+    EnergyMetric.PRODUCTION_WH_LIFETIME,
+    EnergyMetric.GRID_IMPORT_WH_LIFETIME,
+    EnergyMetric.GRID_EXPORT_WH_LIFETIME,
+    EnergyMetric.GRID_VOLTAGE_PH_A_V,
+    EnergyMetric.GRID_VOLTAGE_PH_B_V,
+    EnergyMetric.GRID_VOLTAGE_PH_C_V,
+    EnergyMetric.GRID_RELAY_STATE,
+]
+
+
+def test_every_energy_metric_has_an_aggregation_method():
+    assert set(ENERGY_METRIC_AGGREGATION) == set(EnergyMetric)
+
+
+def test_new_live_metrics_aggregate_as_specified():
+    voltages = {
+        EnergyMetric.GRID_VOLTAGE_PH_A_V,
+        EnergyMetric.GRID_VOLTAGE_PH_B_V,
+        EnergyMetric.GRID_VOLTAGE_PH_C_V,
+    }
+    for metric in NEW_LIVE_METRICS:
+        expected = AggregationMethod.AVERAGE if metric in voltages else AggregationMethod.LAST_VALUE
+        assert ENERGY_METRIC_AGGREGATION[metric] == expected
+
+
+def test_energy_reading_accepts_new_metrics(db, site):
+    source = make_source(db, site, SourceKind.ENERGY)
+    ts = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    for metric in NEW_LIVE_METRICS:
+        db.add(EnergyReading(source_id=source.id, ts=ts, metric=metric, value=1.0))
+    db.commit()
+    assert len(db.execute(select(EnergyReading)).scalars().all()) == len(NEW_LIVE_METRICS)

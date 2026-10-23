@@ -102,3 +102,30 @@ def test_spike_status_migration_upgrades_existing_rows_and_downgrades(tmp_path, 
     command.downgrade(config, BEFORE_SPIKE_STATUS_REVISION)
     assert "spike_status" not in _price_interval_columns(db_path)
     assert "price_low" in _price_interval_columns(db_path)
+
+
+def test_migration_allows_new_energy_metrics(tmp_path):
+    db_path = tmp_path / "m.db"
+    run_migrations(f"sqlite:///{db_path}")
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            "insert into energy_readings (source_id, ts, metric, value) "
+            "values (1, '2026-01-01 00:00:00', 'grid_voltage_ph_a_v', 240.0)"
+        )
+        con.execute(
+            "insert into energy_readings_rollup_5m (source_id, ts, metric, value) "
+            "values (1, '2026-01-01 00:00:00', 'production_wh_lifetime', 1000.0)"
+        )
+        for table in ("energy_readings", "energy_readings_rollup_5m"):
+            try:
+                con.execute(
+                    f"insert into {table} (source_id, ts, metric, value) "
+                    "values (1, '2026-01-01 00:00:00', 'bogus', 1.0)"
+                )
+                raised = False
+            except sqlite3.IntegrityError:
+                raised = True
+            assert raised, f"{table} should reject an unknown metric"
+    finally:
+        con.close()
