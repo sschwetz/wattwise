@@ -143,9 +143,10 @@ def parse_livedata(status_json: dict) -> LiveSample:
 
     The per-phase battery figure is not yet checked against the gateway's
     own battery readout (see "Open check" in
-    docs/superpowers/specs/2026-10-24-envoy-live-data-design.md). Until it
-    is, the LIVE_BATTERY_SOURCE setting defaults to "ensemble" and these
-    battery fields are only used when it is set to "livedata".
+    docs/superpowers/specs/2026-10-24-envoy-live-data-design.md). The
+    LIVE_BATTERY_SOURCE setting defaults to "livedata" at the owner's
+    request, so these fields drive the stored battery figures; set it to
+    "ensemble" to take them from /ivp/ensemble/power instead.
     """
     meters = status_json["meters"]
     storage = meters.get("storage", {})

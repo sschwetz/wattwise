@@ -58,16 +58,16 @@ def _base_env(monkeypatch):
     monkeypatch.setenv("COLLECTOR_KEY", "k")
 
 
-def test_live_battery_source_defaults_to_ensemble(monkeypatch):
+def test_live_battery_source_defaults_to_livedata(monkeypatch):
     _base_env(monkeypatch)
     monkeypatch.delenv("LIVE_BATTERY_SOURCE", raising=False)
-    assert get_settings().live_battery_source == "ensemble"
-
-
-def test_live_battery_source_accepts_livedata(monkeypatch):
-    _base_env(monkeypatch)
-    monkeypatch.setenv("LIVE_BATTERY_SOURCE", "livedata")
     assert get_settings().live_battery_source == "livedata"
+
+
+def test_live_battery_source_accepts_ensemble(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LIVE_BATTERY_SOURCE", "ensemble")
+    assert get_settings().live_battery_source == "ensemble"
 
 
 def test_live_sample_seconds_must_be_at_least_one(monkeypatch):

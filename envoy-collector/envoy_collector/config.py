@@ -16,12 +16,12 @@ class Settings:
     live_stale_seconds: int = 30
     # Where live-path battery figures come from: "ensemble" (/ivp/ensemble/power,
     # read once a minute) or "livedata" (the live feed's per-phase storage power).
-    live_battery_source: str = "ensemble"
+    live_battery_source: str = "livedata"
 
 
 def _live_battery_source() -> str:
-    """Read LIVE_BATTERY_SOURCE, defaulting to "ensemble". Raises RuntimeError on any other value."""
-    value = os.environ.get("LIVE_BATTERY_SOURCE", "ensemble")
+    """Read LIVE_BATTERY_SOURCE, defaulting to "livedata". Raises RuntimeError on any other value."""
+    value = os.environ.get("LIVE_BATTERY_SOURCE", "livedata")
     if value not in LIVE_BATTERY_SOURCES:
         raise RuntimeError("LIVE_BATTERY_SOURCE must be 'ensemble' or 'livedata'")
     return value
