@@ -98,7 +98,13 @@ def fetch_certificate_info(host: str) -> CertificateInfo:
 
 
 def _request(
-    host: str, path: str, cert_fingerprint: str, headers: dict[str, str]
+    host: str,
+    path: str,
+    cert_fingerprint: str,
+    headers: dict[str, str],
+    *,
+    method: str = "GET",
+    body: bytes | None = None,
 ) -> tuple[int, bytes]:
     conn = _connect(host)
     try:
@@ -108,7 +114,7 @@ def _request(
                 f"Envoy at {host} presented a different TLS certificate than pinned "
                 f"(expected {cert_fingerprint}, got {actual}) -- refusing to send the request"
             )
-        conn.request("GET", path, headers=headers)
+        conn.request(method, path, body=body, headers=headers)
         response = conn.getresponse()
         return response.status, response.read()
     finally:
@@ -120,7 +126,7 @@ def _raise_for_status(status: int, path: str) -> None:
         raise ValueError(f"Envoy returned {status} for {path}")
 
 
-def _envoy_get(host: str, token: str, path: str, cert_fingerprint: str) -> dict:
+def _envoy_get(host: str, token: str, path: str, cert_fingerprint: str) -> dict | list:
     status, body = _request(host, path, cert_fingerprint, {"Authorization": f"Bearer {token}"})
     if status == 401:
         raise EnvoyAuthError(f"Envoy rejected the token for {path}")
@@ -129,11 +135,39 @@ def _envoy_get(host: str, token: str, path: str, cert_fingerprint: str) -> dict:
 
 
 def fetch_production(host: str, token: str, cert_fingerprint: str) -> dict:
-    return _envoy_get(host, token, "/production.json", cert_fingerprint)
+    return _envoy_get(host, token, "/production.json", cert_fingerprint)  # type: ignore[return-value]
 
 
 def fetch_battery_power(host: str, token: str, cert_fingerprint: str) -> dict:
-    return _envoy_get(host, token, "/ivp/ensemble/power", cert_fingerprint)
+    return _envoy_get(host, token, "/ivp/ensemble/power", cert_fingerprint)  # type: ignore[return-value]
+
+
+def fetch_livedata(host: str, token: str, cert_fingerprint: str) -> dict:
+    return _envoy_get(host, token, "/ivp/livedata/status", cert_fingerprint)  # type: ignore[return-value]
+
+
+def fetch_meters(host: str, token: str, cert_fingerprint: str) -> list[dict]:
+    return _envoy_get(host, token, "/ivp/meters", cert_fingerprint)  # type: ignore[return-value]
+
+
+def fetch_meter_readings(host: str, token: str, cert_fingerprint: str) -> list[dict]:
+    return _envoy_get(host, token, "/ivp/meters/readings", cert_fingerprint)  # type: ignore[return-value]
+
+
+def enable_livedata_stream(host: str, token: str, cert_fingerprint: str) -> None:
+    """Sends the keepalive that makes the gateway keep publishing live data."""
+    path = "/ivp/livedata/stream"
+    status, _ = _request(
+        host,
+        path,
+        cert_fingerprint,
+        {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+        body=json.dumps({"enable": 1}).encode(),
+    )
+    if status == 401:
+        raise EnvoyAuthError(f"Envoy rejected the token for {path}")
+    _raise_for_status(status, path)
 
 
 def fetch_serial_number(host: str, cert_fingerprint: str) -> str:

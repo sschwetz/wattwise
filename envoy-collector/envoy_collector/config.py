@@ -10,6 +10,8 @@ class Settings:
     collector_key: str
     poll_interval_seconds: int
     discovery_refresh_seconds: int
+    live_sample_seconds: int = 3
+    live_stale_seconds: int = 30
 
 
 def get_settings() -> Settings:
@@ -22,4 +24,6 @@ def get_settings() -> Settings:
         collector_key=collector_key,
         poll_interval_seconds=int(os.environ.get("POLL_INTERVAL_SECONDS", "60")),
         discovery_refresh_seconds=int(os.environ.get("DISCOVERY_REFRESH_SECONDS", "300")),
+        live_sample_seconds=int(os.environ.get("LIVE_SAMPLE_SECONDS", "3")),
+        live_stale_seconds=int(os.environ.get("LIVE_STALE_SECONDS", "30")),
     )
