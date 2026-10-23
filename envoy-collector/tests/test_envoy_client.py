@@ -33,6 +33,7 @@ _GET_PAYLOADS: dict[str, dict | list] = {
     "/ivp/meters/readings": [{"eid": 1, "activePower": 12.5}],
 }
 _posted_bodies: list[bytes] = []
+_STATUS_OVERRIDES: dict[str, int] = {}
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
@@ -61,6 +62,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 return
             self._write_json(200, {"devices:": []})
         elif self.path in _GET_PAYLOADS:
+            if self.path in _STATUS_OVERRIDES:
+                self.send_response(_STATUS_OVERRIDES[self.path])
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if not self._authorized():
                 self.send_response(401)
                 self.end_headers()
@@ -242,3 +248,24 @@ def test_enable_livedata_stream_refuses_wrong_fingerprint(envoy_server):
     host, _ = envoy_server
     with pytest.raises(EnvoyCertificateMismatch):
         enable_livedata_stream(host, VALID_TOKEN, "0" * 64)
+
+
+def test_fetch_meters_rejects_an_object_response(envoy_server, monkeypatch):
+    host, fingerprint = envoy_server
+    monkeypatch.setitem(_GET_PAYLOADS, "/ivp/meters", {"not": "a list"})
+    with pytest.raises(ValueError, match="unexpected JSON"):
+        fetch_meters(host, VALID_TOKEN, fingerprint)
+
+
+def test_fetch_livedata_rejects_a_list_response(envoy_server, monkeypatch):
+    host, fingerprint = envoy_server
+    monkeypatch.setitem(_GET_PAYLOADS, "/ivp/livedata/status", [1, 2])
+    with pytest.raises(ValueError, match="unexpected JSON"):
+        fetch_livedata(host, VALID_TOKEN, fingerprint)
+
+
+def test_fetch_meter_readings_raises_value_error_on_5xx(envoy_server, monkeypatch):
+    host, fingerprint = envoy_server
+    monkeypatch.setitem(_STATUS_OVERRIDES, "/ivp/meters/readings", 503)
+    with pytest.raises(ValueError, match="503"):
+        fetch_meter_readings(host, VALID_TOKEN, fingerprint)

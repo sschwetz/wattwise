@@ -126,7 +126,7 @@ def _raise_for_status(status: int, path: str) -> None:
         raise ValueError(f"Envoy returned {status} for {path}")
 
 
-def _envoy_get(host: str, token: str, path: str, cert_fingerprint: str) -> dict | list:
+def _envoy_get_json(host: str, token: str, path: str, cert_fingerprint: str) -> object:
     status, body = _request(host, path, cert_fingerprint, {"Authorization": f"Bearer {token}"})
     if status == 401:
         raise EnvoyAuthError(f"Envoy rejected the token for {path}")
@@ -134,24 +134,38 @@ def _envoy_get(host: str, token: str, path: str, cert_fingerprint: str) -> dict 
     return json.loads(body)
 
 
+def _envoy_get_object(host: str, token: str, path: str, cert_fingerprint: str) -> dict:
+    data = _envoy_get_json(host, token, path, cert_fingerprint)
+    if not isinstance(data, dict):
+        raise ValueError(f"Envoy returned unexpected JSON for {path}")
+    return data
+
+
+def _envoy_get_array(host: str, token: str, path: str, cert_fingerprint: str) -> list[dict]:
+    data = _envoy_get_json(host, token, path, cert_fingerprint)
+    if not isinstance(data, list):
+        raise ValueError(f"Envoy returned unexpected JSON for {path}")
+    return data
+
+
 def fetch_production(host: str, token: str, cert_fingerprint: str) -> dict:
-    return _envoy_get(host, token, "/production.json", cert_fingerprint)  # type: ignore[return-value]
+    return _envoy_get_object(host, token, "/production.json", cert_fingerprint)
 
 
 def fetch_battery_power(host: str, token: str, cert_fingerprint: str) -> dict:
-    return _envoy_get(host, token, "/ivp/ensemble/power", cert_fingerprint)  # type: ignore[return-value]
+    return _envoy_get_object(host, token, "/ivp/ensemble/power", cert_fingerprint)
 
 
 def fetch_livedata(host: str, token: str, cert_fingerprint: str) -> dict:
-    return _envoy_get(host, token, "/ivp/livedata/status", cert_fingerprint)  # type: ignore[return-value]
+    return _envoy_get_object(host, token, "/ivp/livedata/status", cert_fingerprint)
 
 
 def fetch_meters(host: str, token: str, cert_fingerprint: str) -> list[dict]:
-    return _envoy_get(host, token, "/ivp/meters", cert_fingerprint)  # type: ignore[return-value]
+    return _envoy_get_array(host, token, "/ivp/meters", cert_fingerprint)
 
 
 def fetch_meter_readings(host: str, token: str, cert_fingerprint: str) -> list[dict]:
-    return _envoy_get(host, token, "/ivp/meters/readings", cert_fingerprint)  # type: ignore[return-value]
+    return _envoy_get_array(host, token, "/ivp/meters/readings", cert_fingerprint)
 
 
 def enable_livedata_stream(host: str, token: str, cert_fingerprint: str) -> None:
