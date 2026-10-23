@@ -126,8 +126,10 @@ def parse_livedata(status_json: dict) -> LiveSample:
     The feed reports milliwatts. Battery power is the sum of the per-phase
     storage fields (agg_p_ph_*_mw), not storage.agg_p_mw: the aggregate
     disagreed with the phase figures on the owner's gateway. A site counts
-    as having a battery when enc_agg_energy or acb_agg_energy is above zero;
-    otherwise battery power is 0.
+    as having a battery when enc_agg_energy, acb_agg_energy or soc is above
+    zero, or any per-phase storage power is non-zero, so a drained battery
+    (stored energy and soc both 0) still counts while it draws power.
+    Otherwise battery power is 0.
 
     The per-phase battery figure is not yet checked against the gateway's
     own battery readout (see "Open check" in
@@ -136,9 +138,13 @@ def parse_livedata(status_json: dict) -> LiveSample:
     battery fields are only used when it is set to "livedata".
     """
     meters = status_json["meters"]
-    has_battery = (meters.get("enc_agg_energy") or 0) > 0 or (meters.get("acb_agg_energy") or 0) > 0
     storage = meters.get("storage", {})
-    battery_mw = sum(v for k, v in storage.items() if _STORAGE_PHASE_KEY.match(k))
+    phase_mw = [v for k, v in storage.items() if _STORAGE_PHASE_KEY.match(k)]
+    battery_mw = sum(phase_mw)
+    has_battery = (
+        any((meters.get(key) or 0) > 0 for key in ("enc_agg_energy", "acb_agg_energy", "soc"))
+        or any(phase_mw)
+    )
     return LiveSample(
         last_update=meters["last_update"],
         production_w=meters["pv"]["agg_p_mw"] / 1000,

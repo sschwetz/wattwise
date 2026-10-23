@@ -73,6 +73,28 @@ def test_repeated_last_update_is_dropped():
     assert [s.last_update for s in h.sampler.drain()] == [1]
 
 
+def _no_battery_status(last_update: int) -> dict:
+    data = status(last_update)
+    meters = data["meters"]
+    meters.update(enc_agg_energy=0, acb_agg_energy=0, soc=0)
+    meters["storage"] = {"agg_p_mw": 0, "agg_p_ph_a_mw": 0, "agg_p_ph_b_mw": 0, "agg_p_ph_c_mw": 0}
+    return data
+
+
+def test_battery_presence_is_latched():
+    h = Harness()
+    h.step(status(1))
+    h.step(_no_battery_status(2))
+    assert [s.has_battery for s in h.sampler.drain()] == [True, True]
+
+
+def test_batteryless_site_stays_without_battery():
+    h = Harness()
+    h.step(_no_battery_status(1))
+    h.step(_no_battery_status(2))
+    assert [s.has_battery for s in h.sampler.drain()] == [False, False]
+
+
 def test_drain_returns_samples_once_and_clears():
     h = Harness()
     h.step(status(1))

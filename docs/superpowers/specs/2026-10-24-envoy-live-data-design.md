@@ -72,8 +72,12 @@ discharge).
   `storage.agg_p_ph_a_mw`, `_ph_b_mw` and `_ph_c_mw`, not `storage.agg_p_mw`.
   Positive is discharge, negative is charge, as `battery_net_w` returns.
 - `battery_soc_pct` = last `soc` (matches its `LAST_VALUE` aggregation).
-- A site has a battery when `enc_agg_energy` or `acb_agg_energy` is above
-  zero. Without one, no battery readings are written and battery power is
+- A site has a battery when `enc_agg_energy`, `acb_agg_energy` or `soc` is
+  above zero, or any `storage.agg_p_ph_*_mw` is non-zero. A drained battery
+  reports 0 for the first three, so the per-phase power check catches it
+  while it draws standby power. Each sampler latches presence: once a sample
+  shows a battery, later samples from that sampler count as having one.
+  Without one, no battery readings are written and battery power is
   taken as 0 in `consumption_w`. This is a guess about a batteryless
   gateway's response, which has not been seen; the plan tests it only against
   a made-up response.

@@ -175,13 +175,32 @@ def test_battery_sum_ignores_the_aggregate_storage_figure():
     assert parse_livedata(status).battery_w == pytest.approx(-44.0)
 
 
-def test_parse_livedata_batteryless_site():
+def _zero_battery_status() -> dict:
     status = load_fixture("livedata_status.json")
-    status["meters"]["enc_agg_energy"] = 0
-    status["meters"]["acb_agg_energy"] = 0
-    s = parse_livedata(status)
+    meters = status["meters"]
+    meters.update(enc_agg_energy=0, acb_agg_energy=0, soc=0)
+    meters["storage"] = {"agg_p_mw": 0, "agg_p_ph_a_mw": 0, "agg_p_ph_b_mw": 0, "agg_p_ph_c_mw": 0}
+    return status
+
+
+def test_parse_livedata_batteryless_site():
+    s = parse_livedata(_zero_battery_status())
     assert s.has_battery is False
     assert s.battery_w == 0.0
+
+
+def test_parse_livedata_drained_battery_with_phase_power_has_battery():
+    status = _zero_battery_status()
+    status["meters"]["storage"]["agg_p_ph_a_mw"] = -15000
+    s = parse_livedata(status)
+    assert s.has_battery is True
+    assert s.battery_w == pytest.approx(-15.0)
+
+
+def test_parse_livedata_soc_alone_means_battery():
+    status = _zero_battery_status()
+    status["meters"]["soc"] = 5
+    assert parse_livedata(status).has_battery is True
 
 
 def test_parse_livedata_single_phase_sums_only_present_phase_keys():

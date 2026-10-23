@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 
 from envoy_collector.mapping import LiveSample, parse_livedata
 
@@ -18,6 +19,11 @@ class LiveSampler:
     The owner calls drain() once a minute, replaces `config` when the token
     or pinned address changes, and checks is_fresh() to choose between live
     and polled readings.
+
+    Battery presence is latched: once a kept sample has has_battery set,
+    every later sample from this sampler is stored with has_battery=True,
+    so an idle, drained battery whose readings are all zero still gets
+    battery rows.
     """
 
     def __init__(
@@ -39,6 +45,7 @@ class LiveSampler:
         self._samples: list[LiveSample] = []
         self._last_update: int | None = None
         self._last_sample_at: float | None = None
+        self._has_battery = False
         # Start of the current keepalive window: the latest of creation, the
         # last new sample and the last keepalive.
         self._window_start = clock()
@@ -82,7 +89,12 @@ class LiveSampler:
             self._maybe_keepalive()
 
     def _keep(self, sample: LiveSample) -> None:
+        """Store a new sample, applying the battery latch, and restart the keepalive window."""
         now = self._clock()
+        if sample.has_battery:
+            self._has_battery = True
+        elif self._has_battery:
+            sample = replace(sample, has_battery=True)
         with self._lock:
             self._samples.append(sample)
         self._last_update = sample.last_update
