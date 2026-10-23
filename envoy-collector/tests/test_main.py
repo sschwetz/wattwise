@@ -10,6 +10,7 @@ from envoy_collector.config import Settings
 from envoy_collector.core_api_client import CoreApiError
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError
 from envoy_collector.envoy_client import CertificateInfo, EnvoyAuthError, EnvoyCertificateMismatch
+from envoy_collector.mapping import LiveSample
 from tests.test_enlighten_client import make_jwt
 
 FAR_EXPIRY = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=300)).isoformat()
@@ -512,7 +513,7 @@ def test_main_polls_every_discovered_source_each_cycle(monkeypatch):
     monkeypatch.setattr(main_module, "discover_and_sync_serial", lambda settings, source_id, config: None)
     polled = []
     monkeypatch.setattr(
-        main_module, "poll_once", lambda settings, source_id, config: (polled.append(config), config)[1]
+        main_module, "poll_once", lambda settings, source_id, config, sampler=None: (polled.append(config), config)[1]
     )
 
     calls = {"sleep": 0}
@@ -554,7 +555,7 @@ def test_main_keeps_last_known_sources_when_discovery_refresh_fails(monkeypatch)
     monkeypatch.setattr(main_module, "discover_and_sync_serial", lambda settings, source_id, config: None)
     polled = []
     monkeypatch.setattr(
-        main_module, "poll_once", lambda settings, source_id, config: (polled.append(config), config)[1]
+        main_module, "poll_once", lambda settings, source_id, config, sampler=None: (polled.append(config), config)[1]
     )
 
     calls = {"sleep": 0}
@@ -594,7 +595,7 @@ def test_main_keeps_last_known_sources_when_discovery_refresh_raises_unexpected_
     monkeypatch.setattr(main_module, "discover_and_sync_serial", lambda settings, source_id, config: None)
     polled = []
     monkeypatch.setattr(
-        main_module, "poll_once", lambda settings, source_id, config: (polled.append(config), config)[1]
+        main_module, "poll_once", lambda settings, source_id, config, sampler=None: (polled.append(config), config)[1]
     )
 
     calls = {"sleep": 0}
@@ -1006,3 +1007,332 @@ def test_repin_keeps_the_old_pin_when_the_new_certificate_cannot_be_read(monkeyp
     config = _expiring_config(days_left=30)
 
     assert main_module.repin_certificate(SETTINGS, 1, config) == config
+
+
+# --- live sampler and meter readings ---------------------------------------
+
+PINNED = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
+
+
+@pytest.fixture(autouse=True)
+def _no_meter_calls(monkeypatch):
+    """Keeps poll_once off the network for meters; tests that care override these."""
+    monkeypatch.setattr(main_module, "fetch_meters", lambda host, token, fp: [])
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, fp: [])
+    main_module._meters_cache.clear()
+    main_module._samplers.clear()
+    yield
+    main_module._meters_cache.clear()
+    main_module._samplers.clear()
+
+
+def _sample(production_w: float, last_update: int = 1) -> LiveSample:
+    return LiveSample(
+        last_update=last_update,
+        production_w=production_w,
+        grid_w=100.0,
+        battery_w=0.0,
+        soc=50.0,
+        relay_state=1,
+        has_battery=False,
+    )
+
+
+class FakeSampler:
+    def __init__(self, samples: list[LiveSample] | None = None, fresh: bool = True) -> None:
+        self.samples = samples or []
+        self.fresh = fresh
+        self.drained = 0
+        self.config: dict = {}
+
+    def is_fresh(self) -> bool:
+        return self.fresh
+
+    def drain(self) -> list[LiveSample]:
+        self.drained += 1
+        samples, self.samples = self.samples, []
+        return samples
+
+
+def _capture_pushes(monkeypatch) -> list[list[dict]]:
+    pushed: list[list[dict]] = []
+    monkeypatch.setattr(
+        main_module, "push_energy_readings", lambda base_url, source_id, key, readings: pushed.append(readings)
+    )
+    return pushed
+
+
+def _stub_fetch_and_map(monkeypatch, readings: list[dict]) -> list[int]:
+    calls: list[int] = []
+
+    def fake(config, ts):
+        calls.append(1)
+        return list(readings)
+
+    monkeypatch.setattr(main_module, "_fetch_and_map", fake)
+    return calls
+
+
+def _values(batch: list[dict]) -> dict[str, float]:
+    return {r["metric"]: r["value"] for r in batch}
+
+
+def test_poll_once_uses_live_samples_when_fresh(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    calls = _stub_fetch_and_map(monkeypatch, [])
+    sampler = FakeSampler([_sample(1000.0), _sample(2000.0, 2)])
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED), sampler)
+
+    assert calls == []
+    assert _values(pushed[0])["production_w"] == 1500.0
+
+
+def test_poll_once_falls_back_when_sampler_is_stale(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    calls = _stub_fetch_and_map(monkeypatch, [{"ts": None, "metric": "production_w", "value": 7.0}])
+    sampler = FakeSampler([_sample(1000.0)], fresh=False)
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED), sampler)
+
+    assert calls == [1]
+    assert pushed[0] == [{"ts": None, "metric": "production_w", "value": 7.0}]
+    assert sampler.drained == 1
+    assert sampler.samples == []
+
+
+def test_poll_once_with_empty_sampler_falls_back(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    calls = _stub_fetch_and_map(monkeypatch, [{"ts": None, "metric": "production_w", "value": 7.0}])
+    sampler = FakeSampler([], fresh=True)
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED), sampler)
+
+    assert calls == [1]
+    assert pushed[0][0]["value"] == 7.0
+
+
+def test_poll_once_without_sampler_is_unchanged(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    calls = _stub_fetch_and_map(monkeypatch, [{"ts": None, "metric": "production_w", "value": 7.0}])
+
+    config = dict(PINNED)
+    assert main_module.poll_once(SETTINGS, 1, config) == config
+
+    assert calls == [1]
+    assert pushed == [[{"ts": None, "metric": "production_w", "value": 7.0}]]
+
+
+METERS = [
+    {"eid": 1, "state": "enabled", "measurementType": "production", "phaseCount": 1},
+    {"eid": 2, "state": "enabled", "measurementType": "net-consumption", "phaseCount": 1},
+]
+METER_READINGS = [
+    {"eid": 1, "actEnergyDlvd": 5000.0, "actEnergyRcvd": 0.0, "channels": []},
+    {"eid": 2, "actEnergyDlvd": 300.0, "actEnergyRcvd": 40.0, "channels": [{"voltage": 240.0}]},
+]
+
+
+def _stub_meters(monkeypatch, meters=METERS, readings=METER_READINGS) -> list[str]:
+    calls: list[str] = []
+
+    def fake_meters(host, token, fp):
+        calls.append("meters")
+        return meters
+
+    def fake_readings(host, token, fp):
+        calls.append("readings")
+        return readings
+
+    monkeypatch.setattr(main_module, "fetch_meters", fake_meters)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", fake_readings)
+    return calls
+
+
+def test_meter_readings_are_pushed_with_power_readings(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    _stub_meters(monkeypatch)
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED), FakeSampler([_sample(1000.0)]))
+
+    values = _values(pushed[0])
+    assert values["production_w"] == 1000.0
+    assert values["production_wh_lifetime"] == 5000.0
+    assert values["grid_import_wh_lifetime"] == 300.0
+    assert values["grid_export_wh_lifetime"] == 40.0
+    assert values["grid_voltage_ph_a_v"] == 240.0
+
+
+def test_meter_readings_failure_still_pushes_power_readings(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+
+    def boom(host, token, fp):
+        raise RuntimeError("meters down")
+
+    monkeypatch.setattr(main_module, "fetch_meter_readings", boom)
+    monkeypatch.setattr(main_module, "fetch_meters", lambda host, token, fp: METERS)
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED), FakeSampler([_sample(1000.0)]))
+
+    assert _values(pushed[0]) == {
+        "production_w": 1000.0,
+        "consumption_w": 1100.0,
+        "grid_import_w": 100.0,
+        "grid_relay_state": 1,
+    }
+
+
+def test_unknown_meter_is_skipped_but_power_is_pushed(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    _stub_meters(monkeypatch, readings=[{"eid": 99, "actEnergyDlvd": 1.0, "actEnergyRcvd": 1.0, "channels": []}])
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED), FakeSampler([_sample(1000.0)]))
+
+    values = _values(pushed[0])
+    assert values["production_w"] == 1000.0
+    assert not any(m.endswith("_lifetime") for m in values)
+
+
+def test_meter_readings_are_pushed_in_the_fallback_path(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    _stub_fetch_and_map(monkeypatch, [{"ts": None, "metric": "production_w", "value": 7.0}])
+    _stub_meters(monkeypatch)
+
+    main_module.poll_once(SETTINGS, 1, dict(PINNED))
+
+    assert _values(pushed[0])["production_wh_lifetime"] == 5000.0
+
+
+def test_meters_listing_is_fetched_once_per_source(monkeypatch):
+    _capture_pushes(monkeypatch)
+    calls = _stub_meters(monkeypatch)
+
+    for _ in range(3):
+        main_module.poll_once(SETTINGS, 1, dict(PINNED), FakeSampler([_sample(1000.0)]))
+
+    assert calls.count("meters") == 1
+    assert calls.count("readings") == 3
+
+
+def test_meters_cache_cleared_on_auth_failure(monkeypatch):
+    _stub_meters(monkeypatch)
+    ts = datetime.datetime.now(datetime.timezone.utc)
+    assert main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    assert 1 in main_module._meters_cache
+
+    def unauthorized(host, token, fp):
+        raise EnvoyAuthError("401")
+
+    monkeypatch.setattr(main_module, "fetch_meter_readings", unauthorized)
+
+    assert main_module._meter_readings_or_empty(1, dict(PINNED), ts) == []
+    assert 1 not in main_module._meters_cache
+
+
+def test_refresh_sources_clears_the_meters_cache(monkeypatch):
+    main_module._meters_cache[1] = METERS
+    monkeypatch.setattr(main_module, "fetch_collector_sources", lambda base_url, key: [])
+
+    main_module._refresh_sources(SETTINGS, {})
+
+    assert main_module._meters_cache == {}
+
+
+def test_poll_once_runs_meters_after_auth_recovery(monkeypatch):
+    pushed = _capture_pushes(monkeypatch)
+    _stub_meters(monkeypatch)
+
+    def unauthorized(config, ts):
+        raise EnvoyAuthError("401")
+
+    monkeypatch.setattr(main_module, "_fetch_and_map", unauthorized)
+    recovered = dict(PINNED, token="new")
+    ok = [{"ts": None, "metric": "production_w", "value": 7.0}]
+    monkeypatch.setattr(main_module, "_recover_from_auth_failure", lambda s, sid, c, ts: (recovered, ok))
+
+    result = main_module.poll_once(SETTINGS, 1, dict(PINNED))
+
+    assert result == recovered
+    assert _values(pushed[0])["production_wh_lifetime"] == 5000.0
+
+
+class FakeLiveSampler:
+    instances: list["FakeLiveSampler"] = []
+
+    def __init__(self, config, fetch, enable_stream, interval_seconds, stale_seconds) -> None:
+        self.config = config
+        self.fetch = fetch
+        self.enable_stream = enable_stream
+        self.interval_seconds = interval_seconds
+        self.stale_seconds = stale_seconds
+        self.started = False
+        self.stopped = False
+        FakeLiveSampler.instances.append(self)
+
+    def start(self) -> None:
+        self.started = True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+def test_sync_samplers_starts_one_per_pinned_source_and_stops_removed_ones(monkeypatch):
+    FakeLiveSampler.instances = []
+    monkeypatch.setattr(main_module, "LiveSampler", FakeLiveSampler)
+    seen = []
+    monkeypatch.setattr(
+        main_module, "fetch_livedata", lambda host, token, fp: (seen.append((host, token, fp)), {})[1]
+    )
+
+    main_module._sync_samplers(SETTINGS, {1: dict(PINNED), 2: dict(PINNED, host="b.local")})
+
+    assert set(main_module._samplers) == {1, 2}
+    first = main_module._samplers[1]
+    assert first.started
+    assert first.interval_seconds == SETTINGS.live_sample_seconds
+    assert first.stale_seconds == SETTINGS.live_stale_seconds
+    first.fetch(first.config)
+    assert seen == [("envoy.local", "abc", "pinned")]
+
+    new_config = dict(PINNED, token="renewed")
+    main_module._sync_samplers(SETTINGS, {1: new_config})
+
+    assert main_module._samplers[1] is first
+    assert first.config is new_config
+    assert len(FakeLiveSampler.instances) == 2
+    assert FakeLiveSampler.instances[1].stopped
+    assert set(main_module._samplers) == {1}
+
+
+def test_sync_samplers_skips_source_without_pin(monkeypatch):
+    FakeLiveSampler.instances = []
+    monkeypatch.setattr(main_module, "LiveSampler", FakeLiveSampler)
+
+    main_module._sync_samplers(SETTINGS, {1: {"host": "envoy.local", "token": "abc"}})
+
+    assert main_module._samplers == {}
+    assert FakeLiveSampler.instances == []
+
+
+def test_main_gives_the_poll_result_to_the_sampler(monkeypatch):
+    monkeypatch.setattr(main_module, "get_settings", lambda: SETTINGS)
+    sampler = FakeSampler()
+    monkeypatch.setattr(main_module, "_refresh_sources", lambda settings, known: {1: dict(PINNED)})
+    monkeypatch.setattr(
+        main_module, "_sync_samplers", lambda settings, sources: main_module._samplers.update({1: sampler})
+    )
+    renewed = dict(PINNED, token="renewed")
+    monkeypatch.setattr(main_module, "poll_once", lambda settings, sid, config, s=None: renewed)
+    calls = {"sleep": 0}
+
+    def _fake_sleep(seconds):
+        calls["sleep"] += 1
+        if calls["sleep"] >= 2:
+            raise SystemExit
+
+    monkeypatch.setattr(main_module.time, "sleep", _fake_sleep)
+
+    with pytest.raises(SystemExit):
+        main_module.main()
+
+    assert sampler.config is renewed
