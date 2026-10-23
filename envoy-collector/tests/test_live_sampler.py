@@ -9,6 +9,7 @@ import time
 
 import pytest
 
+from envoy_collector.failure_log import FAILURE_LOG_INTERVAL_SECONDS
 from envoy_collector.live_sampler import LiveSampler
 from envoy_collector.mapping import LiveSample
 
@@ -42,6 +43,7 @@ class Harness:
             {"token": "t1"},
             self.fetch,
             self.keepalives.append,
+            label="source 7",
             interval_seconds=1.0,
             stale_seconds=stale_seconds,
             clock=self.clock,
@@ -213,7 +215,7 @@ def test_start_and_stop_run_the_thread():
         calls.append(config)
         return status(next(counter))
 
-    sampler = LiveSampler({}, fetch, lambda c: None, interval_seconds=0.01, stale_seconds=5)
+    sampler = LiveSampler({}, fetch, lambda c: None, label="test", interval_seconds=0.01, stale_seconds=5)
     before = threading.active_count()
     sampler.start()
     sampler.start()
@@ -238,12 +240,31 @@ def _failing_keepalive(config: dict) -> None:
     raise RuntimeError("no")
 
 
-def test_consecutive_fetch_failures_log_error_then_warning(caplog):
+def test_repeated_fetch_failures_are_rate_limited(caplog):
     caplog.set_level(logging.WARNING, logger="envoy_collector")
     h = Harness()
     h.step(RuntimeError("a"))
     h.step(RuntimeError("b"))
+    assert _records(caplog) == [ERROR_TB]
+    h.clock.now += FAILURE_LOG_INTERVAL_SECONDS
+    h.step(RuntimeError("c"))
     assert _records(caplog) == [ERROR_TB, WARN]
+    assert "2 failures since last log" in caplog.records[-1].getMessage()
+
+
+def test_log_messages_and_thread_name_carry_the_label(caplog):
+    caplog.set_level(logging.WARNING, logger="envoy_collector")
+    h = Harness()
+    h.step(RuntimeError("a"))
+    assert "source 7" in caplog.records[0].getMessage()
+    h.results.extend(status(n) for n in range(1, 10_000))
+    h.sampler._interval = 0.01
+    h.sampler.start()
+    try:
+        assert h.sampler._thread is not None
+        assert h.sampler._thread.name == "live-sampler-source-7"
+    finally:
+        h.sampler.stop()
 
 
 def test_failure_after_success_logs_error_again(caplog):
@@ -255,7 +276,7 @@ def test_failure_after_success_logs_error_again(caplog):
     assert _records(caplog) == [ERROR_TB, ERROR_TB]
 
 
-def test_consecutive_keepalive_failures_log_error_then_warning(caplog):
+def test_repeated_keepalive_failures_are_rate_limited(caplog):
     caplog.set_level(logging.WARNING, logger="envoy_collector")
     h = Harness(stale_seconds=10)
     h.sampler._enable_stream = _failing_keepalive
@@ -263,6 +284,9 @@ def test_consecutive_keepalive_failures_log_error_then_warning(caplog):
     h.clock.now += 11
     h.step(status(1))
     h.clock.now += 11
+    h.step(status(1))
+    assert _records(caplog) == [ERROR_TB]
+    h.clock.now += FAILURE_LOG_INTERVAL_SECONDS
     h.step(status(1))
     assert _records(caplog) == [ERROR_TB, WARN]
 

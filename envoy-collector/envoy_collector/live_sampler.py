@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
 
+from envoy_collector.failure_log import FailureLog
 from envoy_collector.mapping import LiveSample, parse_livedata
-
-logger = logging.getLogger("envoy_collector")
 
 
 class LiveSampler:
@@ -18,7 +16,9 @@ class LiveSampler:
     sample is kept only when its last_update differs from the previous one.
     The owner calls drain() once a minute, replaces `config` when the token
     or pinned address changes, and checks is_fresh() to choose between live
-    and polled readings.
+    and polled readings. `label` (for example "source 3") appears in every
+    log line and in the thread name. Repeated failures are rate-limited by
+    FailureLog, with separate streaks for the fetch and the keepalive.
 
     Battery presence is latched: once a kept sample has has_battery set,
     every later sample from this sampler is stored with has_battery=True,
@@ -31,11 +31,14 @@ class LiveSampler:
         config: dict,
         fetch: Callable[[dict], dict],
         enable_stream: Callable[[dict], None],
+        *,
+        label: str,
         interval_seconds: float,
         stale_seconds: float,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.config = config
+        self.label = label
         self._fetch = fetch
         self._enable_stream = enable_stream
         self._interval = interval_seconds
@@ -50,8 +53,8 @@ class LiveSampler:
         # last new sample and the last keepalive.
         self._window_start = clock()
         self._last_call_ok = False
-        self._fetch_failing = False
-        self._keepalive_failing = False
+        self._fetch_log = FailureLog(f"Live-feed call failed for {label}", clock)
+        self._keepalive_log = FailureLog(f"Live-feed keepalive failed for {label}", clock)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -59,7 +62,8 @@ class LiveSampler:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="live-sampler", daemon=True)
+        name = f"live-sampler-{self.label.replace(' ', '-')}"
+        self._thread = threading.Thread(target=self._run, name=name, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -79,9 +83,9 @@ class LiveSampler:
             sample = parse_livedata(self._fetch(self.config))
         except Exception:
             self._last_call_ok = False
-            self._fetch_failing = self._log_failure("live-feed call failed", self._fetch_failing)
+            self._fetch_log.failure()
             return
-        self._fetch_failing = False
+        self._fetch_log.success()
         self._last_call_ok = True
         if sample.last_update != self._last_update:
             self._keep(sample)
@@ -109,20 +113,9 @@ class LiveSampler:
         try:
             self._enable_stream(self.config)
         except Exception:
-            self._keepalive_failing = self._log_failure(
-                "live-feed keepalive failed", self._keepalive_failing
-            )
+            self._keepalive_log.failure()
         else:
-            self._keepalive_failing = False
-
-    @staticmethod
-    def _log_failure(message: str, already_failing: bool) -> bool:
-        """Log with a traceback on the first failure of a streak, else a warning. Returns True."""
-        if already_failing:
-            logger.warning("%s (still failing)", message)
-        else:
-            logger.exception(message)
-        return True
+            self._keepalive_log.success()
 
     def drain(self) -> list[LiveSample]:
         """Return the samples collected since the last call and clear them."""

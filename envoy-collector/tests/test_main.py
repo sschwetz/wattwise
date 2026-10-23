@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import logging
 import threading
 
 import pytest
@@ -11,6 +12,7 @@ from envoy_collector.config import Settings
 from envoy_collector.core_api_client import CoreApiError
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError
 from envoy_collector.envoy_client import CertificateInfo, EnvoyAuthError, EnvoyCertificateMismatch
+from envoy_collector.failure_log import FAILURE_LOG_INTERVAL_SECONDS
 from envoy_collector.mapping import LiveSample
 from tests.test_enlighten_client import make_jwt
 
@@ -1023,9 +1025,11 @@ def _no_meter_calls(monkeypatch):
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, fp: {"devices:": []})
     main_module._meters_cache.clear()
     main_module._samplers.clear()
+    main_module._meter_failure_logs.clear()
     yield
     main_module._meters_cache.clear()
     main_module._samplers.clear()
+    main_module._meter_failure_logs.clear()
 
 
 def _sample(production_w: float, last_update: int = 1) -> LiveSample:
@@ -1290,6 +1294,49 @@ def test_meters_cache_cleared_on_auth_failure(monkeypatch):
     assert 1 not in main_module._meters_cache
 
 
+def test_meter_failures_are_rate_limited_per_source(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING, logger="envoy_collector")
+    now = [1000.0]
+    monkeypatch.setattr(main_module.time, "monotonic", lambda: now[0])
+
+    def boom(host, token, fp):
+        raise RuntimeError("meters down")
+
+    monkeypatch.setattr(main_module, "fetch_meter_readings", boom)
+    ts = datetime.datetime.now(datetime.timezone.utc)
+
+    for source_id in (1, 1, 2):
+        assert main_module._meter_readings_or_empty(source_id, dict(PINNED), ts) == []
+    assert [(r.levelno, r.exc_info is not None) for r in caplog.records] == [
+        (logging.ERROR, True),
+        (logging.ERROR, True),
+    ]
+    now[0] += FAILURE_LOG_INTERVAL_SECONDS
+    main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    assert caplog.records[-1].levelno == logging.WARNING
+    assert "2 failures since last log" in caplog.records[-1].getMessage()
+
+
+def test_meter_success_resets_the_failure_streak(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING, logger="envoy_collector")
+    ts = datetime.datetime.now(datetime.timezone.utc)
+    failing = [True]
+
+    def readings(host, token, fp):
+        if failing[0]:
+            raise RuntimeError("meters down")
+        return []
+
+    monkeypatch.setattr(main_module, "fetch_meter_readings", readings)
+    main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    failing[0] = False
+    main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    failing[0] = True
+    main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+
+    assert [r.levelno for r in caplog.records] == [logging.ERROR, logging.ERROR]
+
+
 def test_refresh_sources_clears_the_meters_cache(monkeypatch):
     main_module._meters_cache[1] = METERS
     monkeypatch.setattr(main_module, "fetch_collector_sources", lambda base_url, key: [])
@@ -1320,10 +1367,11 @@ def test_poll_once_runs_meters_after_auth_recovery(monkeypatch):
 class FakeLiveSampler:
     instances: list["FakeLiveSampler"] = []
 
-    def __init__(self, config, fetch, enable_stream, interval_seconds, stale_seconds) -> None:
+    def __init__(self, config, fetch, enable_stream, *, label, interval_seconds, stale_seconds) -> None:
         self.config = config
         self.fetch = fetch
         self.enable_stream = enable_stream
+        self.label = label
         self.interval_seconds = interval_seconds
         self.stale_seconds = stale_seconds
         self.started = False
@@ -1350,6 +1398,7 @@ def test_sync_samplers_starts_one_per_pinned_source_and_stops_removed_ones(monke
     assert set(main_module._samplers) == {1, 2}
     first = main_module._samplers[1]
     assert first.started
+    assert first.label == "source 1"
     assert first.interval_seconds == SETTINGS.live_sample_seconds
     assert first.stale_seconds == SETTINGS.live_stale_seconds
     first.fetch(first.config)
@@ -1373,6 +1422,18 @@ def test_sync_samplers_skips_source_without_pin(monkeypatch):
 
     assert main_module._samplers == {}
     assert FakeLiveSampler.instances == []
+
+
+def test_sync_samplers_stops_a_sampler_whose_pin_was_cleared(monkeypatch):
+    FakeLiveSampler.instances = []
+    monkeypatch.setattr(main_module, "LiveSampler", FakeLiveSampler)
+    main_module._sync_samplers(SETTINGS, {1: dict(PINNED)})
+    sampler = main_module._samplers[1]
+
+    main_module._sync_samplers(SETTINGS, {1: {"host": "new.local", "token": "abc"}})
+
+    assert sampler.stopped
+    assert main_module._samplers == {}
 
 
 def test_main_gives_the_poll_result_to_the_sampler(monkeypatch):

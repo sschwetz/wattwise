@@ -27,6 +27,7 @@ from envoy_collector.envoy_client import (
     fetch_production,
     fetch_serial_number,
 )
+from envoy_collector.failure_log import FailureLog
 from envoy_collector.live_sampler import LiveSampler
 from envoy_collector.mapping import (
     battery_net_w,
@@ -63,6 +64,9 @@ _pending_readings: dict[int, list[dict]] = {}
 # refresh.
 _samplers: dict[int, LiveSampler] = {}
 _meters_cache: dict[int, list[dict]] = {}
+# Per-source failure streaks for meter reads, so a meter outage logs one
+# traceback and then a warning at most every FAILURE_LOG_INTERVAL_SECONDS.
+_meter_failure_logs: dict[int, FailureLog] = {}
 
 
 def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
@@ -326,20 +330,32 @@ def _meter_readings_or_empty(source_id: int, config: dict, ts: datetime.datetime
     """Lifetime energy counters and grid voltages from the Envoy's meters.
     Any failure is logged and gives [] so it never stops the power readings
     from being pushed. The meters listing is read once per source and cached;
-    an auth failure clears the cache."""
+    an auth failure clears the cache. Repeated failures are rate-limited
+    per source (see FailureLog)."""
     try:
         host, token, fingerprint = config["host"], config.get("token", ""), config["cert_fingerprint"]
         if source_id not in _meters_cache:
             _meters_cache[source_id] = fetch_meters(host, token, fingerprint)
         readings = fetch_meter_readings(host, token, fingerprint)
-        return map_meter_readings(_meters_cache[source_id], readings, ts)
+        rows = map_meter_readings(_meters_cache[source_id], readings, ts)
     except EnvoyAuthError:
         _meters_cache.pop(source_id, None)
         logger.warning("Envoy rejected our token reading meters for source %s", source_id)
         return []
     except Exception:
-        logger.exception("Failed to read meter data this cycle for source %s; continuing without it", source_id)
+        _meter_failure_log(source_id).failure()
         return []
+    _meter_failure_log(source_id).success()
+    return rows
+
+
+def _meter_failure_log(source_id: int) -> FailureLog:
+    """The per-source failure streak for meter reads, created on first use."""
+    log = _meter_failure_logs.get(source_id)
+    if log is None:
+        log = FailureLog(f"Failed to read meter data for source {source_id}; continuing without it", time.monotonic)
+        _meter_failure_logs[source_id] = log
+    return log
 
 
 def _live_battery_json(settings: Settings, source_id: int, config: dict) -> dict | None:
@@ -435,9 +451,9 @@ def poll_once(settings: Settings, source_id: int, config: dict, sampler: LiveSam
 def _sync_samplers(settings: Settings, sources: dict[int, dict]) -> None:
     """Starts a live-feed sampler for each source with a pinned certificate,
     hands existing samplers the latest config, and stops samplers for
-    sources that are gone."""
+    sources that are gone or whose pin was cleared."""
     for source_id in list(_samplers):
-        if source_id not in sources:
+        if "cert_fingerprint" not in sources.get(source_id, {}):
             _samplers.pop(source_id).stop()
     for source_id, config in sources.items():
         if "cert_fingerprint" not in config:
@@ -452,6 +468,7 @@ def _sync_samplers(settings: Settings, sources: dict[int, dict]) -> None:
             enable_stream=lambda cfg: enable_livedata_stream(
                 cfg["host"], cfg.get("token", ""), cfg["cert_fingerprint"]
             ),
+            label=f"source {source_id}",
             interval_seconds=settings.live_sample_seconds,
             stale_seconds=settings.live_stale_seconds,
         )
