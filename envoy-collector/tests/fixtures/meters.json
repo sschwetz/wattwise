@@ -1,0 +1,4 @@
+[
+  {"eid": 704643328, "state": "enabled", "measurementType": "production", "phaseMode": "three", "phaseCount": 3},
+  {"eid": 704643584, "state": "enabled", "measurementType": "net-consumption", "phaseMode": "three", "phaseCount": 3}
+]

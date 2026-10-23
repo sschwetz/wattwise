@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import datetime
+import re
+from dataclasses import dataclass
+
+_STORAGE_PHASE_KEY = re.compile(r"^agg_p_ph_.+_mw$")
+_PHASE_LETTERS = ("a", "b", "c")
 
 
 def map_production_readings(
@@ -96,3 +101,164 @@ def map_battery_readings(ensemble_json: dict, ts: datetime.datetime) -> list[dic
     else:
         readings.append({"ts": ts, "metric": "battery_discharge_w", "value": total_w})
     return readings
+
+
+@dataclass(frozen=True)
+class LiveSample:
+    """One reading from /ivp/livedata/status, already converted to watts.
+
+    grid_w is positive when importing. battery_w is positive when
+    discharging, the same convention as battery_net_w().
+    """
+
+    last_update: int
+    production_w: float
+    grid_w: float
+    battery_w: float
+    soc: float
+    relay_state: int
+    has_battery: bool
+
+
+def _required_mw(meters: dict, section: str) -> float:
+    """meters[section]["agg_p_mw"], raising ValueError when the feed sends null for it."""
+    value = meters[section]["agg_p_mw"]
+    if value is None:
+        raise ValueError("unexpected null in live feed")
+    return value
+
+
+def parse_livedata(status_json: dict) -> LiveSample:
+    """Convert a /ivp/livedata/status response into a LiveSample.
+
+    The feed reports milliwatts. Battery power is the sum of the per-phase
+    storage fields (agg_p_ph_*_mw), not storage.agg_p_mw: the aggregate
+    disagreed with the phase figures on the owner's gateway. A site counts
+    as having a battery when enc_agg_energy, acb_agg_energy or soc is above
+    zero, or any per-phase storage power is non-zero, so a drained battery
+    (stored energy and soc both 0) still counts while it draws power.
+    Otherwise battery power is 0. A null per-phase storage value counts as
+    0; a null pv or grid power raises ValueError, which the sampler treats
+    as a malformed response.
+
+    The per-phase battery figure is not yet checked against the gateway's
+    own battery readout (see "Open check" in
+    docs/superpowers/specs/2026-10-24-envoy-live-data-design.md). Until it
+    is, the LIVE_BATTERY_SOURCE setting defaults to "ensemble" and these
+    battery fields are only used when it is set to "livedata".
+    """
+    meters = status_json["meters"]
+    storage = meters.get("storage", {})
+    phase_mw = [v or 0 for k, v in storage.items() if _STORAGE_PHASE_KEY.match(k)]
+    battery_mw = sum(phase_mw)
+    has_battery = (
+        any((meters.get(key) or 0) > 0 for key in ("enc_agg_energy", "acb_agg_energy", "soc"))
+        or any(phase_mw)
+    )
+    return LiveSample(
+        last_update=meters["last_update"],
+        production_w=_required_mw(meters, "pv") / 1000,
+        grid_w=_required_mw(meters, "grid") / 1000,
+        battery_w=battery_mw / 1000 if has_battery else 0.0,
+        soc=meters["soc"],
+        relay_state=meters["main_relay_state"],
+        has_battery=has_battery,
+    )
+
+
+def _battery_rows(battery_w: float, soc: float, ts: datetime.datetime) -> list[dict]:
+    rows = [{"ts": ts, "metric": "battery_soc_pct", "value": soc}]
+    if battery_w <= 0:
+        rows.append({"ts": ts, "metric": "battery_charge_w", "value": -battery_w})
+    else:
+        rows.append({"ts": ts, "metric": "battery_discharge_w", "value": battery_w})
+    return rows
+
+
+def _live_battery(
+    samples: list[LiveSample], ts: datetime.datetime, battery_source: str, battery_json: dict | None
+) -> tuple[float, list[dict]]:
+    """Return (battery power in watts, battery rows) for a minute of live samples.
+
+    "ensemble" takes both from an /ivp/ensemble/power response; None there
+    means no battery data this minute (power 0, no rows). "livedata"
+    averages the samples' battery power and takes the last sample's soc.
+    """
+    if battery_source == "ensemble":
+        if battery_json is None:
+            return 0.0, []
+        return battery_net_w(battery_json) or 0.0, map_battery_readings(battery_json, ts)
+    last = samples[-1]
+    if not last.has_battery:
+        return 0.0, []
+    battery = sum(s.battery_w for s in samples) / len(samples)
+    return battery, _battery_rows(battery, last.soc, ts)
+
+
+def map_livedata_readings(
+    samples: list[LiveSample],
+    ts: datetime.datetime,
+    invert_consumption_ct: bool = False,
+    *,
+    battery_source: str = "livedata",
+    battery_json: dict | None = None,
+) -> list[dict]:
+    """Average a minute of LiveSamples into {ts, metric, value} dicts.
+
+    Power figures are averaged across the samples; grid_relay_state takes
+    the last sample's value. consumption_w is production + grid + battery
+    rather than the feed's own load figure. invert_consumption_ct flips the
+    grid sign and the production + grid term (a reversed consumption CT
+    clamp); battery power is not flipped.
+
+    battery_source picks where battery figures come from (see _live_battery):
+    "livedata" uses the samples, "ensemble" uses battery_json. A site with
+    no battery data gets no battery rows and counts battery as 0.
+    """
+    if not samples:
+        return []
+    n = len(samples)
+    production = sum(s.production_w for s in samples) / n
+    sign = -1 if invert_consumption_ct else 1
+    grid = sign * sum(s.grid_w for s in samples) / n
+    battery, battery_rows = _live_battery(samples, ts, battery_source, battery_json)
+    rows = [
+        {"ts": ts, "metric": "production_w", "value": production},
+        {"ts": ts, "metric": "consumption_w", "value": sign * production + grid + battery},
+        {"ts": ts, "metric": "grid_import_w" if grid >= 0 else "grid_export_w", "value": abs(grid)},
+        {"ts": ts, "metric": "grid_relay_state", "value": samples[-1].relay_state},
+    ]
+    return rows + battery_rows
+
+
+def map_meter_readings(
+    meters: list[dict],
+    readings: list[dict],
+    ts: datetime.datetime,
+) -> list[dict]:
+    """Map /ivp/meters and /ivp/meters/readings to counter and voltage rows.
+
+    Entries in readings are matched to meters by eid. An entry whose eid is
+    not listed, or whose meter state is not "enabled", is skipped. The
+    production meter gives production_wh_lifetime. The net-consumption (grid)
+    meter gives grid_import_wh_lifetime (actEnergyDlvd), grid_export_wh_lifetime
+    (actEnergyRcvd) and per-phase voltages from channels, limited to the
+    meter's phaseCount. Counters are stored raw. The top-level voltage field
+    is the sum of the phases, so it is ignored.
+    """
+    by_eid = {m["eid"]: m for m in meters if m.get("state") == "enabled"}
+    rows: list[dict] = []
+    for reading in readings:
+        meter = by_eid.get(reading["eid"])
+        if meter is None:
+            continue
+        kind = meter.get("measurementType")
+        if kind == "production":
+            rows.append({"ts": ts, "metric": "production_wh_lifetime", "value": reading["actEnergyDlvd"]})
+        elif kind == "net-consumption":
+            rows.append({"ts": ts, "metric": "grid_import_wh_lifetime", "value": reading["actEnergyDlvd"]})
+            rows.append({"ts": ts, "metric": "grid_export_wh_lifetime", "value": reading["actEnergyRcvd"]})
+            phases = min(meter.get("phaseCount", 3), len(_PHASE_LETTERS))
+            for letter, channel in zip(_PHASE_LETTERS[:phases], reading.get("channels", [])):
+                rows.append({"ts": ts, "metric": f"grid_voltage_ph_{letter}_v", "value": channel["voltage"]})
+    return rows

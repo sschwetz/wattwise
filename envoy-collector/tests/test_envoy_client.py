@@ -16,16 +16,28 @@ from envoy_collector.envoy_client import (
     EnvoyCertificateMismatch,
     fetch_battery_power,
     fetch_certificate_fingerprint,
+    enable_livedata_stream,
     fetch_certificate_info,
+    fetch_livedata,
+    fetch_meter_readings,
+    fetch_meters,
     fetch_production,
     fetch_serial_number,
 )
 
 VALID_TOKEN = "my-token"
 
+_GET_PAYLOADS: dict[str, dict | list] = {
+    "/ivp/livedata/status": {"connection": {"sc_stream": "enabled"}, "meters": {}},
+    "/ivp/meters": [{"eid": 1, "state": "enabled"}],
+    "/ivp/meters/readings": [{"eid": 1, "activePower": 12.5}],
+}
+_posted_bodies: list[bytes] = []
+_STATUS_OVERRIDES: dict[str, int] = {}
+
 
 class _Handler(http.server.BaseHTTPRequestHandler):
-    def _write_json(self, status: int, payload: dict) -> None:
+    def _write_json(self, status: int, payload: dict | list) -> None:
         body = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -49,6 +61,17 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             self._write_json(200, {"devices:": []})
+        elif self.path in _GET_PAYLOADS:
+            if self.path in _STATUS_OVERRIDES:
+                self.send_response(_STATUS_OVERRIDES[self.path])
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if not self._authorized():
+                self.send_response(401)
+                self.end_headers()
+                return
+            self._write_json(200, _GET_PAYLOADS[self.path])
         elif self.path == "/info.xml":
             body = (
                 b"<?xml version='1.0'?><envoy_info><device><sn>123456789012</sn>"
@@ -62,6 +85,21 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path != "/ivp/livedata/stream":
+            self.send_response(404)
+            self.end_headers()
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length)
+        if not self._authorized():
+            self.send_response(401)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        _posted_bodies.append(body)
+        self._write_json(200, {"sc_stream": "enabled"})
 
     def log_message(self, format, *args):  # noqa: A002 - matches base signature
         pass
@@ -167,3 +205,67 @@ def test_fetch_serial_number_refuses_a_connection_with_the_wrong_pinned_fingerpr
     host, _real_fingerprint = envoy_server
     with pytest.raises(EnvoyCertificateMismatch):
         fetch_serial_number(host, "0" * 64)
+
+
+@pytest.mark.parametrize(
+    "fetch, path",
+    [
+        (fetch_livedata, "/ivp/livedata/status"),
+        (fetch_meters, "/ivp/meters"),
+        (fetch_meter_readings, "/ivp/meters/readings"),
+    ],
+)
+class TestLiveGets:
+    def test_sends_bearer_token_and_parses_json(self, envoy_server, fetch, path):
+        host, fingerprint = envoy_server
+        assert fetch(host, VALID_TOKEN, fingerprint) == _GET_PAYLOADS[path]
+
+    def test_raises_auth_error_on_401(self, envoy_server, fetch, path):
+        host, fingerprint = envoy_server
+        with pytest.raises(EnvoyAuthError):
+            fetch(host, "wrong-token", fingerprint)
+
+    def test_refuses_wrong_fingerprint(self, envoy_server, fetch, path):
+        host, _ = envoy_server
+        with pytest.raises(EnvoyCertificateMismatch):
+            fetch(host, VALID_TOKEN, "0" * 64)
+
+
+def test_enable_livedata_stream_posts_enable_body(envoy_server):
+    host, fingerprint = envoy_server
+    _posted_bodies.clear()
+    assert enable_livedata_stream(host, VALID_TOKEN, fingerprint) is None
+    assert [json.loads(b) for b in _posted_bodies] == [{"enable": 1}]
+
+
+def test_enable_livedata_stream_raises_auth_error_on_401(envoy_server):
+    host, fingerprint = envoy_server
+    with pytest.raises(EnvoyAuthError):
+        enable_livedata_stream(host, "wrong-token", fingerprint)
+
+
+def test_enable_livedata_stream_refuses_wrong_fingerprint(envoy_server):
+    host, _ = envoy_server
+    with pytest.raises(EnvoyCertificateMismatch):
+        enable_livedata_stream(host, VALID_TOKEN, "0" * 64)
+
+
+def test_fetch_meters_rejects_an_object_response(envoy_server, monkeypatch):
+    host, fingerprint = envoy_server
+    monkeypatch.setitem(_GET_PAYLOADS, "/ivp/meters", {"not": "a list"})
+    with pytest.raises(ValueError, match="unexpected JSON"):
+        fetch_meters(host, VALID_TOKEN, fingerprint)
+
+
+def test_fetch_livedata_rejects_a_list_response(envoy_server, monkeypatch):
+    host, fingerprint = envoy_server
+    monkeypatch.setitem(_GET_PAYLOADS, "/ivp/livedata/status", [1, 2])
+    with pytest.raises(ValueError, match="unexpected JSON"):
+        fetch_livedata(host, VALID_TOKEN, fingerprint)
+
+
+def test_fetch_meter_readings_raises_value_error_on_5xx(envoy_server, monkeypatch):
+    host, fingerprint = envoy_server
+    monkeypatch.setitem(_STATUS_OVERRIDES, "/ivp/meters/readings", 503)
+    with pytest.raises(ValueError, match="503"):
+        fetch_meter_readings(host, VALID_TOKEN, fingerprint)

@@ -19,11 +19,23 @@ from envoy_collector.envoy_client import (
     EnvoyAuthError,
     EnvoyCertificateMismatch,
     fetch_battery_power,
+    enable_livedata_stream,
     fetch_certificate_info,
+    fetch_livedata,
+    fetch_meter_readings,
+    fetch_meters,
     fetch_production,
     fetch_serial_number,
 )
-from envoy_collector.mapping import battery_net_w, map_battery_readings, map_production_readings
+from envoy_collector.failure_log import FailureLog
+from envoy_collector.live_sampler import LiveSampler
+from envoy_collector.mapping import (
+    battery_net_w,
+    map_battery_readings,
+    map_livedata_readings,
+    map_meter_readings,
+    map_production_readings,
+)
 
 logger = logging.getLogger("envoy_collector")
 
@@ -46,6 +58,15 @@ CERT_REPIN_WINDOW = datetime.timedelta(days=100)
 # bound or produce a batch Core API can't take; the oldest are dropped first.
 MAX_PENDING_READINGS = 5000
 _pending_readings: dict[int, list[dict]] = {}
+# One live-feed sampler per pinned source, and each source's /ivp/meters
+# listing (it only changes when hardware is added). Both are held in memory
+# only. The meters cache is cleared on an Envoy 401 and on every source
+# refresh.
+_samplers: dict[int, LiveSampler] = {}
+_meters_cache: dict[int, list[dict]] = {}
+# Per-source failure streaks for meter reads, so a meter outage logs one
+# traceback and then a warning at most every FAILURE_LOG_INTERVAL_SECONDS.
+_meter_failure_logs: dict[int, FailureLog] = {}
 
 
 def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
@@ -305,7 +326,94 @@ def _recover_from_auth_failure(
     return renewed, None
 
 
-def poll_once(settings: Settings, source_id: int, config: dict) -> dict:
+def _meter_readings_or_empty(source_id: int, config: dict, ts: datetime.datetime) -> list[dict]:
+    """Lifetime energy counters and grid voltages from the Envoy's meters.
+    Any failure is logged and gives [] so it never stops the power readings
+    from being pushed. The meters listing is read once per source and cached;
+    an auth failure clears the cache. Repeated failures are rate-limited
+    per source (see FailureLog)."""
+    try:
+        host, token, fingerprint = config["host"], config.get("token", ""), config["cert_fingerprint"]
+        if source_id not in _meters_cache:
+            _meters_cache[source_id] = fetch_meters(host, token, fingerprint)
+        readings = fetch_meter_readings(host, token, fingerprint)
+        rows = map_meter_readings(_meters_cache[source_id], readings, ts)
+    except EnvoyAuthError:
+        _meters_cache.pop(source_id, None)
+        logger.warning("Envoy rejected our token reading meters for source %s", source_id)
+        return []
+    except Exception:
+        _meter_failure_log(source_id).failure()
+        return []
+    _meter_failure_log(source_id).success()
+    return rows
+
+
+def _meter_failure_log(source_id: int) -> FailureLog:
+    """The per-source failure streak for meter reads, created on first use."""
+    log = _meter_failure_logs.get(source_id)
+    if log is None:
+        log = FailureLog(f"Failed to read meter data for source {source_id}; continuing without it", time.monotonic)
+        _meter_failure_logs[source_id] = log
+    return log
+
+
+def _live_battery_json(settings: Settings, source_id: int, config: dict) -> dict | None:
+    """The /ivp/ensemble/power response for the live path when
+    LIVE_BATTERY_SOURCE is "ensemble", else None. Any failure, a rejected
+    token included, gives None: this minute then has no battery rows. The
+    token is not refreshed from here; the next fallback poll does that."""
+    if settings.live_battery_source != "ensemble":
+        return None
+    try:
+        return _fetch_battery_json_or_none(config)
+    except EnvoyAuthError:
+        logger.warning("Envoy rejected our token reading battery data for source %s; no battery rows this minute", source_id)
+        return None
+
+
+def _live_readings(
+    settings: Settings, source_id: int, config: dict, ts: datetime.datetime, sampler: LiveSampler | None
+) -> list[dict]:
+    """The minute's averaged live-feed readings, or [] when there is no
+    sampler, it is stale, or it collected nothing (the first minute after a
+    restart). The sampler is drained either way so old samples never pile up."""
+    if sampler is None:
+        return []
+    fresh = sampler.is_fresh()
+    samples = sampler.drain()
+    if not fresh or not samples:
+        return []
+    return map_livedata_readings(
+        samples,
+        ts,
+        bool(config.get("invert_consumption_ct")),
+        battery_source=settings.live_battery_source,
+        battery_json=_live_battery_json(settings, source_id, config),
+    )
+
+
+def _collect_readings(
+    settings: Settings, source_id: int, config: dict, ts: datetime.datetime, sampler: LiveSampler | None
+) -> tuple[dict, list[dict] | None]:
+    """Returns (config to use next cycle, power readings or None if this
+    cycle should be skipped). Uses the live feed when it has samples and
+    otherwise polls the Envoy's production and battery endpoints."""
+    live = _live_readings(settings, source_id, config, ts, sampler)
+    if live:
+        return config, live
+    try:
+        return config, _fetch_and_map(config, ts)
+    except EnvoyAuthError:
+        return _recover_from_auth_failure(settings, source_id, config, ts)
+    except EnvoyCertificateMismatch:
+        return repin_certificate(settings, source_id, config), None
+    except Exception:
+        logger.exception("Failed to poll Envoy this cycle for source %s", source_id)
+        return config, None
+
+
+def poll_once(settings: Settings, source_id: int, config: dict, sampler: LiveSampler | None = None) -> dict:
     """Runs one poll cycle for one source. Returns the config to use next
     cycle for this source (unchanged, unless an Envoy 401 triggered a
     successful refetch)."""
@@ -322,17 +430,10 @@ def poll_once(settings: Settings, source_id: int, config: dict) -> dict:
         )
         return config
     ts = datetime.datetime.now(datetime.timezone.utc).replace(second=0, microsecond=0)
-    try:
-        readings = _fetch_and_map(config, ts)
-    except EnvoyAuthError:
-        config, readings = _recover_from_auth_failure(settings, source_id, config, ts)
-        if readings is None:
-            return config
-    except EnvoyCertificateMismatch:
-        return repin_certificate(settings, source_id, config)
-    except Exception:
-        logger.exception("Failed to poll Envoy this cycle for source %s", source_id)
+    config, readings = _collect_readings(settings, source_id, config, ts, sampler)
+    if readings is None:
         return config
+    readings = readings + _meter_readings_or_empty(source_id, config, ts)
 
     batch = _pending_readings.pop(source_id, []) + readings
     try:
@@ -347,6 +448,34 @@ def poll_once(settings: Settings, source_id: int, config: dict) -> dict:
     return config
 
 
+def _sync_samplers(settings: Settings, sources: dict[int, dict]) -> None:
+    """Starts a live-feed sampler for each source with a pinned certificate,
+    hands existing samplers the latest config, and stops samplers for
+    sources that are gone or whose pin was cleared."""
+    for source_id in list(_samplers):
+        if "cert_fingerprint" not in sources.get(source_id, {}):
+            _samplers.pop(source_id).stop()
+    for source_id, config in sources.items():
+        if "cert_fingerprint" not in config:
+            continue
+        existing = _samplers.get(source_id)
+        if existing is not None:
+            existing.config = config
+            continue
+        sampler = LiveSampler(
+            config,
+            fetch=lambda cfg: fetch_livedata(cfg["host"], cfg.get("token", ""), cfg["cert_fingerprint"]),
+            enable_stream=lambda cfg: enable_livedata_stream(
+                cfg["host"], cfg.get("token", ""), cfg["cert_fingerprint"]
+            ),
+            label=f"source {source_id}",
+            interval_seconds=settings.live_sample_seconds,
+            stale_seconds=settings.live_stale_seconds,
+        )
+        _samplers[source_id] = sampler
+        sampler.start()
+
+
 def _refresh_sources(settings: Settings, known: dict[int, dict]) -> dict[int, dict]:
     """Fetches the current fleet list and returns an updated {source_id:
     config} dict, always using each source's freshly-discovered config --
@@ -359,6 +488,7 @@ def _refresh_sources(settings: Settings, known: dict[int, dict]) -> dict[int, di
     except Exception:
         logger.exception("Failed to refresh source list from Core API; keeping last-known sources")
         return known
+    _meters_cache.clear()
     refreshed: dict[int, dict] = {}
     for entry in discovered:
         source_id = entry["source_id"]
@@ -384,6 +514,7 @@ def main() -> None:
             logger.warning("No energy sources discovered yet; retrying in %s seconds", settings.poll_interval_seconds)
             time.sleep(settings.poll_interval_seconds)
     last_refresh = time.monotonic()
+    _sync_samplers(settings, sources)
 
     while True:
         # Sleep first so startup isn't itself a poll trigger.
@@ -393,10 +524,14 @@ def main() -> None:
         if now - last_refresh >= settings.discovery_refresh_seconds:
             sources = _refresh_sources(settings, sources)
             last_refresh = now
+            _sync_samplers(settings, sources)
 
         for source_id, config in list(sources.items()):
             try:
-                sources[source_id] = poll_once(settings, source_id, config)
+                sampler = _samplers.get(source_id)
+                sources[source_id] = poll_once(settings, source_id, config, sampler)
+                if sampler is not None:
+                    sampler.config = sources[source_id]
             except Exception:
                 logger.exception("Unexpected error in poll cycle for source %s; continuing", source_id)
 

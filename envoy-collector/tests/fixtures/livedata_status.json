@@ -1,0 +1,17 @@
+{
+  "meters": {
+    "last_update": 1792768566,
+    "soc": 10,
+    "main_relay_state": 1,
+    "enc_agg_energy": 2150,
+    "acb_agg_energy": 0,
+    "pv": {"agg_p_mw": 5394},
+    "grid": {"agg_p_mw": 1121227},
+    "storage": {
+      "agg_p_mw": 37000,
+      "agg_p_ph_a_mw": -13000,
+      "agg_p_ph_b_mw": -15000,
+      "agg_p_ph_c_mw": -16000
+    }
+  }
+}

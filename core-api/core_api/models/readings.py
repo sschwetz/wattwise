@@ -17,6 +17,13 @@ class EnergyMetric(str, enum.Enum):
     BATTERY_CHARGE_W = "battery_charge_w"
     BATTERY_DISCHARGE_W = "battery_discharge_w"
     BATTERY_SOC_PCT = "battery_soc_pct"
+    PRODUCTION_WH_LIFETIME = "production_wh_lifetime"
+    GRID_IMPORT_WH_LIFETIME = "grid_import_wh_lifetime"
+    GRID_EXPORT_WH_LIFETIME = "grid_export_wh_lifetime"
+    GRID_VOLTAGE_PH_A_V = "grid_voltage_ph_a_v"
+    GRID_VOLTAGE_PH_B_V = "grid_voltage_ph_b_v"
+    GRID_VOLTAGE_PH_C_V = "grid_voltage_ph_c_v"
+    GRID_RELAY_STATE = "grid_relay_state"
 
 
 class WeatherMetric(str, enum.Enum):
@@ -45,6 +52,15 @@ ENERGY_METRIC_AGGREGATION: dict[EnergyMetric, AggregationMethod] = {
     EnergyMetric.BATTERY_CHARGE_W: AggregationMethod.AVERAGE,
     EnergyMetric.BATTERY_DISCHARGE_W: AggregationMethod.AVERAGE,
     EnergyMetric.BATTERY_SOC_PCT: AggregationMethod.LAST_VALUE,
+    # Lifetime counters and the relay state are cumulative or discrete, so the
+    # last value in the bucket is the right one; voltages are continuous.
+    EnergyMetric.PRODUCTION_WH_LIFETIME: AggregationMethod.LAST_VALUE,
+    EnergyMetric.GRID_IMPORT_WH_LIFETIME: AggregationMethod.LAST_VALUE,
+    EnergyMetric.GRID_EXPORT_WH_LIFETIME: AggregationMethod.LAST_VALUE,
+    EnergyMetric.GRID_VOLTAGE_PH_A_V: AggregationMethod.AVERAGE,
+    EnergyMetric.GRID_VOLTAGE_PH_B_V: AggregationMethod.AVERAGE,
+    EnergyMetric.GRID_VOLTAGE_PH_C_V: AggregationMethod.AVERAGE,
+    EnergyMetric.GRID_RELAY_STATE: AggregationMethod.LAST_VALUE,
 }
 
 # Weather metrics are continuous sensor values, so they average — except
