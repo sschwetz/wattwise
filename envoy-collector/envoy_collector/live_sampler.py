@@ -43,7 +43,8 @@ class LiveSampler:
         # last new sample and the last keepalive.
         self._window_start = clock()
         self._last_call_ok = False
-        self._failing = False
+        self._fetch_failing = False
+        self._keepalive_failing = False
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -71,9 +72,9 @@ class LiveSampler:
             sample = parse_livedata(self._fetch(self.config))
         except Exception:
             self._last_call_ok = False
-            self._log_failure("live-feed call failed")
+            self._fetch_failing = self._log_failure("live-feed call failed", self._fetch_failing)
             return
-        self._failing = False
+        self._fetch_failing = False
         self._last_call_ok = True
         if sample.last_update != self._last_update:
             self._keep(sample)
@@ -96,14 +97,20 @@ class LiveSampler:
         try:
             self._enable_stream(self.config)
         except Exception:
-            self._log_failure("live-feed keepalive failed")
+            self._keepalive_failing = self._log_failure(
+                "live-feed keepalive failed", self._keepalive_failing
+            )
+        else:
+            self._keepalive_failing = False
 
-    def _log_failure(self, message: str) -> None:
-        if self._failing:
+    @staticmethod
+    def _log_failure(message: str, already_failing: bool) -> bool:
+        """Log with a traceback on the first failure of a streak, else a warning. Returns True."""
+        if already_failing:
             logger.warning("%s (still failing)", message)
         else:
-            self._failing = True
             logger.exception(message)
+        return True
 
     def drain(self) -> list[LiveSample]:
         """Return the samples collected since the last call and clear them."""

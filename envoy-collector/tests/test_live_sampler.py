@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import pathlib
 import threading
 import time
+
+import pytest
 
 from envoy_collector.live_sampler import LiveSampler
 from envoy_collector.mapping import LiveSample
@@ -199,3 +202,55 @@ def test_start_and_stop_run_the_thread():
     assert len(calls) >= 2
     sampler.stop()
     assert threading.active_count() == before
+
+
+def _records(caplog: pytest.LogCaptureFixture) -> list[tuple[int, bool]]:
+    return [(r.levelno, r.exc_info is not None) for r in caplog.records]
+
+
+ERROR_TB = (logging.ERROR, True)
+WARN = (logging.WARNING, False)
+
+
+def _failing_keepalive(config: dict) -> None:
+    raise RuntimeError("no")
+
+
+def test_consecutive_fetch_failures_log_error_then_warning(caplog):
+    caplog.set_level(logging.WARNING, logger="envoy_collector")
+    h = Harness()
+    h.step(RuntimeError("a"))
+    h.step(RuntimeError("b"))
+    assert _records(caplog) == [ERROR_TB, WARN]
+
+
+def test_failure_after_success_logs_error_again(caplog):
+    caplog.set_level(logging.WARNING, logger="envoy_collector")
+    h = Harness()
+    h.step(RuntimeError("a"))
+    h.step(status(1))
+    h.step(RuntimeError("b"))
+    assert _records(caplog) == [ERROR_TB, ERROR_TB]
+
+
+def test_consecutive_keepalive_failures_log_error_then_warning(caplog):
+    caplog.set_level(logging.WARNING, logger="envoy_collector")
+    h = Harness(stale_seconds=10)
+    h.sampler._enable_stream = _failing_keepalive
+    h.step(status(1))
+    h.clock.now += 11
+    h.step(status(1))
+    h.clock.now += 11
+    h.step(status(1))
+    assert _records(caplog) == [ERROR_TB, WARN]
+
+
+def test_fetch_failure_after_keepalive_failure_logs_error(caplog):
+    caplog.set_level(logging.WARNING, logger="envoy_collector")
+    h = Harness(stale_seconds=10)
+    h.sampler._enable_stream = _failing_keepalive
+    h.step(status(1))
+    h.clock.now += 11
+    h.step(status(1))
+    h.step(RuntimeError("fetch"))
+    assert _records(caplog) == [ERROR_TB, ERROR_TB]
