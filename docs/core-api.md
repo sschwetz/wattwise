@@ -139,7 +139,7 @@ The dashboard tiles update from a WebSocket instead of waiting for the next stor
 
 Core API waits `LIVE_AUTH_TIMEOUT_SECONDS` (5, a constant in `routers/live.py`) for that message. It closes the socket with code 1008 when the message is late, is not JSON, lacks `token`, holds an invalid token, or names a site the user cannot see. A missing site and a hidden one are indistinguishable.
 
-After authentication Core API sends the latest stored sample for each source on the site, then each new push as it arrives. Each message is one sample:
+After authentication Core API sends the latest live sample held in memory for each source on the site, but only if it arrived in the last 15 seconds, then each new push as it arrives. Nothing is read from the database. Each message is one sample:
 
 ```json
 { "kind": "energy", "ts": "2026-10-24T01:02:03+00:00", "values": { "production_w": 4210.5 } }
@@ -154,7 +154,11 @@ Limits:
 
 ### In-memory store
 
-`LiveHub` is created in `create_app()` and held at `app.state.live_hub`. It keeps one sample per source and loses them on restart; a connecting client then sees no live values until the next push. The store and the subscriber queues live in one process, so a second worker would show each browser only the samples pushed to its own worker. This is the same single-process assumption as the lockouts and scheduler (see [Operations](operations.md#known-issues)). The push handlers are `async` so they run on the event loop, because the queues are not thread-safe.
+`LiveHub` is created in `create_app()` and held at `app.state.live_hub`. It keeps one sample per source with the server time it arrived (a monotonic clock) and loses them on restart; a connecting client then sees no live values until the next push.
+
+A held sample older than `LIVE_MAX_AGE_SECONDS` (15, a constant in `live.py`) is dropped by `latest_for_site`, so a stopped collector's last figure is never shown as current and the web app falls back to the stored reading. A push whose `ts` is older than the held sample's is ignored while the held sample is under 15 seconds old. Once it is older, the push is accepted. This lets a source recover after a sample with a far-future `ts` from a wrong collector clock.
+
+The store and the subscriber queues live in one process, so a second worker would show each browser only the samples pushed to its own worker. This is the same single-process assumption as the lockouts and scheduler (see [Operations](operations.md#known-issues)). The push handlers are `async` so they run on the event loop, because the queues are not thread-safe.
 
 ## Errors
 
