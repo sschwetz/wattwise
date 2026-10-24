@@ -13,6 +13,8 @@ One machine runs the whole stack with Docker Compose. It must be able to reach t
 
 Both ports are plain HTTP. Passwords and login tokens cross the network unencrypted. Keep the stack on the home network, or put a reverse proxy that terminates TLS in front of both ports before exposing it to the internet. Set `FRONTEND_BASE_URL` and `API_BASE_URL` to the public `https://` addresses when you do.
 
+The dashboard's live tiles use a WebSocket to `core-api` (`/api/v1/sites/{site_id}/live`). A reverse proxy in front of `core-api` must pass WebSocket upgrades (the `Upgrade` and `Connection` headers), or the tiles fall back to the 60 second poll. The webapp container sets its Content-Security-Policy `connect-src` to `API_BASE_URL` and the same address with the `ws://` or `wss://` scheme, so no extra setting is needed.
+
 ## First start
 
 ```bash
@@ -178,6 +180,7 @@ The consequences for you:
 ## Known issues
 
 - Core API must run as a single worker (the default `uvicorn` command). Lockouts and the job scheduler are per process.
+- The live tile store and its WebSocket subscribers are also per process, and live samples are lost on restart.
 - Lost readings are not queued. A restart of `core-api` during a collector's push drops that cycle.
 - There is no bundled monitoring or alerting. Silence (a flat dashboard) is the signal.
 

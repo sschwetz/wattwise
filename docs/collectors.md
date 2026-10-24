@@ -78,6 +78,8 @@ If the feed freezes while the calls still succeed, the sampler POSTs `{"enable":
 
 Samples live in memory only. A restart loses at most the current minute's samples, and that minute falls back to a single reading.
 
+Each kept sample is also pushed to Core API as a live sample (`POST /sources/{id}/live/energy`), so the dashboard tiles update every few seconds. `map_live_sample_values` in `mapping.py` builds the values with the same sign and `invert_consumption_ct` rules as the stored readings. A push has a 2 second timeout. A failed push is logged and dropped, without a retry, and never stops sampling; failures are rate-limited like the other live-feed errors. Live samples are not stored, so a Core API outage loses only the tile updates.
+
 Once a minute the collector also reads `/ivp/meters/readings` and stores the metrics listed under [Metrics](data-model.md#metrics) (lifetime counters, grid voltage, relay state).
 
 Deploy Core API before the collector. Core API accepts the new metrics through an Alembic migration, and it rejects them until that migration has run. Rolling back works the other way: roll the collector back first. If Core API's migration is downgraded while the new collector is still running, every push from it fails with 422, because each batch carries metric names Core API no longer accepts.
@@ -107,6 +109,10 @@ See [How it works, section 1](how-it-works.md#1-a-meter-reading-reaches-the-dash
 Every value is rounded to one decimal place after conversion. The readings are for people to read, not for modelling.
 
 Rain is the one stateful field. The device reports rain since midnight, so the collector keeps the last total (rounded to 0.1 mm) and sends the difference. Rounding the total, not each click, keeps the sum of the differences equal to the day's total on gauges with 0.254 mm clicks. The first poll after a start sends no rain reading. If a push fails, the baseline rolls back so the rain is reported next time instead of lost. A null field is skipped alone, because Core API rejects a whole batch that contains a null.
+
+### Live push
+
+Besides the 60 second stored poll, the collector runs a live loop (`run_live_loop` in `main.py`). Every `LIVE_POLL_SECONDS` (default 10, minimum 2) it reads each source's current conditions and pushes them to `POST /sources/{id}/live/weather`. A value below 2 stops the collector at startup. The live loop skips `rain_mm`, does not touch the rain baseline or the pending queue, and stores nothing. A failed poll or push is logged and dropped; only the first failure of a streak and the recovery are logged, so an unreachable station does not log every 10 seconds.
 
 ## Amber pricing collector
 

@@ -23,6 +23,7 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `local_rates.py`, `local_reprice.py` | Validation of rate windows and creation of reprice markers. |
 | `pricing_gaps.py`, `readings_query.py`, `time_utils.py`, `timing.py` | Gap detection, raw-or-rollup reading queries, UTC and time zone helpers. |
 | `email_sender.py` | `SmtpEmailSender` for production, `FakeEmailSender` for tests. |
+| `live.py` | `LiveHub`: the in-memory latest live sample per source and the per-site subscriber queues. Never touches the database. |
 | `scheduler.py` | Builds the APScheduler instance. |
 | `jobs/` | The three background jobs and their helpers. |
 
@@ -103,8 +104,57 @@ All collector endpoints send `X-Collector-Key`. Per-source endpoints may also se
 | `POST /sources/{id}/prices/gap-markers` | Record a day the provider has no data for |
 | `POST /sources/{id}/prices/reprice-marker/clear` | Clear a reprice marker if its version still matches |
 | `GET /sources/{id}/site-data-floor` | Earliest reading on the site, so backfills know where to stop |
+| `POST /sources/{id}/live/energy`, `/live/weather` | One live sample for the dashboard tiles. Not stored. See [Live samples](#live-samples). |
 
 **Config resolution.** `resolve_source_config()` in `routers/collector_config.py` is what a collector receives. For `local` sources it ignores the stored config and builds `{timezone, rate_windows, reprice}` from the rate window tables. For `amber` it adds the site owner's API key. Everything else is the stored config as is.
+
+## Live samples
+
+The dashboard tiles update from a WebSocket instead of waiting for the next stored reading. Collectors push live samples to Core API, and Core API forwards them to connected browsers. Nothing in this path writes to the database; stored readings still arrive through the batch endpoints above.
+
+### Push endpoints
+
+`POST /sources/{id}/live/energy` and `POST /sources/{id}/live/weather` use the same collector-key check as the other per-source endpoints, plus `require_source_kind`, so an energy key cannot push weather. Both return 202 with `{}`.
+
+```json
+{ "ts": "2026-10-24T01:02:03Z", "values": { "production_w": 4210.5, "consumption_w": 1180.0 } }
+```
+
+`values` must hold 1 to 16 finite numbers. The accepted names differ by endpoint:
+
+| Endpoint | Accepted metric names |
+|---|---|
+| `/live/energy` | `production_w`, `consumption_w`, `grid_import_w`, `grid_export_w`, `battery_charge_w`, `battery_discharge_w`, `battery_soc_pct`. Any other name, including the lifetime counters, returns 422. |
+| `/live/weather` | Every weather metric except `rain_mm` |
+
+`rain_mm` is excluded because it is a running total that only makes sense as a stored interval value, so the rain-today tile stays on stored data. A sample older than the one held for the same source is dropped, and the endpoint still returns 202.
+
+### WebSocket
+
+`GET /api/v1/sites/{site_id}/live` upgrades to a WebSocket. The browser cannot send an `Authorization` header on a WebSocket, so the client authenticates with its first message:
+
+```json
+{ "token": "<access JWT>" }
+```
+
+Core API waits `LIVE_AUTH_TIMEOUT_SECONDS` (5, a constant in `routers/live.py`) for that message. It closes the socket with code 1008 when the message is late, is not JSON, lacks `token`, holds an invalid token, or names a site the user cannot see. A missing site and a hidden one are indistinguishable.
+
+After authentication Core API sends the latest stored sample for each source on the site, then each new push as it arrives. Each message is one sample:
+
+```json
+{ "kind": "energy", "ts": "2026-10-24T01:02:03+00:00", "values": { "production_w": 4210.5 } }
+```
+
+`kind` is `energy` or `weather`. The client sends nothing after the first message. Each subscriber has a queue of 50 samples. When a slow client fills it, the oldest sample is dropped.
+
+Limits:
+
+- The token is checked once, at connect. A socket whose token later expires stays connected until the client disconnects.
+- A client that receives close code 1008 should not retry with the same token. The web app does not reconnect until the dashboard remounts.
+
+### In-memory store
+
+`LiveHub` is created in `create_app()` and held at `app.state.live_hub`. It keeps one sample per source and loses them on restart; a connecting client then sees no live values until the next push. The store and the subscriber queues live in one process, so a second worker would show each browser only the samples pushed to its own worker. This is the same single-process assumption as the lockouts and scheduler (see [Operations](operations.md#known-issues)). The push handlers are `async` so they run on the event loop, because the queues are not thread-safe.
 
 ## Errors
 
@@ -114,7 +164,7 @@ Every error has the same JSON body:
 { "code": "source_has_readings", "message": "This source has existing readings and cannot be deleted. Disable it instead.", "detail": null }
 ```
 
-Validation failures use code `validation_error` and HTTP 422. The `code` is stable and meant for programs. The `message` is for people and may change. Codes the web app depends on specially: `missing_token` and `invalid_token` log the user out; other 401 codes (wrong password, wrong TOTP code) are shown as form errors.
+Validation failures use code `validation_error` and HTTP 422. The `detail` list holds each error without its `input` field, because `input` echoes the request body, which can hold credentials. The `code` is stable and meant for programs. The `message` is for people and may change. Codes the web app depends on specially: `missing_token` and `invalid_token` log the user out; other 401 codes (wrong password, wrong TOTP code) are shown as form errors.
 
 ## Background jobs
 
