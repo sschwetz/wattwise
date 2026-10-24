@@ -391,3 +391,9 @@ def test_live_values_agree_with_stored_mapping_for_one_sample(fields, invert):
     stored = metrics(map_livedata_readings([sample], TS, invert_consumption_ct=invert))
     assert live == {k: stored[k] for k in live}
     assert set(live) == set(stored) - {"grid_relay_state"}
+
+
+def test_live_values_without_battery_source_omit_battery_and_consumption():
+    sample = make_sample(production_w=3000, grid_w=500, battery_w=-200, soc=80)
+    values = map_live_sample_values(sample, include_battery=False)
+    assert values == {"production_w": 3000, "grid_import_w": 500}

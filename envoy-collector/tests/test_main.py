@@ -1442,6 +1442,23 @@ def test_sampler_on_sample_pushes_mapped_values_to_core_api(monkeypatch):
     assert values == map_live_sample_values(sample, invert_consumption_ct=True)
 
 
+def test_ensemble_battery_source_leaves_battery_and_consumption_out_of_live_push(monkeypatch):
+    FakeLiveSampler.instances = []
+    monkeypatch.setattr(main_module, "LiveSampler", FakeLiveSampler)
+    pushes = []
+    monkeypatch.setattr(main_module, "push_live_sample", lambda *args: pushes.append(args))
+    settings = dataclasses.replace(SETTINGS, live_battery_source="ensemble")
+    main_module._sync_samplers(settings, {4: PINNED})
+    sample = LiveSample(
+        last_update=1, production_w=3000, grid_w=500, battery_w=-200, soc=80, relay_state=1, has_battery=True
+    )
+
+    main_module._samplers[4].on_sample(sample, PINNED)
+
+    [(_, _, _, _, values)] = pushes
+    assert values == {"production_w": 3000, "grid_import_w": 500}
+
+
 def test_live_push_failure_is_swallowed(monkeypatch, caplog):
     livedata = json.loads((pathlib.Path(__file__).parent / "fixtures" / "livedata_status.json").read_text())
     monkeypatch.setattr(main_module, "fetch_livedata", lambda host, token, fp: livedata)

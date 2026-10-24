@@ -238,13 +238,23 @@ def map_livedata_readings(
     return rows + battery_rows
 
 
-def map_live_sample_values(sample: LiveSample, invert_consumption_ct: bool = False) -> dict[str, float]:
+def map_live_sample_values(
+    sample: LiveSample, invert_consumption_ct: bool = False, include_battery: bool = True
+) -> dict[str, float]:
     """Map one LiveSample to {metric: value} for the live push.
 
     Uses the same sign and consumption rules as map_livedata_readings, with
     battery figures taken from the sample. Omits grid_relay_state.
+
+    include_battery=False (LIVE_BATTERY_SOURCE=ensemble) drops the battery
+    keys and consumption_w, which includes the battery term, so those tiles
+    keep the stored ensemble-based readings.
     """
     sign = -1 if invert_consumption_ct else 1
+    if not include_battery:
+        values = _power_values(sample.production_w, sign * sample.grid_w, 0.0, sign)
+        values.pop("consumption_w", None)
+        return values
     battery = sample.battery_w if sample.has_battery else 0.0
     values = _power_values(sample.production_w, sign * sample.grid_w, battery, sign)
     if sample.has_battery:

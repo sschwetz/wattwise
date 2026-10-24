@@ -465,7 +465,11 @@ def _live_pusher(settings: Settings, source_id: int) -> Callable[[LiveSample, di
     """Build the on_sample callback that pushes each live sample to Core API."""
 
     def push(sample: LiveSample, config: dict) -> None:
-        values = map_live_sample_values(sample, bool(config.get("invert_consumption_ct")))
+        values = map_live_sample_values(
+            sample,
+            bool(config.get("invert_consumption_ct")),
+            include_battery=settings.live_battery_source != "ensemble",
+        )
         now = datetime.datetime.now(datetime.timezone.utc)
         push_live_sample(settings.core_api_url, source_id, settings.collector_key, now, values)
 
