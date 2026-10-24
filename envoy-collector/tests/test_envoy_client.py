@@ -9,6 +9,8 @@ import subprocess
 import threading
 
 import pytest
+
+import envoy_collector.envoy_client as envoy_client_module
 from cryptography import x509
 
 from envoy_collector.envoy_client import (
@@ -250,3 +252,13 @@ def test_fetch_meter_readings_raises_value_error_on_5xx(envoy_server, monkeypatc
     monkeypatch.setitem(_STATUS_OVERRIDES, "/ivp/meters/readings", 503)
     with pytest.raises(ValueError, match="503"):
         fetch_meter_readings(host, VALID_TOKEN, fingerprint)
+
+
+def test_a_response_with_invalid_utf8_in_an_unused_key_still_parses(monkeypatch):
+    # Seen on a real gateway: a garbled key under dry_contacts in the live feed.
+    body = b'{"meters": {"soc": 50}, "dry_contacts": {"\xe0\\u000B": {"x": 1}}}'
+    monkeypatch.setattr(envoy_client_module, "_request", lambda *a, **k: (200, body))
+
+    result = fetch_livedata("envoy.local", "token", "pinned")
+
+    assert result["meters"] == {"soc": 50}
