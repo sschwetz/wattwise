@@ -80,3 +80,21 @@ def map_barometer_readings(barometer: dict, ts: datetime.datetime) -> list[dict]
     return [
         {"ts": ts, "metric": "barometric_pressure_hpa", "value": round(barometer["bar_sea_level"] * 33.8639, 1)}
     ]
+
+
+def map_live_values(conditions: list[dict]) -> dict[str, float]:
+    """Map a current-conditions payload to {metric: value} for the live tiles.
+
+    Runs the stored-poll mappers with a throwaway RainState, so the poll's
+    rain baseline is untouched and a fresh state emits no rain_mm. The ISS or
+    barometer block is skipped when absent.
+    """
+    ts = datetime.datetime.now(datetime.timezone.utc)
+    readings: list[dict] = []
+    iss = next((c for c in conditions if c["data_structure_type"] == 1), None)
+    if iss is not None:
+        readings += map_iss_readings(iss, ts, RainState())
+    barometer = next((c for c in conditions if c["data_structure_type"] == 3), None)
+    if barometer is not None:
+        readings += map_barometer_readings(barometer, ts)
+    return {r["metric"]: r["value"] for r in readings if r["metric"] != "rain_mm"}

@@ -36,3 +36,28 @@ def test_get_settings_raises_if_required_var_missing(monkeypatch):
 
     with pytest.raises(RuntimeError):
         get_settings()
+
+
+def test_get_settings_live_poll_seconds_defaults_to_10(monkeypatch):
+    monkeypatch.setenv("CORE_API_URL", "http://localhost:8000")
+    monkeypatch.setenv("COLLECTOR_KEY", "k")
+    monkeypatch.delenv("LIVE_POLL_SECONDS", raising=False)
+
+    assert get_settings().live_poll_seconds == 10
+
+
+def test_get_settings_accepts_live_poll_seconds_of_5(monkeypatch):
+    monkeypatch.setenv("CORE_API_URL", "http://localhost:8000")
+    monkeypatch.setenv("COLLECTOR_KEY", "k")
+    monkeypatch.setenv("LIVE_POLL_SECONDS", "5")
+
+    assert get_settings().live_poll_seconds == 5
+
+
+def test_get_settings_rejects_live_poll_seconds_below_2(monkeypatch):
+    monkeypatch.setenv("CORE_API_URL", "http://localhost:8000")
+    monkeypatch.setenv("COLLECTOR_KEY", "k")
+    monkeypatch.setenv("LIVE_POLL_SECONDS", "1")
+
+    with pytest.raises(RuntimeError, match="LIVE_POLL_SECONDS must be at least 2"):
+        get_settings()

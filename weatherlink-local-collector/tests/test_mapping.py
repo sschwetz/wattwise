@@ -10,6 +10,7 @@ from weatherlink_local_collector.mapping import (
     RainState,
     map_barometer_readings,
     map_iss_readings,
+    map_live_values,
     rain_size_mm_per_tip,
 )
 
@@ -142,3 +143,42 @@ def test_every_reading_is_rounded_to_one_decimal_place():
     assert readings
     for reading in readings:
         assert reading["value"] == round(reading["value"], 1), reading["metric"]
+
+
+def test_map_live_values_returns_metric_values_without_rain():
+    conditions = load_fixture("current_conditions.json")["data"]["conditions"]
+    conditions[0]["solar_rad"] = 350
+
+    values = map_live_values(conditions)
+
+    assert set(values) == {
+        "temp_c",
+        "humidity_pct",
+        "wind_speed_kph",
+        "wind_direction_deg",
+        "solar_radiation_wm2",
+        "barometric_pressure_hpa",
+    }
+    assert values["temp_c"] == 22.7
+    assert values["solar_radiation_wm2"] == 350
+
+
+def test_map_live_values_carries_no_rain_state_between_calls():
+    conditions = load_fixture("current_conditions.json")["data"]["conditions"]
+
+    first = map_live_values(conditions)
+    conditions[0]["rainfall_daily"] = 10
+    second = map_live_values(conditions)
+
+    assert "rain_mm" not in first
+    assert "rain_mm" not in second
+
+
+def test_map_live_values_skips_missing_blocks():
+    conditions = load_fixture("current_conditions.json")["data"]["conditions"]
+    only_iss = [c for c in conditions if c["data_structure_type"] == 1]
+    only_baro = [c for c in conditions if c["data_structure_type"] == 3]
+
+    assert "barometric_pressure_hpa" not in map_live_values(only_iss)
+    assert set(map_live_values(only_baro)) == {"barometric_pressure_hpa"}
+    assert map_live_values([]) == {}
