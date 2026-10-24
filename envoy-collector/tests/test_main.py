@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import json
 import logging
+import pathlib
 import threading
 
 import pytest
@@ -13,7 +15,7 @@ from envoy_collector.core_api_client import CoreApiError
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError
 from envoy_collector.envoy_client import CertificateInfo, EnvoyAuthError, EnvoyCertificateMismatch
 from envoy_collector.failure_log import FAILURE_LOG_INTERVAL_SECONDS
-from envoy_collector.mapping import LiveSample
+from envoy_collector.mapping import LiveSample, map_live_sample_values
 from tests.test_enlighten_client import make_jwt
 
 FAR_EXPIRY = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=300)).isoformat()
@@ -1371,7 +1373,10 @@ def test_poll_once_runs_meters_after_auth_recovery(monkeypatch):
 class FakeLiveSampler:
     instances: list["FakeLiveSampler"] = []
 
-    def __init__(self, config, fetch, enable_stream, *, label, interval_seconds, stale_seconds) -> None:
+    def __init__(
+        self, config, fetch, enable_stream, *, label, interval_seconds, stale_seconds, on_sample=None
+    ) -> None:
+        self.on_sample = on_sample
         self.config = config
         self.fetch = fetch
         self.enable_stream = enable_stream
@@ -1416,6 +1421,44 @@ def test_sync_samplers_starts_one_per_pinned_source_and_stops_removed_ones(monke
     assert len(FakeLiveSampler.instances) == 2
     assert FakeLiveSampler.instances[1].stopped
     assert set(main_module._samplers) == {1}
+
+
+def test_sampler_on_sample_pushes_mapped_values_to_core_api(monkeypatch):
+    FakeLiveSampler.instances = []
+    monkeypatch.setattr(main_module, "LiveSampler", FakeLiveSampler)
+    pushes = []
+    monkeypatch.setattr(main_module, "push_live_sample", lambda *args: pushes.append(args))
+    config = dict(PINNED, invert_consumption_ct=True)
+    main_module._sync_samplers(SETTINGS, {4: config})
+    sample = LiveSample(
+        last_update=1, production_w=3000, grid_w=-3400, battery_w=-200, soc=80, relay_state=1, has_battery=True
+    )
+
+    main_module._samplers[4].on_sample(sample, config)
+
+    [(url, source_id, key, ts, values)] = pushes
+    assert (url, source_id, key) == (SETTINGS.core_api_url, 4, SETTINGS.collector_key)
+    assert ts.tzinfo is not None
+    assert values == map_live_sample_values(sample, invert_consumption_ct=True)
+
+
+def test_live_push_failure_is_swallowed(monkeypatch, caplog):
+    livedata = json.loads((pathlib.Path(__file__).parent / "fixtures" / "livedata_status.json").read_text())
+    monkeypatch.setattr(main_module, "fetch_livedata", lambda host, token, fp: livedata)
+
+    def down(*args):
+        raise CoreApiError("down")
+
+    monkeypatch.setattr(main_module, "push_live_sample", down)
+    main_module._sync_samplers(SETTINGS, {4: dict(PINNED)})
+    sampler = main_module._samplers[4]
+    sampler.stop()
+
+    with caplog.at_level(logging.ERROR, logger="envoy_collector"):
+        sampler.sample_once()
+
+    assert len(sampler.drain()) == 1
+    assert "Live push failed for source 4" in caplog.text
 
 
 def test_sync_samplers_skips_source_without_pin(monkeypatch):

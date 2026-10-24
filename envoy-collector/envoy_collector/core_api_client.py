@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime
+
 import httpx
 
 
@@ -7,6 +9,10 @@ import httpx
 # core_api/db.py). A shorter timeout here abandons pushes the server is about
 # to complete, which happens whenever the host's disk stalls.
 PUSH_TIMEOUT_SECONDS = 35
+
+# Live samples arrive every few seconds and a late one is worthless, so a
+# stalled push is abandoned quickly.
+LIVE_PUSH_TIMEOUT_SECONDS = 2
 
 
 class CoreApiError(Exception):
@@ -94,3 +100,17 @@ def push_energy_readings(base_url: str, source_id: int, collector_key: str, read
     )
     if response.status_code != 202:
         raise CoreApiError(f"Failed to push readings: {response.status_code} {response.text}")
+
+
+def push_live_sample(
+    base_url: str, source_id: int, collector_key: str, ts: datetime.datetime, values: dict[str, float]
+) -> None:
+    response = _request(
+        "POST",
+        f"{base_url}/api/v1/sources/{source_id}/live/energy",
+        headers={"X-Collector-Key": collector_key},
+        json={"ts": ts.isoformat(), "values": values},
+        timeout=LIVE_PUSH_TIMEOUT_SECONDS,
+    )
+    if response.status_code != 202:
+        raise CoreApiError(f"Failed to push live sample: {response.status_code} {response.text}")

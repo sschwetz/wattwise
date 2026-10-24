@@ -34,7 +34,7 @@ class FakeClock:
 class Harness:
     """A sampler wired to a scripted fetch, a recording keepalive and a fake clock."""
 
-    def __init__(self, stale_seconds: float = 10.0) -> None:
+    def __init__(self, stale_seconds: float = 10.0, on_sample=None) -> None:
         self.clock = FakeClock()
         self.results: list[object] = []
         self.configs: list[dict] = []
@@ -47,6 +47,7 @@ class Harness:
             interval_seconds=1.0,
             stale_seconds=stale_seconds,
             clock=self.clock,
+            on_sample=on_sample,
         )
 
     def fetch(self, config: dict) -> dict:
@@ -63,6 +64,34 @@ class Harness:
 
 def test_new_last_update_is_kept():
     h = Harness()
+    h.step(status(1))
+    h.step(status(2))
+    assert [s.last_update for s in h.sampler.drain()] == [1, 2]
+
+
+def test_on_sample_called_for_new_samples_only():
+    calls = []
+    h = Harness(on_sample=lambda sample, config: calls.append(sample.last_update))
+    h.step(status(1))
+    h.step(status(1))
+    h.step(status(2))
+    assert calls == [1, 2]
+
+
+def test_on_sample_receives_current_config():
+    calls = []
+    h = Harness(on_sample=lambda sample, config: calls.append(config))
+    renewed = {"token": "t2"}
+    h.sampler.config = renewed
+    h.step(status(1))
+    assert calls == [renewed]
+
+
+def test_on_sample_exception_does_not_stop_sampling():
+    def boom(sample, config):
+        raise RuntimeError("push down")
+
+    h = Harness(on_sample=boom)
     h.step(status(1))
     h.step(status(2))
     assert [s.last_update for s in h.sampler.drain()] == [1, 2]
