@@ -3,6 +3,7 @@ import { NavLink, useMatch } from "react-router-dom";
 import { useMe } from "../account/useAccount";
 import { useAvatarImage } from "../account/useAvatarImage";
 import { useAuth } from "../auth/AuthContext";
+import { BUILD_COMMIT, BUILD_COMMIT_URL } from "../buildInfo";
 import { useSites } from "../sites/useSites";
 import { Avatar } from "./Avatar";
 import { Logo } from "./Logo";
@@ -38,6 +39,23 @@ function HelpMenuItem({ onSelect }: { onSelect: () => void }) {
   );
 }
 
+/** A quiet line under the logo naming the commit this build came from, linked
+ * to it on GitHub. Same muted style as the dashboard's data freshness line. */
+function BuildCommit() {
+  return (
+    <p className="text-xs text-ink-muted/60">
+      Commit{" "}
+      {BUILD_COMMIT_URL ? (
+        <a href={BUILD_COMMIT_URL} target="_blank" rel="noreferrer" className="font-mono hover:text-ink-muted hover:underline">
+          {BUILD_COMMIT}
+        </a>
+      ) : (
+        <span className="font-mono">{BUILD_COMMIT}</span>
+      )}
+    </p>
+  );
+}
+
 export function Header() {
   const { data: me } = useMe();
   const avatarUrl = useAvatarImage(me?.has_avatar ?? false);
@@ -70,7 +88,10 @@ export function Header() {
   return (
     <header className="flex items-center justify-between gap-4 border-b border-line bg-surface px-4 py-2">
       <div className="flex min-w-0 items-center gap-2">
-        <Logo />
+        <div>
+          <Logo />
+          <BuildCommit />
+        </div>
         <span className="hidden truncate text-sm text-ink-muted sm:inline">
           - Built by someone who got <span className="font-bold text-solar">sick</span> of being{" "}
           <span className="font-bold text-solar">mugged</span> by a{" "}

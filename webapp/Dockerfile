@@ -5,6 +5,9 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+# The build context has no .git, so the commit comes in as a build arg.
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
 RUN npm run build
 
 FROM nginx:1.27-alpine

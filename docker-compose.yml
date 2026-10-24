@@ -43,7 +43,11 @@ services:
       - mail
 
   webapp:
-    build: ./webapp
+    build:
+      context: ./webapp
+      args:
+        # Shown in the header. Set with: GIT_COMMIT=$(git rev-parse HEAD) docker compose build
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     environment:
       # The browser's own view of core-api's address, not a Docker-network
       # hostname — the SPA calls this directly from the client, not
