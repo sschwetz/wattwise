@@ -28,6 +28,8 @@ import {
   useTodayRain,
 } from "../dashboard/useLiveReadings";
 import { averageLiveReadings } from "../dashboard/liveAverages";
+import { overlayLive } from "../dashboard/liveStream";
+import { useLiveStream } from "../dashboard/useLiveStream";
 
 const TILE_LABELS: Record<string, string> = {
   production_w: "Production",
@@ -298,8 +300,11 @@ function WeatherTiles({ readings, rainTodayMm }: { readings: Reading[]; rainToda
 
 function LiveTiles({ siteId }: { siteId: number }) {
   const energy = useLatestEnergyReadings(siteId);
-  const energyReadings = averageLiveReadings(energy.data, Date.now());
   const weather = useLatestWeatherReadings(siteId);
+  const live = useLiveStream(siteId);
+  // Averaging smooths the polled fallback only; a live value is shown as received.
+  const energyReadings = overlayLive(averageLiveReadings(energy.data, Date.now()), live.energy);
+  const weatherReadings = overlayLive(weather.data, live.weather);
   const rain = useTodayRain(siteId);
 
   return (
@@ -310,7 +315,7 @@ function LiveTiles({ siteId }: { siteId: number }) {
       <div>
         <p className="mb-3 text-sm font-medium text-ink-muted">Weather</p>
         {(weather.isError || rain.isError) && <ErrorAlert message="Failed to load live weather." />}
-        <WeatherTiles readings={weather.data} rainTodayMm={rain.data} />
+        <WeatherTiles readings={weatherReadings} rainTodayMm={rain.data} />
       </div>
     </div>
   );
