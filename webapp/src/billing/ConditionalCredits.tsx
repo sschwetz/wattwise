@@ -1,3 +1,4 @@
+import { SubmitButton } from "../components/SubmitButton";
 import { type FormEvent, useState } from "react";
 import {
   byLabel,
@@ -131,13 +132,14 @@ export function ConditionalCreditForm({ siteId, tariffId }: TariffProps) {
           className={`${inputClass} col-span-full`}
           required
         />
-        <button
-          type="submit"
-          disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
-          className={`${primaryButtonClass} col-span-full justify-self-start`}
+        <SubmitButton
+          mutation={createWindow}
+          disabled={months.length === 0 || daysOfWeek.length === 0}
+          buttonClass={primaryButtonClass}
+          layoutClass="col-span-full justify-self-start"
         >
           Add conditional credit
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

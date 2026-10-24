@@ -26,5 +26,5 @@ export function useBatteryChartData(siteId: number, range: DateRange) {
       ),
     [soc.data, charge.data, discharge.data, production.data, consumption.data, gridExport.data, range],
   );
-  return { data, failed: queries.some((q) => q.isError) };
+  return { data, failed: queries.some((q) => q.isError), loading: queries.some((q) => q.isLoading) };
 }

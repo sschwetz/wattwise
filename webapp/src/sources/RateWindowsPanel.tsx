@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Spinner } from "../components/Spinner";
 import { EndAction } from "../billing/DateFields";
 import { useSiteTimeZone } from "../billing/dateHooks";
 import { displayEndDate, formatDay } from "../billing/dates";
@@ -138,7 +139,8 @@ function RateEditor({ window, actions, onClose }: { window: RateWindow; actions:
         New rate (c/kWh)
         <input aria-label="New rate (c/kWh)" type="number" step="0.0001" min="0" value={value} onChange={(e) => setValue(e.target.value)} className={inputClass} />
       </label>
-      <button onClick={() => actions.onEditRate(window, rate, onClose)} disabled={!canSave} className={linkButtonClass}>
+      <button onClick={() => actions.onEditRate(window, rate, onClose)} disabled={!canSave} className={`${linkButtonClass} inline-flex items-center gap-1.5`}>
+        {actions.isPending && <Spinner className="h-3 w-3" />}
         Save
       </button>
       <button onClick={onClose} className={linkButtonClass}>

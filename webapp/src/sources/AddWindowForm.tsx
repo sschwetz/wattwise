@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { Spinner } from "../components/Spinner";
 import { CHANNEL_SECTIONS, inputClass } from "./rateWindowUi";
 import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
 import { todayIn } from "../billing/dateHooks";
@@ -143,8 +144,9 @@ export function AddWindowForm({ onAdd, isPending, windows, timeZone }: AddWindow
       <button
         type="submit"
         disabled={!canSubmit}
-        className="rounded-md bg-solar px-3 py-1 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50"
+        className="rounded-md bg-solar px-3 py-1 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50 inline-flex items-center gap-2"
       >
+        {isPending && <Spinner className="h-3.5 w-3.5" />}
         Add window
       </button>
     </form>

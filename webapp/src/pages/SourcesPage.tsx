@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useCallback, useMemo, useState } from "react";
+import { SaveStatus, type SaveState, SubmitButton } from "../components/SubmitButton";
 import { useParams } from "react-router-dom";
 import { BackLink } from "../layout/BackLink";
 import { RateWindowsPanel } from "../sources/RateWindowsPanel";
@@ -100,13 +101,13 @@ function CreateSourceForm({ siteId }: { siteId: number }) {
           autoComplete="off"
           className="rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
         />
-        <button
-          type="submit"
-          disabled={createSource.isPending || (isLocal && !name.trim())}
-          className="rounded-md bg-solar px-3 py-2 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50"
+        <SubmitButton
+          mutation={createSource}
+          disabled={isLocal && !name.trim()}
+          buttonClass="rounded-md bg-solar px-3 py-2 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50"
         >
           Create source
-        </button>
+        </SubmitButton>
       </form>
       {createSource.isSuccess && (
         <p className="rounded-md border border-flow/30 bg-flow-soft p-4 text-sm text-ink">
@@ -117,14 +118,33 @@ function CreateSourceForm({ siteId }: { siteId: number }) {
   );
 }
 
+const SAVE_CONFIG_BUTTON_CLASS =
+  "rounded-md bg-solar px-2 py-1 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
+
+/** `updateSource` is shared by every row and field, so scope its progress to
+ * the one source and field (config or name) the last request was about. */
+function saveStateFor(
+  mutation: ReturnType<typeof useUpdateSource>,
+  sourceId: number,
+  field: "config" | "name",
+): SaveState {
+  const variables = mutation.variables;
+  const mine = variables?.sourceId === sourceId && variables[field] !== undefined;
+  return {
+    isPending: mine && mutation.isPending,
+    isSuccess: mine && mutation.isSuccess,
+    submittedAt: mutation.submittedAt,
+  };
+}
+
 function ConfigFormShell({
   onSubmit,
-  isPending,
+  save,
   error,
   children,
 }: {
   onSubmit: (event: FormEvent) => void;
-  isPending: boolean;
+  save: SaveState;
   error?: string | null;
   children: ReactNode;
 }) {
@@ -136,13 +156,9 @@ function ConfigFormShell({
         </p>
       )}
       {children}
-      <button
-        type="submit"
-        disabled={isPending}
-        className="self-start rounded-md bg-solar px-2 py-1 font-medium text-[#1a1203] hover:bg-solar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50"
-      >
+      <SubmitButton mutation={save} buttonClass={SAVE_CONFIG_BUTTON_CLASS} layoutClass="self-start">
         Save config
-      </button>
+      </SubmitButton>
     </form>
   );
 }
@@ -207,11 +223,11 @@ function CertificateDetails({ expiresAt, serial }: { expiresAt: string; serial?:
 function EnvoyConfigForm({
   config,
   onSave,
-  isPending,
+  save,
 }: {
   config: Record<string, string | boolean>;
   onSave: (config: Record<string, string | boolean>) => void;
-  isPending: boolean;
+  save: SaveState;
 }) {
   const [host, setHost] = useState((config.host as string) ?? "");
   const [token, setToken] = useState((config.token as string) ?? "");
@@ -229,7 +245,7 @@ function EnvoyConfigForm({
   }
 
   return (
-    <ConfigFormShell onSubmit={handleSubmit} isPending={isPending}>
+    <ConfigFormShell onSubmit={handleSubmit} save={save}>
       <ConfigField field={{ label: "Host", value: host, onChange: setHost }} />
       <ConfigField field={{ label: "Token", value: token, onChange: setToken, type: "password" }} />
       <ConfigField field={{ label: "Enlighten email", value: username, onChange: setUsername }} />
@@ -263,11 +279,11 @@ function EnvoyConfigForm({
 function AmberConfigForm({
   config,
   onSave,
-  isPending,
+  save,
 }: {
   config: Record<string, string | boolean>;
   onSave: (config: Record<string, string | boolean>) => void;
-  isPending: boolean;
+  save: SaveState;
 }) {
   const [amberSiteId, setAmberSiteId] = useState((config.amber_site_id as string) ?? "");
 
@@ -277,7 +293,7 @@ function AmberConfigForm({
   }
 
   return (
-    <ConfigFormShell onSubmit={handleSubmit} isPending={isPending}>
+    <ConfigFormShell onSubmit={handleSubmit} save={save}>
       <ConfigField field={{ label: "Amber site ID", value: amberSiteId, onChange: setAmberSiteId }} />
     </ConfigFormShell>
   );
@@ -286,11 +302,11 @@ function AmberConfigForm({
 function WeatherlinkConfigForm({
   config,
   onSave,
-  isPending,
+  save,
 }: {
   config: Record<string, string | boolean>;
   onSave: (config: Record<string, string | boolean>) => void;
-  isPending: boolean;
+  save: SaveState;
 }) {
   const [host, setHost] = useState((config.host as string) ?? "");
 
@@ -300,7 +316,7 @@ function WeatherlinkConfigForm({
   }
 
   return (
-    <ConfigFormShell onSubmit={handleSubmit} isPending={isPending}>
+    <ConfigFormShell onSubmit={handleSubmit} save={save}>
       <ConfigField field={{ label: "Host", value: host, onChange: setHost }} />
     </ConfigFormShell>
   );
@@ -309,11 +325,11 @@ function WeatherlinkConfigForm({
 function RawConfigForm({
   config,
   onSave,
-  isPending,
+  save,
 }: {
   config: Record<string, string | boolean>;
   onSave: (config: Record<string, string | boolean>) => void;
-  isPending: boolean;
+  save: SaveState;
 }) {
   const [text, setText] = useState(JSON.stringify(config, null, 2));
   const [error, setError] = useState<string | null>(null);
@@ -329,7 +345,7 @@ function RawConfigForm({
   }
 
   return (
-    <ConfigFormShell onSubmit={handleSubmit} isPending={isPending} error={error}>
+    <ConfigFormShell onSubmit={handleSubmit} save={save} error={error}>
       <label className="flex flex-col text-ink-muted">
         Config (JSON)
         <textarea
@@ -346,7 +362,7 @@ function RawConfigForm({
 
 const CONFIG_FORMS: Record<
   string,
-  (props: { config: Record<string, string | boolean>; onSave: (config: Record<string, string | boolean>) => void; isPending: boolean }) => ReactNode
+  (props: { config: Record<string, string | boolean>; onSave: (config: Record<string, string | boolean>) => void; save: SaveState }) => ReactNode
 > = {
   envoy: EnvoyConfigForm,
   amber: AmberConfigForm,
@@ -356,14 +372,14 @@ const CONFIG_FORMS: Record<
 function SourceConfigForm({
   source,
   onSave,
-  isPending,
+  save,
 }: {
   source: Source;
   onSave: (config: Record<string, string | boolean>) => void;
-  isPending: boolean;
+  save: SaveState;
 }) {
   const Form = CONFIG_FORMS[source.provider] ?? RawConfigForm;
-  return <Form config={source.config} onSave={onSave} isPending={isPending} />;
+  return <Form config={source.config} onSave={onSave} save={save} />;
 }
 
 interface SourceRowActions {
@@ -376,11 +392,11 @@ interface SourceRowActions {
 function SourceLabelField({
   value,
   onSave,
-  isPending,
+  save,
 }: {
   value: string;
   onSave: (name: string) => void;
-  isPending: boolean;
+  save: SaveState;
 }) {
   const [draft, setDraft] = useState(value);
 
@@ -396,9 +412,10 @@ function SourceLabelField({
           className="rounded-md border border-line bg-surface px-2 py-1 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
         />
       </label>
-      <button onClick={() => onSave(draft)} disabled={isPending} className="text-ink-muted underline hover:text-ink disabled:opacity-50">
+      <button onClick={() => onSave(draft)} disabled={save.isPending} className="text-ink-muted underline hover:text-ink disabled:opacity-50">
         Save label
       </button>
+      <SaveStatus mutation={save} />
     </div>
   );
 }
@@ -407,10 +424,13 @@ function SourceRow({
   source,
   actions,
   isPending,
+  saves,
 }: {
   source: Source;
   actions: SourceRowActions;
   isPending: boolean;
+  /** Progress of this row's own config and label saves. */
+  saves: { config: SaveState; name: SaveState };
 }) {
   const [editingConfig, setEditingConfig] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -463,13 +483,13 @@ function SourceRow({
       <SourceLabelField
         value={source.name ?? ""}
         onSave={(name) => actions.onSaveName(source, name)}
-        isPending={isPending}
+        save={saves.name}
       />
       {editingConfig && (
         <SourceConfigForm
           source={source}
           onSave={(config) => actions.onSaveConfig(source, config)}
-          isPending={isPending}
+          save={saves.config}
         />
       )}
       {isLocal && <RateWindowsPanel siteId={source.site_id} sourceId={source.id} />}
@@ -541,6 +561,10 @@ export function SourcesPage() {
             source={source}
             actions={actions}
             isPending={updateSource.isPending || deleteSource.isPending}
+            saves={{
+              config: saveStateFor(updateSource, source.id, "config"),
+              name: saveStateFor(updateSource, source.id, "name"),
+            }}
           />
         ))}
       </ul>

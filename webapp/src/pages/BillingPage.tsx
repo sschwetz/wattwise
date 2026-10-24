@@ -1,5 +1,6 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { SubmitButton } from "../components/SubmitButton";
 import { BackLink } from "../layout/BackLink";
 import { ConditionalCreditForm, ConditionalCreditList } from "../billing/ConditionalCredits";
 import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
@@ -160,13 +161,14 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
           className={`${inputClass} col-span-full`}
           required
         />
-        <button
-          type="submit"
-          disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
-          className={`${primaryButtonClass} col-span-full justify-self-start`}
+        <SubmitButton
+          mutation={createWindow}
+          disabled={months.length === 0 || daysOfWeek.length === 0}
+          buttonClass={primaryButtonClass}
+          layoutClass="col-span-full justify-self-start"
         >
           Add demand window
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );
@@ -292,13 +294,14 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
           inputMode="decimal"
           className={inputClass}
         />
-        <button
-          type="submit"
-          disabled={createWindow.isPending || months.length === 0 || daysOfWeek.length === 0}
-          className={`${primaryButtonClass} col-span-full justify-self-start`}
+        <SubmitButton
+          mutation={createWindow}
+          disabled={months.length === 0 || daysOfWeek.length === 0}
+          buttonClass={primaryButtonClass}
+          layoutClass="col-span-full justify-self-start"
         >
           Add export adjustment
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );
@@ -391,13 +394,13 @@ function MonthlyFeeDiscountWindowForm({ siteId, tariffId }: { siteId: number; ta
           className={`${inputClass} col-span-full`}
           required
         />
-        <button
-          type="submit"
-          disabled={createWindow.isPending}
-          className={`${primaryButtonClass} col-span-full justify-self-start`}
+        <SubmitButton
+          mutation={createWindow}
+          buttonClass={primaryButtonClass}
+          layoutClass="col-span-full justify-self-start"
         >
           Add fee discount
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );
@@ -535,9 +538,9 @@ function TariffSection({ siteId }: { siteId: number }) {
           inputMode="decimal"
           className={inputClass}
         />
-        <button type="submit" disabled={createTariff.isPending} className={primaryButtonClass}>
+        <SubmitButton mutation={createTariff} buttonClass={primaryButtonClass}>
           Add tariff
-        </button>
+        </SubmitButton>
       </form>
     </section>
   );
@@ -616,9 +619,9 @@ function BillingCycleSection({ siteId }: { siteId: number }) {
           className={inputClass}
           required
         />
-        <button type="submit" disabled={createCycle.isPending} className={primaryButtonClass}>
+        <SubmitButton mutation={createCycle} buttonClass={primaryButtonClass}>
           Add billing cycle
-        </button>
+        </SubmitButton>
       </form>
     </section>
   );

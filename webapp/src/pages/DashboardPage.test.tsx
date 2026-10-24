@@ -607,6 +607,13 @@ describe("DashboardPage today's charts", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  it("shows a loading indicator on the chart until its data arrives", async () => {
+    vi.mocked(apiFetch).mockImplementation(() => new Promise(() => {}));
+    renderPage();
+    const todayChart = await screen.findByTestId("today-chart");
+    expect(within(todayChart).getByRole("status")).toHaveTextContent("Loading chart");
+  });
+
   it("shows today's grid and cost chart with a legend", async () => {
     mockApi({});
     renderPage();

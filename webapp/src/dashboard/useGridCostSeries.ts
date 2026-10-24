@@ -19,5 +19,6 @@ export function useGridCostSeries(siteId: number, range: DateRange, method: "net
     costSeries: costSeries.data ?? [],
     readingsFailed: importHistory.isError || exportHistory.isError,
     costSeriesFailed: costSeries.isError,
+    loading: importHistory.isLoading || exportHistory.isLoading || costSeries.isLoading,
   };
 }

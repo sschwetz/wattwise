@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Area, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ErrorAlert, LegendSwatch, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
+import { ChartFrame, ErrorAlert, LegendSwatch, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
 import { AXIS_PROPS, SWATCH_COLORS, TODAY_CHARTS_SYNC_ID, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import { clipToDay, dayRangeOffset, type PricingDayOffset, zoomRangeFor } from "./dateRange";
 import { buildAxisTickPlan, formatBucketTick } from "./historyChart";
@@ -125,8 +125,8 @@ export function TodayPriceChart({
   const dayRange = useMemo(() => dayRangeOffset(dayOffset), [dayOffset]);
   const range = useMemo(() => clipToDay(zoom.range, dayRange), [zoom.range, dayRange]);
   const { handlers, selection } = useChartZoom((fromTs, toTs) => zoom.set(zoomRangeFor(fromTs, toTs, "5min")));
-  const { data: importPrices, isError: isImportError } = useTodayPrices(siteId, "buy", dayOffset);
-  const { data: exportPrices, isError: isExportError } = useTodayPrices(siteId, "sell", dayOffset);
+  const { data: importPrices, isError: isImportError, isLoading: isImportLoading } = useTodayPrices(siteId, "buy", dayOffset);
+  const { data: exportPrices, isError: isExportError, isLoading: isExportLoading } = useTodayPrices(siteId, "sell", dayOffset);
   const fullChartData = useMemo(
     () => buildTodayPricingChartData(importPrices ?? [], exportPrices ?? []),
     [importPrices, exportPrices],
@@ -163,102 +163,104 @@ export function TodayPriceChart({
       </div>
       {(isImportError || isExportError) && <ErrorAlert message={`Failed to load ${title.toLowerCase()}.`} />}
       <InstabilitySummary windows={instabilityWindows} />
-      <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={chartData} style={ZOOMABLE_CHART_STYLE} syncId={sharedZoom ? TODAY_CHARTS_SYNC_ID : undefined} syncMethod="value" {...handlers}>
-          <XAxis
-            dataKey="ts"
-            ticks={axisTickPlan.ticks}
-            tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
-            {...AXIS_PROPS}
-          />
-          <YAxis {...yAxisProps("c/kWh")} />
-          <Tooltip content={(props) => <TodayPricingTooltip {...props} />} />
-          {visibleSpans.map((span) => (
-            <ReferenceArea
-              key={span.x1}
-              x1={span.x1}
-              x2={span.x2}
-              fill={SPIKE_LEVELS[span.level].color}
-              fillOpacity={0.15}
-              stroke="none"
-              ifOverflow="visible"
+      <ChartFrame loading={isImportLoading || isExportLoading}>
+        <ResponsiveContainer width="100%" height={200}>
+          <ComposedChart data={chartData} style={ZOOMABLE_CHART_STYLE} syncId={sharedZoom ? TODAY_CHARTS_SYNC_ID : undefined} syncMethod="value" {...handlers}>
+            <XAxis
+              dataKey="ts"
+              ticks={axisTickPlan.ticks}
+              tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
+              {...AXIS_PROPS}
             />
-          ))}
-          {/* The forecast's low-to-high band, behind the lines. */}
-          <Area
-            type="stepAfter"
-            dataKey="importBand"
-            stroke="none"
-            fill={SWATCH_COLORS.gridImport}
-            fillOpacity={0.15}
-            connectNulls={false}
-            isAnimationActive={false}
-            activeDot={false}
-            legendType="none"
-          />
-          {/* Piecewise-constant per 5-minute interval, not a smooth trend -- a
-              step line matches how the price actually moves. */}
-          <Line
-            type="stepAfter"
-            dataKey="actualImportCentsPerKwh"
-            stroke={SWATCH_COLORS.gridImport}
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-            isAnimationActive={false}
-          />
-          <Line
-            type="stepAfter"
-            dataKey="predictedImportCentsPerKwh"
-            stroke={SWATCH_COLORS.gridImport}
-            strokeDasharray="4 3"
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-            isAnimationActive={false}
-          />
-          <Line
-            type="stepAfter"
-            dataKey="actualExportCentsPerKwh"
-            stroke={SWATCH_COLORS.gridExport}
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-            isAnimationActive={false}
-          />
-          <Line
-            type="stepAfter"
-            dataKey="predictedExportCentsPerKwh"
-            stroke={SWATCH_COLORS.gridExport}
-            strokeDasharray="4 3"
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-            isAnimationActive={false}
-          />
-          <Line
-            type="stepAfter"
-            dataKey="fallbackImportCentsPerKwh"
-            stroke={SWATCH_COLORS.gridImport}
-            strokeDasharray="1 3"
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-            isAnimationActive={false}
-          />
-          <Line
-            type="stepAfter"
-            dataKey="fallbackExportCentsPerKwh"
-            stroke={SWATCH_COLORS.gridExport}
-            strokeDasharray="1 3"
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-            isAnimationActive={false}
-          />
-          <ZoomSelectionArea selection={selection} />
-        </ComposedChart>
-      </ResponsiveContainer>
+            <YAxis {...yAxisProps("c/kWh")} />
+            <Tooltip content={(props) => <TodayPricingTooltip {...props} />} />
+            {visibleSpans.map((span) => (
+              <ReferenceArea
+                key={span.x1}
+                x1={span.x1}
+                x2={span.x2}
+                fill={SPIKE_LEVELS[span.level].color}
+                fillOpacity={0.15}
+                stroke="none"
+                ifOverflow="visible"
+              />
+            ))}
+            {/* The forecast's low-to-high band, behind the lines. */}
+            <Area
+              type="stepAfter"
+              dataKey="importBand"
+              stroke="none"
+              fill={SWATCH_COLORS.gridImport}
+              fillOpacity={0.15}
+              connectNulls={false}
+              isAnimationActive={false}
+              activeDot={false}
+              legendType="none"
+            />
+            {/* Piecewise-constant per 5-minute interval, not a smooth trend -- a
+                step line matches how the price actually moves. */}
+            <Line
+              type="stepAfter"
+              dataKey="actualImportCentsPerKwh"
+              stroke={SWATCH_COLORS.gridImport}
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+            <Line
+              type="stepAfter"
+              dataKey="predictedImportCentsPerKwh"
+              stroke={SWATCH_COLORS.gridImport}
+              strokeDasharray="4 3"
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+            <Line
+              type="stepAfter"
+              dataKey="actualExportCentsPerKwh"
+              stroke={SWATCH_COLORS.gridExport}
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+            <Line
+              type="stepAfter"
+              dataKey="predictedExportCentsPerKwh"
+              stroke={SWATCH_COLORS.gridExport}
+              strokeDasharray="4 3"
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+            <Line
+              type="stepAfter"
+              dataKey="fallbackImportCentsPerKwh"
+              stroke={SWATCH_COLORS.gridImport}
+              strokeDasharray="1 3"
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+            <Line
+              type="stepAfter"
+              dataKey="fallbackExportCentsPerKwh"
+              stroke={SWATCH_COLORS.gridExport}
+              strokeDasharray="1 3"
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+            <ZoomSelectionArea selection={selection} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </ChartFrame>
       <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-ink-muted">
         <LegendSwatch shape="line" color={SWATCH_COLORS.gridImport} label="Import actual" />
         <LegendSwatch shape="line" color={SWATCH_COLORS.gridImport} pattern="dashed" label="Import predicted" />

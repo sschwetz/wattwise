@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useActiveDemandWindow } from "../billing/useBilling";
 import { compassDirection } from "../dashboard/compass";
-import { ErrorAlert, ResetZoomButton } from "../dashboard/chartParts";
+import { ChartFrame, ErrorAlert, ResetZoomButton } from "../dashboard/chartParts";
 import { DataFreshness } from "../dashboard/DataFreshness";
 import { clipToDay, dayRangeOffset, pricingDayOffsets, todayRange, zoomRangeFor } from "../dashboard/dateRange";
 import { formatTooltipValue } from "../dashboard/historyChart";
@@ -414,6 +414,7 @@ function TodayChartCard({
   testId,
   title,
   error,
+  loading,
   zoom,
   children,
 }: {
@@ -421,6 +422,8 @@ function TodayChartCard({
   title?: string;
   /** Message to show when the chart's data failed to load. */
   error?: string;
+  /** True while the chart's data is still on its first load. */
+  loading: boolean;
   zoom: ChartZoom;
   children: ReactNode;
 }) {
@@ -433,7 +436,7 @@ function TodayChartCard({
           <ResetZoomButton onClick={() => zoom.set(null)} />
         </div>
       )}
-      {children}
+      <ChartFrame loading={loading}>{children}</ChartFrame>
     </div>
   );
 }
@@ -452,6 +455,7 @@ function TodayChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
       testId="today-chart"
       title="Import / Export"
       error={data.readingsFailed || data.costSeriesFailed ? "Failed to load today's chart." : undefined}
+      loading={data.loading}
       zoom={zoom}
     >
       <HistoryChart
@@ -473,7 +477,7 @@ function TodayChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
  * check uses the whole day, so zooming in never hides the chart. */
 function TodayBatteryChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }) {
   const { day, range } = useTodayZoomRange(zoom);
-  const { data, failed } = useBatteryChartData(siteId, range);
+  const { data, failed, loading } = useBatteryChartData(siteId, range);
   const { data: socToday } = useHistoricalEnergyReadings(siteId, day, "battery_soc_pct");
   if (!socToday?.length) {
     return null;
@@ -484,6 +488,7 @@ function TodayBatteryChart({ siteId, zoom }: { siteId: number; zoom: ChartZoom }
       testId="battery-chart"
       title="Battery"
       error={failed ? "Failed to load the battery chart." : undefined}
+      loading={loading}
       zoom={zoom}
     >
       <BatteryChart
