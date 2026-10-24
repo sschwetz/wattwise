@@ -34,7 +34,7 @@ class FakeClock:
 class Harness:
     """A sampler wired to a scripted fetch, a recording keepalive and a fake clock."""
 
-    def __init__(self, stale_seconds: float = 10.0) -> None:
+    def __init__(self, stale_seconds: float = 10.0, on_sample=None) -> None:
         self.clock = FakeClock()
         self.results: list[object] = []
         self.configs: list[dict] = []
@@ -47,6 +47,7 @@ class Harness:
             interval_seconds=1.0,
             stale_seconds=stale_seconds,
             clock=self.clock,
+            on_sample=on_sample,
         )
 
     def fetch(self, config: dict) -> dict:
@@ -68,9 +69,63 @@ def test_new_last_update_is_kept():
     assert [s.last_update for s in h.sampler.drain()] == [1, 2]
 
 
-def test_repeated_last_update_is_dropped():
+def test_on_sample_called_after_every_successful_poll():
+    calls = []
+    h = Harness(on_sample=lambda sample, config: calls.append(sample.last_update))
+    h.step(status(1))
+    h.step(status(1))
+    h.step(status(2))
+    assert calls == [1, 1, 2]
+
+
+def test_repeated_reading_is_stored_again_so_the_average_is_time_weighted():
     h = Harness()
     h.step(status(1))
+    h.step(status(1))
+    h.step(status(2))
+    assert [s.last_update for s in h.sampler.drain()] == [1, 1, 2]
+
+
+def test_on_sample_not_called_for_a_failed_poll():
+    calls = []
+    h = Harness(on_sample=lambda sample, config: calls.append(sample.last_update))
+    h.step(status(1))
+    h.step(RuntimeError("timed out"))
+    assert calls == [1]
+
+
+def test_repeated_reading_is_not_pushed_once_the_feed_is_stale():
+    calls = []
+    h = Harness(stale_seconds=10.0, on_sample=lambda sample, config: calls.append(sample.last_update))
+    h.step(status(1))
+    h.clock.now += 11.0
+    h.step(status(1))
+    assert calls == [1]
+
+
+def test_on_sample_receives_current_config():
+    calls = []
+    h = Harness(on_sample=lambda sample, config: calls.append(config))
+    renewed = {"token": "t2"}
+    h.sampler.config = renewed
+    h.step(status(1))
+    assert calls == [renewed]
+
+
+def test_on_sample_exception_does_not_stop_sampling():
+    def boom(sample, config):
+        raise RuntimeError("push down")
+
+    h = Harness(on_sample=boom)
+    h.step(status(1))
+    h.step(status(2))
+    assert [s.last_update for s in h.sampler.drain()] == [1, 2]
+
+
+def test_repeated_reading_is_not_stored_once_the_feed_is_stale():
+    h = Harness(stale_seconds=10.0)
+    h.step(status(1))
+    h.clock.now += 11.0
     h.step(status(1))
     assert [s.last_update for s in h.sampler.drain()] == [1]
 

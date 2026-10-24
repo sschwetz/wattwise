@@ -38,7 +38,9 @@ def install_error_handlers(app: FastAPI) -> None:
                 # raised ValueError itself, under ctx.error, for a
                 # model_validator failure) — jsonable_encoder makes it safe to
                 # serialize the same way FastAPI's own default handler does.
-                "detail": jsonable_encoder(exc.errors()),
+                # "input" is dropped: it echoes the raw body, which can hold
+                # inf/nan (from JSON like 1e999) that the JSON encoder rejects.
+                "detail": jsonable_encoder([{k: v for k, v in e.items() if k != "input"} for e in exc.errors()]),
             },
         )
 

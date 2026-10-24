@@ -93,19 +93,25 @@ def require_mfa_token(
     return user
 
 
+def site_visible_to(db: Session, site_id: int, user_id: int) -> Site | None:
+    """The site if `user_id` owns it or holds a SiteAccess grant, else None.
+    A missing site and a hidden one look the same to the caller."""
+    site = db.get(Site, site_id)
+    if site is None:
+        return None
+    if site.owner_user_id != user_id and db.get(SiteAccess, (site_id, user_id)) is None:
+        return None
+    return site
+
+
 def require_site_access(
     site_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> Site:
-    site = db.get(Site, site_id)
+    site = site_visible_to(db, site_id, current_user.id)
     if site is None:
         raise AppError(404, "not_found", f"Site {site_id} not found")
-    if site.owner_user_id != current_user.id:
-        access = db.get(SiteAccess, (site_id, current_user.id))
-        if access is None:
-            # Same response as a missing site, so IDs can't be enumerated.
-            raise AppError(404, "not_found", f"Site {site_id} not found")
     return site
 
 
@@ -114,12 +120,10 @@ def require_site_owner(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> Site:
-    site = db.get(Site, site_id)
+    site = site_visible_to(db, site_id, current_user.id)
     if site is None:
         raise AppError(404, "not_found", f"Site {site_id} not found")
     if site.owner_user_id != current_user.id:
-        if db.get(SiteAccess, (site_id, current_user.id)) is None:
-            raise AppError(404, "not_found", f"Site {site_id} not found")
         raise AppError(403, "forbidden", "Only the site owner can perform this action")
     return site
 

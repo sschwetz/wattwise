@@ -70,13 +70,15 @@ The refresh loop also renews proactively when the token has fewer than 14 days l
 
 ### Live-data sampling
 
-A background sampler per source reads the gateway's `/ivp/livedata/status` every `LIVE_SAMPLE_SECONDS` (default 3). Each minute the collector averages those samples into that minute's readings. If the feed has had no new reading for `LIVE_STALE_SECONDS` (default 30), or returns nothing, that minute uses single-sample polls of `/ivp/meters/readings` (the production and net-consumption meters' `activePower`) and `/ivp/ensemble/power` instead.
+A background sampler per source reads the gateway's `/ivp/livedata/status` every `LIVE_SAMPLE_SECONDS` (default 3). Each minute the collector averages those samples into that minute's readings. A poll that returns the gateway's previous reading counts that reading again, so the average weights each reading by how long it lasted. Repeats stop counting once the feed has been stale for `LIVE_STALE_SECONDS`. If the feed has had no new reading for `LIVE_STALE_SECONDS` (default 30), or returns nothing, that minute uses single-sample polls of `/ivp/meters/readings` (the production and net-consumption meters' `activePower`) and `/ivp/ensemble/power` instead.
 
 `LIVE_BATTERY_SOURCE` picks where a live minute's battery figures come from. With `livedata` (the default) it uses the feed's per-phase storage power and `soc`. With `ensemble` the collector reads `/ivp/ensemble/power` once a minute and takes battery power, state of charge and the battery term in `consumption_w` from it; if that call fails, the minute has no battery rows and battery power counts as 0. The `livedata` figures have not yet passed the battery sign check in the [design spec](superpowers/specs/2026-10-24-envoy-live-data-design.md#pending-live-verification); if charge and discharge look swapped or the numbers disagree with the Enphase app, set `LIVE_BATTERY_SOURCE=ensemble`. Any other value stops the collector at startup.
 
 If the feed freezes while the calls still succeed, the sampler POSTs `{"enable": 1}` to `/ivp/livedata/stream`, at most once per `LIVE_STALE_SECONDS`.
 
 Samples live in memory only. A restart loses at most the current minute's samples, and that minute falls back to a single reading.
+
+Every sample added, repeats included, is also pushed to Core API as a live sample (`POST /sources/{id}/live/energy`), so the dashboard tiles update every few seconds. `map_live_sample_values` in `mapping.py` builds the values with the same sign and `invert_consumption_ct` rules as the stored readings. A push has a 2 second timeout. A failed push is logged and dropped, without a retry, and never stops sampling; failures are rate-limited like the other live-feed errors. Live samples are not stored, so a Core API outage loses only the tile updates.
 
 Once a minute the collector also reads `/ivp/meters/readings` and stores the metrics listed under [Metrics](data-model.md#metrics) (lifetime counters, grid voltage, relay state).
 
@@ -107,6 +109,10 @@ See [How it works, section 1](how-it-works.md#1-a-meter-reading-reaches-the-dash
 Every value is rounded to one decimal place after conversion. The readings are for people to read, not for modelling.
 
 Rain is the one stateful field. The device reports rain since midnight, so the collector keeps the last total (rounded to 0.1 mm) and sends the difference. Rounding the total, not each click, keeps the sum of the differences equal to the day's total on gauges with 0.254 mm clicks. The first poll after a start sends no rain reading. If a push fails, the baseline rolls back so the rain is reported next time instead of lost. A null field is skipped alone, because Core API rejects a whole batch that contains a null.
+
+### Live push
+
+Besides the 60 second stored poll, the collector runs a live loop (`run_live_loop` in `main.py`). Every `LIVE_POLL_SECONDS` (default 10, minimum 2) it reads each source's current conditions and pushes them to `POST /sources/{id}/live/weather`. A value below 2 stops the collector at startup. The live loop skips `rain_mm`, does not touch the rain baseline or the pending queue, and stores nothing. A failed poll or push is logged and dropped; only the first failure of a streak and the recovery are logged, so an unreachable station does not log every 10 seconds.
 
 ## Amber pricing collector
 

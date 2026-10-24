@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from envoy_collector.config import Settings, get_settings
@@ -11,6 +12,7 @@ from envoy_collector.core_api_client import (
     fetch_collector_sources,
     fetch_source_config,
     push_energy_readings,
+    push_live_sample,
     report_discovered_config,
 )
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError, fetch_token, token_expires_at
@@ -29,8 +31,10 @@ from envoy_collector.envoy_client import (
 from envoy_collector.failure_log import FailureLog
 from envoy_collector.live_sampler import LiveSampler
 from envoy_collector.mapping import (
+    LiveSample,
     battery_net_w,
     map_battery_readings,
+    map_live_sample_values,
     map_livedata_readings,
     map_meter_readings,
     map_meter_power_readings,
@@ -457,6 +461,21 @@ def poll_once(settings: Settings, source_id: int, config: dict, sampler: LiveSam
     return config
 
 
+def _live_pusher(settings: Settings, source_id: int) -> Callable[[LiveSample, dict], None]:
+    """Build the on_sample callback that pushes each live sample to Core API."""
+
+    def push(sample: LiveSample, config: dict) -> None:
+        values = map_live_sample_values(
+            sample,
+            bool(config.get("invert_consumption_ct")),
+            include_battery=settings.live_battery_source != "ensemble",
+        )
+        now = datetime.datetime.now(datetime.timezone.utc)
+        push_live_sample(settings.core_api_url, source_id, settings.collector_key, now, values)
+
+    return push
+
+
 def _sync_samplers(settings: Settings, sources: dict[int, dict]) -> None:
     """Starts a live-feed sampler for each source with a pinned certificate,
     hands existing samplers the latest config, and stops samplers for
@@ -480,6 +499,7 @@ def _sync_samplers(settings: Settings, sources: dict[int, dict]) -> None:
             label=f"source {source_id}",
             interval_seconds=settings.live_sample_seconds,
             stale_seconds=settings.live_stale_seconds,
+            on_sample=_live_pusher(settings, source_id),
         )
         _samplers[source_id] = sampler
         sampler.start()

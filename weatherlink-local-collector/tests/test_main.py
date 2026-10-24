@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import datetime
+import logging
+import threading
+import time
 
 import pytest
 
@@ -8,6 +11,8 @@ from weatherlink_local_collector import main as main_module
 from weatherlink_local_collector.config import Settings
 from weatherlink_local_collector.core_api_client import CoreApiError
 from weatherlink_local_collector.mapping import RainState
+
+REAL_RUN_LIVE_LOOP = main_module.run_live_loop
 
 SETTINGS = Settings(
     core_api_url="http://localhost:8000", collector_key="key", poll_interval_seconds=60, discovery_refresh_seconds=300
@@ -484,3 +489,87 @@ def test_main_gives_a_reappearing_source_a_fresh_rain_state(monkeypatch):
 
     assert len(seen_states) == 2  # cycle 2 had no sources to poll
     assert seen_states[0] is not seen_states[1]  # the reappearing source got a brand-new RainState
+
+
+@pytest.fixture(autouse=True)
+def _reset_live_failure_state():
+    main_module._live_failing.clear()
+    yield
+    main_module._live_failing.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_live_thread_from_main(monkeypatch):
+    # main() starts the live loop on a thread; keep it from polling in the tests above.
+    monkeypatch.setattr(main_module, "run_live_loop", lambda settings, get_sources, stop: None)
+
+
+def test_live_poll_once_pushes_values(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+    pushed = []
+    monkeypatch.setattr(
+        main_module,
+        "push_live_sample",
+        lambda base_url, source_id, key, ts, values: pushed.append((source_id, ts, values)),
+    )
+
+    main_module.live_poll_once(SETTINGS, 7, {"host": "weatherlink.local"})
+
+    assert len(pushed) == 1
+    source_id, ts, values = pushed[0]
+    assert source_id == 7
+    assert ts.tzinfo is not None
+    assert values["temp_c"] == 22.7
+    assert "rain_mm" not in values
+
+
+def test_live_poll_failure_is_logged_once_per_streak(monkeypatch, caplog):
+    outcomes = [False, False, False, True, False]
+
+    def fake_fetch(host):
+        if outcomes.pop(0):
+            return CURRENT_CONDITIONS
+        raise OSError("unreachable")
+
+    monkeypatch.setattr(main_module, "fetch_current_conditions", fake_fetch)
+    monkeypatch.setattr(main_module, "push_live_sample", lambda *args: None)
+
+    with caplog.at_level(logging.INFO, logger="weatherlink_local_collector"):
+        for _ in range(5):
+            main_module.live_poll_once(SETTINGS, 1, {"host": "h"})
+
+    failures = [r for r in caplog.records if r.levelno == logging.ERROR]
+    recoveries = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert len(failures) == 2
+    assert len(recoveries) == 1
+
+
+def test_live_poll_leaves_stored_poll_state_alone(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+    monkeypatch.setattr(main_module, "push_live_sample", lambda *args: (_ for _ in ()).throw(CoreApiError("x")))
+    main_module._pending_readings.clear()
+
+    main_module.live_poll_once(SETTINGS, 1, {"host": "h"})
+
+    assert main_module._pending_readings == {}
+
+
+def test_run_live_loop_polls_every_source_and_stops(monkeypatch):
+    polled = set()
+    monkeypatch.setattr(main_module, "live_poll_once", lambda settings, sid, config: polled.add(sid))
+    settings = Settings(
+        core_api_url="http://x", collector_key="k", poll_interval_seconds=60, discovery_refresh_seconds=300,
+        live_poll_seconds=2,
+    )
+    sources = {1: main_module._Source({"host": "a"}, RainState()), 2: main_module._Source({"host": "b"}, RainState())}
+    stop = threading.Event()
+    thread = threading.Thread(target=REAL_RUN_LIVE_LOOP, args=(settings, lambda: sources, stop))
+    thread.start()
+    deadline = time.monotonic() + 3
+    while polled != {1, 2} and time.monotonic() < deadline:
+        time.sleep(0.01)
+    stop.set()
+    thread.join(timeout=1)
+
+    assert polled == {1, 2}
+    assert not thread.is_alive()

@@ -165,13 +165,25 @@ def parse_livedata(status_json: dict) -> LiveSample:
     )
 
 
+def _battery_values(battery_w: float, soc: float) -> dict[str, float]:
+    key = "battery_charge_w" if battery_w <= 0 else "battery_discharge_w"
+    return {"battery_soc_pct": soc, key: abs(battery_w)}
+
+
 def _battery_rows(battery_w: float, soc: float, ts: datetime.datetime) -> list[dict]:
-    rows = [{"ts": ts, "metric": "battery_soc_pct", "value": soc}]
-    if battery_w <= 0:
-        rows.append({"ts": ts, "metric": "battery_charge_w", "value": -battery_w})
-    else:
-        rows.append({"ts": ts, "metric": "battery_discharge_w", "value": battery_w})
-    return rows
+    return [{"ts": ts, "metric": m, "value": v} for m, v in _battery_values(battery_w, soc).items()]
+
+
+def _power_values(production: float, grid: float, battery: float, sign: int) -> dict[str, float]:
+    """production_w, consumption_w and the import or export figure.
+
+    `grid` is already multiplied by `sign` (-1 for a reversed consumption CT).
+    """
+    return {
+        "production_w": production,
+        "consumption_w": sign * production + grid + battery,
+        "grid_import_w" if grid >= 0 else "grid_export_w": abs(grid),
+    }
 
 
 def _live_battery(
@@ -221,13 +233,33 @@ def map_livedata_readings(
     sign = -1 if invert_consumption_ct else 1
     grid = sign * sum(s.grid_w for s in samples) / n
     battery, battery_rows = _live_battery(samples, ts, battery_source, battery_json)
-    rows = [
-        {"ts": ts, "metric": "production_w", "value": production},
-        {"ts": ts, "metric": "consumption_w", "value": sign * production + grid + battery},
-        {"ts": ts, "metric": "grid_import_w" if grid >= 0 else "grid_export_w", "value": abs(grid)},
-        {"ts": ts, "metric": "grid_relay_state", "value": samples[-1].relay_state},
-    ]
+    rows = [{"ts": ts, "metric": m, "value": v} for m, v in _power_values(production, grid, battery, sign).items()]
+    rows.append({"ts": ts, "metric": "grid_relay_state", "value": samples[-1].relay_state})
     return rows + battery_rows
+
+
+def map_live_sample_values(
+    sample: LiveSample, invert_consumption_ct: bool = False, include_battery: bool = True
+) -> dict[str, float]:
+    """Map one LiveSample to {metric: value} for the live push.
+
+    Uses the same sign and consumption rules as map_livedata_readings, with
+    battery figures taken from the sample. Omits grid_relay_state.
+
+    include_battery=False (LIVE_BATTERY_SOURCE=ensemble) drops the battery
+    keys and consumption_w, which includes the battery term, so those tiles
+    keep the stored ensemble-based readings.
+    """
+    sign = -1 if invert_consumption_ct else 1
+    if not include_battery:
+        values = _power_values(sample.production_w, sign * sample.grid_w, 0.0, sign)
+        values.pop("consumption_w", None)
+        return values
+    battery = sample.battery_w if sample.has_battery else 0.0
+    values = _power_values(sample.production_w, sign * sample.grid_w, battery, sign)
+    if sample.has_battery:
+        values.update(_battery_values(battery, sample.soc))
+    return values
 
 
 def map_meter_readings(

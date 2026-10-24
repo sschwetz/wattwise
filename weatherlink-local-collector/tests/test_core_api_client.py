@@ -10,6 +10,7 @@ import respx
 from weatherlink_local_collector.core_api_client import (
     CoreApiError,
     fetch_collector_sources,
+    push_live_sample,
     push_weather_readings,
 )
 
@@ -67,3 +68,30 @@ def test_push_weather_readings_raises_core_api_error_on_connection_failure():
     respx.post(f"{BASE_URL}/api/v1/sources/1/readings/weather").mock(side_effect=httpx.ConnectError("boom"))
     with pytest.raises(CoreApiError):
         push_weather_readings(BASE_URL, 1, "my-key", [])
+
+
+@respx.mock
+def test_push_live_sample_posts_ts_and_values_with_key_and_short_timeout():
+    route = respx.post(f"{BASE_URL}/api/v1/sources/1/live/weather").mock(return_value=httpx.Response(202))
+    ts = datetime.datetime(2026, 9, 29, 12, 0, 5, tzinfo=datetime.timezone.utc)
+
+    push_live_sample(BASE_URL, 1, "my-key", ts, {"temp_c": 22.7})
+
+    request = route.calls[0].request
+    assert request.headers["X-Collector-Key"] == "my-key"
+    assert _json.loads(request.content) == {"ts": "2026-09-29T12:00:05+00:00", "values": {"temp_c": 22.7}}
+    assert request.extensions["timeout"]["read"] == 2
+
+
+@respx.mock
+def test_push_live_sample_raises_on_non_202():
+    respx.post(f"{BASE_URL}/api/v1/sources/1/live/weather").mock(return_value=httpx.Response(422))
+    with pytest.raises(CoreApiError):
+        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.timezone.utc), {"temp_c": 1.0})
+
+
+@respx.mock
+def test_push_live_sample_raises_core_api_error_on_connection_failure():
+    respx.post(f"{BASE_URL}/api/v1/sources/1/live/weather").mock(side_effect=httpx.ConnectError("boom"))
+    with pytest.raises(CoreApiError):
+        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.timezone.utc), {"temp_c": 1.0})

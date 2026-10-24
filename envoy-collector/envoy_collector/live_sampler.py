@@ -18,13 +18,19 @@ MAX_SAMPLES = 600
 class LiveSampler:
     """Polls the gateway's live feed on a background thread and keeps new samples.
 
-    The feed repeats its last reading until the gateway refreshes it, so a
-    sample is kept only when its last_update differs from the previous one.
-    The owner calls drain() once a minute, replaces `config` when the token
+    The feed repeats its last reading until the gateway refreshes it. A
+    repeat still means the value held for that interval, so each successful
+    poll adds a sample (a repeat adds the previous reading again) and the
+    minute's average weights every reading by how long it lasted. Once the
+    gateway has not refreshed for stale_seconds, repeats are ignored: they no
+    longer describe the house. The owner calls drain() once a minute, replaces `config` when the token
     or pinned address changes, and checks is_fresh() to choose between live
     and polled readings. `label` (for example "source 3") appears in every
     log line and in the thread name. Repeated failures are rate-limited by
     FailureLog, with separate streaks for the fetch and the keepalive.
+    on_sample, when given, is called with each sample added and the current
+    config, so a dashboard sees a push each time a poll finishes. Its
+    exceptions are logged and dropped.
 
     Battery presence is latched: once a kept sample has has_battery set,
     every later sample from this sampler is stored with has_battery=True,
@@ -42,6 +48,7 @@ class LiveSampler:
         interval_seconds: float,
         stale_seconds: float,
         clock: Callable[[], float] = time.monotonic,
+        on_sample: Callable[[LiveSample, dict], None] | None = None,
     ) -> None:
         self.config = config
         self.label = label
@@ -50,9 +57,11 @@ class LiveSampler:
         self._interval = interval_seconds
         self._stale = stale_seconds
         self._clock = clock
+        self._on_sample = on_sample
         self._lock = threading.Lock()
         self._samples: deque[LiveSample] = deque(maxlen=MAX_SAMPLES)
         self._last_update: int | None = None
+        self._latest: LiveSample | None = None
         self._last_sample_at: float | None = None
         self._has_battery = False
         # Start of the current keepalive window: the latest of creation, the
@@ -61,6 +70,7 @@ class LiveSampler:
         self._last_call_ok = False
         self._fetch_log = FailureLog(f"Live-feed call failed for {label}", clock)
         self._keepalive_log = FailureLog(f"Live-feed keepalive failed for {label}", clock)
+        self._push_log = FailureLog(f"Live push failed for {label}", clock)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -97,6 +107,8 @@ class LiveSampler:
             self._keep(sample)
         else:
             self._maybe_keepalive()
+            if self._latest is not None and self.is_fresh():
+                self._add(self._latest)
 
     def _keep(self, sample: LiveSample) -> None:
         """Store a new sample, applying the battery latch, and restart the keepalive window."""
@@ -105,11 +117,27 @@ class LiveSampler:
             self._has_battery = True
         elif self._has_battery:
             sample = replace(sample, has_battery=True)
-        with self._lock:
-            self._samples.append(sample)
         self._last_update = sample.last_update
+        self._latest = sample
         self._last_sample_at = now
         self._window_start = now
+        self._add(sample)
+
+    def _add(self, sample: LiveSample) -> None:
+        with self._lock:
+            self._samples.append(sample)
+        self._notify(sample)
+
+    def _notify(self, sample: LiveSample) -> None:
+        """Hand a kept sample to on_sample. A callback failure never stops sampling."""
+        if self._on_sample is None:
+            return
+        try:
+            self._on_sample(sample, self.config)
+        except Exception:
+            self._push_log.failure()
+        else:
+            self._push_log.success()
 
     def _maybe_keepalive(self) -> None:
         now = self._clock()

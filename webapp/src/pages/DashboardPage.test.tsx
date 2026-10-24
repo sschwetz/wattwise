@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiFetch } from "../api/client";
+import { ApiError, apiFetch, configureApiClient } from "../api/client";
+import { FakeWebSocket } from "../dashboard/fakeWebSocket";
 import { ENERGY_METRICS, WEATHER_METRICS } from "../dashboard/useLiveReadings";
 import { DashboardPage } from "./DashboardPage";
 import {
@@ -769,5 +770,100 @@ describe("DashboardPage battery chart", () => {
     renderPage();
     await screen.findByTestId("today-chart");
     expect(screen.queryByTestId("battery-chart")).not.toBeInTheDocument();
+  });
+});
+
+describe("DashboardPage live stream", () => {
+  const original = globalThis.WebSocket;
+  const last = () => FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+  const push = (msg: unknown) =>
+    act(() => {
+      last().open();
+      last().message(msg);
+    });
+  const iso = () => new Date().toISOString();
+  const energyMsg = (values: Record<string, number>) => ({ kind: "energy", ts: iso(), values });
+  const weatherMsg = (values: Record<string, number>) => ({ kind: "weather", ts: iso(), values });
+  const polledProduction = (value: number) => ({
+    production_w: [{ ts: iso(), metric: "production_w", value }],
+  });
+
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+    FakeWebSocket.instances = [];
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+    localStorage.setItem("access_token", "tok");
+    configureApiClient(() => localStorage.getItem("access_token"), () => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    globalThis.WebSocket = original;
+    localStorage.clear();
+  });
+
+  it("shows a pushed live value on the tile before the next poll", async () => {
+    mockApi(polledProduction(1000));
+    renderPage();
+    expect(await screen.findByText("1000 W")).toBeInTheDocument();
+    push(energyMsg({ production_w: 2500 }));
+    expect(await screen.findByText("2500 W")).toBeInTheDocument();
+  });
+
+  it("shows the instantaneous live value, not the 5-minute average", async () => {
+    // 12:07:30 UTC: now-120s and now-60s both fall in the bucket starting 12:05:00.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(Date.UTC(2026, 9, 20, 12, 7, 30)));
+    const now = Date.now();
+    mockApi({
+      production_w: [
+        { ts: new Date(now - 120_000).toISOString(), metric: "production_w", value: 1000 },
+        { ts: new Date(now - 60_000).toISOString(), metric: "production_w", value: 3000 },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("2000 W")).toBeInTheDocument();
+    push(energyMsg({ production_w: 3700 }));
+    expect(await screen.findByText("3700 W")).toBeInTheDocument();
+  });
+
+  it("falls back to the polled value after 15 seconds of silence", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockApi(polledProduction(1000));
+    renderPage();
+    expect(await screen.findByText("1000 W")).toBeInTheDocument();
+    push(energyMsg({ production_w: 2500 }));
+    expect(await screen.findByText("2500 W")).toBeInTheDocument();
+    act(() => void vi.advanceTimersByTime(16_000));
+    expect(await screen.findByText("1000 W")).toBeInTheDocument();
+  });
+
+  it("weather tiles update from a live weather message", async () => {
+    mockApi({}, undefined, {
+      temp_c: [{ ts: iso(), metric: "temp_c", value: 21.5 }],
+    });
+    renderPage();
+    expect(await screen.findByText("21.5 °C")).toBeInTheDocument();
+    push(weatherMsg({ temp_c: 24.5 }));
+    expect(await screen.findByText("24.5 °C")).toBeInTheDocument();
+  });
+
+  it("rain today stays on stored data", async () => {
+    mockApi({}, undefined, {
+      rain_mm: [{ ts: iso(), metric: "rain_mm", value: 0.3 }],
+    });
+    renderPage();
+    expect(await screen.findByText("0.3 mm")).toBeInTheDocument();
+    push(weatherMsg({ rain_mm: 5, temp_c: 30.5 }));
+    expect(await screen.findByText("30.5 °C")).toBeInTheDocument();
+    expect(screen.getByText("0.3 mm")).toBeInTheDocument();
+    expect(screen.queryByText("5 mm")).not.toBeInTheDocument();
+  });
+
+  it("tiles are unchanged when the socket never opens", async () => {
+    globalThis.WebSocket = original;
+    mockApi(polledProduction(1000));
+    renderPage();
+    expect(await screen.findByText("1000 W")).toBeInTheDocument();
   });
 });

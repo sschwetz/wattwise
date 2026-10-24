@@ -11,6 +11,7 @@ from core_api.config import get_settings
 from core_api.db import make_engine, make_session_factory
 from core_api.email_sender import EmailSender, SmtpEmailSender
 from core_api.errors import install_error_handlers
+from core_api.live import LiveHub
 from core_api.scheduler import build_scheduler
 from core_api.routers.account import router as account_router
 from core_api.routers.auth import router as auth_router
@@ -18,6 +19,8 @@ from core_api.routers.billing import router as billing_router
 from core_api.routers.collector import router as collector_router
 from core_api.routers.collector_config import router as collector_config_router
 from core_api.routers.ingestion import router as ingestion_router
+from core_api.routers.live import router as live_router
+from core_api.routers.live import socket_router as live_socket_router
 from core_api.routers.local_rates import router as local_rates_router
 from core_api.routers.password_reset import router as password_reset_router
 from core_api.routers.pricing_backfill import router as pricing_backfill_router
@@ -76,6 +79,7 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
     )
     app.state.session_factory = session_factory
     app.state.email_sender = email_sender or SmtpEmailSender()
+    app.state.live_hub = LiveHub()
 
     @app.get("/health", include_in_schema=False)
     def health() -> dict[str, str]:
@@ -97,6 +101,8 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
     app.include_router(local_rates_router, prefix=api_prefix)
     app.include_router(billing_router, prefix=api_prefix)
     app.include_router(ingestion_router, prefix=api_prefix)
+    app.include_router(live_router, prefix=api_prefix)
+    app.include_router(live_socket_router, prefix=api_prefix)
     app.include_router(query_router, prefix=api_prefix)
     app.include_router(collector_config_router, prefix=api_prefix)
     app.include_router(collector_router, prefix=api_prefix)

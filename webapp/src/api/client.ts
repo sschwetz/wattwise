@@ -90,3 +90,8 @@ export async function apiFetchBlob(path: string, options: RequestInit = {}): Pro
   const response = await _authorizedFetch(path, options);
   return await response.blob();
 }
+
+/** The current access token, for callers that cannot go through apiFetch (the live WebSocket). */
+export function getAccessToken(): string | null {
+  return getToken();
+}

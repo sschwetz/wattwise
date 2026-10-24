@@ -49,7 +49,7 @@ More screenshots, with the explanation of every tile and field, are in the [user
 
 | Folder | Contents |
 |---|---|
-| `src/api/` | `client.ts` (fetch wrapper, `ApiError`), `config.ts` (API base URL) |
+| `src/api/` | `client.ts` (fetch wrapper, `ApiError`), `config.ts` (API base URL, `toWebSocketUrl`) |
 | `src/auth/` | `AuthContext` (token in `localStorage` under `access_token`), `ProtectedRoute` |
 | `src/layout/` | Header, site sidebar, site switcher, avatar |
 | `src/pages/` | One component per route, with its test beside it |
@@ -68,7 +68,18 @@ Convention: a feature folder has a `use*.ts` hook per resource that wraps TanSta
 
 A failed request logs the user out only when the code says the session itself is dead: `missing_token`, `invalid_token`, or `unknown_error` (a 401 with no body, usually from a proxy). Other 401s, such as a wrong current password on the account page, stay on screen as form errors.
 
-Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadings.ts`), which matches the collectors' cadence. Nothing uses websockets.
+Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadings.ts`), which matches the collectors' stored-reading cadence.
+
+### Live tiles and the WebSocket
+
+`useLiveStream` (`src/dashboard/useLiveStream.ts`) opens `/api/v1/sites/{siteId}/live` on the dashboard and sends the access token as its first message. The URL is `API_BASE_URL` with the scheme changed to `ws` or `wss` (`toWebSocketUrl` in `src/api/config.ts`). `LiveTiles` in `DashboardPage.tsx` overlays the streamed values on the polled ones, per metric.
+
+- **Freshness.** A streamed value counts for 15 seconds (`LIVE_FRESH_MS` in `src/dashboard/liveStream.ts`). After that the tile shows the polled value again. Streamed values are shown as received; the averaging in `liveAverages.ts` applies only to the polled fallback.
+- **Back-off.** After a close, the hook reconnects after 1 second, doubling each attempt up to 30 seconds. A received message resets the count.
+- **Fallback.** Polling keeps running. If the socket never connects, the tiles behave as before.
+- **Rain today** comes from stored data only, because Core API does not accept `rain_mm` as a live value.
+- **Auth close.** On close code 1008 the hook does not reconnect. The page tries again only when the dashboard remounts, for example after a reload or a site change.
+- **Expired token.** Core API checks the token once, at connect, so a socket stays open after its token expires.
 
 ## Runtime configuration
 
@@ -76,7 +87,7 @@ The API address is not compiled in. `public/config.js` sets `window.__APP_CONFIG
 
 `nginx.conf` serves `index.html` for every unknown path so that browser refreshes on client-side routes work.
 
-The entrypoint also writes `/etc/nginx/security-headers.conf`, which `nginx.conf` includes. It sets a Content-Security-Policy (with `connect-src` limited to `API_BASE_URL`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` and `Permissions-Policy`. A new third-party script, style or image host needs adding to the CSP in `docker-entrypoint.sh`.
+The entrypoint also writes `/etc/nginx/security-headers.conf`, which `nginx.conf` includes. It sets a Content-Security-Policy (with `connect-src` limited to `API_BASE_URL` and the same address with `ws://` or `wss://`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` and `Permissions-Policy`. A new third-party script, style or image host needs adding to the CSP in `docker-entrypoint.sh`.
 
 ## The in-app help is this repository's user guide
 

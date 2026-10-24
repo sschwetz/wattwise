@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import datetime
 import logging
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from weatherlink_local_collector.config import Settings, get_settings
-from weatherlink_local_collector.core_api_client import fetch_collector_sources, push_weather_readings
-from weatherlink_local_collector.mapping import RainState, map_barometer_readings, map_iss_readings
+from weatherlink_local_collector.core_api_client import fetch_collector_sources, push_live_sample, push_weather_readings
+from weatherlink_local_collector.mapping import RainState, map_barometer_readings, map_iss_readings, map_live_values
 from weatherlink_local_collector.weatherlink_client import fetch_current_conditions
 
 logger = logging.getLogger("weatherlink_local_collector")
@@ -100,6 +102,57 @@ def _refresh_sources(settings: Settings, known: dict[int, _Source]) -> dict[int,
     return refreshed
 
 
+# Sources whose last live poll failed. Only the first failure of a streak and
+# the recovery are logged, so an unreachable station does not log every 10 seconds.
+_live_failing: set[int] = set()
+
+
+def live_poll_once(settings: Settings, source_id: int, config: dict) -> None:
+    """One live poll for one source. Never raises, and never touches the
+    pending queue or any rain state: live values are not stored here."""
+    try:
+        data = fetch_current_conditions(config["host"])
+        values = map_live_values(data["data"]["conditions"])
+        if values:
+            push_live_sample(
+                settings.core_api_url,
+                source_id,
+                settings.collector_key,
+                datetime.datetime.now(datetime.timezone.utc),
+                values,
+            )
+    except Exception:
+        if source_id not in _live_failing:
+            _live_failing.add(source_id)
+            logger.exception("Live poll failed for source %s", source_id)
+        return
+    if source_id in _live_failing:
+        _live_failing.discard(source_id)
+        logger.info("Live poll recovered for source %s", source_id)
+
+
+def run_live_loop(settings: Settings, get_sources: Callable[[], dict[int, _Source]], stop: threading.Event) -> None:
+    """Polls every known source each live_poll_seconds until `stop` is set."""
+    while not stop.is_set():
+        started = time.monotonic()
+        for source_id, source in list(get_sources().items()):
+            if stop.is_set():
+                return
+            live_poll_once(settings, source_id, source.config)
+        stop.wait(max(0.0, settings.live_poll_seconds - (time.monotonic() - started)))
+
+
+class _SourceHolder:
+    """Shared reference to the current sources dict, which main() replaces
+    wholesale on each discovery refresh. The live thread reads it through get()."""
+
+    def __init__(self, sources: dict[int, _Source]) -> None:
+        self.sources = sources
+
+    def get(self) -> dict[int, _Source]:
+        return self.sources
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     settings = get_settings()
@@ -110,6 +163,10 @@ def main() -> None:
             logger.warning("No weather sources discovered yet; retrying in %s seconds", settings.poll_interval_seconds)
             time.sleep(settings.poll_interval_seconds)
     last_refresh = time.monotonic()
+    holder = _SourceHolder(sources)
+    threading.Thread(
+        target=run_live_loop, args=(settings, holder.get, threading.Event()), name="live-loop", daemon=True
+    ).start()
 
     while True:
         # Sleep first so startup isn't itself a poll trigger.
@@ -118,6 +175,7 @@ def main() -> None:
         now = time.monotonic()
         if now - last_refresh >= settings.discovery_refresh_seconds:
             sources = _refresh_sources(settings, sources)
+            holder.sources = sources
             last_refresh = now
 
         # Not wrapped in list(): nothing inserts/deletes from `sources` during

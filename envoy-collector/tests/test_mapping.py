@@ -10,6 +10,7 @@ from envoy_collector.mapping import (
     LiveSample,
     battery_net_w,
     map_battery_readings,
+    map_live_sample_values,
     map_livedata_readings,
     map_meter_readings,
     map_meter_power_readings,
@@ -336,3 +337,63 @@ def test_map_meter_readings_single_phase_gives_only_ph_a():
     m = metrics(map_meter_readings(meters, load_fixture("meter_readings.json"), TS))
     assert m["grid_voltage_ph_a_v"] == 238.232
     assert "grid_voltage_ph_b_v" not in m and "grid_voltage_ph_c_v" not in m
+
+
+def test_live_values_match_stored_mapping():
+    sample = make_sample(production_w=3000, grid_w=500, battery_w=-200, soc=80)
+    assert map_live_sample_values(sample) == {
+        "production_w": 3000,
+        "consumption_w": 3300,
+        "grid_import_w": 500,
+        "battery_charge_w": 200,
+        "battery_soc_pct": 80,
+    }
+
+
+def test_live_values_export_emits_only_grid_export():
+    values = map_live_sample_values(make_sample(production_w=3000, grid_w=-500))
+    assert values["grid_export_w"] == 500
+    assert "grid_import_w" not in values
+
+
+def test_live_values_discharge_emits_only_discharge():
+    values = map_live_sample_values(make_sample(battery_w=200))
+    assert values["battery_discharge_w"] == 200
+    assert "battery_charge_w" not in values
+
+
+def test_live_values_without_battery_omit_battery_keys():
+    values = map_live_sample_values(make_sample(battery_w=0.0, has_battery=False))
+    assert set(values) == {"production_w", "consumption_w", "grid_import_w"}
+
+
+def test_live_values_invert_consumption_ct_matches_stored_mapping():
+    sample = make_sample(production_w=3000, grid_w=-3400, battery_w=-200)
+    live = map_live_sample_values(sample, invert_consumption_ct=True)
+    stored = metrics(map_livedata_readings([sample], TS, invert_consumption_ct=True))
+    assert live["grid_import_w"] == 3400
+    assert live["consumption_w"] == -3000 + 3400 - 200
+    assert live == {k: stored[k] for k in live}
+
+
+@pytest.mark.parametrize("invert", [False, True])
+@pytest.mark.parametrize(
+    "fields",
+    [
+        dict(production_w=3000, grid_w=500, battery_w=-200),
+        dict(production_w=100, grid_w=-900, battery_w=300),
+        dict(production_w=0, grid_w=0, battery_w=0),
+    ],
+)
+def test_live_values_agree_with_stored_mapping_for_one_sample(fields, invert):
+    sample = make_sample(**fields)
+    live = map_live_sample_values(sample, invert_consumption_ct=invert)
+    stored = metrics(map_livedata_readings([sample], TS, invert_consumption_ct=invert))
+    assert live == {k: stored[k] for k in live}
+    assert set(live) == set(stored) - {"grid_relay_state"}
+
+
+def test_live_values_without_battery_source_omit_battery_and_consumption():
+    sample = make_sample(production_w=3000, grid_w=500, battery_w=-200, soc=80)
+    values = map_live_sample_values(sample, include_battery=False)
+    assert values == {"production_w": 3000, "grid_import_w": 500}

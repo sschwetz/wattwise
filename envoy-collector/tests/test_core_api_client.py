@@ -12,6 +12,7 @@ from envoy_collector.core_api_client import (
     fetch_collector_sources,
     fetch_source_config,
     push_energy_readings,
+    push_live_sample,
     report_discovered_config,
 )
 
@@ -190,3 +191,22 @@ def test_report_discovered_config_sends_cert_serial():
     import json as _json
 
     assert _json.loads(route.calls[0].request.content) == {"cert_serial": "322103FC"}
+
+
+@respx.mock
+def test_push_live_sample_posts_values_with_key_and_short_timeout():
+    route = respx.post(f"{BASE_URL}/api/v1/sources/1/live/energy").mock(return_value=httpx.Response(202))
+    ts = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.timezone.utc)
+    push_live_sample(BASE_URL, 1, "my-key", ts, {"production_w": 100.0})
+
+    request = route.calls[0].request
+    assert request.headers["X-Collector-Key"] == "my-key"
+    assert json.loads(request.content) == {"ts": "2026-09-29T12:00:00+00:00", "values": {"production_w": 100.0}}
+    assert request.extensions["timeout"]["read"] == 2
+
+
+@respx.mock
+def test_push_live_sample_raises_on_non_202():
+    respx.post(f"{BASE_URL}/api/v1/sources/1/live/energy").mock(return_value=httpx.Response(500))
+    with pytest.raises(CoreApiError):
+        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.timezone.utc), {})
