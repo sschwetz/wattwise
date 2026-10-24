@@ -1470,6 +1470,7 @@ def test_live_push_failure_is_swallowed(monkeypatch, caplog):
     main_module._sync_samplers(SETTINGS, {4: dict(PINNED)})
     sampler = main_module._samplers[4]
     sampler.stop()
+    sampler.drain()  # the background thread may already have taken a sample
 
     with caplog.at_level(logging.ERROR, logger="envoy_collector"):
         sampler.sample_once()

@@ -78,11 +78,12 @@ def test_on_sample_called_after_every_successful_poll():
     assert calls == [1, 1, 2]
 
 
-def test_repeated_reading_is_pushed_but_stored_once():
-    h = Harness(on_sample=lambda sample, config: None)
+def test_repeated_reading_is_stored_again_so_the_average_is_time_weighted():
+    h = Harness()
     h.step(status(1))
     h.step(status(1))
-    assert [s.last_update for s in h.sampler.drain()] == [1]
+    h.step(status(2))
+    assert [s.last_update for s in h.sampler.drain()] == [1, 1, 2]
 
 
 def test_on_sample_not_called_for_a_failed_poll():
@@ -121,9 +122,10 @@ def test_on_sample_exception_does_not_stop_sampling():
     assert [s.last_update for s in h.sampler.drain()] == [1, 2]
 
 
-def test_repeated_last_update_is_dropped():
-    h = Harness()
+def test_repeated_reading_is_not_stored_once_the_feed_is_stale():
+    h = Harness(stale_seconds=10.0)
     h.step(status(1))
+    h.clock.now += 11.0
     h.step(status(1))
     assert [s.last_update for s in h.sampler.drain()] == [1]
 
