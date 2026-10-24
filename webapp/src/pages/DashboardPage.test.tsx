@@ -811,6 +811,9 @@ describe("DashboardPage live stream", () => {
   });
 
   it("shows the instantaneous live value, not the 5-minute average", async () => {
+    // 12:07:30 UTC: now-120s and now-60s both fall in the bucket starting 12:05:00.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(Date.UTC(2026, 9, 20, 12, 7, 30)));
     const now = Date.now();
     mockApi({
       production_w: [
