@@ -45,7 +45,7 @@ flowchart TB
         DB[("SQLite<br/>volume core_api_data<br/>/data/core_api.db")]
     end
 
-    EC -- "poll /production.json, /ivp/ensemble/power" --> ENV
+    EC -- "poll /ivp/meters/readings, /ivp/ensemble/power" --> ENV
     EC -- "fetch token" --> ENL
     WC -- "poll /v1/current_conditions" --> WL
     AC -- "prices" --> AMB

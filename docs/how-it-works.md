@@ -20,7 +20,7 @@ sequenceDiagram
     API-->>EC: [{source_id, site_id, config{host, token, ...}}]
 
     Note over EC,ENV: Every 60 s: poll
-    EC->>ENV: GET /production.json (pinned TLS cert, bearer token)
+    EC->>ENV: GET /ivp/meters/readings (pinned TLS cert, bearer token)
     EC->>ENV: GET /ivp/ensemble/power (battery)
     ENV-->>EC: watts now, battery watts and charge level
     EC->>EC: map to metrics at minute boundary

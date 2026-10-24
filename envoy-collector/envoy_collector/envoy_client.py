@@ -148,10 +148,6 @@ def _envoy_get_array(host: str, token: str, path: str, cert_fingerprint: str) ->
     return data
 
 
-def fetch_production(host: str, token: str, cert_fingerprint: str) -> dict:
-    return _envoy_get_object(host, token, "/production.json", cert_fingerprint)
-
-
 def fetch_battery_power(host: str, token: str, cert_fingerprint: str) -> dict:
     return _envoy_get_object(host, token, "/ivp/ensemble/power", cert_fingerprint)
 
