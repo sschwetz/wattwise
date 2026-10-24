@@ -131,7 +131,10 @@ def _envoy_get_json(host: str, token: str, path: str, cert_fingerprint: str) -> 
     if status == 401:
         raise EnvoyAuthError(f"Envoy rejected the token for {path}")
     _raise_for_status(status, path)
-    return json.loads(body)
+    # The gateway can send a corrupted key (observed: "\xe0\u000B" under
+    # dry_contacts in /ivp/livedata/status). Strict decoding would reject the
+    # whole response over a field nothing here reads, so bad bytes become U+FFFD.
+    return json.loads(body.decode("utf-8", errors="replace"))
 
 
 def _envoy_get_object(host: str, token: str, path: str, cert_fingerprint: str) -> dict:
