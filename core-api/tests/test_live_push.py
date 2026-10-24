@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import func, select
 
 from core_api.db import make_engine, make_session_factory
-from core_api.live import MAX_LIVE_VALUES, LiveHub, LiveSample
+from core_api.live import LIVE_MAX_AGE_SECONDS, MAX_LIVE_VALUES, LiveHub, LiveSample
 from core_api.schemas import _check_live_values
 from core_api.models.readings import EnergyReading, WeatherReading
 from core_api.models.sources import Source, SourceKind
@@ -41,6 +41,46 @@ def test_older_ts_is_ignored():
         assert hub.latest_for_site(1) == [first]
         assert sub.queue.qsize() == 1
         assert sub.queue.get_nowait() == first
+
+    asyncio.run(run())
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_stale_sample_is_not_returned_but_fresh_one_is():
+    async def run():
+        clock = FakeClock()
+        hub = LiveHub(clock=clock)
+        hub.publish(1, sample(1))
+        clock.now += LIVE_MAX_AGE_SECONDS
+        hub.publish(1, sample(2))
+        clock.now += 1
+        assert [s.source_id for s in hub.latest_for_site(1)] == [2]
+        clock.now += LIVE_MAX_AGE_SECONDS
+        assert hub.latest_for_site(1) == []
+
+    asyncio.run(run())
+
+
+def test_older_ts_is_accepted_once_held_sample_is_stale():
+    async def run():
+        clock = FakeClock()
+        hub = LiveHub(clock=clock)
+        sub = hub.subscribe(1)
+        future, correct = sample(seconds=100000), sample(seconds=1, value=2.0)
+        assert hub.publish(1, future) is True
+        clock.now += LIVE_MAX_AGE_SECONDS - 1
+        assert hub.publish(1, correct) is False
+        clock.now += 2
+        assert hub.publish(1, correct) is True
+        assert hub.latest_for_site(1) == [correct]
+        assert [sub.queue.get_nowait(), sub.queue.get_nowait()] == [future, correct]
 
     asyncio.run(run())
 

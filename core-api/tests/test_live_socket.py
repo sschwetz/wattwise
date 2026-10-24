@@ -9,6 +9,7 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from core_api.db import make_engine, make_session_factory
+from core_api.live import LIVE_MAX_AGE_SECONDS, LiveHub
 from core_api.models.identity import Site, SiteAccess, User
 from core_api.models.sources import Source, SourceKind
 from core_api.routers import live as live_router
@@ -98,6 +99,20 @@ def test_authorised_socket_gets_current_then_new_values(live_client):
         msg = ws.receive_json()
         assert msg["values"] == {"production_w": 1600.0}
         assert datetime.datetime.fromisoformat(msg["ts"]).second == 5
+
+
+def test_stale_sample_is_not_sent_to_new_socket(live_client):
+    client, db_url = live_client
+    owner_id, site_id, source_id = make_energy_source_full(db_url)
+    now = [500.0]
+    client.app.state.live_hub = LiveHub(clock=lambda: now[0])
+    push(client, source_id, 1500.0)
+    now[0] += LIVE_MAX_AGE_SECONDS + 1
+    token = create_access_token(owner_id)
+    with client.websocket_connect(f"/api/v1/sites/{site_id}/live") as ws:
+        ws.send_json({"token": token})
+        push(client, source_id, 1600.0, ts="2026-01-01T10:00:05Z")
+        assert ws.receive_json()["values"] == {"production_w": 1600.0}
 
 
 def test_other_sites_push_is_not_received(live_client):

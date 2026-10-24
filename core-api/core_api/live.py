@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from core_api.models.readings import EnergyMetric, WeatherMetric
@@ -21,6 +23,8 @@ ENERGY_LIVE_METRICS: frozenset[str] = frozenset(
 # rain_mm is a running total that only makes sense as a stored interval value.
 WEATHER_LIVE_METRICS: frozenset[str] = frozenset(m.value for m in WeatherMetric if m is not WeatherMetric.RAIN_MM)
 MAX_LIVE_VALUES = 16
+# A held sample older than this (by server receipt time) is not replayed to new sockets.
+LIVE_MAX_AGE_SECONDS = 15
 
 
 @dataclass(frozen=True)
@@ -48,24 +52,37 @@ class LiveHub:
     every caller must run on the event loop.
     """
 
-    def __init__(self, queue_size: int = 50) -> None:
+    def __init__(self, queue_size: int = 50, clock: Callable[[], float] = time.monotonic) -> None:
         self._queue_size = queue_size
-        self._latest: dict[int, dict[int, LiveSample]] = {}
+        self._clock = clock
+        # source_id -> (sample, server receipt time on the monotonic clock)
+        self._latest: dict[int, dict[int, tuple[LiveSample, float]]] = {}
         self._subscribers: dict[int, set[LiveSubscription]] = {}
 
     def publish(self, site_id: int, sample: LiveSample) -> bool:
-        """Store the sample and fan it out. Returns False if it is older than the stored one."""
+        """Store the sample and fan it out.
+
+        Returns False if its ts is older than the held sample's and the held
+        sample arrived within LIVE_MAX_AGE_SECONDS. A stale held sample never
+        blocks a newer push, so a bad collector clock cannot stick.
+        """
         per_source = self._latest.setdefault(site_id, {})
-        current = per_source.get(sample.source_id)
-        if current is not None and sample.ts < current.ts:
+        now = self._clock()
+        held = per_source.get(sample.source_id)
+        if held is not None and sample.ts < held[0].ts and now - held[1] <= LIVE_MAX_AGE_SECONDS:
             return False
-        per_source[sample.source_id] = sample
+        per_source[sample.source_id] = (sample, now)
         for sub in list(self._subscribers.get(site_id, ())):
             _put_dropping_oldest(sub.queue, sample)
         return True
 
     def latest_for_site(self, site_id: int) -> list[LiveSample]:
-        return list(self._latest.get(site_id, {}).values())
+        """Samples received within LIVE_MAX_AGE_SECONDS. Older ones are dropped."""
+        per_source = self._latest.get(site_id, {})
+        now = self._clock()
+        for source_id in [k for k, (_, at) in per_source.items() if now - at > LIVE_MAX_AGE_SECONDS]:
+            del per_source[source_id]
+        return [sample for sample, _ in per_source.values()]
 
     def subscribe(self, site_id: int) -> LiveSubscription:
         sub = LiveSubscription(self, site_id, self._queue_size)
