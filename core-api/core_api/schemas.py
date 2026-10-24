@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import math
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, field_validator, model_validator
 
+from core_api.live import ENERGY_LIVE_METRICS, MAX_LIVE_VALUES, WEATHER_LIVE_METRICS
 from core_api.models.identity import SiteAccessRole
 from core_api.models.local_rates import LOCAL_RATE_CHANNELS
 from core_api.models.pricing import PriceChannel, SpikeStatus
@@ -269,6 +271,37 @@ class WeatherReadingIn(BaseModel):
 
 class WeatherReadingBatch(BaseModel):
     readings: list[WeatherReadingIn]
+
+
+def _check_live_values(values: dict[str, float], allowed: frozenset[str]) -> dict[str, float]:
+    if not 1 <= len(values) <= MAX_LIVE_VALUES:
+        raise ValueError(f"values must hold between 1 and {MAX_LIVE_VALUES} entries")
+    unknown = sorted(set(values) - allowed)
+    if unknown:
+        raise ValueError(f"unknown live metrics: {', '.join(unknown)}")
+    if not all(math.isfinite(v) for v in values.values()):
+        raise ValueError("values must be finite numbers")
+    return values
+
+
+class EnergyLiveSampleIn(BaseModel):
+    ts: UtcDatetime
+    values: dict[str, float]
+
+    @field_validator("values")
+    @classmethod
+    def _values_valid(cls, v: dict[str, float]) -> dict[str, float]:
+        return _check_live_values(v, ENERGY_LIVE_METRICS)
+
+
+class WeatherLiveSampleIn(BaseModel):
+    ts: UtcDatetime
+    values: dict[str, float]
+
+    @field_validator("values")
+    @classmethod
+    def _values_valid(cls, v: dict[str, float]) -> dict[str, float]:
+        return _check_live_values(v, WEATHER_LIVE_METRICS)
 
 
 class PriceIntervalIn(BaseModel):
