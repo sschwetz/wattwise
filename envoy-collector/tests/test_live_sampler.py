@@ -69,13 +69,37 @@ def test_new_last_update_is_kept():
     assert [s.last_update for s in h.sampler.drain()] == [1, 2]
 
 
-def test_on_sample_called_for_new_samples_only():
+def test_on_sample_called_after_every_successful_poll():
     calls = []
     h = Harness(on_sample=lambda sample, config: calls.append(sample.last_update))
     h.step(status(1))
     h.step(status(1))
     h.step(status(2))
-    assert calls == [1, 2]
+    assert calls == [1, 1, 2]
+
+
+def test_repeated_reading_is_pushed_but_stored_once():
+    h = Harness(on_sample=lambda sample, config: None)
+    h.step(status(1))
+    h.step(status(1))
+    assert [s.last_update for s in h.sampler.drain()] == [1]
+
+
+def test_on_sample_not_called_for_a_failed_poll():
+    calls = []
+    h = Harness(on_sample=lambda sample, config: calls.append(sample.last_update))
+    h.step(status(1))
+    h.step(RuntimeError("timed out"))
+    assert calls == [1]
+
+
+def test_repeated_reading_is_not_pushed_once_the_feed_is_stale():
+    calls = []
+    h = Harness(stale_seconds=10.0, on_sample=lambda sample, config: calls.append(sample.last_update))
+    h.step(status(1))
+    h.clock.now += 11.0
+    h.step(status(1))
+    assert calls == [1]
 
 
 def test_on_sample_receives_current_config():

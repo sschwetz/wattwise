@@ -25,8 +25,12 @@ class LiveSampler:
     and polled readings. `label` (for example "source 3") appears in every
     log line and in the thread name. Repeated failures are rate-limited by
     FailureLog, with separate streaks for the fetch and the keepalive.
-    on_sample, when given, is called with each kept sample and the current
-    config; its exceptions are logged and dropped.
+    on_sample, when given, is called with the current config and the newest
+    sample after every successful poll, so a dashboard sees a push each time
+    a poll finishes. A poll that returns an unchanged reading repeats the
+    last sample, but only while the feed is fresh: once the gateway has not
+    refreshed for stale_seconds nothing is pushed. Its exceptions are logged
+    and dropped.
 
     Battery presence is latched: once a kept sample has has_battery set,
     every later sample from this sampler is stored with has_battery=True,
@@ -57,6 +61,7 @@ class LiveSampler:
         self._lock = threading.Lock()
         self._samples: deque[LiveSample] = deque(maxlen=MAX_SAMPLES)
         self._last_update: int | None = None
+        self._latest: LiveSample | None = None
         self._last_sample_at: float | None = None
         self._has_battery = False
         # Start of the current keepalive window: the latest of creation, the
@@ -102,6 +107,8 @@ class LiveSampler:
             self._keep(sample)
         else:
             self._maybe_keepalive()
+            if self._latest is not None and self.is_fresh():
+                self._notify(self._latest)
 
     def _keep(self, sample: LiveSample) -> None:
         """Store a new sample, applying the battery latch, and restart the keepalive window."""
@@ -113,6 +120,7 @@ class LiveSampler:
         with self._lock:
             self._samples.append(sample)
         self._last_update = sample.last_update
+        self._latest = sample
         self._last_sample_at = now
         self._window_start = now
         self._notify(sample)
