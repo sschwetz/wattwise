@@ -8,60 +8,58 @@ _STORAGE_PHASE_KEY = re.compile(r"^agg_p_ph_.+_mw$")
 _PHASE_LETTERS = ("a", "b", "c")
 
 
-def map_production_readings(
-    production_json: dict,
+def map_meter_power_readings(
+    meters: list[dict],
+    readings: list[dict],
     ts: datetime.datetime,
     invert_consumption_ct: bool = False,
     battery_net_w: float | None = None,
 ) -> list[dict]:
-    """Map a /production.json response to a list of {ts, metric, value} dicts.
+    """Map /ivp/meters and /ivp/meters/readings to instantaneous power rows.
 
-    production_w always comes from the "eim" (CT-metered) entry, never the
-    "inverters" entry — the two disagree in practice, and the CT reading is
-    the billing-grade one. grid_import_w/grid_export_w are derived from the
-    "net-consumption" eim entry's sign (positive = importing, negative =
-    exporting), confirmed against real sample data where
-    total_consumption - production == net_consumption.
+    production_w is the production meter's activePower (the CT reading, not
+    the inverters' own figure, which disagrees with it in practice). The
+    net-consumption meter's activePower is the grid flow: positive means
+    importing, negative means exporting. consumption_w is production + grid,
+    the same figure the Envoy's total-consumption used to report.
 
-    invert_consumption_ct corrects for a physically reversed consumption CT
-    clamp (a known Enphase installation mistake, identifiable by the
-    consumption entries reporting pwrFactor: -1.0) by flipping the sign of
-    both consumption readings before they're used.
+    invert_consumption_ct corrects a physically reversed consumption CT clamp
+    (a known Enphase installation mistake) by flipping the sign of the grid
+    flow and of the production + grid term.
 
-    Envoy's own "total-consumption" is defined as production + net-consumption
-    -- it has no visibility into a battery's CT, so on a site with an IQ
-    Battery it silently omits that flow. In practice this isn't just "off by
-    a bit": observed live, 219W production with the battery discharging
-    15360W into a 14338W grid export made Envoy report -14119W of
-    "consumption", though the house was actually drawing ~1.24kW. Pass
-    battery_net_w (this module's own sign convention: positive = discharging,
+    The Envoy cannot see a battery's CT, so on a site with a battery that sum
+    omits the battery's flow: 219W of production with the battery discharging
+    15360W into a 14338W grid export gave -14119W of "consumption" when the
+    house drew about 1.24kW. Pass battery_net_w (positive = discharging,
     negative = charging, as returned by battery_net_w()) to add the missing
-    term back in and recover true household consumption. Omit it (the
-    default) for a batteryless site, where Envoy's own total-consumption is
-    already correct.
-    """
-    production_eim = next(p for p in production_json["production"] if p["type"] == "eim")
-    consumption_total = next(
-        c for c in production_json["consumption"] if c["measurementType"] == "total-consumption"
-    )
-    consumption_net = next(
-        c for c in production_json["consumption"] if c["measurementType"] == "net-consumption"
-    )
+    term back. Omit it for a batteryless site.
 
+    Raises ValueError when no enabled production or net-consumption meter has
+    a reading, so the caller skips the cycle.
+    """
+    power = _meter_powers(meters, readings)
+    for kind in ("production", "net-consumption"):
+        if kind not in power:
+            raise ValueError(f"no {kind} meter reading")
     sign = -1 if invert_consumption_ct else 1
-    consumption_w = sign * consumption_total["wNow"]
-    if battery_net_w is not None:
-        consumption_w += battery_net_w
-    readings = [
-        {"ts": ts, "metric": "production_w", "value": production_eim["wNow"]},
-        {"ts": ts, "metric": "consumption_w", "value": consumption_w},
+    production = power["production"]
+    grid = sign * power["net-consumption"]
+    consumption = sign * production + grid + (battery_net_w or 0.0)
+    return [
+        {"ts": ts, "metric": "production_w", "value": production},
+        {"ts": ts, "metric": "consumption_w", "value": consumption},
+        {"ts": ts, "metric": "grid_import_w" if grid >= 0 else "grid_export_w", "value": abs(grid)},
     ]
-    net = sign * consumption_net["wNow"]
-    if net >= 0:
-        readings.append({"ts": ts, "metric": "grid_import_w", "value": net})
-    else:
-        readings.append({"ts": ts, "metric": "grid_export_w", "value": -net})
-    return readings
+
+
+def _meter_powers(meters: list[dict], readings: list[dict]) -> dict[str, float]:
+    """activePower by measurementType, for enabled meters that have a reading."""
+    by_eid = {m["eid"]: m["measurementType"] for m in meters if m.get("state") == "enabled"}
+    return {
+        by_eid[r["eid"]]: r["activePower"]
+        for r in readings
+        if r["eid"] in by_eid and r.get("activePower") is not None
+    }
 
 
 def battery_net_w(ensemble_json: dict) -> float | None:

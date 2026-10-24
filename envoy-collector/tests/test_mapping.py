@@ -12,7 +12,7 @@ from envoy_collector.mapping import (
     map_battery_readings,
     map_livedata_readings,
     map_meter_readings,
-    map_production_readings,
+    map_meter_power_readings,
     parse_livedata,
 )
 
@@ -24,52 +24,72 @@ def load_fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text())
 
 
-def test_production_uses_eim_not_inverters():
-    readings = map_production_readings(load_fixture("production.json"), TS)
-    by_metric = {r["metric"]: r["value"] for r in readings}
-    assert by_metric["production_w"] == 7474.653  # the eim value, not 4920 (inverters)
+METERS = load_fixture("meters.json")
+
+
+def power_readings(production: float, net: float) -> list[dict]:
+    return [
+        {"eid": 704643328, "activePower": production},
+        {"eid": 704643584, "activePower": net},
+        {"eid": 1023410688, "activePower": 0.0},
+    ]
+
+
+def power_metrics(production=7474.653, net=147.341, **kwargs) -> dict:
+    rows = map_meter_power_readings(METERS, power_readings(production, net), TS, **kwargs)
+    return {r["metric"]: r["value"] for r in rows}
+
+
+def test_production_comes_from_the_production_meter():
+    assert power_metrics()["production_w"] == 7474.653
 
 
 def test_consumption_and_grid_import_derived_correctly():
-    readings = map_production_readings(load_fixture("production.json"), TS)
-    by_metric = {r["metric"]: r["value"] for r in readings}
-    assert by_metric["consumption_w"] == 7621.994
+    by_metric = power_metrics()
+    assert by_metric["consumption_w"] == pytest.approx(7474.653 + 147.341)
     assert by_metric["grid_import_w"] == 147.341
     assert "grid_export_w" not in by_metric
 
 
 def test_negative_net_consumption_yields_grid_export():
-    production = load_fixture("production.json")
-    production["consumption"][1]["wNow"] = -500.0
-    readings = map_production_readings(production, TS)
-    by_metric = {r["metric"]: r["value"] for r in readings}
+    by_metric = power_metrics(net=-500.0)
     assert by_metric["grid_export_w"] == 500.0
     assert "grid_import_w" not in by_metric
 
 
 def test_invert_consumption_ct_flips_consumption_and_grid_sign():
-    # A reversed consumption CT clamp reports consumption_w (and the
-    # net-consumption used to derive grid import/export) with the opposite
+    # A reversed consumption CT clamp reports the grid flow with the opposite
     # sign to reality; invert_consumption_ct corrects it at the source.
-    readings = map_production_readings(load_fixture("production.json"), TS, invert_consumption_ct=True)
-    by_metric = {r["metric"]: r["value"] for r in readings}
-    assert by_metric["consumption_w"] == -7621.994
+    by_metric = power_metrics(invert_consumption_ct=True)
+    assert by_metric["consumption_w"] == pytest.approx(-(7474.653 + 147.341))
     assert by_metric["grid_export_w"] == 147.341
     assert "grid_import_w" not in by_metric
 
 
 def test_invert_consumption_ct_defaults_to_false():
-    uninverted = {r["metric"]: r["value"] for r in map_production_readings(load_fixture("production.json"), TS)}
-    explicit_false = {
-        r["metric"]: r["value"]
-        for r in map_production_readings(load_fixture("production.json"), TS, invert_consumption_ct=False)
-    }
-    assert uninverted == explicit_false
+    assert power_metrics() == power_metrics(invert_consumption_ct=False)
 
 
-def test_all_production_readings_share_the_given_timestamp():
-    readings = map_production_readings(load_fixture("production.json"), TS)
-    assert all(r["ts"] == TS for r in readings)
+def test_all_power_readings_share_the_given_timestamp():
+    rows = map_meter_power_readings(METERS, power_readings(1.0, 2.0), TS)
+    assert all(r["ts"] == TS for r in rows)
+
+
+def test_disabled_meters_and_meters_without_a_reading_are_ignored():
+    meters = [{**m, "state": "disabled"} if m["measurementType"] == "production" else m for m in METERS]
+    with pytest.raises(ValueError, match="production"):
+        map_meter_power_readings(meters, power_readings(1.0, 2.0), TS)
+
+
+def test_missing_net_consumption_reading_raises_value_error():
+    with pytest.raises(ValueError, match="net-consumption"):
+        map_meter_power_readings(METERS, power_readings(1.0, 2.0)[:1], TS)
+
+
+def test_reading_without_active_power_raises_value_error():
+    readings = [{"eid": 704643328}, {"eid": 704643584, "activePower": 2.0}]
+    with pytest.raises(ValueError, match="production"):
+        map_meter_power_readings(METERS, readings, TS)
 
 
 def test_battery_negative_power_yields_charge_and_averaged_soc():
@@ -105,44 +125,28 @@ def test_battery_net_w_returns_none_for_no_devices():
 
 
 def test_consumption_unaffected_when_battery_net_w_omitted():
-    # Default (no battery info available) must match today's behavior exactly
-    # -- this is the only correct formula for a site with no battery.
-    readings = map_production_readings(load_fixture("production.json"), TS)
-    by_metric = {r["metric"]: r["value"] for r in readings}
-    assert by_metric["consumption_w"] == 7621.994
+    # No battery info available: production + grid is the right figure for a
+    # site with no battery.
+    assert power_metrics()["consumption_w"] == pytest.approx(7474.653 + 147.341)
 
 
 def test_consumption_adds_battery_discharge_when_battery_net_w_given():
-    # Envoy's own "total-consumption" is production + net-consumption only --
-    # it has no visibility into the battery CT. Passing battery_net_w adds
-    # the battery's own contribution back in to recover true household
-    # consumption.
-    readings = map_production_readings(load_fixture("production.json"), TS, battery_net_w=100.0)
-    by_metric = {r["metric"]: r["value"] for r in readings}
-    assert by_metric["consumption_w"] == pytest.approx(7621.994 + 100.0)
+    # The meters cannot see the battery CT. Passing battery_net_w adds the
+    # battery's own contribution back in to recover true household consumption.
+    assert power_metrics(battery_net_w=100.0)["consumption_w"] == pytest.approx(7474.653 + 147.341 + 100.0)
 
 
 def test_consumption_subtracts_battery_charge_when_battery_net_w_given():
-    readings = map_production_readings(load_fixture("production.json"), TS, battery_net_w=-100.0)
-    by_metric = {r["metric"]: r["value"] for r in readings}
-    assert by_metric["consumption_w"] == pytest.approx(7621.994 - 100.0)
+    assert power_metrics(battery_net_w=-100.0)["consumption_w"] == pytest.approx(7474.653 + 147.341 - 100.0)
 
 
 def test_consumption_matches_live_observed_bug_report():
     # Reproduces the real scenario that exposed this bug: 219W production,
     # 15360W battery discharge, 14338W grid export (net-consumption -14338).
-    # Envoy's own total-consumption reported -14119W (physically impossible);
-    # the true household draw, confirmed against the user's own meter
-    # observation (~1-1.2kW), was ~1241W.
-    production = {
-        "production": [{"type": "eim", "measurementType": "production", "wNow": 219.0}],
-        "consumption": [
-            {"type": "eim", "measurementType": "total-consumption", "wNow": -14119.0},
-            {"type": "eim", "measurementType": "net-consumption", "wNow": -14338.0},
-        ],
-    }
-    readings = map_production_readings(production, TS, battery_net_w=15360.0)
-    by_metric = {r["metric"]: r["value"] for r in readings}
+    # Production + grid alone gives -14119W (physically impossible); the true
+    # household draw, confirmed against the user's own meter observation
+    # (~1-1.2kW), was ~1241W.
+    by_metric = power_metrics(production=219.0, net=-14338.0, battery_net_w=15360.0)
     assert by_metric["consumption_w"] == pytest.approx(1241.0)
 
 

@@ -24,7 +24,6 @@ from envoy_collector.envoy_client import (
     fetch_livedata,
     fetch_meter_readings,
     fetch_meters,
-    fetch_production,
     fetch_serial_number,
 )
 from envoy_collector.failure_log import FailureLog
@@ -34,7 +33,7 @@ from envoy_collector.mapping import (
     map_battery_readings,
     map_livedata_readings,
     map_meter_readings,
-    map_production_readings,
+    map_meter_power_readings,
 )
 
 logger = logging.getLogger("envoy_collector")
@@ -245,9 +244,9 @@ def _fetch_battery_json_or_none(config: dict) -> dict | None:
     """Battery fetch/parse failures (other than an auth failure, which must
     bubble up so poll_once's shared token-refresh logic can handle it) only
     cost this cycle's battery data, not the whole cycle — a batteryless
-    site's /ivp/ensemble/power failing must not also discard production
-    data. None (same as a genuinely batteryless site) means _fetch_and_map
-    can't apply map_production_readings' battery correction this cycle,
+    site's /ivp/ensemble/power failing must not also discard the power
+    readings. None (same as a genuinely batteryless site) means _fetch_and_map
+    can't apply map_meter_power_readings' battery correction this cycle,
     which just falls back to Envoy's own (battery-unaware) consumption
     figure for one poll — no worse than before this correction existed."""
     try:
@@ -259,17 +258,31 @@ def _fetch_battery_json_or_none(config: dict) -> dict | None:
         return None
 
 
-def _fetch_and_map(config: dict, ts: datetime.datetime) -> list[dict]:
+def _cached_meters(source_id: int, config: dict) -> list[dict]:
+    """The /ivp/meters listing, read once per source (it only changes when
+    hardware is added) and dropped on an Envoy 401 or a source refresh."""
+    if source_id not in _meters_cache:
+        _meters_cache[source_id] = fetch_meters(config["host"], config.get("token", ""), config["cert_fingerprint"])
+    return _meters_cache[source_id]
+
+
+def _fetch_meter_power(source_id: int, config: dict) -> tuple[list[dict], list[dict]]:
+    """(meters, readings) for one power poll."""
+    meters = _cached_meters(source_id, config)
+    readings = fetch_meter_readings(config["host"], config.get("token", ""), config["cert_fingerprint"])
+    return meters, readings
+
+
+def _fetch_and_map(source_id: int, config: dict, ts: datetime.datetime) -> list[dict]:
     """Fetch and map one cycle's readings. Mapping runs in here (not back in
-    poll_once) so a malformed-but-200 Envoy response — e.g. a production.json
-    missing the expected "eim" entry — is caught by poll_once's surrounding
+    poll_once) so a malformed-but-200 Envoy response — e.g. meter readings
+    with no net-consumption meter — is caught by poll_once's surrounding
     except blocks instead of crashing the process.
 
-    Battery is fetched before production is mapped (not after, as it used to
-    be) so its instantaneous power can be threaded into
-    map_production_readings — see that function's docstring for why
-    Envoy's own consumption figure needs that correction on a site with a
-    battery.
+    Battery is fetched before power is mapped so its instantaneous power can
+    be threaded into map_meter_power_readings — see that function's docstring
+    for why the grid-derived consumption figure needs that correction on a
+    site with a battery.
 
     Both requests are sent at the same time. Every figure is instantaneous
     power, so fetching them one after the other leaves a gap between the two
@@ -277,21 +290,20 @@ def _fetch_and_map(config: dict, ts: datetime.datetime) -> list[dict]:
     different moment than the consumption figure it corrects, which can push
     house consumption below zero."""
     with ThreadPoolExecutor(max_workers=2) as pool:
-        production_future = pool.submit(
-            fetch_production, config["host"], config.get("token", ""), config["cert_fingerprint"]
-        )
+        meter_future = pool.submit(_fetch_meter_power, source_id, config)
         battery_future = pool.submit(_fetch_battery_json_or_none, config)
-        production = production_future.result()
+        meters, meter_readings = meter_future.result()
         battery_json = battery_future.result()
     battery_readings = map_battery_readings(battery_json, ts) if battery_json is not None else []
     net_w = battery_net_w(battery_json) if battery_json is not None else None
-    production_readings = map_production_readings(
-        production,
+    power_readings = map_meter_power_readings(
+        meters,
+        meter_readings,
         ts,
         invert_consumption_ct=bool(config.get("invert_consumption_ct")),
         battery_net_w=net_w,
     )
-    return production_readings + battery_readings
+    return power_readings + battery_readings
 
 
 def _recover_from_auth_failure(
@@ -307,7 +319,7 @@ def _recover_from_auth_failure(
         logger.exception("Failed to refetch source config after Envoy auth failure for source %s", source_id)
         return config, None
     try:
-        return config, _fetch_and_map(config, ts)
+        return config, _fetch_and_map(source_id, config, ts)
     except EnvoyAuthError:
         pass
     except Exception:
@@ -318,7 +330,7 @@ def _recover_from_auth_failure(
         logger.error(_renewal_message(config))
         return config, None
     try:
-        return renewed, _fetch_and_map(renewed, ts)
+        return renewed, _fetch_and_map(source_id, renewed, ts)
     except EnvoyAuthError:
         logger.error(_renewal_message(renewed))
     except Exception:
@@ -333,11 +345,8 @@ def _meter_readings_or_empty(source_id: int, config: dict, ts: datetime.datetime
     an auth failure clears the cache. Repeated failures are rate-limited
     per source (see FailureLog)."""
     try:
-        host, token, fingerprint = config["host"], config.get("token", ""), config["cert_fingerprint"]
-        if source_id not in _meters_cache:
-            _meters_cache[source_id] = fetch_meters(host, token, fingerprint)
-        readings = fetch_meter_readings(host, token, fingerprint)
-        rows = map_meter_readings(_meters_cache[source_id], readings, ts)
+        meters, readings = _fetch_meter_power(source_id, config)
+        rows = map_meter_readings(meters, readings, ts)
     except EnvoyAuthError:
         _meters_cache.pop(source_id, None)
         logger.warning("Envoy rejected our token reading meters for source %s", source_id)
@@ -398,12 +407,12 @@ def _collect_readings(
 ) -> tuple[dict, list[dict] | None]:
     """Returns (config to use next cycle, power readings or None if this
     cycle should be skipped). Uses the live feed when it has samples and
-    otherwise polls the Envoy's production and battery endpoints."""
+    otherwise polls the Envoy's meter and battery endpoints."""
     live = _live_readings(settings, source_id, config, ts, sampler)
     if live:
         return config, live
     try:
-        return config, _fetch_and_map(config, ts)
+        return config, _fetch_and_map(source_id, config, ts)
     except EnvoyAuthError:
         return _recover_from_auth_failure(settings, source_id, config, ts)
     except EnvoyCertificateMismatch:

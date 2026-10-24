@@ -115,9 +115,9 @@ def test_discover_and_sync_serial_pins_the_certificate_before_fetching_the_seria
 
 
 def test_poll_once_pushes_mapped_readings_on_success(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: [])
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
-    monkeypatch.setattr(main_module, "map_production_readings", lambda data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}])
+    monkeypatch.setattr(main_module, "map_meter_power_readings", lambda meters, data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}])
     monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
     pushed = []
     monkeypatch.setattr(
@@ -133,15 +133,15 @@ def test_poll_once_pushes_mapped_readings_on_success(monkeypatch):
 
 
 def test_poll_once_passes_invert_consumption_ct_from_config(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: [])
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
     received = {}
 
-    def fake_map_production_readings(data, ts, **kwargs):
+    def fake_map_meter_power_readings(meters, data, ts, **kwargs):
         received.update(kwargs)
         return []
 
-    monkeypatch.setattr(main_module, "map_production_readings", fake_map_production_readings)
+    monkeypatch.setattr(main_module, "map_meter_power_readings", fake_map_meter_power_readings)
     monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
     monkeypatch.setattr(main_module, "push_energy_readings", lambda base_url, source_id, key, readings: None)
 
@@ -152,9 +152,9 @@ def test_poll_once_passes_invert_consumption_ct_from_config(monkeypatch):
 
 
 def test_poll_once_floors_timestamp_to_whole_minute(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: [])
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
-    monkeypatch.setattr(main_module, "map_production_readings", lambda data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}])
+    monkeypatch.setattr(main_module, "map_meter_power_readings", lambda meters, data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}])
     monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
     pushed = []
     monkeypatch.setattr(
@@ -171,15 +171,15 @@ def test_poll_once_floors_timestamp_to_whole_minute(monkeypatch):
 def test_poll_once_refetches_config_once_on_envoy_401_then_succeeds(monkeypatch):
     calls = {"production": 0}
 
-    def fake_fetch_production(host, token, cert_fingerprint):
+    def fake_fetch_meter_readings(host, token, cert_fingerprint):
         calls["production"] += 1
         if token == "old-token":
             raise EnvoyAuthError("nope")
-        return {"production": []}
+        return []
 
-    monkeypatch.setattr(main_module, "fetch_production", fake_fetch_production)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", fake_fetch_meter_readings)
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
-    monkeypatch.setattr(main_module, "map_production_readings", lambda data, ts, **_kwargs: [])
+    monkeypatch.setattr(main_module, "map_meter_power_readings", lambda meters, data, ts, **_kwargs: [])
     monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
     monkeypatch.setattr(
         main_module,
@@ -192,12 +192,13 @@ def test_poll_once_refetches_config_once_on_envoy_401_then_succeeds(monkeypatch)
     result_config = main_module.poll_once(SETTINGS, 1, config)
 
     assert result_config["token"] == "new-token"
-    assert calls["production"] == 2  # one failed attempt, one retry after refetch
+    # one failed power poll, the retry after the refetch, and the lifetime-counter read
+    assert calls["production"] == 3
 
 
 def test_poll_once_logs_and_returns_unchanged_config_when_still_401_after_refetch(monkeypatch, caplog):
     monkeypatch.setattr(
-        main_module, "fetch_production", lambda host, token, cert_fingerprint: (_ for _ in ()).throw(EnvoyAuthError("nope"))
+        main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: (_ for _ in ()).throw(EnvoyAuthError("nope"))
     )
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
     monkeypatch.setattr(
@@ -228,7 +229,7 @@ def test_poll_once_skips_cycle_when_envoy_unreachable(monkeypatch, caplog):
     def _raise(host, token, cert_fingerprint):
         raise OSError("network unreachable")
 
-    monkeypatch.setattr(main_module, "fetch_production", _raise)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", _raise)
     config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
 
     with caplog.at_level("ERROR"):
@@ -239,7 +240,7 @@ def test_poll_once_skips_cycle_when_envoy_unreachable(monkeypatch, caplog):
 
 def test_poll_once_skips_cycle_when_no_cert_fingerprint_is_pinned_yet(monkeypatch, caplog):
     called = []
-    monkeypatch.setattr(main_module, "fetch_production", lambda *a, **k: called.append(True))
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda *a, **k: called.append(True))
 
     config = {"host": "envoy.local", "token": "abc"}
     with caplog.at_level("WARNING"):
@@ -250,14 +251,14 @@ def test_poll_once_skips_cycle_when_no_cert_fingerprint_is_pinned_yet(monkeypatc
     assert any("no pinned TLS certificate" in message for message in caplog.messages)
 
 
-def test_poll_once_skips_cycle_when_production_response_is_malformed(monkeypatch, caplog):
-    # Uses the REAL map_production_readings (not monkeypatched): a
-    # production.json missing the "eim" entry makes the real mapping code
-    # raise StopIteration. Before the fix, mapping ran outside poll_once's
+def test_poll_once_skips_cycle_when_meter_response_is_malformed(monkeypatch, caplog):
+    # Uses the REAL map_meter_power_readings (not monkeypatched): readings
+    # with no production or net-consumption meter make the real mapping code
+    # raise ValueError. Before the fix, mapping ran outside poll_once's
     # try/except and this crashed the whole cycle instead of being logged
     # and skipped.
     monkeypatch.setattr(
-        main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": [], "consumption": []}
+        main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: []
     )
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
     config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
@@ -271,9 +272,9 @@ def test_poll_once_skips_cycle_when_production_response_is_malformed(monkeypatch
 def test_poll_once_passes_battery_net_w_computed_from_real_battery_fetch(monkeypatch):
     # Uses the real map_battery_readings/battery_net_w (not monkeypatched) on
     # a realistic ensemble payload, to verify the computed net watt figure
-    # actually reaches map_production_readings, not just that some kwarg is
+    # actually reaches map_meter_power_readings, not just that some kwarg is
     # passed.
-    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: [])
     monkeypatch.setattr(
         main_module,
         "fetch_battery_power",
@@ -281,11 +282,11 @@ def test_poll_once_passes_battery_net_w_computed_from_real_battery_fetch(monkeyp
     )
     received = {}
 
-    def fake_map_production_readings(data, ts, **kwargs):
+    def fake_map_meter_power_readings(meters, data, ts, **kwargs):
         received.update(kwargs)
         return []
 
-    monkeypatch.setattr(main_module, "map_production_readings", fake_map_production_readings)
+    monkeypatch.setattr(main_module, "map_meter_power_readings", fake_map_meter_power_readings)
     monkeypatch.setattr(main_module, "push_energy_readings", lambda base_url, source_id, key, readings: None)
 
     config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
@@ -294,23 +295,23 @@ def test_poll_once_passes_battery_net_w_computed_from_real_battery_fetch(monkeyp
     assert received["battery_net_w"] == pytest.approx(2000.0)
 
 
-def test_poll_once_requests_production_and_battery_at_the_same_time(monkeypatch):
+def test_poll_once_requests_meters_and_battery_at_the_same_time(monkeypatch):
     # Both fakes wait for the other at a barrier. Run one after the other, the
     # first would time out and the cycle would fail.
     barrier = threading.Barrier(2, timeout=2)
     met = []
 
-    def fake_fetch_production(host, token, cert_fingerprint):
+    def fake_fetch_meter_readings(host, token, cert_fingerprint):
         barrier.wait()
         met.append("production")
-        return {"production": []}
+        return []
 
     def fake_fetch_battery_power(host, token, cert_fingerprint):
         barrier.wait()
         met.append("battery")
         return {"devices:": []}
 
-    monkeypatch.setattr(main_module, "fetch_production", fake_fetch_production)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", fake_fetch_meter_readings)
     monkeypatch.setattr(main_module, "fetch_battery_power", fake_fetch_battery_power)
     monkeypatch.setattr(main_module, "push_energy_readings", lambda base_url, source_id, key, readings: None)
 
@@ -321,7 +322,7 @@ def test_poll_once_requests_production_and_battery_at_the_same_time(monkeypatch)
 
 
 def test_poll_once_passes_none_battery_net_w_when_battery_fetch_fails(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: [])
 
     def _raise_battery(host, token, cert_fingerprint):
         raise ValueError("no battery installed on this Envoy")
@@ -329,11 +330,11 @@ def test_poll_once_passes_none_battery_net_w_when_battery_fetch_fails(monkeypatc
     monkeypatch.setattr(main_module, "fetch_battery_power", _raise_battery)
     received = {}
 
-    def fake_map_production_readings(data, ts, **kwargs):
+    def fake_map_meter_power_readings(meters, data, ts, **kwargs):
         received.update(kwargs)
         return []
 
-    monkeypatch.setattr(main_module, "map_production_readings", fake_map_production_readings)
+    monkeypatch.setattr(main_module, "map_meter_power_readings", fake_map_meter_power_readings)
     monkeypatch.setattr(main_module, "push_energy_readings", lambda base_url, source_id, key, readings: None)
 
     config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
@@ -343,9 +344,9 @@ def test_poll_once_passes_none_battery_net_w_when_battery_fetch_fails(monkeypatc
 
 
 def test_poll_once_still_pushes_production_when_battery_fetch_raises_non_auth_error(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: [])
     monkeypatch.setattr(
-        main_module, "map_production_readings", lambda data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 42.0}]
+        main_module, "map_meter_power_readings", lambda meters, data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 42.0}]
     )
 
     def _raise_battery(host, token, cert_fingerprint):
@@ -417,9 +418,9 @@ def test_main_loop_survives_unexpected_exception_from_poll_once(monkeypatch):
 
 
 def test_poll_once_skips_push_but_does_not_raise_when_core_api_unreachable(monkeypatch, caplog):
-    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: [])
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
-    monkeypatch.setattr(main_module, "map_production_readings", lambda data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}])
+    monkeypatch.setattr(main_module, "map_meter_power_readings", lambda meters, data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}])
     monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
 
     def _raise_core_api(*a, **k):
@@ -435,12 +436,12 @@ def test_poll_once_skips_push_but_does_not_raise_when_core_api_unreachable(monke
 
 
 def _stub_one_reading(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", lambda host, token, cert_fingerprint: {"production": []})
+    monkeypatch.setattr(main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: [])
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
     monkeypatch.setattr(
         main_module,
-        "map_production_readings",
-        lambda data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}],
+        "map_meter_power_readings",
+        lambda meters, data, ts, **_kwargs: [{"ts": ts, "metric": "production_w", "value": 1.0}],
     )
     monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
 
@@ -698,15 +699,15 @@ def _stub_envoy_accepting_only_fresh_token(monkeypatch) -> list[str]:
     tokens it was called with."""
     seen: list[str] = []
 
-    def fake_fetch_production(host, token, cert_fingerprint):
+    def fake_fetch_meter_readings(host, token, cert_fingerprint):
         seen.append(token)
         if token != "fresh":
             raise EnvoyAuthError("nope")
-        return {"production": []}
+        return []
 
-    monkeypatch.setattr(main_module, "fetch_production", fake_fetch_production)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", fake_fetch_meter_readings)
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
-    monkeypatch.setattr(main_module, "map_production_readings", lambda data, ts, **_kwargs: [])
+    monkeypatch.setattr(main_module, "map_meter_power_readings", lambda meters, data, ts, **_kwargs: [])
     monkeypatch.setattr(main_module, "map_battery_readings", lambda data, ts: [])
     return seen
 
@@ -788,7 +789,8 @@ def test_poll_once_renews_after_a_double_401_and_retries(monkeypatch):
     result = main_module.poll_once(SETTINGS, 1, dict(stored))
 
     assert result["token"] == "fresh"
-    assert seen == ["old", "old", "fresh"]
+    # two rejected power polls, the accepted retry, then the lifetime-counter read
+    assert seen == ["old", "old", "fresh", "fresh"]
     assert len(pushed) == 1
 
 
@@ -812,7 +814,7 @@ def test_poll_once_falls_back_to_the_manual_message_when_renewal_fails(monkeypat
 
     monkeypatch.setattr(main_module, "fetch_token", reject)
     monkeypatch.setattr(
-        main_module, "fetch_production", lambda host, token, cert_fingerprint: (_ for _ in ()).throw(EnvoyAuthError("x"))
+        main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: (_ for _ in ()).throw(EnvoyAuthError("x"))
     )
     monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
     stored = {"host": "envoy.local", "token": "old", "cert_fingerprint": "pinned", **CREDS}
@@ -920,7 +922,7 @@ def test_discovery_does_not_record_expiry_of_a_certificate_that_is_not_the_pinne
 
 
 def test_poll_once_repins_a_changed_certificate_within_100_days_of_expiry(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", _mismatch)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
     monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
     reported = _reports(monkeypatch)
@@ -937,7 +939,7 @@ def test_poll_once_repins_a_changed_certificate_within_100_days_of_expiry(monkey
 
 
 def test_poll_once_repins_when_the_pinned_certificate_has_already_expired(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", _mismatch)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
     monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
     _reports(monkeypatch)
@@ -948,7 +950,7 @@ def test_poll_once_repins_when_the_pinned_certificate_has_already_expired(monkey
 
 
 def test_poll_once_refuses_to_repin_a_changed_certificate_with_more_than_100_days_left(monkeypatch, caplog):
-    monkeypatch.setattr(main_module, "fetch_production", _mismatch)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
     fetched = []
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: fetched.append(host))
     reported = _reports(monkeypatch)
@@ -964,7 +966,7 @@ def test_poll_once_refuses_to_repin_a_changed_certificate_with_more_than_100_day
 
 
 def test_poll_once_refuses_to_repin_when_the_expiry_is_unknown(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_production", _mismatch)
+    monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
     reported = _reports(monkeypatch)
     config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "old"}
 
@@ -1071,7 +1073,7 @@ def _capture_pushes(monkeypatch) -> list[list[dict]]:
 def _stub_fetch_and_map(monkeypatch, readings: list[dict]) -> list[int]:
     calls: list[int] = []
 
-    def fake(config, ts):
+    def fake(source_id, config, ts):
         calls.append(1)
         return list(readings)
 
@@ -1352,7 +1354,7 @@ def test_poll_once_runs_meters_after_auth_recovery(monkeypatch):
     pushed = _capture_pushes(monkeypatch)
     _stub_meters(monkeypatch)
 
-    def unauthorized(config, ts):
+    def unauthorized(source_id, config, ts):
         raise EnvoyAuthError("401")
 
     monkeypatch.setattr(main_module, "_fetch_and_map", unauthorized)

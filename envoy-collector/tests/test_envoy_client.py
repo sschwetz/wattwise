@@ -21,7 +21,6 @@ from envoy_collector.envoy_client import (
     fetch_livedata,
     fetch_meter_readings,
     fetch_meters,
-    fetch_production,
     fetch_serial_number,
 )
 
@@ -49,13 +48,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         return self.headers.get("Authorization") == f"Bearer {VALID_TOKEN}"
 
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's naming convention
-        if self.path == "/production.json":
-            if not self._authorized():
-                self.send_response(401)
-                self.end_headers()
-                return
-            self._write_json(200, {"production": [], "consumption": [], "storage": []})
-        elif self.path == "/ivp/ensemble/power":
+        if self.path == "/ivp/ensemble/power":
             if not self._authorized():
                 self.send_response(401)
                 self.end_headers()
@@ -162,26 +155,14 @@ def test_fetch_certificate_info_returns_fingerprint_and_expiry(envoy_server):
     assert info.expires_at.tzinfo is not None
 
 
-def test_fetch_production_sends_bearer_token_and_parses_json(envoy_server):
-    host, fingerprint = envoy_server
-    result = fetch_production(host, VALID_TOKEN, fingerprint)
-    assert result == {"production": [], "consumption": [], "storage": []}
-
-
-def test_fetch_production_raises_envoy_auth_error_on_401(envoy_server):
-    host, fingerprint = envoy_server
-    with pytest.raises(EnvoyAuthError):
-        fetch_production(host, "wrong-token", fingerprint)
-
-
-def test_fetch_production_refuses_a_connection_with_the_wrong_pinned_fingerprint(envoy_server):
+def test_fetch_battery_power_refuses_a_connection_with_the_wrong_pinned_fingerprint(envoy_server):
     """The core of the fix: even with the CORRECT token, a mismatched pin
     must stop the request before the token is ever sent -- this is what
     closes the MITM gap that unconditional verify=False left open."""
     host, _real_fingerprint = envoy_server
     wrong_fingerprint = "0" * 64
     with pytest.raises(EnvoyCertificateMismatch):
-        fetch_production(host, VALID_TOKEN, wrong_fingerprint)
+        fetch_battery_power(host, VALID_TOKEN, wrong_fingerprint)
 
 
 def test_fetch_battery_power_sends_bearer_token(envoy_server):
