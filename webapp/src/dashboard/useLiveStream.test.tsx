@@ -92,6 +92,22 @@ describe("useLiveStream", () => {
     expect(result.current.energy).toHaveLength(0);
   });
 
+  it("stops re-rendering once values have expired", () => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useLiveStream(7);
+    });
+    act(() => last().open());
+    act(() => last().message(energyMsg(new Date().toISOString())));
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(result.current.energy).toHaveLength(0);
+    expect(renders).toBeLessThan(10);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("reconnects with backoff and resets after a message", () => {
     renderHook(() => useLiveStream(7));
     act(() => last().closeWith(1006));

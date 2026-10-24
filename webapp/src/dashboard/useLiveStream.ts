@@ -19,11 +19,13 @@ interface LiveState {
 const EMPTY: LiveState = { energy: new Map(), weather: new Map() };
 const CLOSE_POLICY_VIOLATION = 1008;
 
-function earliestExpiry(state: LiveState): number | null {
+/** The soonest expiry among values still fresh at `now`, or null when none remain. */
+function earliestExpiry(state: LiveState, now: number): number | null {
   let earliest: number | null = null;
   for (const values of [state.energy, state.weather]) {
     for (const v of values.values()) {
       const at = v.receivedAt + LIVE_FRESH_MS;
+      if (at <= now) continue;
       if (earliest === null || at < earliest) earliest = at;
     }
   }
@@ -82,9 +84,10 @@ export function useLiveStream(siteId: number): { energy: Reading[]; weather: Rea
   }, [siteId]);
 
   useEffect(() => {
-    const expiry = earliestExpiry(state);
+    const current = Date.now();
+    const expiry = earliestExpiry(state, current);
     if (expiry === null) return;
-    const timer = setTimeout(() => setNow(Date.now()), Math.max(expiry - Date.now(), 0));
+    const timer = setTimeout(() => setNow(Date.now()), expiry - current);
     return () => clearTimeout(timer);
   }, [state, now]);
 
