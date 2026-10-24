@@ -7,7 +7,17 @@ from dataclasses import dataclass
 from core_api.models.readings import EnergyMetric, WeatherMetric
 from core_api.models.sources import SourceKind
 
-ENERGY_LIVE_METRICS: frozenset[str] = frozenset(m.value for m in EnergyMetric)
+ENERGY_LIVE_METRICS: frozenset[str] = frozenset(
+    {
+        EnergyMetric.PRODUCTION_W.value,
+        EnergyMetric.CONSUMPTION_W.value,
+        EnergyMetric.GRID_IMPORT_W.value,
+        EnergyMetric.GRID_EXPORT_W.value,
+        EnergyMetric.BATTERY_CHARGE_W.value,
+        EnergyMetric.BATTERY_DISCHARGE_W.value,
+        EnergyMetric.BATTERY_SOC_PCT.value,
+    }
+)
 # rain_mm is a running total that only makes sense as a stored interval value.
 WEATHER_LIVE_METRICS: frozenset[str] = frozenset(m.value for m in WeatherMetric if m is not WeatherMetric.RAIN_MM)
 MAX_LIVE_VALUES = 16

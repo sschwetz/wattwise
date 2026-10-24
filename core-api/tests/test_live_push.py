@@ -7,7 +7,8 @@ import pytest
 from sqlalchemy import func, select
 
 from core_api.db import make_engine, make_session_factory
-from core_api.live import LiveHub, LiveSample
+from core_api.live import MAX_LIVE_VALUES, LiveHub, LiveSample
+from core_api.schemas import _check_live_values
 from core_api.models.readings import EnergyReading, WeatherReading
 from core_api.models.sources import Source, SourceKind
 from tests.conftest import ENVOY_COLLECTOR_KEY, WEATHER_COLLECTOR_KEY
@@ -123,10 +124,8 @@ def test_weather_key_on_energy_source_is_rejected(client, app_and_db_url):
 BAD_BODIES = [
     ("energy", '{"ts": "2026-01-01T10:00:00Z", "values": {"bogus_w": 1}}'),
     ("weather", '{"ts": "2026-01-01T10:00:00Z", "values": {"rain_mm": 1}}'),
-    (
-        "energy",
-        '{"ts": "2026-01-01T10:00:00Z", "values": {%s}}' % ",".join(f'"production_w{i}": 1' for i in range(17)),
-    ),
+    ("energy", '{"ts": "2026-01-01T10:00:00Z", "values": {"production_wh_lifetime": 1}}'),
+    ("energy", '{"ts": "2026-01-01T10:00:00Z", "values": {"grid_relay_state": 1}}'),
     ("energy", '{"ts": "2026-01-01T10:00:00Z", "values": {}}'),
     ("energy", '{"ts": "2026-01-01T10:00:00Z", "values": {"production_w": 1e999}}'),
 ]
@@ -175,3 +174,23 @@ def test_older_push_after_newer_is_accepted_but_ignored(client, app_and_db_url):
     assert push(client, source_id, "energy", content=older).status_code == 202
     [latest] = app.state.live_hub.latest_for_site(site_id)
     assert latest.values == {"production_w": 2}
+
+
+def test_value_count_rule_is_isolated():
+    allowed = frozenset(f"m{i}" for i in range(20))
+    with pytest.raises(ValueError):
+        _check_live_values({f"m{i}": 1.0 for i in range(MAX_LIVE_VALUES + 1)}, allowed)
+    with pytest.raises(ValueError):
+        _check_live_values({}, allowed)
+    assert len(_check_live_values({f"m{i}": 1.0 for i in range(MAX_LIVE_VALUES)}, allowed)) == MAX_LIVE_VALUES
+
+
+def test_validation_error_body_has_no_input(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    _, _, source_id = make_energy_source_full(db_url)
+    body = '{"ts": "2026-01-01T10:00:00Z", "values": {"bogus_w": 1}}'
+    response = push(client, source_id, "energy", content=body)
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    detail = response.json()["detail"]
+    assert detail and all("input" not in entry and "loc" in entry for entry in detail)
