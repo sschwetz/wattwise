@@ -271,12 +271,12 @@ def test_map_livedata_batteryless_writes_no_battery_rows():
 
 
 def test_map_livedata_invert_consumption_ct():
-    # Raw grid -300 flips to +300 (import); consumption = -(1000 + -300) + 200.
-    s = make_sample(production_w=1000.0, grid_w=-300.0, battery_w=200.0)
+    # Raw grid -300 flips to +300 (import); consumption = -(1000 + -300) + 2000.
+    s = make_sample(production_w=1000.0, grid_w=-300.0, battery_w=2000.0)
     m = metrics(map_livedata_readings([s], TS, invert_consumption_ct=True))
     assert m["grid_import_w"] == 300.0
-    assert m["consumption_w"] == -500.0
-    assert m["battery_discharge_w"] == 200.0
+    assert m["consumption_w"] == 1300.0
+    assert m["battery_discharge_w"] == 2000.0
 
 
 def test_map_livedata_includes_grid_relay_state():
@@ -286,13 +286,13 @@ def test_map_livedata_includes_grid_relay_state():
 
 def test_map_livedata_ensemble_source_takes_battery_from_ensemble_json():
     # Live battery -44 W is ignored; the ensemble fixture sums to -6326 W, soc 93.25.
-    s = make_sample(production_w=1000.0, grid_w=200.0, battery_w=-44.0, soc=10)
+    s = make_sample(production_w=1000.0, grid_w=7000.0, battery_w=-44.0, soc=10)
     rows = map_livedata_readings([s], TS, battery_source="ensemble", battery_json=load_fixture("ensemble_power.json"))
     m = metrics(rows)
     assert m["battery_charge_w"] == pytest.approx(6326.0)
     assert m["battery_soc_pct"] == pytest.approx(93.25)
     assert "battery_discharge_w" not in m
-    assert m["consumption_w"] == pytest.approx(1000.0 + 200.0 - 6326.0)
+    assert m["consumption_w"] == pytest.approx(1000.0 + 7000.0 - 6326.0)
 
 
 def test_map_livedata_ensemble_source_without_battery_json_writes_no_battery_rows():
@@ -397,3 +397,9 @@ def test_live_values_without_battery_source_omit_battery_and_consumption():
     sample = make_sample(production_w=3000, grid_w=500, battery_w=-200, soc=80)
     values = map_live_sample_values(sample, include_battery=False)
     assert values == {"production_w": 3000, "grid_import_w": 500}
+
+
+def test_map_livedata_consumption_is_floored_at_zero():
+    # Production 500 W, exporting 400 W, charging 300 W: 500 - 400 - 300 = -200.
+    s = make_sample(production_w=500.0, grid_w=-400.0, battery_w=-300.0)
+    assert metrics(map_livedata_readings([s], TS))["consumption_w"] == 0.0

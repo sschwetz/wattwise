@@ -178,6 +178,23 @@ function collapseMutuallyExclusiveFlows(latest: Map<string, Reading>): Map<strin
   return collapsed;
 }
 
+// Tile position. Each pair shares one slot, so a tile keeps its place when the
+// grid or battery flips direction instead of moving to wherever its metric
+// first appeared in the readings.
+const TILE_SLOT: Record<string, number> = {
+  production_w: 0,
+  consumption_w: 1,
+  grid_import_w: 2,
+  grid_export_w: 2,
+  battery_charge_w: 3,
+  battery_discharge_w: 3,
+  battery_soc_pct: 4,
+};
+
+function tileSlot(metric: string): number {
+  return TILE_SLOT[metric] ?? Object.keys(TILE_SLOT).length;
+}
+
 // Color encodes the real direction of energy flow, not brand decoration:
 // amber = the sun producing, teal = power flowing to your benefit (export/
 // charge), blue = power you're drawing from the grid, red = discharging the
@@ -216,7 +233,7 @@ function MetricTileGrid({
   siteId: number;
 }) {
   const latest = collapseMutuallyExclusiveFlows(latestByMetric(readings));
-  const entries = Array.from(latest.entries());
+  const entries = Array.from(latest.entries()).sort(([a], [b]) => tileSlot(a) - tileSlot(b));
   const hero = entries.find(([metric]) => metric === "production_w");
   const rest = entries.filter(([metric]) => metric !== "production_w");
   const heroZeroed = hero ? isZeroFloored(hero[0], hero[1].value) : false;

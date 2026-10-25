@@ -810,6 +810,22 @@ describe("DashboardPage live stream", () => {
     expect(await screen.findByText("2500 W")).toBeInTheDocument();
   });
 
+  it("keeps a grid tile that arrives live between consumption and battery", async () => {
+    mockApi({
+      consumption_w: [{ ts: iso(), metric: "consumption_w", value: 1200 }],
+      battery_charge_w: [{ ts: iso(), metric: "battery_charge_w", value: 500 }],
+    });
+    renderPage();
+    const tiles = within(await screen.findByTestId("live-tiles"));
+    await tiles.findByText("Battery charge");
+    push(energyMsg({ grid_export_w: 300 }));
+    const grid = await tiles.findByText("Grid export");
+    const battery = tiles.getByText("Battery charge");
+    const consumption = tiles.getByText("Consumption");
+    expect(consumption.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(grid.compareDocumentPosition(battery) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("shows the instantaneous live value, not the 5-minute average", async () => {
     // 12:07:30 UTC: now-120s and now-60s both fall in the bucket starting 12:05:00.
     vi.useFakeTimers({ shouldAdvanceTime: true });
