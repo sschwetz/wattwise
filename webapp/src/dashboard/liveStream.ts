@@ -47,6 +47,16 @@ export function freshLiveReadings(live: LiveValues, now: number): Reading[] {
   return readings;
 }
 
+/** When the newest still-fresh value arrived (ms since epoch), or null when none is fresh. */
+export function latestFreshReceivedAt(live: LiveValues, now: number): number | null {
+  let latest: number | null = null;
+  for (const v of live.values()) {
+    if (now - v.receivedAt >= LIVE_FRESH_MS) continue;
+    if (latest === null || v.receivedAt > latest) latest = v.receivedAt;
+  }
+  return latest;
+}
+
 export function overlayLive(polled: Reading[], live: Reading[]): Reading[] {
   const liveByMetric = new Map(live.map((r) => [r.metric, r]));
   const merged = polled.map((r) => liveByMetric.get(r.metric) ?? r);

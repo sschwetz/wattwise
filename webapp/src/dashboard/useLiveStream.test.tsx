@@ -63,6 +63,19 @@ describe("useLiveStream", () => {
     expect(result.current.energy).toHaveLength(0);
   });
 
+  it("reports when the newest energy value arrived, and null once it expires", () => {
+    vi.setSystemTime(new Date("2026-10-25T01:00:00Z"));
+    const { result } = renderHook(() => useLiveStream(7));
+    expect(result.current.energyReceivedAt).toBeNull();
+    act(() => last().open());
+    act(() => last().message(energyMsg(new Date().toISOString())));
+    expect(result.current.energyReceivedAt).toBe(Date.parse("2026-10-25T01:00:00Z"));
+    act(() => {
+      vi.advanceTimersByTime(15_000);
+    });
+    expect(result.current.energyReceivedAt).toBeNull();
+  });
+
   it("stops re-rendering once values have expired", () => {
     let renders = 0;
     const { result } = renderHook(() => {

@@ -5,6 +5,7 @@ import {
   applyLiveMessage,
   backoffMs,
   freshLiveReadings,
+  latestFreshReceivedAt,
   LIVE_FRESH_MS,
   parseLiveMessage,
   type LiveValues,
@@ -68,7 +69,14 @@ function connectLive(siteId: number, onMessage: (data: unknown) => void): () => 
   };
 }
 
-export function useLiveStream(siteId: number): { energy: Reading[]; weather: Reading[] } {
+export interface LiveStream {
+  energy: Reading[];
+  weather: Reading[];
+  /** When the newest fresh energy value arrived, or null when live energy data is not flowing. */
+  energyReceivedAt: number | null;
+}
+
+export function useLiveStream(siteId: number): LiveStream {
   const [state, setState] = useState<LiveState>(EMPTY);
   const [now, setNow] = useState(() => Date.now());
 
@@ -91,5 +99,9 @@ export function useLiveStream(siteId: number): { energy: Reading[]; weather: Rea
     return () => clearTimeout(timer);
   }, [state, now]);
 
-  return { energy: freshLiveReadings(state.energy, now), weather: freshLiveReadings(state.weather, now) };
+  return {
+    energy: freshLiveReadings(state.energy, now),
+    weather: freshLiveReadings(state.weather, now),
+    energyReceivedAt: latestFreshReceivedAt(state.energy, now),
+  };
 }

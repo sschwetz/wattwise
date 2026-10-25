@@ -29,7 +29,7 @@ import {
 } from "../dashboard/useLiveReadings";
 import { averageLiveReadings } from "../dashboard/liveAverages";
 import { overlayLive } from "../dashboard/liveStream";
-import { useLiveStream } from "../dashboard/useLiveStream";
+import { useLiveStream, type LiveStream } from "../dashboard/useLiveStream";
 
 const TILE_LABELS: Record<string, string> = {
   production_w: "Production",
@@ -318,10 +318,9 @@ function WeatherTiles({ readings, rainTodayMm }: { readings: Reading[]; rainToda
   );
 }
 
-function LiveTiles({ siteId }: { siteId: number }) {
-  const energy = useLatestEnergyReadings(siteId);
+function LiveTiles({ siteId, live }: { siteId: number; live: LiveStream }) {
+  const energy = useLatestEnergyReadings(siteId, live.energyReceivedAt !== null);
   const weather = useLatestWeatherReadings(siteId);
-  const live = useLiveStream(siteId);
   // Averaging smooths the polled fallback only; a live value is shown as received.
   const energyReadings = overlayLive(averageLiveReadings(energy.data, Date.now()), live.energy);
   const weatherReadings = overlayLive(weather.data, live.weather);
@@ -568,6 +567,7 @@ export function DashboardPage() {
   const parsedSiteId = Number(siteId);
   const [zoomRange, setZoomRange] = useState<DateRange | null>(null);
   const zoom = useMemo(() => ({ range: zoomRange, set: setZoomRange }), [zoomRange]);
+  const live = useLiveStream(parsedSiteId);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
@@ -576,9 +576,9 @@ export function DashboardPage() {
           <h1 className="font-display text-2xl font-semibold text-ink">Dashboard</h1>
           <DemandWindowNotice siteId={parsedSiteId} />
         </div>
-        <DataFreshness siteId={parsedSiteId} />
+        <DataFreshness siteId={parsedSiteId} liveReceivedAt={live.energyReceivedAt} />
       </div>
-      <LiveTiles siteId={parsedSiteId} />
+      <LiveTiles siteId={parsedSiteId} live={live} />
       <PricingCharts siteId={parsedSiteId} zoom={zoom} />
       <TodayChart siteId={parsedSiteId} zoom={zoom} />
       <TodayBatteryChart siteId={parsedSiteId} zoom={zoom} />

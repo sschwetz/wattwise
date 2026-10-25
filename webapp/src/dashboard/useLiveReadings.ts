@@ -80,15 +80,16 @@ function combineLiveResults(results: { data?: Reading[]; isLoading: boolean; isE
 
 /**
  * Fans out one request per energy metric (the backend takes a single required `metric`)
- * and merges the responses into one flat list of readings.
+ * and merges the responses into one flat list of readings. `paused` stops the
+ * 60 s refetch while the live stream is supplying the values.
  */
-export function useLatestEnergyReadings(siteId: number): LiveReadingsResult {
+export function useLatestEnergyReadings(siteId: number, paused = false): LiveReadingsResult {
   const results = useQueries({
     queries: ENERGY_METRICS.map((metric) =>
       queryOptions({
         queryKey: ["energy-readings", siteId, "latest", metric],
         queryFn: () => fetchLatest(siteId, "readings/energy", { metric }),
-        refetchInterval: LIVE_POLL_MS,
+        refetchInterval: paused ? false : LIVE_POLL_MS,
       }),
     ),
   });

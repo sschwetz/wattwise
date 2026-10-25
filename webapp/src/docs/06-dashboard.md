@@ -8,7 +8,9 @@ The dashboard is the first page of every site. It has five parts, from top to bo
 
 The page updates by itself. You do not need to reload. When your collectors are sending live readings, the energy and weather tiles change within a few seconds. When they are not, those tiles fall back to the reading WattWise stores once a minute. The charts, the price and cost tiles and **Rain today** refresh every 60 seconds.
 
-Under the **Dashboard** heading, a small grey line shows `Energy data changed 3 min ago (14:32:05) · refreshed 12 sec ago`. The first part is how long ago the newest energy reading arrived in WattWise, with its clock time, so you can tell whether your energy source is still sending data. The second part is how long ago this page last fetched the stored reading, which resets about every 60 seconds. The live tiles can be newer than both, because they show the live reading while one is arriving and this line counts stored readings only.
+Under the **Dashboard** heading, a small grey line shows `Energy data changed 3 min ago (14:32:05) · refreshed 12 sec ago`. The first part is how long ago the newest energy reading arrived in WattWise, with its clock time, so you can tell whether your energy source is still sending data. The second part is how long ago this page last fetched the stored reading, which resets about every 60 seconds.
+
+While live data is arriving, the line changes to `Energy DB last updated 3 min ago (14:32:05) · live data received 2 sec ago`. The first part is the same stored reading. The second part is how long ago the last live value arrived. The live tiles update from the live data and stop refetching every 60 seconds. If no live value arrives for 15 seconds, the line and the 60 second refresh go back to the first form.
 
 ## Live tiles
 

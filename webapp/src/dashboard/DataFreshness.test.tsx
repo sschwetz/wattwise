@@ -9,11 +9,11 @@ vi.mock("../api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
-function renderFreshness() {
+function renderFreshness(liveReceivedAt: number | null = null) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <DataFreshness siteId={7} />
+      <DataFreshness siteId={7} liveReceivedAt={liveReceivedAt} />
     </QueryClientProvider>,
   );
 }
@@ -74,5 +74,27 @@ describe("DataFreshness", () => {
     renderFreshness();
 
     expect(await screen.findByText("Energy data unavailable")).toBeInTheDocument();
+  });
+
+  it("shows the database age and the live data age, with no refresh age, while live data is flowing", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ ts: READING_TS });
+    renderFreshness(Date.now() - 4_000);
+
+    const clock = new Date(READING_TS).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    expect(
+      await screen.findByText(`Energy DB last updated 2 min ago (${clock}) · live data received 4 sec ago`),
+    ).toBeInTheDocument();
+  });
+
+  it("says so in live mode when the database has no energy data yet", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ ts: null });
+    renderFreshness(Date.now());
+
+    expect(await screen.findByText("Energy DB has no data yet · live data received 0 sec ago")).toBeInTheDocument();
   });
 });
