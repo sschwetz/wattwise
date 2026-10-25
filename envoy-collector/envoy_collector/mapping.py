@@ -178,10 +178,13 @@ def _power_values(production: float, grid: float, battery: float, sign: int) -> 
     """production_w, consumption_w and the import or export figure.
 
     `grid` is already multiplied by `sign` (-1 for a reversed consumption CT).
+    consumption_w is floored at 0: the gateway's PV, grid and storage meters
+    update at slightly different instants, so a sharp drop in load can make
+    the sum dip below zero for a sample or two.
     """
     return {
         "production_w": production,
-        "consumption_w": sign * production + grid + battery,
+        "consumption_w": max(0.0, sign * production + grid + battery),
         "grid_import_w" if grid >= 0 else "grid_export_w": abs(grid),
     }
 

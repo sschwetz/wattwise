@@ -78,7 +78,7 @@ If the feed freezes while the calls still succeed, the sampler POSTs `{"enable":
 
 Samples live in memory only. A restart loses at most the current minute's samples, and that minute falls back to a single reading.
 
-Every sample added, repeats included, is also pushed to Core API as a live sample (`POST /sources/{id}/live/energy`), so the dashboard tiles update every few seconds. `map_live_sample_values` in `mapping.py` builds the values with the same sign and `invert_consumption_ct` rules as the stored readings. A push has a 2 second timeout. A failed push is logged and dropped, without a retry, and never stops sampling; failures are rate-limited like the other live-feed errors. Live samples are not stored, so a Core API outage loses only the tile updates.
+Every sample added, repeats included, is also pushed to Core API as a live sample (`POST /sources/{id}/live/energy`), so the dashboard tiles update every few seconds. `map_live_sample_values` in `mapping.py` builds the values with the same sign and `invert_consumption_ct` rules as the stored readings. `consumption_w` is floored at 0, since the gateway's PV, grid and storage meters update at slightly different instants and the sum can dip below zero for a sample. A push has a 2 second timeout. A failed push is logged and dropped, without a retry, and never stops sampling; failures are rate-limited like the other live-feed errors. Live samples are not stored, so a Core API outage loses only the tile updates.
 
 Once a minute the collector also reads `/ivp/meters/readings` and stores the metrics listed under [Metrics](data-model.md#metrics) (lifetime counters, grid voltage, relay state).
 
