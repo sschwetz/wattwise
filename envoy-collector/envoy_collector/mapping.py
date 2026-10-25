@@ -44,12 +44,8 @@ def map_meter_power_readings(
     sign = -1 if invert_consumption_ct else 1
     production = power["production"]
     grid = sign * power["net-consumption"]
-    consumption = sign * production + grid + (battery_net_w or 0.0)
-    return [
-        {"ts": ts, "metric": "production_w", "value": production},
-        {"ts": ts, "metric": "consumption_w", "value": consumption},
-        {"ts": ts, "metric": "grid_import_w" if grid >= 0 else "grid_export_w", "value": abs(grid)},
-    ]
+    values = _power_values(production, grid, battery_net_w or 0.0, sign)
+    return [{"ts": ts, "metric": m, "value": v} for m, v in values.items()]
 
 
 def _meter_powers(meters: list[dict], readings: list[dict]) -> dict[str, float]:

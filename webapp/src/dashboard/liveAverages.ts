@@ -57,8 +57,8 @@ export function averageLiveReadings(
     }
   }
 
-  // Keep each averaged metric at the position of its first row: the tile grid
-  // orders tiles by first appearance, so moving them would reorder the tiles.
+  // Keep each averaged metric at the position of its first row, so the result
+  // lists metrics in the same order as the input.
   const result: Reading[] = [];
   const emitted = new Set<string>();
   for (const reading of readings) {

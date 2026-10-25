@@ -191,8 +191,11 @@ const TILE_SLOT: Record<string, number> = {
   battery_soc_pct: 4,
 };
 
+// Metrics with no slot go last.
+const UNKNOWN_SLOT = Object.keys(TILE_SLOT).length;
+
 function tileSlot(metric: string): number {
-  return TILE_SLOT[metric] ?? Object.keys(TILE_SLOT).length;
+  return TILE_SLOT[metric] ?? UNKNOWN_SLOT;
 }
 
 // Color encodes the real direction of energy flow, not brand decoration:
