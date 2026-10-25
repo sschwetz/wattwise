@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Bar, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { LegendSwatch, ZoomSelectionArea } from "./chartParts";
-import { AXIS_PROPS, SWATCH_COLORS, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
+import { axisProps, SWATCH_COLORS, useChartColors, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import {
   buildAxisTickPlan,
   buildCostAxis,
@@ -82,6 +82,7 @@ export function HistoryChart({
   syncId?: string;
 }) {
   const { handlers, selection } = useChartZoom(onZoom);
+  const colors = useChartColors();
   const chartData = useMemo(
     () => buildHistoryChartData(importReadings, exportReadings, costSeries, range, bucket),
     [importReadings, exportReadings, costSeries, range, bucket],
@@ -96,21 +97,21 @@ export function HistoryChart({
             dataKey="ts"
             ticks={axisTickPlan.ticks}
             tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
-            {...AXIS_PROPS}
+            {...axisProps(colors)}
           />
-          <YAxis yAxisId="grid" {...yAxisProps("kWh")} />
+          <YAxis yAxisId="grid" {...yAxisProps(colors, "kWh")} />
           <YAxis
             yAxisId="cost"
             ticks={costAxis.ticks}
             domain={costAxis.domain}
             tickFormatter={(v: number) => v.toFixed(2)}
             allowDataOverflow
-            {...yAxisProps("$", "right")}
+            {...yAxisProps(colors, "$", "right")}
           />
           <Tooltip content={(props) => <HistoryChartTooltip {...props} bucket={bucket} />} />
           <Bar yAxisId="grid" dataKey="gridKwh" name="Grid" radius={2}>
             {chartData.map((point) => (
-              <Cell key={point.ts} fill={gridBarColor(point.gridKwh)} />
+              <Cell key={point.ts} fill={gridBarColor(point.gridKwh, colors)} />
             ))}
           </Bar>
           <Line
@@ -118,7 +119,7 @@ export function HistoryChart({
             type="linear"
             dataKey="costDollars"
             name="Cost"
-            stroke={SWATCH_COLORS.cost}
+            stroke={colors.cost}
             strokeWidth={2}
             dot={false}
           />
