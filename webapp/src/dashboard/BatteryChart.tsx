@@ -2,16 +2,16 @@ import { useMemo } from "react";
 import { Bar, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { BatteryChartPoint } from "./batteryFlows";
 import { LegendSwatch, ZoomSelectionArea } from "./chartParts";
-import { AXIS_PROPS, SWATCH_COLORS, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
+import { axisProps, SWATCH_COLORS, useChartColors, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
 import { buildAxisTickPlan, formatBucketTick } from "./historyChart";
 import { useChartZoom } from "./useChartZoom";
 import type { DateRange } from "./useHistoricalData";
 
 const SERIES = [
-  { key: "solarToBatteryKw", label: "Solar to battery", color: SWATCH_COLORS.solarToBattery, dashed: false },
-  { key: "gridToBatteryKw", label: "Grid to battery", color: SWATCH_COLORS.gridToBattery, dashed: false },
-  { key: "batteryToHouseKw", label: "Battery to house", color: SWATCH_COLORS.batteryToHouse, dashed: true },
-  { key: "batteryToGridKw", label: "Battery to grid", color: SWATCH_COLORS.batteryToGrid, dashed: true },
+  { key: "solarToBatteryKw", label: "Solar to battery", color: "solarToBattery", dashed: false },
+  { key: "gridToBatteryKw", label: "Grid to battery", color: "gridToBattery", dashed: false },
+  { key: "batteryToHouseKw", label: "Battery to house", color: "batteryToHouse", dashed: true },
+  { key: "batteryToGridKw", label: "Battery to grid", color: "batteryToGrid", dashed: true },
 ] as const;
 
 function BatteryChartLegend() {
@@ -19,7 +19,7 @@ function BatteryChartLegend() {
     <div className="mt-2 flex flex-wrap items-center gap-4 text-xs">
       <LegendSwatch shape="box" color={SWATCH_COLORS.batterySoc} label="Battery charge (%)" />
       {SERIES.map((s) => (
-        <LegendSwatch key={s.key} shape="line" pattern={s.dashed ? "dashed" : undefined} color={s.color} label={`${s.label} (kW)`} />
+        <LegendSwatch key={s.key} shape="line" pattern={s.dashed ? "dashed" : undefined} color={SWATCH_COLORS[s.color]} label={`${s.label} (kW)`} />
       ))}
     </div>
   );
@@ -53,7 +53,7 @@ function BatteryTooltip({
           key={s.key}
           shape="line"
           pattern={s.dashed ? "dashed" : undefined}
-          color={s.color}
+          color={SWATCH_COLORS[s.color]}
           label={`${s.label} ${Math.abs(point[s.key]).toFixed(2)} kW`}
         />
       ))}
@@ -79,6 +79,7 @@ export function BatteryChart({
   syncId?: string;
 }) {
   const { handlers, selection } = useChartZoom(onZoom);
+  const colors = useChartColors();
   const axisTickPlan = useMemo(() => buildAxisTickPlan(data, range), [data, range]);
   return (
     <>
@@ -88,17 +89,17 @@ export function BatteryChart({
             dataKey="ts"
             ticks={axisTickPlan.ticks}
             tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
-            {...AXIS_PROPS}
+            {...axisProps(colors)}
           />
-          <YAxis yAxisId="pct" domain={[0, 100]} {...yAxisProps("%")} />
-          <YAxis yAxisId="kw" {...yAxisProps("kW", "right")} />
+          <YAxis yAxisId="pct" domain={[0, 100]} {...yAxisProps(colors, "%")} />
+          <YAxis yAxisId="kw" {...yAxisProps(colors, "kW", "right")} />
           <Tooltip content={(props) => <BatteryTooltip {...props} />} />
-          <ReferenceLine yAxisId="kw" y={0} stroke="var(--color-line)" />
+          <ReferenceLine yAxisId="kw" y={0} stroke={colors.line} />
           <Bar
             yAxisId="pct"
             dataKey="socPct"
             name="Battery charge"
-            fill={SWATCH_COLORS.batterySoc}
+            fill={colors.batterySoc}
             radius={2}
             isAnimationActive={false}
           />
@@ -109,7 +110,7 @@ export function BatteryChart({
               type="linear"
               dataKey={s.key}
               name={s.label}
-              stroke={s.color}
+              stroke={colors[s.color]}
               strokeDasharray={s.dashed ? "4 3" : undefined}
               strokeWidth={2}
               dot={false}

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Spinner } from "../components/Spinner";
 import { ReferenceArea } from "recharts";
+import { useChartColors } from "./chartStyle";
 import type { ZoomSelection } from "./useChartZoom";
 
 export function ErrorAlert({ message }: { message: string }) {
@@ -12,6 +13,7 @@ export function ErrorAlert({ message }: { message: string }) {
 }
 
 export function ZoomSelectionArea({ selection, yAxisId }: { selection: ZoomSelection | null; yAxisId?: string }) {
+  const { cost } = useChartColors();
   if (!selection) {
     return null;
   }
@@ -20,9 +22,9 @@ export function ZoomSelectionArea({ selection, yAxisId }: { selection: ZoomSelec
       yAxisId={yAxisId}
       x1={selection.x1}
       x2={selection.x2}
-      fill="var(--chart-blue)"
+      fill={cost}
       fillOpacity={0.15}
-      stroke="var(--chart-blue)"
+      stroke={cost}
       strokeOpacity={0.5}
     />
   );

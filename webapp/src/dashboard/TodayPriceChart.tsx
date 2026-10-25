@@ -1,7 +1,14 @@
 import { useMemo, useState } from "react";
 import { Area, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartFrame, ErrorAlert, LegendSwatch, ResetZoomButton, ZoomSelectionArea } from "./chartParts";
-import { AXIS_PROPS, SWATCH_COLORS, TODAY_CHARTS_SYNC_ID, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
+import {
+  axisProps,
+  SWATCH_COLORS,
+  TODAY_CHARTS_SYNC_ID,
+  useChartColors,
+  yAxisProps,
+  ZOOMABLE_CHART_STYLE,
+} from "./chartStyle";
 import { clipToDay, dayRangeOffset, type PricingDayOffset, zoomRangeFor } from "./dateRange";
 import { buildAxisTickPlan, formatBucketTick } from "./historyChart";
 import { InstabilitySummary } from "./InstabilitySummary";
@@ -79,12 +86,13 @@ function RangeLegendSwatch() {
 }
 
 const SPIKE_LEVELS = {
-  potential: { color: "var(--chart-yellow)", label: "Price spike possible" },
-  spike: { color: "var(--chart-red)", label: "Price spike" },
+  potential: { color: "spikePossible", label: "Price spike possible" },
+  spike: { color: "spike", label: "Price spike" },
 } as const;
 
 function SpikeLegendSwatch({ level }: { level: keyof typeof SPIKE_LEVELS }) {
-  const { color, label } = SPIKE_LEVELS[level];
+  const { color: colorKey, label } = SPIKE_LEVELS[level];
+  const color = SWATCH_COLORS[colorKey];
   return (
     <span className="flex items-center gap-1.5">
       <span aria-hidden className="h-2.5 w-4 rounded-sm opacity-30" style={{ backgroundColor: color }} />
@@ -125,6 +133,7 @@ export function TodayPriceChart({
   const dayRange = useMemo(() => dayRangeOffset(dayOffset), [dayOffset]);
   const range = useMemo(() => clipToDay(zoom.range, dayRange), [zoom.range, dayRange]);
   const { handlers, selection } = useChartZoom((fromTs, toTs) => zoom.set(zoomRangeFor(fromTs, toTs, "5min")));
+  const colors = useChartColors();
   const { data: importPrices, isError: isImportError, isLoading: isImportLoading } = useTodayPrices(siteId, "buy", dayOffset);
   const { data: exportPrices, isError: isExportError, isLoading: isExportLoading } = useTodayPrices(siteId, "sell", dayOffset);
   const fullChartData = useMemo(
@@ -170,16 +179,16 @@ export function TodayPriceChart({
               dataKey="ts"
               ticks={axisTickPlan.ticks}
               tickFormatter={(ts: number) => axisTickPlan.formatTick(Number(ts))}
-              {...AXIS_PROPS}
+              {...axisProps(colors)}
             />
-            <YAxis {...yAxisProps("c/kWh")} />
+            <YAxis {...yAxisProps(colors, "c/kWh")} />
             <Tooltip content={(props) => <TodayPricingTooltip {...props} />} />
             {visibleSpans.map((span) => (
               <ReferenceArea
                 key={span.x1}
                 x1={span.x1}
                 x2={span.x2}
-                fill={SPIKE_LEVELS[span.level].color}
+                fill={colors[SPIKE_LEVELS[span.level].color]}
                 fillOpacity={0.15}
                 stroke="none"
                 ifOverflow="visible"
@@ -190,7 +199,7 @@ export function TodayPriceChart({
               type="stepAfter"
               dataKey="importBand"
               stroke="none"
-              fill={SWATCH_COLORS.gridImport}
+              fill={colors.gridImport}
               fillOpacity={0.15}
               connectNulls={false}
               isAnimationActive={false}
@@ -202,7 +211,7 @@ export function TodayPriceChart({
             <Line
               type="stepAfter"
               dataKey="actualImportCentsPerKwh"
-              stroke={SWATCH_COLORS.gridImport}
+              stroke={colors.gridImport}
               strokeWidth={2}
               dot={false}
               connectNulls={false}
@@ -211,7 +220,7 @@ export function TodayPriceChart({
             <Line
               type="stepAfter"
               dataKey="predictedImportCentsPerKwh"
-              stroke={SWATCH_COLORS.gridImport}
+              stroke={colors.gridImport}
               strokeDasharray="4 3"
               strokeWidth={2}
               dot={false}
@@ -221,7 +230,7 @@ export function TodayPriceChart({
             <Line
               type="stepAfter"
               dataKey="actualExportCentsPerKwh"
-              stroke={SWATCH_COLORS.gridExport}
+              stroke={colors.gridExport}
               strokeWidth={2}
               dot={false}
               connectNulls={false}
@@ -230,7 +239,7 @@ export function TodayPriceChart({
             <Line
               type="stepAfter"
               dataKey="predictedExportCentsPerKwh"
-              stroke={SWATCH_COLORS.gridExport}
+              stroke={colors.gridExport}
               strokeDasharray="4 3"
               strokeWidth={2}
               dot={false}
@@ -240,7 +249,7 @@ export function TodayPriceChart({
             <Line
               type="stepAfter"
               dataKey="fallbackImportCentsPerKwh"
-              stroke={SWATCH_COLORS.gridImport}
+              stroke={colors.gridImport}
               strokeDasharray="1 3"
               strokeWidth={2}
               dot={false}
@@ -250,7 +259,7 @@ export function TodayPriceChart({
             <Line
               type="stepAfter"
               dataKey="fallbackExportCentsPerKwh"
-              stroke={SWATCH_COLORS.gridExport}
+              stroke={colors.gridExport}
               strokeDasharray="1 3"
               strokeWidth={2}
               dot={false}
