@@ -24,19 +24,33 @@
 
   /* Chart series: one fixed-order categorical palette, each hue stepped for the
      light and dark surface and checked with the dataviz validator. Separate
-     from the tile accents above so charts stay readable. */
-  --chart-yellow: light-dark(#eda100, #c98500);
-  --chart-magenta: light-dark(#e87ba4, #d55181);
-  --chart-blue: light-dark(#2a78d6, #3987e5);
-  --chart-aqua: light-dark(#1baf7a, #199e70);
-  --chart-orange: light-dark(#eb6834, #d95926);
-  --chart-red: light-dark(#e34948, #e66767);
+     from the tile accents above so charts stay readable. Dark values are set in
+     the media query below: light-dark() here is compiled to a var() toggle that
+     Safari drops when the color lands in an SVG stroke or fill. */
+  --chart-yellow: #eda100;
+  --chart-magenta: #e87ba4;
+  --chart-blue: #2a78d6;
+  --chart-aqua: #1baf7a;
+  --chart-orange: #eb6834;
+  --chart-red: #e34948;
   /* Battery charge fill: neutral so the flow lines on top stand out. */
-  --chart-soc: light-dark(#c3cad9, #34415e);
+  --chart-soc: #c3cad9;
 }
 
 :root {
   color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-yellow: #c98500;
+    --chart-magenta: #d55181;
+    --chart-blue: #3987e5;
+    --chart-aqua: #199e70;
+    --chart-orange: #d95926;
+    --chart-red: #e66767;
+    --chart-soc: #34415e;
+  }
 }
 
 body {
