@@ -62,7 +62,7 @@ def test_invert_consumption_ct_flips_consumption_and_grid_sign():
     # A reversed consumption CT clamp reports the grid flow with the opposite
     # sign to reality; invert_consumption_ct corrects it at the source.
     by_metric = power_metrics(invert_consumption_ct=True)
-    assert by_metric["consumption_w"] == pytest.approx(-(7474.653 + 147.341))
+    assert by_metric["consumption_w"] == 0.0
     assert by_metric["grid_export_w"] == 147.341
     assert "grid_import_w" not in by_metric
 
@@ -403,3 +403,7 @@ def test_map_livedata_consumption_is_floored_at_zero():
     # Production 500 W, exporting 400 W, charging 300 W: 500 - 400 - 300 = -200.
     s = make_sample(production_w=500.0, grid_w=-400.0, battery_w=-300.0)
     assert metrics(map_livedata_readings([s], TS))["consumption_w"] == 0.0
+
+
+def test_meter_consumption_is_floored_at_zero():
+    assert power_metrics(production=219.0, net=-14338.0)["consumption_w"] == 0.0
