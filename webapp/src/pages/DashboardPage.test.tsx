@@ -79,12 +79,12 @@ describe("DashboardPage live tiles", () => {
     expect(await screen.findByText("501 W")).toBeInTheDocument();
   });
 
-  it("floors production below 100W to 0 W, shown in neutral color with no glow", async () => {
+  it("floors production below 100W to Idle, shown in neutral color with no glow", async () => {
     mockApi({
       production_w: [{ ts: "2026-10-01T00:00:00Z", metric: "production_w", value: 42 }],
     });
     renderPage();
-    const value = await screen.findByText("0 W");
+    const value = await screen.findByText("Idle");
     expect(value.className).toContain("text-ink");
     expect(value.className).not.toContain("text-solar");
     expect(value.parentElement?.className).not.toContain("solar-glow");
@@ -100,12 +100,12 @@ describe("DashboardPage live tiles", () => {
     expect(value.parentElement?.className).toContain("solar-glow");
   });
 
-  it("floors battery charge/discharge below 100W to 0 W with no glow", async () => {
+  it("floors battery charge/discharge below 100W to Idle with no glow", async () => {
     mockApi({
       battery_charge_w: [{ ts: "2026-10-01T00:00:00Z", metric: "battery_charge_w", value: 50 }],
     });
     renderPage();
-    const value = await screen.findByText("0 W");
+    const value = await screen.findByText("Idle");
     expect(value.className).toContain("text-ink");
     expect(value.className).not.toContain("text-flow");
     expect(value.parentElement?.className).not.toContain("flow-glow");
@@ -468,9 +468,9 @@ describe("DashboardPage battery tile background", () => {
       battery_discharge_w: [{ ts: "2026-10-01T00:06:00Z", metric: "battery_discharge_w", value: 150 }],
     });
     renderPage();
-    expect(await screen.findByText("Battery discharge")).toBeInTheDocument();
+    expect(await screen.findByText("Battery Discharging")).toBeInTheDocument();
     expect(screen.getByText("150 W")).toBeInTheDocument();
-    expect(screen.queryByText("Battery charge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Battery Charging")).not.toBeInTheDocument();
     expect(screen.queryByText("2000 W")).not.toBeInTheDocument();
   });
 
@@ -817,10 +817,10 @@ describe("DashboardPage live stream", () => {
     });
     renderPage();
     const tiles = within(await screen.findByTestId("live-tiles"));
-    await tiles.findByText("Battery charge");
+    await tiles.findByText("Battery Charging");
     push(energyMsg({ grid_export_w: 300 }));
     const grid = await tiles.findByText("Grid export");
-    const battery = tiles.getByText("Battery charge");
+    const battery = tiles.getByText("Battery Charging");
     const consumption = tiles.getByText("Consumption");
     expect(consumption.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(grid.compareDocumentPosition(battery) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
