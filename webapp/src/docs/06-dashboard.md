@@ -64,6 +64,8 @@ Fixed daily and monthly fees are included in proportion to how much of the day h
 
 ## Weather tiles
 
+![Weather tiles for wind, temperature, humidity, solar radiation, pressure and rain](images/dashboard-weather-tiles.png)
+
 Under the live tiles, **Weather** shows the latest reading from your WeatherLink station: **Temperature** (°C), **Humidity**, **Solar radiation** (W/m²), **Barometric pressure** (hPa) and **Wind speed** with a compass direction, for example `12.3 km/h NE`. **Rain today** is the total since midnight, rounded to 0.1 mm, so it stays put after the rain stops and resets overnight. These tiles need a [weather source](05-sources.md#connecting-a-weatherlink-live-station).
 
 ## Demand window notice
@@ -100,11 +102,15 @@ Prices are shown as plain positive rates. WattWise stores the sell price as a ne
 
 ## Today's grid and cost chart
 
+![Bars of grid import and export for today with a cost line](images/dashboard-grid-cost.png)
+
 A chart of grid energy and cost for today, with no controls or totals. It always shows today in 5-minute bars, whatever the Reporting page is set to, and uses the Net cost method. Red bars are import, green bars are export, and the amber line is cost.
 
 This chart and Today's Pricing above it share one zoom. Drag across either to zoom both to that time span, then press **Reset zoom** on either to clear it.
 
 ## Battery chart
+
+![Battery charge level as bars, with solar, grid and house power lines](images/dashboard-battery.png)
 
 Below the grid and cost chart, the Battery chart shows today in 5-minute steps. It shares the zoom and hover position with the two charts above it. It appears only once your site has reported a battery reading today.
 
@@ -139,6 +145,12 @@ Use the **Date range** list:
 
 Days start at midnight on the device you are using.
 
+![The history card set to Billing period](images/reporting-billing-period.png)
+
+Choose **Custom range** and two date pickers appear:
+
+![The history card with Custom range selected and two date and time pickers](images/reporting-custom-range.png)
+
 The bars get wider as the period grows, so the chart stays readable:
 
 | Period length | Each bar covers |
@@ -156,7 +168,15 @@ The bars get wider as the period grows, so the chart stays readable:
 - Hover over a bar for the time, the grid energy and the cost for that bar.
 - Click and drag across the chart to zoom into that stretch of time. The chart reloads for the selected span, and any span of a day or less shows 5-minute bars. Press **Reset zoom** to go back. Changing the date range also clears the zoom. This zoom is separate from the dashboard's charts.
 
+Dragging across the chart draws the selection, and the chart redraws for that span when you let go:
+
+![Dragging across the chart to select a span](images/reporting-zoom-select.png)
+
+![The chart after zooming, with a Reset zoom button](images/reporting-zoomed.png)
+
 #### Net and gross cost
+
+![The same chart set to Gross](images/reporting-gross.png)
 
 The **Net** and **Gross** options change how the **Cost** total and cost line are calculated. The bars always show real grid flow.
 

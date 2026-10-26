@@ -55,6 +55,21 @@ Add a [WeatherLink source](05-sources.md#connecting-a-weatherlink-live-station) 
 
 A source that has stored readings cannot be deleted. Click **Disable** instead. See [Editing, disabling and deleting](05-sources.md#editing-disabling-and-deleting).
 
+## It works at home but not from outside
+
+The web app and Core API are separate addresses, and your browser calls both. See [Why the API must be reachable from the internet](01-installing-with-docker.md#why-the-api-must-be-reachable-from-the-internet).
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| The login page loads, then sign-in fails with a network error | The device cannot reach `API_BASE_URL`. It may still be `http://localhost:8000`, or the API port is not forwarded. | Set `API_BASE_URL` to the public HTTPS address, then run `docker compose up -d`. |
+| Sign-in fails and the browser console mentions "mixed content" | The page is on `https://` and the API address is `http://` | Put the API behind HTTPS as well. See [Setup with Caddy](01-installing-with-docker.md#setup-with-caddy-and-docker-compose). |
+| The console mentions "CORS" or "blocked by CORS policy" | `FRONTEND_BASE_URL` differs from the address in the browser's address bar, for example `http` against `https`, or a missing `www.` | Make `FRONTEND_BASE_URL` match exactly, then run `docker compose up -d`. |
+| The console mentions "Content Security Policy" | The web app container still holds an old `API_BASE_URL` | Run `docker compose up -d` so Compose recreates the `webapp` container. |
+| Everything loads but the live tiles update only once a minute | The proxy does not pass WebSocket upgrades on `/api/` | Enable WebSocket support in the proxy. See [Setup with another reverse proxy](01-installing-with-docker.md#setup-with-another-reverse-proxy). |
+| The live tiles keep dropping and reconnecting | The proxy closes idle connections after 60 seconds | Raise its read timeout for `/api/` to an hour or more. |
+| Links in emails open the wrong address | `FRONTEND_BASE_URL` is wrong | Set it to the public address and run `docker compose up -d`. |
+| The certificate is not issued | The domain does not point at your public address, or port 80 is not forwarded | Check the DNS record and the router, then read `docker compose logs caddy`. |
+
 ## Sign-in problems
 
 | Symptom | Fix |

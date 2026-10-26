@@ -84,6 +84,8 @@ Changing **Host** clears the stored certificate, its expiry and the serial numbe
 
 ## Connecting Amber Electric
 
+![The Amber settings form with the Amber site ID field](images/sources-amber-config.png)
+
 Pricing needs two things:
 
 1. **Your Amber API key**, saved once under [Account settings](08-account-settings.md#amber-api-key). The key belongs to you, not to a site.
@@ -104,6 +106,8 @@ Use this when your supplier charges fixed or time-of-use rates and has no price 
 A site can have one active pricing source at a time, so remove the Amber source before you add a local one. **Delete** works only while the Amber source has no stored prices. **Disable** does not free the place: WattWise still counts a disabled source as the site's pricing source. To retire an Amber source that has prices, set its end date (`effective_to`) through the API with `PATCH /api/v1/sites/{site_id}/sources/{source_id}`. The Sources page has no control for this.
 
 ### Rate windows
+
+![A local tariff source with its rate windows for import and export, and the form for adding one](images/sources-local-tariff.png)
 
 Each window is one rate for one direction. The panel lists the windows for each direction separately:
 
@@ -165,6 +169,8 @@ A new source, a restart, a change to the rate windows, and the first check of ea
 
 
 ## Connecting a WeatherLink Live station
+
+![The WeatherLink Live settings form with the Host field](images/sources-weather-config.png)
 
 Choose kind `weather` and provider `weatherlink_live`, open **Edit config**, enter the **Host** (the address of your WeatherLink Live unit on your home network) and click **Save config**. Weather tiles appear on the [dashboard](06-dashboard.md#weather-tiles).
 

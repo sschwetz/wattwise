@@ -33,7 +33,7 @@ What you see after sign-in depends on how many sites you have:
 
 ## Switching sites
 
-Use the site switcher at the top of the sidebar. Pick a site name to open its dashboard, or **Add new site** to create another. The sidebar links **Dashboard**, **Sources** and **Billing** then apply to the site you picked.
+Use the site switcher at the top of the sidebar. Pick a site name to open its dashboard, or **Add new site** to create another. The sidebar links **Dashboard**, **Reporting**, **Sources** and **Billing** then apply to the site you picked.
 
 ## Next
 

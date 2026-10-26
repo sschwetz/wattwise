@@ -65,4 +65,4 @@ Design history lives in [`docs/superpowers/specs`](superpowers/specs) (why somet
 
 ## Accuracy
 
-These pages describe the code at commit `79651e9` (2026-10-14). Statements about behaviour were checked against the source at that commit. Screenshots are shared with the in-app help and live in [`webapp/src/docs/images`](../webapp/src/docs/images).
+These pages describe the code at commit `79651e9` (2026-10-14). Statements about behaviour were checked against the source at that commit. Screenshots are shared with the in-app help and live in [`webapp/src/docs/images`](../webapp/src/docs/images). They were retaken on 2026-10-26 from a demo site with generated data.

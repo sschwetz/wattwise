@@ -11,9 +11,45 @@ One machine runs the whole stack with Docker Compose. It must be able to reach t
 | 80 | `webapp` | Plain HTTP |
 | 8000 | `core-api` | Plain HTTP. The browser calls this directly. |
 
-Both ports are plain HTTP. Passwords and login tokens cross the network unencrypted. Keep the stack on the home network, or put a reverse proxy that terminates TLS in front of both ports before exposing it to the internet. Set `FRONTEND_BASE_URL` and `API_BASE_URL` to the public `https://` addresses when you do.
+Both ports are plain HTTP. Keep them on the home network. To use WattWise from outside, put a reverse proxy that terminates HTTPS in front of both and make the API reachable from the internet. See [Putting WattWise on the internet](#putting-wattwise-on-the-internet).
 
 The dashboard's live tiles use a WebSocket to `core-api` (`/api/v1/sites/{site_id}/live`). A reverse proxy in front of `core-api` must pass WebSocket upgrades (the `Upgrade` and `Connection` headers), or the tiles fall back to the 60 second poll. The webapp container sets its Content-Security-Policy `connect-src` to `API_BASE_URL` and the same address with the `ws://` or `wss://` scheme, so no extra setting is needed.
+
+## Putting WattWise on the internet
+
+The browser calls `core-api` directly, so the API must be reachable from the internet at the address in `API_BASE_URL` whenever anyone uses WattWise away from home. Publishing only the web app is not enough: the page loads, then sign-in fails. The collectors do not need this. They reach `core-api` over the Docker network.
+
+`deploy/caddy/` holds a tested Compose override that adds Caddy, serves both the web app and the API from one hostname and gets the certificate itself.
+
+```bash
+# .env
+WATTWISE_DOMAIN=wattwise.example.com
+FRONTEND_BASE_URL=https://wattwise.example.com
+API_BASE_URL=https://wattwise.example.com
+COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml:deploy/caddy/docker-compose.caddy.yml
+```
+
+```bash
+docker compose pull
+docker compose up -d
+curl https://wattwise.example.com/health      # {"status":"ok"}
+```
+
+| Step | Detail |
+|---|---|
+| DNS | An `A` record for the hostname pointing at the public IP. Use dynamic DNS if the address changes. |
+| Router | Forward TCP 80 and 443 to the host. Port 80 is for the certificate challenge. Never forward 8000. |
+| Compose override | Removes the published ports of `webapp` and `core-api` (`ports: !reset []`), adds `caddy` on the `app` network, keeps certificates in the `caddy_data` volume. |
+| Routing | `/api/*` and `/health` go to `core-api:8000`. Everything else goes to `webapp:80`. `/docs` is not forwarded. |
+| WebSocket | Caddy passes the live-tile WebSocket without extra settings. Another proxy needs upgrade headers and a read timeout of an hour or more. |
+| Environment | Both `*_BASE_URL` values must be `https://`. A page on HTTPS cannot call an HTTP API. `FRONTEND_BASE_URL` must equal the browser's address-bar origin because it is the only CORS origin. |
+| Changing the URLs | Run `docker compose up -d` so `webapp` and `core-api` are recreated. `webapp` writes `config.js` and its CSP at container start. |
+
+For nginx, Nginx Proxy Manager and a two-hostname layout, see the user guide chapter [Installing with Docker Compose](../webapp/src/docs/01-installing-with-docker.md#using-it-outside-your-home-network). Back up `caddy_data` if you want to keep the certificate across a rebuilt host. A fresh one is issued automatically otherwise, within Let's Encrypt's rate limits.
+
+If the proxy host differs from the stack host, the proxy forwards to the stack host's published ports and those ports must be blocked from the internet at the firewall.
+
+**Exposure.** Anything under `/api/*` is public once the proxy is up: login, the user and site endpoints, and the collector endpoints (guarded by the collector keys). Login is protected by bcrypt passwords, TOTP, and the lockout described in [Core API](core-api.md). Keep the collector keys secret and long, and keep the images updated.
 
 ## First start
 
