@@ -36,8 +36,8 @@ const TILE_LABELS: Record<string, string> = {
   consumption_w: "Consumption",
   grid_import_w: "Grid import",
   grid_export_w: "Grid export",
-  battery_charge_w: "Battery charge",
-  battery_discharge_w: "Battery discharge",
+  battery_charge_w: "Battery Charging",
+  battery_discharge_w: "Battery Discharging",
   battery_soc_pct: "Battery",
 };
 
@@ -144,6 +144,12 @@ function formatMetricValue(metric: string, value: number): string {
   return String(value);
 }
 
+/** Tile text: the value with its unit, or "Idle" when a watt reading is 0. */
+function tileValueText(metric: string, value: number, unit: string): string {
+  const formatted = formatMetricValue(metric, value);
+  return unit === "W" && formatted === "0" ? "Idle" : `${formatted} ${unit}`;
+}
+
 function latestByMetric(readings: Reading[]): Map<string, Reading> {
   const byMetric = new Map<string, Reading>();
   for (const reading of readings) {
@@ -247,7 +253,7 @@ function MetricTileGrid({
       <Tile
         key={metric}
         label={labels[metric] ?? metric}
-        value={`${formatMetricValue(metric, reading.value)} ${units[metric] ?? ""}`}
+        value={tileValueText(metric, reading.value, units[metric] ?? "")}
         accent={zeroed ? undefined : METRIC_ACCENT[metric]}
         glow={zeroed ? undefined : TILE_GLOW[metric]}
         backgroundImage={metric === "battery_soc_pct" ? batterySocBackground(reading.value) : undefined}
@@ -274,7 +280,7 @@ function MetricTileGrid({
       {hero && (
         <Tile
           label={labels[hero[0]] ?? hero[0]}
-          value={`${formatMetricValue(hero[0], hero[1].value)} ${units[hero[0]] ?? ""}`}
+          value={tileValueText(hero[0], hero[1].value, units[hero[0]] ?? "")}
           accent={heroZeroed ? undefined : "solar"}
           glow={heroZeroed ? undefined : TILE_GLOW[hero[0]]}
           hero
