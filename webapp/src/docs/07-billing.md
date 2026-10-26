@@ -38,6 +38,8 @@ A **tariff** is a set of fixed charges that applies from a start date until an e
 
 The section heading names your price supplier: "Amber Tariffs" with an Amber source, "Origin Fixed Tariffs" with a local source called Origin Fixed, and "Tariffs" with neither. The supply charge, monthly fee, billing cycle, demand windows, export adjustments, conditional credits and fee discounts on this page apply to every kind of pricing source. Per-kWh rates for a local source are set in [Sources](05-sources.md#setting-up-a-fixed-tariff).
 
+![The Billing page for a site that uses a local tariff, headed Origin Fixed Tariffs](images/billing-local-tariff.png)
+
 ### Dates
 
 Every date on this page is a calendar day in the [site's time zone](04-sites.md#creating-a-site).
@@ -51,6 +53,8 @@ Every date on this page is a calendar day in the [site's time zone](04-sites.md#
 When you add or end a tariff, demand window or billing cycle with a date in the past, WattWise discards the stored [demand charges](#demand-charges) from that date onward and works them out again. They reappear within a few minutes of the next background run.
 
 ### Adding a tariff
+
+![The form for adding a tariff](images/billing-add-tariff.png)
 
 1. In the **Tariffs** card, fill in the form at the bottom:
    - **Start date**: the first day the tariff applies. It is filled in for you after an ended tariff.
@@ -71,6 +75,10 @@ Ended tariffs stay in the list, struck through, with the last day they applied. 
 > **Note:** Demand windows, export adjustments, conditional credits and fee discounts belong to one tariff. The forms for them appear under an active tariff once it exists. When you add a replacement tariff, enter them again under the new one.
 
 ### Demand windows
+
+Each tariff has four small forms under its list of windows, one each for demand windows, export adjustments, conditional credits and monthly fee discounts. The sections below explain each.
+
+![The four forms under a tariff: demand window, export adjustment, conditional credit and fee discount](images/billing-add-window-forms.png)
 
 A **demand window** is a repeating period when your highest power draw sets a charge. Retailers use it to price peak demand on the network.
 
@@ -168,7 +176,9 @@ Without a billing cycle, the dashboard hides the **Billing Period** tile and no 
 
 The **Demand charges** card lists the demand charge for each billing period.
 
-![Billing cycle and Demand charges cards](images/billing-cycle-demand.png)
+![The Billing cycle card](images/billing-cycle.png)
+
+![The Demand charges card listing each billing period](images/billing-demand-charges.png)
 
 WattWise works it out once a day, shortly after midnight, and again each day until the period ends:
 

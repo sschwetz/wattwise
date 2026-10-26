@@ -1,0 +1,47 @@
+# Adds a Caddy reverse proxy that terminates HTTPS in front of WattWise.
+# Use it as a third file after the base and production files:
+#
+#   docker compose \
+#     -f docker-compose.yml -f docker-compose.prod.yml \
+#     -f deploy/caddy/docker-compose.caddy.yml up -d
+#
+# Set these in .env (see docs/operations.md, "Putting WattWise on the internet"):
+#   WATTWISE_DOMAIN=wattwise.example.com
+#   FRONTEND_BASE_URL=https://wattwise.example.com
+#   API_BASE_URL=https://wattwise.example.com
+#
+# `ports: !reset []` needs Docker Compose 2.24 or later, the same as
+# docker-compose.prod.yml. With it, only Caddy publishes ports (80 and 443);
+# the web app and core-api are reachable only through the proxy.
+
+services:
+  core-api:
+    ports: !reset []
+
+  webapp:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      WATTWISE_DOMAIN: ${WATTWISE_DOMAIN:?the public hostname, e.g. wattwise.example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      core-api:
+        condition: service_healthy
+      webapp:
+        condition: service_started
+    networks:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

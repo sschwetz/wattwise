@@ -1,0 +1,18 @@
+# Reverse proxy for WattWise. One hostname serves both the web app and the API:
+# paths under /api (and /health) go to core-api, everything else goes to the
+# web app. core-api's /docs pages are not forwarded.
+# Caddy gets and renews the HTTPS certificate for WATTWISE_DOMAIN by itself,
+# and passes the dashboard's WebSocket (/api/v1/sites/{id}/live) through
+# without extra settings.
+{$WATTWISE_DOMAIN} {
+	encode zstd gzip
+
+	@core-api path /api/* /health
+	handle @core-api {
+		reverse_proxy core-api:8000
+	}
+
+	handle {
+		reverse_proxy webapp:80
+	}
+}

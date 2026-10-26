@@ -173,9 +173,25 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-o
 
 Migrations run when core-api starts.
 
-### HTTPS
+### HTTPS and access from outside
 
-The webapp (port 80) and core-api (port 8000) serve plain HTTP, so passwords and login tokens cross the network unencrypted. Put a reverse proxy that terminates TLS in front of both ports before exposing the stack to the internet, and set `FRONTEND_BASE_URL` and `API_BASE_URL` to the `https://` addresses.
+The webapp (port 80) and core-api (port 8000) serve plain HTTP. The browser calls core-api directly, so core-api must be reachable from the internet over HTTPS at `API_BASE_URL` for anyone who uses WattWise away from home. Publishing only the webapp is not enough. The collectors do not need internet exposure: they reach core-api over the Docker network.
+
+`deploy/caddy/` has a Compose override that adds a Caddy reverse proxy. It serves the webapp and the API from one hostname (`/api/*` to core-api, everything else to the webapp), gets the certificate itself and stops publishing ports 80 and 8000 on the host. Forward ports 80 and 443 from your router, then set these in `.env`:
+
+```sh
+WATTWISE_DOMAIN=wattwise.example.com
+FRONTEND_BASE_URL=https://wattwise.example.com
+API_BASE_URL=https://wattwise.example.com
+COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml:deploy/caddy/docker-compose.caddy.yml
+```
+
+```sh
+docker compose pull && docker compose up -d
+curl https://wattwise.example.com/health
+```
+
+For nginx, Nginx Proxy Manager, a two-hostname layout and a checklist of what a proxy must do (including WebSocket support for the live tiles), see [`docs/operations.md`](docs/operations.md#putting-wattwise-on-the-internet) and the Help chapter [Installing with Docker Compose](webapp/src/docs/01-installing-with-docker.md#using-it-outside-your-home-network).
 
 Backups, restores, key rotation and the handover checklist are in [`docs/operations.md`](docs/operations.md). The same steps for end users are in the Help chapter [Installing with Docker Compose](webapp/src/docs/01-installing-with-docker.md).
 

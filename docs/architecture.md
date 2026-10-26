@@ -62,6 +62,18 @@ Two details here are deliberate:
 - **`mail-relay` is on its own network.** Postfix trusts its whole subnet to relay mail without authentication. Putting it on `app` would let any collector send mail. Only `core-api` joins both networks.
 - **The browser calls `core-api` directly.** The web app is static files. Its `API_BASE_URL` is written into `config.js` when the container starts (see [Web app](webapp.md#runtime-configuration)), so the address must be reachable from the user's browser, not only from inside Docker.
 
+### Reaching the stack from the internet
+
+For use away from home, a reverse proxy terminates HTTPS and sends `/api/*` to `core-api` and everything else to `webapp`. The collectors keep using the internal network and never pass through the proxy. Machines holding a collector key could reach the same `/api/*` paths from the internet, so keep the keys private (see [Operations](operations.md#putting-wattwise-on-the-internet)).
+
+```mermaid
+flowchart LR
+    BROWSER["Browser<br/>(phone, laptop)"] -- "HTTPS :443" --> PROXY["Reverse proxy<br/>(Caddy)"]
+    PROXY -- "/api/* and WebSocket" --> API["core-api :8000"]
+    PROXY -- "everything else" --> WEB["webapp :80"]
+    COL["collectors"] -- "http://core-api:8000<br/>internal network" --> API
+```
+
 ## Who is allowed to do what
 
 Two separate authentication schemes exist. They never mix.

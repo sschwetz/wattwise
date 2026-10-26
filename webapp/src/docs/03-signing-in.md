@@ -54,6 +54,8 @@ If you do not have your phone, click **Use a recovery code instead** and enter o
 
 ## Recovery codes
 
+![The Save your recovery codes card with ten codes and a confirmation box](images/recovery-codes.png)
+
 You get 10 recovery codes when you finish setting up two-factor authentication. Each code works once, in place of an authenticator code.
 
 - Store them somewhere other than your phone, such as a password manager or a printout in a safe place.
@@ -71,6 +73,8 @@ You get 10 recovery codes when you finish setting up two-factor authentication. 
 If you have no recovery codes left, ask your WattWise administrator for help. WattWise cannot reset two-factor authentication by email.
 
 ## Forgotten password
+
+![The Forgot password card with an email field](images/forgot-password.png)
 
 1. On the login page, click **Forgot password?**.
 2. Enter your email address and click **Send reset link**. WattWise shows a message and, if the address belongs to an account, sends a reset link. The message is the same either way, so nobody can use it to check which addresses have accounts.

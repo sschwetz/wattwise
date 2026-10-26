@@ -7,9 +7,12 @@
 | **Amber Electric** | An Australian electricity retailer that charges a wholesale-linked price that changes every 5 minutes. WattWise reads its prices through the Amber API. See [Connecting Amber Electric](05-sources.md#connecting-amber-electric). |
 | **Anchor day** | The day of the month a billing period starts. See [Billing cycles](07-billing.md#billing-cycles). |
 | **Authenticator app** | A phone app that shows a 6-digit code that changes every 30 seconds. See [Two-factor authentication](03-signing-in.md#setting-up-two-factor-authentication). |
+| **API_BASE_URL** | The setting that tells your browser where Core API is. See [Why the API must be reachable from the internet](01-installing-with-docker.md#why-the-api-must-be-reachable-from-the-internet). |
 | **Billing cycle** | How many months a bill covers and the day it starts. See [Billing cycles](07-billing.md#billing-cycles). |
 | **Billing period** | One bill's span of dates, from the billing cycle. |
 | **Buy price** | What you pay per kWh to import electricity. |
+| **Collector** | A small program that reads one kind of device or service and sends the readings to Core API. See [How the pieces fit together](02-getting-started.md#how-the-pieces-fit-together). |
+| **Core API** | The service that stores all data and answers the web app. Your browser calls it directly, so it must be reachable from the internet to use WattWise away from home. See [Using it outside your home network](01-installing-with-docker.md#using-it-outside-your-home-network). |
 | **c/kWh** | Cents per kilowatt-hour: the price of energy. |
 | **c/kW/day** | Cents per kilowatt per day: the rate of a demand charge. |
 | **Collector** | A background program that reads one kind of device or service and sends readings to WattWise. See [How the pieces fit together](02-getting-started.md#how-the-pieces-fit-together). |
@@ -38,6 +41,7 @@
 | **Service availability charge** | The daily supply charge on a tariff, in cents per day. |
 | **Site** | One monitored property. See [Sites](04-sites.md). |
 | **Source** | A connection from a site to a device or service. See [Sources](05-sources.md). |
+| **Reverse proxy** | A program such as Caddy or nginx that sits in front of WattWise, provides HTTPS and passes requests to the web app and Core API. See [Setup with Caddy](01-installing-with-docker.md#setup-with-caddy-and-docker-compose). |
 | **State of charge (SoC)** | How full the battery is, as a percentage. Shown on the **Battery** tile. |
 | **Tariff** | The fixed charges and rules your retailer applies. See [Tariffs](07-billing.md#tariffs). |
 | **Token** | A secret that lets WattWise read your Envoy. See [Getting the token](05-sources.md#getting-the-token). |
