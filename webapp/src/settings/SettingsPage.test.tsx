@@ -185,6 +185,6 @@ describe("SettingsPage", () => {
 
   it("renders the content for the tab in the URL", async () => {
     renderAt("/settings/sites/7/sharing");
-    expect(await screen.findByText("Tab: sharing")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Invitations" })).toBeInTheDocument();
   });
 });

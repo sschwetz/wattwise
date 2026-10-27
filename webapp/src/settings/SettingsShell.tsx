@@ -3,6 +3,7 @@ import type { Site } from "../sites/useSites";
 import { BillingTab, TariffsTab } from "../pages/BillingPage";
 import { CollectorsTab } from "../pages/SourcesPage";
 import { GeneralTab } from "./GeneralTab";
+import { SharingTab } from "./SharingTab";
 import { SiteChips } from "./SiteChips";
 import { TABS } from "./tabs";
 
@@ -11,7 +12,7 @@ const tabLinkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "bg-surface-2 text-ink" : "text-ink-muted hover:bg-surface-2 hover:text-ink"
   }`;
 
-/** Tab content. The sharing tab is still a placeholder. */
+/** Tab content for the selected site. */
 function TabContent({ tab, site }: { tab: string; site: Site | undefined }) {
   if (!site) return <div>Tab: {tab}</div>;
   switch (tab) {
@@ -23,6 +24,8 @@ function TabContent({ tab, site }: { tab: string; site: Site | undefined }) {
       return <TariffsTab key={site.id} siteId={site.id} />;
     case "billing":
       return <BillingTab key={site.id} siteId={site.id} />;
+    case "sharing":
+      return <SharingTab key={site.id} site={site} />;
     default:
       return <div>Tab: {tab}</div>;
   }
