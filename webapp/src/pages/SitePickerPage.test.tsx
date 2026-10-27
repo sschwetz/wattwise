@@ -142,8 +142,10 @@ describe("SitePickerPage", () => {
   it("shows pending invitations beside several enabled sites", async () => {
     mockApi({ sites: [home, { ...cabin, enabled: true }], pending: [pendingInvite] });
     renderPage();
-    expect(await screen.findByText("Pending invitations")).toBeInTheDocument();
-    expect(screen.getByText("Cabin")).toBeInTheDocument();
+    const heading = await screen.findByText("Pending invitations");
+    const firstSite = screen.getByRole("link", { name: "Cabin" });
+    // Invitations sit above the site list.
+    expect(heading.compareDocumentPosition(firstSite) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("accepts an invitation and refetches sites", async () => {

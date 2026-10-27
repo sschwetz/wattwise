@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useCallback, useMemo, useState } from "react";
+import { ReadOnlyFieldset } from "../components/ReadOnlyFieldset";
 import { SaveStatus, type SaveState, SubmitButton } from "../components/SubmitButton";
 import { RateWindowsPanel } from "../sources/RateWindowsPanel";
 import { type Source, useCreateSource, useDeleteSource, useSources, useUpdateSource } from "../sources/useSources";
@@ -495,7 +496,7 @@ function SourceRow({
   );
 }
 
-export function CollectorsTab({ siteId }: { siteId: number }) {
+export function CollectorsTab({ siteId, readOnly }: { siteId: number; readOnly: boolean }) {
   const { data: sources } = useSources(siteId);
   const updateSource = useUpdateSource(siteId);
   const deleteSource = useDeleteSource(siteId);
@@ -546,21 +547,23 @@ export function CollectorsTab({ siteId }: { siteId: number }) {
         </p>
       )}
       {sources && sources.length === 0 && <p className="text-ink-muted">No sources yet.</p>}
-      <ul className="space-y-3">
-        {(sources ?? []).map((source) => (
-          <SourceRow
-            key={source.id}
-            source={source}
-            actions={actions}
-            isPending={updateSource.isPending || deleteSource.isPending}
-            saves={{
-              config: saveStateFor(updateSource, source.id, "config"),
-              name: saveStateFor(updateSource, source.id, "name"),
-            }}
-          />
-        ))}
-      </ul>
-      <CreateSourceForm siteId={siteId} />
+      <ReadOnlyFieldset readOnly={readOnly}>
+        <ul className="space-y-3">
+          {(sources ?? []).map((source) => (
+            <SourceRow
+              key={source.id}
+              source={source}
+              actions={actions}
+              isPending={updateSource.isPending || deleteSource.isPending}
+              saves={{
+                config: saveStateFor(updateSource, source.id, "config"),
+                name: saveStateFor(updateSource, source.id, "name"),
+              }}
+            />
+          ))}
+        </ul>
+        <CreateSourceForm siteId={siteId} />
+      </ReadOnlyFieldset>
     </div>
   );
 }

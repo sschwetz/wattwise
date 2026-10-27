@@ -14,8 +14,8 @@ vi.mock("../api/client", async (importOriginal) => {
 function BillingPageTabs() {
   return (
     <>
-      <TariffsTab siteId={7} />
-      <BillingTab siteId={7} />
+      <TariffsTab siteId={7} readOnly={false} />
+      <BillingTab siteId={7} readOnly={false} />
     </>
   );
 }

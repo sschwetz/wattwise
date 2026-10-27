@@ -4,10 +4,11 @@ import type { Site } from "../sites/useSites";
 const chipBase = "shrink-0 rounded-full border px-3 py-1 text-sm transition-colors";
 
 function chipClass(selected: boolean, enabled: boolean): string {
-  if (!enabled) return `${chipBase} border-dashed border-line text-ink-muted opacity-60 hover:opacity-100`;
-  return selected
-    ? `${chipBase} border-solar bg-surface-2 font-medium text-ink`
-    : `${chipBase} border-line text-ink-muted hover:bg-surface-2 hover:text-ink`;
+  const state = selected
+    ? "border-solar bg-surface-2 font-medium text-ink"
+    : "border-line text-ink-muted hover:bg-surface-2 hover:text-ink";
+  const disabled = enabled ? "" : ` border-dashed ${selected ? "opacity-80" : "opacity-60 hover:opacity-100"}`;
+  return `${chipBase} ${state}${disabled}`;
 }
 
 /** One chip per site (disabled sites included) plus a trailing Add chip. */

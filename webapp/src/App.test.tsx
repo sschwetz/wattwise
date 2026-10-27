@@ -83,6 +83,19 @@ describe("App routing", () => {
     expect(await screen.findByText("No sources yet.")).toBeInTheDocument();
   });
 
+  it("sends /settings/sites/:siteId with no tab to the General tab", async () => {
+    localStorage.setItem("access_token", "a-token");
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("/api/v1/sites")
+          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]
+          : [],
+      ),
+    );
+    renderAt("/settings/sites/5");
+    expect(await screen.findByLabelText("Name")).toHaveValue("Home");
+  });
+
   it("redirects /sites/:siteId/billing to the Billing settings tab", async () => {
     localStorage.setItem("access_token", "a-token");
     vi.mocked(apiFetch).mockImplementation((path: string) =>

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import type { Invite } from "../sites/useInvites";
 import type { Site } from "../sites/useSites";
@@ -20,20 +20,21 @@ function invite(id: number, status: Invite["status"], extra: Partial<Invite> = {
     site_id: 7,
     email: `p${id}@example.com`,
     status,
-    created_at: "2026-03-01T00:00:00Z",
+    created_at: "2026-03-01T12:00:00Z",
     accepted_at: null,
     declined_at: null,
     revoked_at: null,
     inviter_user_id: 1,
+    inviter_email: "owner@example.com",
     ...extra,
   };
 }
 
 const INVITES: Invite[] = [
   invite(1, "invited"),
-  invite(2, "accepted", { accepted_at: "2026-03-10T00:00:00Z" }),
-  invite(3, "declined", { declined_at: "2026-03-11T00:00:00Z" }),
-  invite(4, "revoked", { revoked_at: "2026-03-12T00:00:00Z" }),
+  invite(2, "accepted", { accepted_at: "2026-03-10T12:00:00Z" }),
+  invite(3, "declined", { declined_at: "2026-03-11T12:00:00Z" }),
+  invite(4, "revoked", { revoked_at: "2026-03-12T12:00:00Z" }),
 ];
 
 let invites: Invite[];
@@ -96,11 +97,40 @@ describe("SharingTab", () => {
     expect(within(row("p4@example.com")).getByText(day("2026-03-12"))).toBeInTheDocument();
   });
 
-  it("uses the site time zone for the date", async () => {
-    invites = [invite(1, "invited", { created_at: "2026-03-01T20:00:00Z" })];
+  describe("dates", () => {
+    const savedTz = process.env.TZ;
+    afterEach(() => {
+      process.env.TZ = savedTz;
+    });
+
+    // 03:00 UTC on 2 March is still 1 March in Los Angeles but 2 March in Sydney.
+    const NEAR_MIDNIGHT = "2026-03-02T03:00:00Z";
+
+    it.each([
+      ["America/Los_Angeles", 1],
+      ["Australia/Sydney", 2],
+    ])("formats the date in the viewer's time zone (%s), not the site's", async (zone, dayOfMonth) => {
+      process.env.TZ = zone;
+      invites = [invite(1, "invited", { created_at: NEAR_MIDNIGHT })];
+      renderTab({ ...site, timezone: "Asia/Tokyo" });
+      await screen.findByText("p1@example.com");
+      const expected = new Date(2026, 2, dayOfMonth).toLocaleDateString();
+      expect(within(row("p1@example.com")).getByText(expected)).toBeInTheDocument();
+    });
+  });
+
+  it("shows who sent each invite", async () => {
+    invites = [invite(1, "invited", { inviter_email: "alice@example.com" })];
     renderTab();
     await screen.findByText("p1@example.com");
-    expect(within(row("p1@example.com")).getByText(new Date("2026-03-02T00:00:00").toLocaleDateString())).toBeInTheDocument();
+    expect(within(row("p1@example.com")).getByText("Invited by alice@example.com")).toBeInTheDocument();
+  });
+
+  it("names the address on each Revoke button", async () => {
+    renderTab();
+    await screen.findByText("p1@example.com");
+    expect(screen.getByRole("button", { name: "Revoke p1@example.com" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revoke p2@example.com" })).toBeInTheDocument();
   });
 
   it("offers revoke only on invited and accepted rows, and never delete", async () => {

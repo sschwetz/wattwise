@@ -1,4 +1,5 @@
 import { type FormEvent, useMemo, useState } from "react";
+import { ReadOnlyFieldset } from "../components/ReadOnlyFieldset";
 import { SubmitButton } from "../components/SubmitButton";
 import { ConditionalCreditForm, ConditionalCreditList } from "../billing/ConditionalCredits";
 import { CheckboxGroup } from "../billing/CheckboxGroup";
@@ -650,15 +651,19 @@ function DemandChargesSection({ siteId }: { siteId: number }) {
   );
 }
 
-export function TariffsTab({ siteId }: { siteId: number }) {
-  return <TariffSection siteId={siteId} />;
+export function TariffsTab({ siteId, readOnly }: { siteId: number; readOnly: boolean }) {
+  return (
+    <ReadOnlyFieldset readOnly={readOnly}>
+      <TariffSection siteId={siteId} />
+    </ReadOnlyFieldset>
+  );
 }
 
-export function BillingTab({ siteId }: { siteId: number }) {
+export function BillingTab({ siteId, readOnly }: { siteId: number; readOnly: boolean }) {
   return (
-    <div className="space-y-6">
+    <ReadOnlyFieldset readOnly={readOnly}>
       <BillingCycleSection siteId={siteId} />
       <DemandChargesSection siteId={siteId} />
-    </div>
+    </ReadOnlyFieldset>
   );
 }

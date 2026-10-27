@@ -12,7 +12,7 @@ function PendingInvitations({ invites }: { invites: PendingInvite[] }) {
   const busy = accept.isPending || decline.isPending;
 
   return (
-    <section className="mt-4 space-y-2">
+    <section className="mb-4 space-y-2">
       <h2 className="text-sm font-medium text-ink">Pending invitations</h2>
       {error && (
         <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -101,8 +101,8 @@ export function SitePickerPage() {
   }
   return (
     <AuthCard title="Choose a site" fill>
-      <SiteList sites={sites} />
       {hasInvites && <PendingInvitations invites={invites} />}
+      <SiteList sites={sites} />
       {sites.length === 0 && (
         <Link to="/settings" className="mt-4 block text-sm text-solar hover:underline">
           Go to settings

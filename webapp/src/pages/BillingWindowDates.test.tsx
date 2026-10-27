@@ -63,8 +63,8 @@ function mockApi(lists: Record<string, unknown[]>) {
 function BillingPageTabs() {
   return (
     <>
-      <TariffsTab siteId={7} />
-      <BillingTab siteId={7} />
+      <TariffsTab siteId={7} readOnly={false} />
+      <BillingTab siteId={7} readOnly={false} />
     </>
   );
 }

@@ -41,6 +41,7 @@ export function App() {
           <Route path="/sites" element={<SitePickerPage />} />
           <Route path="/sites/new" element={<AddSitePage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/sites/:siteId" element={<SettingsPage />} />
           <Route path="/settings/sites/:siteId/:tab" element={<SettingsPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/help/:slug?" element={<HelpPage />} />

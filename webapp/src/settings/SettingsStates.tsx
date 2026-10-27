@@ -16,6 +16,20 @@ export function SettingsError({ error, onRetry }: { error: unknown; onRetry: () 
   );
 }
 
+/** Shown above the settings when a background refresh of the sites fails; the cached sites stay usable. */
+export function RefreshFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="mx-auto max-w-5xl px-4 pt-4">
+      <div role="alert" className="flex items-center gap-3 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
+        <span>Could not refresh your sites.</span>
+        <button type="button" onClick={onRetry} className="rounded-md border border-line px-3 py-1 text-ink hover:bg-surface-2">
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsEmpty() {
   const { data: pending } = usePendingInvites();
   return (

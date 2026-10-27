@@ -1,7 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { useMe } from "../account/useAccount";
 import { errorMessage } from "../api/client";
-import { formatDay, localDate } from "../billing/dates";
 import { type Invite, type InviteStatus, useCreateInvite, useRevokeInvite, useSiteInvites } from "../sites/useInvites";
 import type { Site } from "../sites/useSites";
 
@@ -16,6 +15,11 @@ const STATUS_LABEL: Record<InviteStatus, string> = {
   declined: "Declined",
   revoked: "Revoked",
 };
+
+/** The viewer's own time zone and locale: the date says when they last saw the status change, wherever the site is. */
+function viewerDate(iso: string): string {
+  return new Date(iso).toLocaleDateString();
+}
 
 function statusInstant(invite: Invite): string {
   const changed = {
@@ -66,9 +70,9 @@ function InviteForm({ siteId }: { siteId: number }) {
   );
 }
 
-function RevokeControl({ siteId, inviteId }: { siteId: number; inviteId: number }) {
+function RevokeControl({ invite }: { invite: Invite }) {
   const [confirming, setConfirming] = useState(false);
-  const revoke = useRevokeInvite(siteId);
+  const revoke = useRevokeInvite(invite.site_id);
 
   return (
     <div className="space-y-1">
@@ -81,14 +85,19 @@ function RevokeControl({ siteId, inviteId }: { siteId: number; inviteId: number 
           <button
             type="button"
             disabled={revoke.isPending}
-            onClick={() => revoke.mutate(inviteId, { onSettled: () => setConfirming(false) })}
+            onClick={() => revoke.mutate(invite.id, { onSettled: () => setConfirming(false) })}
             className={`${buttonClass} bg-danger text-white`}
           >
             Confirm revoke
           </button>
         </div>
       ) : (
-        <button type="button" onClick={() => setConfirming(true)} className={`${buttonClass} border border-line text-ink`}>
+        <button
+          type="button"
+          aria-label={`Revoke ${invite.email}`}
+          onClick={() => setConfirming(true)}
+          className={`${buttonClass} border border-line text-ink`}
+        >
           Revoke
         </button>
       )}
@@ -105,7 +114,7 @@ function canRevoke(status: InviteStatus, isOwner: boolean): boolean {
   return status === "accepted" || (status === "invited" && isOwner);
 }
 
-function InviteRow({ invite, isOwner, timeZone }: { invite: Invite; isOwner: boolean; timeZone: string }) {
+function InviteRow({ invite, isOwner }: { invite: Invite; isOwner: boolean }) {
   return (
     <li className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-line p-3">
       <div className="min-w-0">
@@ -113,16 +122,17 @@ function InviteRow({ invite, isOwner, timeZone }: { invite: Invite; isOwner: boo
         <p className="text-sm text-ink-muted">
           <span>{STATUS_LABEL[invite.status]}</span>
           {" · "}
-          <span>{formatDay(localDate(statusInstant(invite), timeZone))}</span>
+          <span>{viewerDate(statusInstant(invite))}</span>
         </p>
+        <p className="break-all text-sm text-ink-muted">Invited by {invite.inviter_email}</p>
       </div>
-      {canRevoke(invite.status, isOwner) && <RevokeControl siteId={invite.site_id} inviteId={invite.id} />}
+      {canRevoke(invite.status, isOwner) && <RevokeControl invite={invite} />}
     </li>
   );
 }
 
-function InviteList({ site, isOwner }: { site: Site; isOwner: boolean }) {
-  const invites = useSiteInvites(site.id);
+function InviteList({ siteId, isOwner }: { siteId: number; isOwner: boolean }) {
+  const invites = useSiteInvites(siteId);
   if (invites.isPending) return <p className="text-sm text-ink-muted">Loading invitations...</p>;
   if (invites.isError) {
     return (
@@ -138,7 +148,7 @@ function InviteList({ site, isOwner }: { site: Site; isOwner: boolean }) {
   return (
     <ul className="space-y-2">
       {invites.data.map((invite) => (
-        <InviteRow key={invite.id} invite={invite} isOwner={isOwner} timeZone={site.timezone} />
+        <InviteRow key={invite.id} invite={invite} isOwner={isOwner} />
       ))}
     </ul>
   );
@@ -155,7 +165,7 @@ export function SharingTab({ site }: { site: Site }) {
         <p className="text-sm text-ink-muted">Your account details could not be loaded, so sharing is read-only.</p>
       )}
       {isOwner && <InviteForm siteId={site.id} />}
-      <InviteList site={site} isOwner={isOwner} />
+      <InviteList siteId={site.id} isOwner={isOwner} />
     </div>
   );
 }

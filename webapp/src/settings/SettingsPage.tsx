@@ -1,7 +1,7 @@
 import { Navigate, useParams } from "react-router-dom";
 import { useSites, type Site } from "../sites/useSites";
 import { SettingsShell } from "./SettingsShell";
-import { SettingsEmpty, SettingsError } from "./SettingsStates";
+import { RefreshFailed, SettingsEmpty, SettingsError } from "./SettingsStates";
 import { TABS } from "./tabs";
 
 function defaultSite(sites: Site[]): Site {
@@ -20,7 +20,8 @@ export function SettingsPage() {
   const { siteId, tab } = useParams<{ siteId: string; tab: string }>();
   const { data: sites, isLoading, isError, error, refetch } = useSites();
 
-  if (isError) return <SettingsError error={error} onRetry={() => void refetch()} />;
+  // A failed refetch keeps the cached sites, so only a first load that fails replaces the page.
+  if (isError && !sites) return <SettingsError error={error} onRetry={() => void refetch()} />;
   if (isLoading || !sites) return <p className="p-4 text-sm text-ink-muted">Loading...</p>;
   if (sites.length === 0) return <SettingsEmpty />;
 
@@ -28,5 +29,10 @@ export function SettingsPage() {
   if (!target.valid) {
     return <Navigate to={`/settings/sites/${target.site.id}/${target.tab}`} replace />;
   }
-  return <SettingsShell sites={sites} site={target.site} tab={target.tab} />;
+  return (
+    <>
+      {isError && <RefreshFailed onRetry={() => void refetch()} />}
+      <SettingsShell sites={sites} site={target.site} tab={target.tab} />
+    </>
+  );
 }

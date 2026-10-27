@@ -82,6 +82,30 @@ describe("SiteLayout", () => {
     expect(options).toEqual(["Home", "Add new site"]);
   });
 
+  it("shows the current site in the switcher when it is disabled", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: false },
+      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: true },
+      { id: 11, owner_user_id: 1, name: "Shed", timezone: "Australia/Hobart", enabled: false },
+    ]);
+    renderLayout();
+    const select = await screen.findByRole("combobox", { name: "Switch site" });
+    await screen.findByText("Home (disabled)");
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Home (disabled)", "Cabin", "Add new site"]);
+    expect(select).toHaveValue("7");
+  });
+
+  it("does not show Add new site as the current choice when no site is enabled", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: false },
+    ]);
+    renderLayout();
+    const select = await screen.findByRole("combobox", { name: "Switch site" });
+    await screen.findByText("Home (disabled)");
+    expect(select).toHaveValue("7");
+    expect(select).not.toHaveValue("new");
+  });
+
   it("switches to another site when it's picked from the dropdown", async () => {
     renderLayout();
     await screen.findByText("Home");
@@ -116,7 +140,7 @@ describe("SiteLayout", () => {
       { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: false },
     ]);
     renderLayout();
-    expect(await screen.findByText(/disabled/i)).toBeInTheDocument();
+    expect(await screen.findByText(/this site is disabled/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings/sites/7/general");
   });
 

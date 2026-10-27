@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useEnabledSites } from "../sites/useSites";
+import { useSites } from "../sites/useSites";
 
 const ADD_NEW_SITE = "new";
 
@@ -10,7 +10,9 @@ const ADD_NEW_SITE = "new";
 export function SiteSwitcher() {
   const { siteId } = useParams<{ siteId: string }>();
   const navigate = useNavigate();
-  const { data: sites } = useEnabledSites();
+  const { data: sites } = useSites();
+  // Disabled sites are left out, except the one being viewed, so the select always shows it.
+  const options = (sites ?? []).filter((site) => site.enabled || String(site.id) === siteId);
 
   function handleChange(event: ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
@@ -24,9 +26,9 @@ export function SiteSwitcher() {
       onChange={handleChange}
       className="rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
     >
-      {(sites ?? []).map((site) => (
+      {options.map((site) => (
         <option key={site.id} value={site.id}>
-          {site.name}
+          {site.enabled ? site.name : `${site.name} (disabled)`}
         </option>
       ))}
       <option value={ADD_NEW_SITE}>Add new site</option>

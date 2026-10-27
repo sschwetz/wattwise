@@ -17,7 +17,7 @@ function renderPage() {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/sites/7/sources"]}>
         <Routes>
-          <Route path="/sites/:siteId/sources" element={<CollectorsTab siteId={7} />} />
+          <Route path="/sites/:siteId/sources" element={<CollectorsTab siteId={7} readOnly={false} />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,

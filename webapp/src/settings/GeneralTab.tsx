@@ -1,8 +1,9 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMe } from "../account/useAccount";
 import { errorMessage } from "../api/client";
 import { type Site, useUpdateSite } from "../sites/useSites";
+import { AccessNote } from "./AccessNote";
+import { useSiteAccess } from "./useSiteAccess";
 
 const inputClass =
   "w-full rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
@@ -103,19 +104,11 @@ function EnabledToggle({ site, disabled }: { site: Site; disabled: boolean }) {
   );
 }
 
-function accessNote(meFailed: boolean, viewer: boolean): string | null {
-  if (meFailed) return "Your account details could not be loaded, so settings are read-only.";
-  if (viewer) return "Only the owner can change this site's settings.";
-  return null;
-}
-
 export function GeneralTab({ site }: { site: Site }) {
-  const me = useMe();
+  const { readOnly, note } = useSiteAccess(site);
   const update = useUpdateSite(site.id);
   const [name, setName] = useState(site.name);
   const [timezone, setTimezone] = useState(site.timezone);
-  const readOnly = me.data?.id !== site.owner_user_id;
-  const note = accessNote(me.isError, me.isSuccess && readOnly);
 
   function handleSave(event: FormEvent) {
     event.preventDefault();
@@ -124,7 +117,7 @@ export function GeneralTab({ site }: { site: Site }) {
 
   return (
     <div className="space-y-6">
-      {note && <p className="text-sm text-ink-muted">{note}</p>}
+      <AccessNote note={note} />
       <form onSubmit={handleSave} className="space-y-4">
         <label className="block space-y-1 text-sm text-ink">
           Name

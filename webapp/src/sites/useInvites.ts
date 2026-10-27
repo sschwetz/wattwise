@@ -13,6 +13,7 @@ export interface Invite {
   declined_at: string | null;
   revoked_at: string | null;
   inviter_user_id: number;
+  inviter_email: string;
 }
 
 export interface PendingInvite {

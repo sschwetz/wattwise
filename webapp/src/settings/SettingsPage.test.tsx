@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,17 +17,19 @@ function LocationProbe() {
 
 function renderAt(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/sites/:siteId" element={<SettingsPage />} />
           <Route path="/settings/sites/:siteId/:tab" element={<SettingsPage />} />
         </Routes>
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 const SOURCE = { id: 1, site_id: 3, kind: "energy", provider: "envoy", name: null, enabled: true, config: {} };
@@ -85,6 +87,45 @@ describe("SettingsPage", () => {
     expect(await screen.findByLabelText("Name")).toBeInTheDocument();
   });
 
+  it("keeps the tabs and typed changes when a background refetch fails", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path === "/api/v1/users/me") return { id: 1, email: "a@b.c" } as never;
+      return [site(7, "Cabin")] as never;
+    });
+    const queryClient = renderAt("/settings/sites/7/general");
+    const name = await screen.findByLabelText("Name");
+    await waitFor(() => expect(name).toBeEnabled());
+    await userEvent.clear(name);
+    await userEvent.type(name, "Cabin two");
+
+    vi.mocked(apiFetch).mockRejectedValue(new Error("offline"));
+    await act(() => queryClient.refetchQueries({ queryKey: ["sites"] }));
+
+    expect(await screen.findByText("Could not refresh your sites.")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Site settings" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("Cabin two");
+    expect(screen.queryByRole("link", { name: /your sites/i })).not.toBeInTheDocument();
+
+    vi.mocked(apiFetch).mockResolvedValue([site(7, "Cabin")]);
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByText("Could not refresh your sites.")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Name")).toHaveValue("Cabin two");
+  });
+
+  it("sends a site URL with no tab to its General tab", async () => {
+    renderAt("/settings/sites/9");
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
+    expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/9/general");
+  });
+
+  it("gives the selected disabled chip the selected style as well as the disabled one", async () => {
+    renderAt("/settings/sites/4/general");
+    const chip = await screen.findByRole("link", { name: "Home (disabled)" });
+    expect(chip).toHaveAttribute("aria-current", "page");
+    expect(chip).toHaveClass("border-solar", "border-dashed");
+    expect(screen.getByRole("link", { name: "Cabin" })).not.toHaveClass("border-solar");
+  });
+
   it("redirects an unknown site id to the default site, keeping a valid tab", async () => {
     renderAt("/settings/sites/99/billing");
     expect(await screen.findByRole("heading", { name: "Billing cycle" })).toBeInTheDocument();
@@ -120,6 +161,33 @@ describe("SettingsPage", () => {
       expect(screen.queryByRole("link", { name: "Back" })).not.toBeInTheDocument();
       expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     }
+
+    function mockAs(meId: number) {
+      vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+        if (path === "/api/v1/users/me") return { id: meId, email: "me@example.com" } as never;
+        if (path.endsWith("/api/v1/sites")) return [site(3, "Farm")] as never;
+        return (path.includes("/sources") ? [SOURCE] : []) as never;
+      });
+    }
+
+    function writeControls(): HTMLElement[] {
+      return Array.from(screen.getByTestId("settings-tab").querySelectorAll<HTMLElement>("button, input, select, textarea"));
+    }
+
+    it.each(["collectors", "tariffs", "billing"])("makes the %s tab read-only for a viewer", async (tab) => {
+      mockAs(2);
+      renderAt(`/settings/sites/3/${tab}`);
+      expect(await screen.findByText("Only the owner can change this site's settings.")).toBeInTheDocument();
+      await waitFor(() => expect(writeControls().length).toBeGreaterThan(0));
+      for (const control of writeControls()) expect(control).toBeDisabled();
+    });
+
+    it.each(["collectors", "tariffs", "billing"])("leaves the %s tab editable for the owner", async (tab) => {
+      mockAs(1);
+      renderAt(`/settings/sites/3/${tab}`);
+      await waitFor(() => expect(writeControls().some((control) => !control.matches(":disabled"))).toBe(true));
+      expect(screen.queryByText("Only the owner can change this site's settings.")).not.toBeInTheDocument();
+    });
 
     it("renders the sources list for the site on the collectors tab", async () => {
       renderAt("/settings/sites/3/collectors");

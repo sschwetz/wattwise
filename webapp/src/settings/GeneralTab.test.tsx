@@ -136,8 +136,13 @@ describe("GeneralTab", () => {
 
   it("does not show Saved after a successful toggle", async () => {
     renderTab({ ...site, enabled: false });
-    await userEvent.click(await screen.findByRole("switch", { name: "Enabled" }));
+    const toggle = await screen.findByRole("switch", { name: "Enabled" });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await userEvent.click(toggle);
     await waitFor(() => expect(patchCalls()).toHaveLength(1));
+    // The switch is disabled while the PATCH is pending; once it is enabled
+    // again the mutation has settled and any "Saved" would be on screen.
+    await waitFor(() => expect(toggle).toBeEnabled());
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
   });
 
