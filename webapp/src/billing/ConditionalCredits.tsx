@@ -12,7 +12,8 @@ import {
   inputClass,
   primaryButtonClass,
 } from "./billingUi";
-import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "./CheckboxGroup";
+import { CheckboxGroup } from "./CheckboxGroup";
+import { DAY_OPTIONS, MONTH_OPTIONS } from "./checkboxOptions";
 import { DateRangeFields, WindowDates } from "./DateFields";
 import { useDateRange, useSiteTimeZone } from "./dateHooks";
 import { useConditionalCreditWindows, useCreateConditionalCreditWindow, useEndConditionalCreditWindow } from "./useBilling";
