@@ -17,7 +17,12 @@ LIVE_PUSH_TIMEOUT_SECONDS = 2
 class CoreApiError(Exception):
     """Raised on any failure talking to Core API — a non-success response or
     a transport failure (connection refused, timeout, DNS, etc.). Callers
-    only ever need to catch this one type, never httpx's own exceptions."""
+    only ever need to catch this one type, never httpx's own exceptions.
+    `status_code` is set when Core API answered and None on a transport failure."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _request(method: str, url: str, **kwargs) -> httpx.Response:
@@ -54,7 +59,9 @@ def push_weather_readings(base_url: str, source_id: int, collector_key: str, rea
         timeout=PUSH_TIMEOUT_SECONDS,
     )
     if response.status_code != 202:
-        raise CoreApiError(f"Failed to push readings: {response.status_code} {response.text}")
+        raise CoreApiError(
+            f"Failed to push readings: {response.status_code} {response.text}", status_code=response.status_code
+        )
 
 
 def push_live_sample(

@@ -467,6 +467,31 @@ def test_poll_once_resends_readings_from_a_failed_push_with_the_next_cycle(monke
     assert batch_sizes == [1, 2, 1]
 
 
+def test_poll_once_drops_readings_after_a_403_instead_of_resending(monkeypatch, caplog):
+    _stub_one_reading(monkeypatch)
+    main_module._pending_readings.clear()
+    main_module._dropping.clear()
+    batch_sizes = []
+
+    def _push(base_url, source_id, key, readings):
+        batch_sizes.append(len(readings))
+        if len(batch_sizes) <= 2:
+            raise CoreApiError("Failed to push readings: 403 site_disabled", status_code=403)
+
+    monkeypatch.setattr(main_module, "push_energy_readings", _push)
+    config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
+
+    with caplog.at_level(logging.WARNING, logger="envoy_collector"):
+        for _ in range(3):
+            main_module.poll_once(SETTINGS, 1, config)
+
+    assert batch_sizes == [1, 1, 1]
+    assert main_module._pending_readings == {}
+    dropped = [r for r in caplog.records if "dropping" in r.getMessage()]
+    assert len(dropped) == 1
+    assert dropped[0].levelno == logging.WARNING
+
+
 def test_poll_once_keeps_failed_readings_per_source(monkeypatch):
     _stub_one_reading(monkeypatch)
     main_module._pending_readings.clear()

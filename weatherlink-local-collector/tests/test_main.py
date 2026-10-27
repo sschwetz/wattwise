@@ -267,6 +267,29 @@ def test_failed_push_resends_non_rain_readings_with_the_next_cycle(monkeypatch):
     assert pushed[0][0]["ts"] <= pushed[0][-1]["ts"]
 
 
+def test_a_403_push_drops_the_readings_instead_of_resending(monkeypatch, caplog):
+    main_module._pending_readings.clear()
+    main_module._dropping.clear()
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+    sizes = []
+
+    def _push(base_url, source_id, key, readings):
+        sizes.append(len(readings))
+        if len(sizes) <= 2:
+            raise CoreApiError("Failed to push readings: 403 site_disabled", status_code=403)
+
+    monkeypatch.setattr(main_module, "push_weather_readings", _push)
+    with caplog.at_level(logging.WARNING, logger="weatherlink_local_collector"):
+        for _ in range(3):
+            main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
+
+    assert sizes[0] == sizes[1] == sizes[2]
+    assert main_module._pending_readings == {}
+    dropped = [r for r in caplog.records if "dropping" in r.getMessage()]
+    assert len(dropped) == 1
+    assert dropped[0].levelno == logging.WARNING
+
+
 def test_failed_pushes_drop_the_oldest_readings_past_the_backlog_cap(monkeypatch):
     main_module._pending_readings.clear()
     monkeypatch.setattr(main_module, "MAX_PENDING_READINGS", 5)

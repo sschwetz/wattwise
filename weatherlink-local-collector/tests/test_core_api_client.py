@@ -71,6 +71,24 @@ def test_push_weather_readings_raises_core_api_error_on_connection_failure():
 
 
 @respx.mock
+def test_push_weather_readings_error_carries_the_status_code():
+    respx.post(f"{BASE_URL}/api/v1/sources/1/readings/weather").mock(
+        return_value=httpx.Response(403, json={"code": "site_disabled"})
+    )
+    with pytest.raises(CoreApiError) as exc_info:
+        push_weather_readings(BASE_URL, 1, "my-key", [])
+    assert exc_info.value.status_code == 403
+
+
+@respx.mock
+def test_transport_failure_has_no_status_code():
+    respx.post(f"{BASE_URL}/api/v1/sources/1/readings/weather").mock(side_effect=httpx.ConnectError("boom"))
+    with pytest.raises(CoreApiError) as exc_info:
+        push_weather_readings(BASE_URL, 1, "my-key", [])
+    assert exc_info.value.status_code is None
+
+
+@respx.mock
 def test_push_live_sample_posts_ts_and_values_with_key_and_short_timeout():
     route = respx.post(f"{BASE_URL}/api/v1/sources/1/live/weather").mock(return_value=httpx.Response(202))
     ts = datetime.datetime(2026, 9, 29, 12, 0, 5, tzinfo=datetime.UTC)

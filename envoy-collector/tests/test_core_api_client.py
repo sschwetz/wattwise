@@ -116,6 +116,24 @@ def test_push_energy_readings_raises_on_non_202():
 
 
 @respx.mock
+def test_push_energy_readings_error_carries_the_status_code():
+    respx.post(f"{BASE_URL}/api/v1/sources/1/readings/energy").mock(
+        return_value=httpx.Response(403, json={"code": "site_disabled"})
+    )
+    with pytest.raises(CoreApiError) as exc_info:
+        push_energy_readings(BASE_URL, 1, "my-key", [])
+    assert exc_info.value.status_code == 403
+
+
+@respx.mock
+def test_transport_failure_has_no_status_code():
+    respx.post(f"{BASE_URL}/api/v1/sources/1/readings/energy").mock(side_effect=httpx.ConnectError("boom"))
+    with pytest.raises(CoreApiError) as exc_info:
+        push_energy_readings(BASE_URL, 1, "my-key", [])
+    assert exc_info.value.status_code is None
+
+
+@respx.mock
 def test_fetch_collector_sources_sends_kind_and_collector_key():
     route = respx.get(f"{BASE_URL}/api/v1/collector/sources").mock(
         return_value=httpx.Response(

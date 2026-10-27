@@ -8,7 +8,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from weatherlink_local_collector.config import Settings, get_settings
-from weatherlink_local_collector.core_api_client import fetch_collector_sources, push_live_sample, push_weather_readings
+from weatherlink_local_collector.core_api_client import (
+    CoreApiError,
+    fetch_collector_sources,
+    push_live_sample,
+    push_weather_readings,
+)
 from weatherlink_local_collector.mapping import RainState, map_barometer_readings, map_iss_readings, map_live_values
 from weatherlink_local_collector.weatherlink_client import fetch_current_conditions
 
@@ -21,6 +26,10 @@ logger = logging.getLogger("weatherlink_local_collector")
 # the missed rain. Held in memory only, and capped; the oldest are dropped first.
 MAX_PENDING_READINGS = 5000
 _pending_readings: dict[int, list[dict]] = {}
+# Sources whose last push got a 403 (site_disabled, source_disabled or
+# source_expired). Core API will refuse every resend, so those readings are
+# dropped, and only the first drop of a streak is logged.
+_dropping: set[int] = set()
 
 
 def _map_iss_or_empty(conditions: list[dict], ts: datetime.datetime, rain_state: RainState) -> list[dict]:
@@ -63,10 +72,22 @@ def poll_once(settings: Settings, source_id: int, config: dict, rain_state: Rain
         return
 
     batch = _pending_readings.pop(source_id, []) + readings
+    if not _push_or_keep(settings, source_id, batch):
+        rain_state.last_daily_mm = prev_rain_baseline
+
+
+def _push_or_keep(settings: Settings, source_id: int, batch: list[dict]) -> bool:
+    """Pushes the batch. Returns False only when the push failed and the
+    batch (less rain_mm) is kept for the next cycle, so the caller rolls the
+    rain baseline back. A 403 drops the batch with its rain and returns True."""
     try:
         push_weather_readings(settings.core_api_url, source_id, settings.collector_key, batch)
-    except Exception:
-        rain_state.last_daily_mm = prev_rain_baseline
+    except Exception as exc:
+        if isinstance(exc, CoreApiError) and exc.status_code == 403:
+            if source_id not in _dropping:
+                logger.warning("Core API refused readings for source %s (%s); dropping them", source_id, exc)
+            _dropping.add(source_id)
+            return True
         logger.exception(
             "Failed to push %s readings to Core API this cycle for source %s; will resend next cycle",
             len(batch),
@@ -74,6 +95,9 @@ def poll_once(settings: Settings, source_id: int, config: dict, rain_state: Rain
         )
         kept = [r for r in batch if r["metric"] != "rain_mm"]
         _pending_readings[source_id] = kept[-MAX_PENDING_READINGS:]
+        return False
+    _dropping.discard(source_id)
+    return True
 
 
 @dataclass

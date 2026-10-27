@@ -61,6 +61,10 @@ CERT_REPIN_WINDOW = datetime.timedelta(days=100)
 # bound or produce a batch Core API can't take; the oldest are dropped first.
 MAX_PENDING_READINGS = 5000
 _pending_readings: dict[int, list[dict]] = {}
+# Sources whose last push got a 403 (site_disabled, source_disabled or
+# source_expired). Core API will refuse every resend, so those readings are
+# dropped, and only the first drop of a streak is logged.
+_dropping: set[int] = set()
 # One live-feed sampler per pinned source, and each source's /ivp/meters
 # listing (it only changes when hardware is added). Both are held in memory
 # only. The meters cache is cleared on an Envoy 401 and on every source
@@ -448,17 +452,29 @@ def poll_once(settings: Settings, source_id: int, config: dict, sampler: LiveSam
         return config
     readings = readings + _meter_readings_or_empty(source_id, config, ts)
 
-    batch = _pending_readings.pop(source_id, []) + readings
+    _push_or_keep(settings, source_id, _pending_readings.pop(source_id, []) + readings)
+    return config
+
+
+def _push_or_keep(settings: Settings, source_id: int, batch: list[dict]) -> None:
+    """Pushes the batch. On a 403 the batch is dropped; on any other failure
+    it is kept for the next cycle."""
     try:
         push_energy_readings(settings.core_api_url, source_id, settings.collector_key, batch)
-    except CoreApiError:
+    except CoreApiError as exc:
+        if exc.status_code == 403:
+            if source_id not in _dropping:
+                logger.warning("Core API refused readings for source %s (%s); dropping them", source_id, exc)
+            _dropping.add(source_id)
+            return
         logger.exception(
             "Failed to push %s readings to Core API this cycle for source %s; will resend next cycle",
             len(batch),
             source_id,
         )
         _pending_readings[source_id] = batch[-MAX_PENDING_READINGS:]
-    return config
+        return
+    _dropping.discard(source_id)
 
 
 def _live_pusher(settings: Settings, source_id: int) -> Callable[[LiveSample, dict], None]:
