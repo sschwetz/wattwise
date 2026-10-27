@@ -56,6 +56,8 @@ def update_site(
         site.name = payload.name
     if payload.timezone is not None:
         site.timezone = payload.timezone
+    if payload.enabled is not None:
+        site.enabled = payload.enabled
     db.commit()
     db.refresh(site)
     return site

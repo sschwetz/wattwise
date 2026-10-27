@@ -185,6 +185,7 @@ class SiteOut(BaseModel):
     owner_user_id: int
     name: str
     timezone: str
+    enabled: bool
 
     model_config = {"from_attributes": True}
 
@@ -192,6 +193,7 @@ class SiteOut(BaseModel):
 class SiteUpdate(BaseModel):
     name: str | None = None
     timezone: str | None = None
+    enabled: bool | None = None
 
 
 class SiteAccessGrant(BaseModel):

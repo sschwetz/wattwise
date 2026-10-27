@@ -135,3 +135,53 @@ def test_non_owner_cannot_patch_site(client, app_and_db_url):
         f"/api/v1/sites/{site_id}", json={"name": "Hijacked"}, headers=auth(stranger_id)
     )
     assert response.status_code == 404
+
+
+def _create_site(client, owner_id: int) -> int:
+    return client.post(
+        "/api/v1/sites", json={"name": "Home", "timezone": "UTC"}, headers=auth(owner_id)
+    ).json()["id"]
+
+
+def test_new_site_is_enabled(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "enabled-owner@example.com")
+    site_id = _create_site(client, owner_id)
+    got = client.get(f"/api/v1/sites/{site_id}", headers=auth(owner_id))
+    assert got.json()["enabled"] is True
+
+
+def test_owner_can_disable_and_reenable_site(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "toggle-owner@example.com")
+    site_id = _create_site(client, owner_id)
+    off = client.patch(f"/api/v1/sites/{site_id}", json={"enabled": False}, headers=auth(owner_id))
+    assert off.status_code == 200
+    assert off.json()["enabled"] is False
+    on = client.patch(f"/api/v1/sites/{site_id}", json={"enabled": True}, headers=auth(owner_id))
+    assert on.status_code == 200
+    assert on.json()["enabled"] is True
+
+
+def test_viewer_cannot_change_enabled(client, app_and_db_url):
+    from core_api.models.identity import SiteAccess
+
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "enabled-owner2@example.com")
+    viewer_id = make_user(db_url, "enabled-viewer2@example.com")
+    site_id = _create_site(client, owner_id)
+    session = make_session_factory(make_engine(db_url))()
+    session.add(SiteAccess(site_id=site_id, user_id=viewer_id))
+    session.commit()
+    session.close()
+    res = client.patch(f"/api/v1/sites/{site_id}", json={"enabled": False}, headers=auth(viewer_id))
+    assert res.status_code == 403
+
+
+def test_list_sites_includes_disabled_sites_with_flag(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "list-owner@example.com")
+    site_id = _create_site(client, owner_id)
+    client.patch(f"/api/v1/sites/{site_id}", json={"enabled": False}, headers=auth(owner_id))
+    sites = client.get("/api/v1/sites", headers=auth(owner_id)).json()
+    assert [(s["id"], s["enabled"]) for s in sites] == [(site_id, False)]
