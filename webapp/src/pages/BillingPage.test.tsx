@@ -4,12 +4,21 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "../api/client";
-import { BillingPage } from "./BillingPage";
+import { BillingTab, TariffsTab } from "./BillingPage";
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
   return { ...actual, apiFetch: vi.fn() };
 });
+
+function BillingPageTabs() {
+  return (
+    <>
+      <TariffsTab siteId={7} />
+      <BillingTab siteId={7} />
+    </>
+  );
+}
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -17,7 +26,7 @@ function renderPage() {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/sites/7/billing"]}>
         <Routes>
-          <Route path="/sites/:siteId/billing" element={<BillingPage />} />
+          <Route path="/sites/:siteId/billing" element={<BillingPageTabs />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -28,16 +37,17 @@ function emptyListsFetch(_path: string) {
   return Promise.resolve([]);
 }
 
-describe("BillingPage back link", () => {
+describe("Billing tabs chrome", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
   });
 
-  it("links back to the site's dashboard", async () => {
+  it("has no back link or page heading of its own", async () => {
     vi.mocked(apiFetch).mockImplementation(emptyListsFetch as never);
     renderPage();
-    await screen.findByText("Billing");
-    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sites/7");
+    await screen.findByText("Billing cycle");
+    expect(screen.queryByRole("link", { name: "Back" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
   });
 });
 
@@ -88,7 +98,7 @@ const MONTHLY_FEE_DISCOUNT = {
   discounted_fee_c: "0",
 };
 
-describe("BillingPage", () => {
+describe("Billing tabs", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
   });

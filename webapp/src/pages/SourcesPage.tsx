@@ -1,7 +1,5 @@
 import { type FormEvent, type ReactNode, useCallback, useMemo, useState } from "react";
 import { SaveStatus, type SaveState, SubmitButton } from "../components/SubmitButton";
-import { useParams } from "react-router-dom";
-import { BackLink } from "../layout/BackLink";
 import { RateWindowsPanel } from "../sources/RateWindowsPanel";
 import { type Source, useCreateSource, useDeleteSource, useSources, useUpdateSource } from "../sources/useSources";
 
@@ -497,12 +495,10 @@ function SourceRow({
   );
 }
 
-export function SourcesPage() {
-  const { siteId } = useParams<{ siteId: string }>();
-  const parsedSiteId = Number(siteId);
-  const { data: sources } = useSources(parsedSiteId);
-  const updateSource = useUpdateSource(parsedSiteId);
-  const deleteSource = useDeleteSource(parsedSiteId);
+export function CollectorsTab({ siteId }: { siteId: number }) {
+  const { data: sources } = useSources(siteId);
+  const updateSource = useUpdateSource(siteId);
+  const deleteSource = useDeleteSource(siteId);
 
   const handleToggle = useCallback(
     (source: Source) => {
@@ -538,11 +534,7 @@ export function SourcesPage() {
   );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
-      <div className="flex items-center gap-2">
-        <BackLink to={`/sites/${siteId}`} />
-        <h1 className="font-display text-2xl font-semibold text-ink">Sources</h1>
-      </div>
+    <div className="space-y-6">
       {updateSource.isError && (
         <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
           {updateSource.error instanceof Error ? updateSource.error.message : "Failed to update source. Please try again."}
@@ -568,7 +560,7 @@ export function SourcesPage() {
           />
         ))}
       </ul>
-      <CreateSourceForm siteId={parsedSiteId} />
+      <CreateSourceForm siteId={siteId} />
     </div>
   );
 }

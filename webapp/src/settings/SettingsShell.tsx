@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
 import type { Site } from "../sites/useSites";
+import { BillingTab, TariffsTab } from "../pages/BillingPage";
+import { CollectorsTab } from "../pages/SourcesPage";
 import { GeneralTab } from "./GeneralTab";
 import { SiteChips } from "./SiteChips";
 import { TABS } from "./tabs";
@@ -9,10 +11,21 @@ const tabLinkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "bg-surface-2 text-ink" : "text-ink-muted hover:bg-surface-2 hover:text-ink"
   }`;
 
-/** Placeholder tab content. Later tasks replace this with the real panels. */
+/** Tab content. The sharing tab is still a placeholder. */
 function TabContent({ tab, site }: { tab: string; site: Site | undefined }) {
-  if (tab === "general" && site) return <GeneralTab key={site.id} site={site} />;
-  return <div>Tab: {tab}</div>;
+  if (!site) return <div>Tab: {tab}</div>;
+  switch (tab) {
+    case "general":
+      return <GeneralTab key={site.id} site={site} />;
+    case "collectors":
+      return <CollectorsTab key={site.id} siteId={site.id} />;
+    case "tariffs":
+      return <TariffsTab key={site.id} siteId={site.id} />;
+    case "billing":
+      return <BillingTab key={site.id} siteId={site.id} />;
+    default:
+      return <div>Tab: {tab}</div>;
+  }
 }
 
 function TabRail({ siteId }: { siteId: number }) {

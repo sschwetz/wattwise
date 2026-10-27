@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "../api/client";
-import { SourcesPage } from "./SourcesPage";
+import { CollectorsTab } from "./SourcesPage";
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
@@ -17,14 +17,14 @@ function renderPage() {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/sites/7/sources"]}>
         <Routes>
-          <Route path="/sites/:siteId/sources" element={<SourcesPage />} />
+          <Route path="/sites/:siteId/sources" element={<CollectorsTab siteId={7} />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe("SourcesPage", () => {
+describe("CollectorsTab", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
   });
@@ -39,11 +39,12 @@ describe("SourcesPage", () => {
     expect(await within(screen.getByRole("list")).findByText("envoy")).toBeInTheDocument();
   });
 
-  it("links back to the site's dashboard", async () => {
+  it("has no back link or page heading of its own", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce([]);
     renderPage();
     await screen.findByText("No sources yet.");
-    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sites/7");
+    expect(screen.queryByRole("link", { name: "Back" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
   });
 
   it("creates a source and confirms it without a collector key", async () => {

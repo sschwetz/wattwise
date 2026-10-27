@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "../api/client";
-import { BillingPage } from "./BillingPage";
+import { BillingTab, TariffsTab } from "./BillingPage";
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
@@ -60,13 +60,22 @@ function mockApi(lists: Record<string, unknown[]>) {
   }) as never);
 }
 
+function BillingPageTabs() {
+  return (
+    <>
+      <TariffsTab siteId={7} />
+      <BillingTab siteId={7} />
+    </>
+  );
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/sites/7/billing"]}>
         <Routes>
-          <Route path="/sites/:siteId/billing" element={<BillingPage />} />
+          <Route path="/sites/:siteId/billing" element={<BillingPageTabs />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,

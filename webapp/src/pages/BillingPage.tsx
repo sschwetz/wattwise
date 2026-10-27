@@ -1,7 +1,5 @@
 import { type FormEvent, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
 import { SubmitButton } from "../components/SubmitButton";
-import { BackLink } from "../layout/BackLink";
 import { ConditionalCreditForm, ConditionalCreditList } from "../billing/ConditionalCredits";
 import { CheckboxGroup } from "../billing/CheckboxGroup";
 import { DAY_OPTIONS, MONTH_OPTIONS } from "../billing/checkboxOptions";
@@ -652,19 +650,15 @@ function DemandChargesSection({ siteId }: { siteId: number }) {
   );
 }
 
-export function BillingPage() {
-  const { siteId } = useParams<{ siteId: string }>();
-  const parsedSiteId = Number(siteId);
+export function TariffsTab({ siteId }: { siteId: number }) {
+  return <TariffSection siteId={siteId} />;
+}
 
+export function BillingTab({ siteId }: { siteId: number }) {
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
-      <div className="flex items-center gap-2">
-        <BackLink to={`/sites/${siteId}`} />
-        <h1 className="font-display text-2xl font-semibold text-ink">Billing</h1>
-      </div>
-      <TariffSection siteId={parsedSiteId} />
-      <BillingCycleSection siteId={parsedSiteId} />
-      <DemandChargesSection siteId={parsedSiteId} />
+    <div className="space-y-6">
+      <BillingCycleSection siteId={siteId} />
+      <DemandChargesSection siteId={siteId} />
     </div>
   );
 }

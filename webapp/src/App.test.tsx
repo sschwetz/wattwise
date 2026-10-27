@@ -72,20 +72,28 @@ describe("App routing", () => {
 
   it("redirects /sites/:siteId/sources to the Collectors settings tab", async () => {
     localStorage.setItem("access_token", "a-token");
-    vi.mocked(apiFetch).mockResolvedValue([
-      { id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
-    ]);
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("/api/v1/sites")
+          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]
+          : [],
+      ),
+    );
     renderAt("/sites/5/sources");
-    expect(await screen.findByText("Tab: collectors")).toBeInTheDocument();
+    expect(await screen.findByText("No sources yet.")).toBeInTheDocument();
   });
 
   it("redirects /sites/:siteId/billing to the Billing settings tab", async () => {
     localStorage.setItem("access_token", "a-token");
-    vi.mocked(apiFetch).mockResolvedValue([
-      { id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
-    ]);
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("/api/v1/sites")
+          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]
+          : [],
+      ),
+    );
     renderAt("/sites/5/billing");
-    expect(await screen.findByText("Tab: billing")).toBeInTheDocument();
+    expect(await screen.findByText("Billing cycle")).toBeInTheDocument();
   });
 
   it("navigates to the add-site page at /sites/new", async () => {

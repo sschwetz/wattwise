@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +29,8 @@ function renderAt(path: string) {
     </QueryClientProvider>,
   );
 }
+
+const SOURCE = { id: 1, site_id: 3, kind: "energy", provider: "envoy", name: null, enabled: true, config: {} };
 
 const site = (id: number, name: string, enabled = true) => ({
   id,
@@ -85,7 +87,7 @@ describe("SettingsPage", () => {
 
   it("redirects an unknown site id to the default site, keeping a valid tab", async () => {
     renderAt("/settings/sites/99/billing");
-    expect(await screen.findByText("Tab: billing")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Billing cycle" })).toBeInTheDocument();
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/7/billing");
   });
 
@@ -105,6 +107,41 @@ describe("SettingsPage", () => {
     renderAt("/settings/sites/9/nope");
     expect(await screen.findByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/9/general");
+  });
+
+  describe("collectors, tariffs and billing tabs", () => {
+    beforeEach(() => {
+      vi.mocked(apiFetch).mockImplementation((path: string) =>
+        Promise.resolve(path.endsWith("/api/v1/sites") ? [site(3, "Farm")] : path.includes("/sources") ? [SOURCE] : []),
+      );
+    });
+
+    function expectNoPageChrome() {
+      expect(screen.queryByRole("link", { name: "Back" })).not.toBeInTheDocument();
+      expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    }
+
+    it("renders the sources list for the site on the collectors tab", async () => {
+      renderAt("/settings/sites/3/collectors");
+      expect(await within(await screen.findByRole("list")).findByText("envoy")).toBeInTheDocument();
+      expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/sites/3/sources"));
+      expectNoPageChrome();
+    });
+
+    it("shows the tariff section and not the billing cycle on the tariffs tab", async () => {
+      renderAt("/settings/sites/3/tariffs");
+      expect(await screen.findByRole("heading", { name: /tariff/i })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Billing cycle" })).not.toBeInTheDocument();
+      expectNoPageChrome();
+    });
+
+    it("shows billing cycle and demand charges and no tariff form on the billing tab", async () => {
+      renderAt("/settings/sites/3/billing");
+      expect(await screen.findByRole("heading", { name: "Billing cycle" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Demand charges" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /tariff/i })).not.toBeInTheDocument();
+      expectNoPageChrome();
+    });
   });
 
   it("marks the active tab and the selected chip with aria-current", async () => {
@@ -147,7 +184,7 @@ describe("SettingsPage", () => {
   });
 
   it("renders the content for the tab in the URL", async () => {
-    renderAt("/settings/sites/7/tariffs");
-    expect(await screen.findByText("Tab: tariffs")).toBeInTheDocument();
+    renderAt("/settings/sites/7/sharing");
+    expect(await screen.findByText("Tab: sharing")).toBeInTheDocument();
   });
 });
