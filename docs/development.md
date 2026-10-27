@@ -33,6 +33,14 @@ cd webapp && npm run lint                           # Oxlint
 cd webapp && npm run build                          # type-checks, then builds
 ```
 
+Each Python package is also checked with Ruff and mypy, configured in its `pyproject.toml`:
+
+```bash
+cd core-api && uv run ruff check . && uv run mypy   # likewise for each collector
+```
+
+The `CI` workflow (`.github/workflows/ci.yml`) runs Ruff, mypy and the tests for every Python package, and lint, `tsc` and Vitest for the webapp, on pushes to `master` and on pull requests.
+
 Core API tests need no environment setup: `tests/conftest.py` sets the secrets (including a test `SECRETS_ENCRYPTION_KEY`; do not hardcode real keys anywhere else), builds a fresh SQLite database through the real migrations for every test, and swaps in a fake email sender. The scheduler never starts, because the tests do not run the app lifespan. If you add a required environment variable to `config.py`, add it to `conftest.py` too, or every test fails at startup.
 
 Test files mirror modules: `core_api/cost.py` is covered by `tests/test_cost.py`, `routers/billing.py` by `tests/test_billing.py`, and the jobs by `tests/jobs/`. Collectors keep JSON fixtures of real device responses in `tests/fixtures/`.
