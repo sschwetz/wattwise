@@ -2,7 +2,7 @@
 
 [Contents](index.md) · Previous: [Billing](07-billing.md) · Next: [Troubleshooting](09-troubleshooting.md)
 
-Open your settings from the header: click your name in the top right corner, then **Account settings**. Use the back arrow at the top left of the page to return to your sites.
+Open your settings from the header: click your name in the top right corner, then **Account settings**. Use the back arrow at the top left of the page to return to your sites. Settings for a site, such as sources, tariffs and sharing, are under **Site settings** in the same menu. See [Site settings](04-sites.md#site-settings).
 
 ![The Account page with Profile, Change password, Change email, Two-factor authentication and Amber sections](images/account-page.png)
 

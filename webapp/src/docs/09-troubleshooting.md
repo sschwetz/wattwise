@@ -10,8 +10,9 @@ The dashboard shows only what has been collected, so an empty page usually means
 
 | Check | What to do |
 |-------|-----------|
-| Is there an energy source? | Open **Sources**. If no `energy — envoy` row exists, [add one](05-sources.md#connecting-an-enphase-envoy). |
-| Is it enabled? | The row should offer **Disable**, not **Enable**. If it says **Enable**, click it. |
+| Is there an energy source? | Open the **Collectors** tab in [Site settings](04-sites.md#site-settings). If no `energy — envoy` row exists, [add one](05-sources.md#connecting-an-enphase-envoy). |
+| Is the site enabled? | On the **General** tab, **Enabled** should be on. A [disabled site](04-sites.md#disabling-a-site) collects nothing, and its dashboard shows a disabled banner. |
+| Is the source enabled? | The row should offer **Disable**, not **Enable**. If it says **Enable**, click it. |
 | Are the Host and Token filled in? | Click **Edit config**. Host must be set, and either Token or both Enlighten fields. |
 | Did you wait? | New and edited sources take a few minutes to start. The dashboard refreshes every 60 seconds. |
 | Is the Envoy reachable? | The Envoy must be on the same network as your WattWise server. Try its address in a browser from a computer on that network. |
@@ -25,7 +26,7 @@ The collector pins the Envoy's certificate on first contact. It accepts a new ce
 
 ## Consumption or grid numbers have the wrong sign
 
-If your home's consumption reads negative while importing, your Envoy's consumption sensor is installed the other way round. Open **Sources → Edit config** on the Envoy and tick **My consumption numbers are flipped (importing shows as negative)**, then **Save config**.
+If your home's consumption reads negative while importing, your Envoy's consumption sensor is installed the other way round. Open **Site settings → Collectors → Edit config** on the Envoy and tick **My consumption numbers are flipped (importing shows as negative)**, then **Save config**.
 
 ## Costs look too low or are missing
 

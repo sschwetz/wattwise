@@ -9,6 +9,7 @@ erDiagram
     USER ||--o{ SITE : owns
     USER ||--o{ SITE_ACCESS : "is granted"
     SITE ||--o{ SITE_ACCESS : "shared via"
+    SITE ||--o{ SITE_INVITE : "offered via"
     USER ||--o{ RECOVERY_CODE : has
 
     SITE ||--o{ SOURCE : has
@@ -43,6 +44,20 @@ erDiagram
         int owner_user_id FK
         string name
         string timezone "IANA name, e.g. Australia/Sydney"
+        bool enabled "false stops collection"
+    }
+    SITE_INVITE {
+        int id PK
+        int site_id FK
+        int inviter_user_id FK
+        string email "lowercased"
+        enum status "invited | accepted | declined | revoked"
+        datetime created_at
+        datetime accepted_at
+        datetime declined_at
+        datetime revoked_at
+        int revoked_by_user_id FK
+        int invitee_user_id FK
     }
     SOURCE {
         int id PK
@@ -74,12 +89,25 @@ erDiagram
 | Table | Purpose |
 |---|---|
 | `users` | Email, bcrypt password hash, TOTP secret, optional Amber API key. The Amber key belongs to the user, not a site. The TOTP secrets and the Amber key are encrypted at rest. |
-| `sites` | A property. Has one owner and an IANA time zone that all local-time rules use. |
-| `site_access` | Extra read-only grants. The only role today is `viewer`. Ownership is `sites.owner_user_id` and nowhere else. |
+| `sites` | A property. Has one owner and an IANA time zone that all local-time rules use. `enabled` (default true) switches collection off; see [Disabled sites](#disabled-sites). |
+| `site_access` | Extra read-only grants. The only role today is `viewer`. Ownership is `sites.owner_user_id` and nowhere else. Permission checks read this table. It is written by accepting an invite and deleted by revoking one. |
+| `site_invites` | Emailed invitations to view a site. Append-only record, see [Invitations](#invitations). |
 | `recovery_codes` | One-time TOTP recovery codes, stored as a keyed HMAC (not reversible, and useless without `SECRETS_ENCRYPTION_KEY`). Ten 16-character codes are issued at enrolment. |
 | `password_reset_tokens`, `email_confirmation_tokens`, `email_change_tokens` | Single-use, expiring tokens. Only the SHA-256 hash is stored. The raw token exists in the email and nowhere else. |
 
 Columns holding credentials are stored as Fernet tokens (`gAAAA...` text) and decrypted by the ORM on read: `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret` and `sources.config`. They cannot be filtered in SQL. See [Core API](core-api.md#where-secrets-are-stored).
+
+### Invitations
+
+`site_invites` holds one row per invitation: the site, the inviting owner, the lowercased `email`, a `status` and one timestamp per transition (`accepted_at`, `declined_at`, `revoked_at`). `invitee_user_id` is set when the recipient accepts or declines. `revoked_by_user_id` is set on revoke. A check constraint limits `status` to `invited`, `accepted`, `declined` and `revoked`.
+
+Rows are append-only. No code path deletes one, and the only update is a forward status change with its timestamp. Inviting an address again after a decline or revoke adds a new row. No token is stored: the recipient matches by confirmed email address, so the table holds no secret.
+
+The migration `e5a7b9c2d4f6` turns each existing `site_access` row into an `accepted` invite from the site owner, using the viewer's email.
+
+### Disabled sites
+
+`sites.enabled` is a non-null boolean that defaults to true, and the migration `d4f6a8b1c3e5` leaves every existing site enabled. A disabled site keeps all its rows. Collector discovery skips its sources, and `get_source_by_collector_key` returns 403 `site_disabled` for writes. Reads, the demand-charge job and the rollup jobs are unchanged, because they only work from stored data.
 
 ## Sources
 

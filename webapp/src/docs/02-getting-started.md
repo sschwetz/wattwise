@@ -40,15 +40,15 @@ The full list of terms is in the [Glossary](10-glossary.md).
 
 ## The screens
 
-After you sign in, every screen has the header. The dashboard, Reporting, Sources and Billing pages also have the sidebar:
+After you sign in, every screen has the header. The dashboard and Reporting pages also have the sidebar:
 
 ![The WattWise header at the top and the site sidebar down the left side](images/sidebar-and-header.png)
 
-- **Header** (top): the WattWise logo and your name and photo. Click your name to open the user menu with **Account settings**, **Help** and **Log off**.
+- **Header** (top): the WattWise logo and your name and photo. Click your name to open the user menu with **Account settings**, **Site settings**, **Help** and **Log off**.
 
 ![The user menu open, showing Account settings, Help and Log off](images/header-menu.png)
 
-- **Sidebar** (left, or a strip along the top on a phone): the **site switcher** and the links **Dashboard**, **Reporting**, **Sources** and **Billing**. The Account and Add site pages show the header only.
+- **Sidebar** (left, or a strip along the top on a phone): the **site switcher** and the links **Dashboard** and **Reporting**. The Account, Site settings and Add site pages show the header only.
 - **Main window**: the page you picked. This guide opens here too, through **Help** in the user menu.
 
 ![The in-app Help viewer showing this guide's contents page](images/help-viewer.png)

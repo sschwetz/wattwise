@@ -24,13 +24,14 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 | `/totp-setup`, `/totp-verify` | Two-factor | Enrol an authenticator app, enter a code |
 | `/forgot-password`, `/reset-password` | Reset | Request and use a reset link |
 | `/confirm-email-change` | Email change | Confirm the new address |
-| `/`, `/sites` | `SitePickerPage` | Choose a site |
+| `/`, `/sites` | `SitePickerPage` | Choose an enabled site, and accept or decline pending invitations. Redirects to `/settings` when every site is disabled. |
 | `/sites/new` | `AddSitePage` | Create a site and pick its time zone |
 | `/account` | `AccountPage` | Name, photo, password, email, authenticator, Amber key |
 | `/help/:slug?` | `HelpPage` | The user guide |
 | `/sites/:siteId` | `DashboardPage` | Live tiles, pricing chart, history chart |
-| `/sites/:siteId/sources` | `SourcesPage` | Add, edit, disable, delete sources and rate windows |
-| `/sites/:siteId/billing` | `BillingPage` | Tariffs, windows, billing cycle, demand charges |
+| `/sites/:siteId/reporting` | `ReportingPage` | Longer-range charts |
+| `/settings`, `/settings/sites/:siteId/:tab` | `SettingsPage` | Site chips and a tab rail. `:tab` is `general`, `collectors`, `tariffs`, `billing` or `sharing`. An unknown site or tab redirects to the first enabled site's `general` tab. |
+| `/sites/:siteId/sources`, `/sites/:siteId/billing` | Redirects | Go to the `collectors` and `billing` settings tabs |
 
 <table>
 <tr>
@@ -56,7 +57,8 @@ More screenshots, with the explanation of every tile and field, are in the [user
 | `src/dashboard/` | Hooks for live readings and history, and pure helpers for charts (`historyChart.ts`, `priceChart.ts`, `compass.ts`) |
 | `src/billing/` | `useBilling.ts` (all tariff and cycle calls), `ConditionalCredits.tsx`, `tariffHeading.ts` |
 | `src/sources/` | `useSources.ts`, `useRateWindows.ts`, the rate window panel and form, `rateCoverage.ts` (finds uncovered times) |
-| `src/sites/`, `src/account/` | Site and account hooks and forms |
+| `src/settings/` | The Settings page: `SettingsPage` (route and redirects), `SettingsShell`, `SiteChips`, `GeneralTab`, `SharingTab`, `tabs.ts`. The Collectors, Tariffs and Billing tabs reuse `CollectorsTab` in `pages/SourcesPage.tsx` and `TariffsTab` and `BillingTab` in `pages/BillingPage.tsx`. |
+| `src/sites/`, `src/account/` | Site, invitation and account hooks and forms. `useEnabledSites` filters `GET /sites` to enabled sites for the picker and switcher. |
 | `src/help/` | The help viewer |
 | `src/docs/` | The user guide as Markdown, plus `images/` |
 

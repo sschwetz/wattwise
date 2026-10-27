@@ -11,13 +11,13 @@ A **source** connects a site to one device or service. WattWise supports three k
 | `pricing` | `local` | Buy, sell and controlled-load prices from rates you type in | A tariff name and its [rate windows](#setting-up-a-fixed-tariff) |
 | `weather` | `weatherlink_live` | Temperature, humidity, wind, rain, solar radiation, pressure | The WeatherLink Live unit's address |
 
-Open the page from the sidebar with **Sources**.
+Open it from the header: click your name, choose **Site settings**, pick the site and open the **Collectors** tab. The older `/sites/:id/sources` address redirects there. A [disabled site](04-sites.md#disabling-a-site) keeps its sources, but its collectors stop reading them.
 
 ![The Sources page listing an energy, a pricing and a weather source](images/sources-list.png)
 
 ## Adding a source
 
-1. Open **Sources** in the sidebar.
+1. Open the **Collectors** tab in [Site settings](04-sites.md#site-settings).
 2. At the bottom of the page, choose a **Kind**. The **Provider** list updates to the providers for that kind. Kind `pricing` offers **Amber** (`amber`) and **Local tariff** (`local`).
 3. Optionally type a **Label**, for example `Garage Envoy`. Labels help when a site has more than one source of the same kind. A `local` pricing source needs a **Tariff name** instead, and the box is required.
 4. Click **Create source**.
@@ -99,11 +99,11 @@ Once prices flow, the dashboard shows [Today's Pricing](06-dashboard.md#todays-p
 
 Use this when your supplier charges fixed or time-of-use rates and has no price API. You type the rates in, and WattWise prices every minute from them.
 
-1. Open **Sources** and choose `pricing` as the **Kind** and **Local tariff** as the **Provider**.
-2. Type a **Tariff name**, such as `Origin Fixed`. It must be 1 to 100 characters, and a rename follows the same rule. The [Billing page](07-billing.md#tariffs) uses it as its heading, so this one reads "Origin Fixed Tariffs".
+1. Open the **Collectors** tab and choose `pricing` as the **Kind** and **Local tariff** as the **Provider**.
+2. Type a **Tariff name**, such as `Origin Fixed`. It must be 1 to 100 characters, and a rename follows the same rule. The [Tariffs tab](07-billing.md#tariffs) uses it as its heading, so this one reads "Origin Fixed Tariffs".
 3. Click **Create source**. A **Rate windows** panel appears under the source. A local source has no **Edit config** button.
 
-A site can have one active pricing source at a time, so remove the Amber source before you add a local one. **Delete** works only while the Amber source has no stored prices. **Disable** does not free the place: WattWise still counts a disabled source as the site's pricing source. To retire an Amber source that has prices, set its end date (`effective_to`) through the API with `PATCH /api/v1/sites/{site_id}/sources/{source_id}`. The Sources page has no control for this.
+A site can have one active pricing source at a time, so remove the Amber source before you add a local one. **Delete** works only while the Amber source has no stored prices. **Disable** does not free the place: WattWise still counts a disabled source as the site's pricing source. To retire an Amber source that has prices, set its end date (`effective_to`) through the API with `PATCH /api/v1/sites/{site_id}/sources/{source_id}`. The Collectors tab has no control for this.
 
 ### Rate windows
 

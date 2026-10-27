@@ -32,6 +32,7 @@ Rules every collector follows:
 - **The key identifies the kind, not the source.** Adding another home needs no new key.
 - **Pricing collectors send `X-Collector-Provider`**, and ask for `provider=amber` or `provider=local` during discovery, so each sees only its own sources.
 - **Writes are idempotent.** The same reading or price can be sent twice.
+- **A disabled site looks like an empty list.** `GET /collector/sources` leaves out every source on a disabled site, so the collector stops polling it at the next discovery refresh. A collector holding an older list gets 403 `site_disabled` on push and drops that tick's data. Re-enabling the site restores the source at the next refresh. Nothing backfills the gap.
 
 ## Envoy collector
 

@@ -93,7 +93,7 @@ flowchart LR
 | Caller | Credential | Sees | Cannot |
 |---|---|---|---|
 | Site owner | JWT after password and TOTP | Everything on their sites, including device credentials | Touch other users' sites |
-| Viewer (granted by an owner) | JWT | Site data, with device credentials hidden | Change anything |
+| Viewer (accepted an owner's emailed invitation) | JWT | Site data, with device credentials hidden | Change anything |
 | Collector | One shared key per kind (`energy`, `weather`, `pricing`) | Sources of its own kind; pushes readings or prices | Read user data. Push readings to a source of another kind. |
 
 The `X-Collector-Provider` header narrows a collector further, so the Amber collector cannot reach a `local` source. The README is explicit that this is a guard against mistakes, not a security boundary: any process holding the pricing key can claim to be either provider.

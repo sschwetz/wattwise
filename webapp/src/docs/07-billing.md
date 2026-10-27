@@ -2,9 +2,9 @@
 
 [Contents](index.md) · Previous: [The dashboard](06-dashboard.md) · Next: [Account settings](08-account-settings.md)
 
-The **Billing** page (sidebar link **Billing**) holds the parts of your electricity bill that are not a per-kWh price: fixed charges, time-of-day rules and the date your bill closes. [Amber prices](05-sources.md#connecting-amber-electric) or the rates of a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff) cover the per-kWh part.
+Two tabs in [Site settings](04-sites.md#site-settings), **Tariffs** and **Billing**, hold the parts of your electricity bill that are not a per-kWh price: fixed charges, time-of-day rules and the date your bill closes. [Amber prices](05-sources.md#connecting-amber-electric) or the rates of a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff) cover the per-kWh part.
 
-The page has three cards: [Tariffs](#tariffs), [Billing cycle](#billing-cycles) and [Demand charges](#demand-charges).
+The **Tariffs** tab holds the [Tariffs](#tariffs) card. The **Billing** tab holds the [Billing cycle](#billing-cycles) and [Demand charges](#demand-charges) cards. The older `/sites/:id/billing` address opens the **Billing** tab.
 
 ![The Tariffs card with an active tariff and its demand, export and fee windows](images/billing-tariffs.png)
 

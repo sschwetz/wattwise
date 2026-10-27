@@ -48,7 +48,7 @@ Authorization is in the dependencies, not in the function bodies. A router funct
 | `require_mfa_token` | A valid `mfa` scoped token and the user is not locked out | 401 `too_many_attempts` |
 | `require_site_access` | Owner or `site_access` row | 404 `not_found` (also for sites the caller cannot access) |
 | `require_site_owner` | Owner only | 404 `not_found` if the caller has no access, 403 `forbidden` for a viewer |
-| `get_source_by_collector_key` | Correct key for the source's kind, matching provider header if sent, source enabled and within its effective dates | 401 `invalid_collector_key`, 403 `source_disabled` / `source_expired` |
+| `get_source_by_collector_key` | Correct key for the source's kind, matching provider header if sent, source enabled, site enabled, and within its effective dates | 401 `invalid_collector_key`, 403 `source_disabled` / `site_disabled` / `source_expired` |
 | `require_source_kind(kind)` | The above, and the source is that kind | 403 `wrong_source_kind` |
 
 ## Endpoints
@@ -63,7 +63,18 @@ All paths are under `/api/v1`. "Owner" means `require_site_owner`, "Viewer" mean
 | Two-factor | `POST /auth/totp/setup/start`, `/setup/confirm`, `/verify` | Scoped tokens |
 | Password reset | `POST /auth/password-reset/request`, `/confirm` | Anyone |
 | Account | `GET/PATCH /users/me`, `PATCH /users/me/profile`, `POST/GET/DELETE /users/me/avatar`, `POST /users/me/password`, `POST /users/me/email/change/request` and `/confirm`, `POST /users/me/totp/reenroll/start` and `/confirm` | Logged-in user. Password, email and TOTP changes require a current password or code. |
-| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}`, `POST/GET /sites/{id}/invites`, `GET /sites/{id}/invites/{iid}`, `POST /sites/{id}/invites/{iid}/revoke`, `GET /invites/pending`, `POST /invites/{iid}/accept` and `/decline` | Owner for writes. Owner or the invitee revokes. Invitees accept or decline. |
+| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}` | Owner for writes. `PATCH` takes `name`, `timezone` and `enabled`. `GET /sites` returns disabled sites too, with `enabled: false`. |
+| Invitations (site side) | `POST/GET /sites/{id}/invites`, `GET /sites/{id}/invites/{iid}`, `POST /sites/{id}/invites/{iid}/revoke` | Owner creates. `GET` list: owner sees all invites, a viewer sees only their own. Revoke: the owner can revoke an `invited` or `accepted` invite. The invitee can revoke only an `accepted` one. |
+| Invitations (recipient side) | `GET /invites/pending`, `POST /invites/{iid}/accept`, `POST /invites/{iid}/decline` | Logged-in user whose confirmed email matches the invite, ignoring case |
+
+Invitation rules ([`routers/invites.py`](../core-api/core_api/routers/invites.py)):
+
+- Statuses are `invited`, `accepted`, `declined` and `revoked`. `declined` and `revoked` are final. Only the recipient can decline, and only while the invite is `invited`.
+- Accepting inserts the `site_access` row. Revoking an accepted invite deletes that row. The invite row stays. Nothing deletes invite rows.
+- Addresses are lowercased on create and matched case-insensitively. The recipient needs `email_confirmed`. `GET /invites/pending` returns an empty list for an unconfirmed account.
+- Errors: 400 `cannot_invite_self`, 409 `already_invited` (an `invited` or `accepted` invite for that address exists), 409 `invite_limit` (20 `invited` invites on the site), 409 `invite_final` (revoking a declined or revoked invite), 409 `invite_not_pending` (accepting or declining an answered invite), 404 `invite_not_found`.
+- The create response is the invite row and the email text is the same for every address, so neither shows whether an account exists.
+- A disabled site (`sites.enabled = false`) keeps its reads and its invite routes. Only collector routes change: `GET /collector/sources` leaves its sources out, and every collector write returns 403 `site_disabled`.
 
 ### Site configuration
 
@@ -95,7 +106,7 @@ All collector endpoints send `X-Collector-Key`. Per-source endpoints may also se
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /collector/sources?kind=&provider=` | List enabled, in-date sources of a kind with their resolved config |
+| `GET /collector/sources?kind=&provider=` | List enabled, in-date sources of a kind, on enabled sites, with their resolved config |
 | `GET /sources/{id}/config` | One source's resolved config |
 | `PATCH /sources/{id}/discovered-config` | Merge facts the collector learned (serial number, certificate pin, renewed token) into the stored config |
 | `POST /sources/{id}/readings/energy`, `/readings/weather` | Batch upsert of readings |

@@ -23,6 +23,7 @@
 | **Daily allowance** | Part of an [export adjustment](07-billing.md#export-adjustments): kWh of exports per day, building up through the billing cycle, that are not adjusted. |
 | **Demand charge** | A charge based on your highest average power draw in a billing period, within a demand window. See [Demand charges](07-billing.md#demand-charges). |
 | **Demand window** | A repeating period (months, days, hours) when peak demand is measured. See [Demand windows](07-billing.md#demand-windows). |
+| **Disabled site** | A site whose collection is switched off. It is hidden from the site list and switcher, and its data stays readable. See [Disabling a site](04-sites.md#disabling-a-site). |
 | **Envoy** | The Enphase gateway that talks to your solar inverters and battery. |
 | **Export** | Sending power to the grid. |
 | **Export adjustment** | A bonus or penalty, in cents per kWh, added to your feed-in price during a repeating period. See [Export adjustments](07-billing.md#export-adjustments). |
@@ -30,6 +31,7 @@
 | **Gross cost** | Cost counted as if all consumption were imported and all production exported. See [Net and gross cost](06-dashboard.md#net-and-gross-cost). |
 | **Grid** | The public electricity network. |
 | **Import** | Drawing power from the grid. |
+| **Invitation** | An emailed offer of read-only access to a site. Its status is invited, accepted, declined or revoked. See [Sharing a site](04-sites.md#sharing-a-site). |
 | **kW / kWh** | Kilowatt (power, a rate) and kilowatt-hour (energy, an amount). 1 kW for 1 hour is 1 kWh. |
 | **Label** | An optional name on a source, for your own use. |
 | **Monthly fee** | A fixed monthly account charge on a tariff. See [Tariffs](07-billing.md#tariffs). |
@@ -40,6 +42,7 @@
 | **Recovery code** | A single-use code that replaces an authenticator code. See [Recovery codes](03-signing-in.md#recovery-codes). |
 | **Service availability charge** | The daily supply charge on a tariff, in cents per day. |
 | **Site** | One monitored property. See [Sites](04-sites.md). |
+| **Site settings** | The page for a site's name, collectors, tariffs, billing and sharing. See [Site settings](04-sites.md#site-settings). |
 | **Source** | A connection from a site to a device or service. See [Sources](05-sources.md). |
 | **Reverse proxy** | A program such as Caddy or nginx that sits in front of WattWise, provides HTTPS and passes requests to the web app and Core API. See [Setup with Caddy](01-installing-with-docker.md#setup-with-caddy-and-docker-compose). |
 | **State of charge (SoC)** | How full the battery is, as a percentage. Shown on the **Battery** tile. |
