@@ -49,7 +49,7 @@ def test_push_weather_readings_sends_batch_as_iso_timestamps():
     route = respx.post(f"{BASE_URL}/api/v1/sources/1/readings/weather").mock(
         return_value=httpx.Response(202, json={"ingested": 1})
     )
-    ts = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.timezone.utc)
+    ts = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.UTC)
     push_weather_readings(BASE_URL, 1, "my-key", [{"ts": ts, "metric": "temp_c", "value": 22.7}])
 
     body = _json.loads(route.calls[0].request.content)
@@ -73,7 +73,7 @@ def test_push_weather_readings_raises_core_api_error_on_connection_failure():
 @respx.mock
 def test_push_live_sample_posts_ts_and_values_with_key_and_short_timeout():
     route = respx.post(f"{BASE_URL}/api/v1/sources/1/live/weather").mock(return_value=httpx.Response(202))
-    ts = datetime.datetime(2026, 9, 29, 12, 0, 5, tzinfo=datetime.timezone.utc)
+    ts = datetime.datetime(2026, 9, 29, 12, 0, 5, tzinfo=datetime.UTC)
 
     push_live_sample(BASE_URL, 1, "my-key", ts, {"temp_c": 22.7})
 
@@ -87,11 +87,11 @@ def test_push_live_sample_posts_ts_and_values_with_key_and_short_timeout():
 def test_push_live_sample_raises_on_non_202():
     respx.post(f"{BASE_URL}/api/v1/sources/1/live/weather").mock(return_value=httpx.Response(422))
     with pytest.raises(CoreApiError):
-        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.timezone.utc), {"temp_c": 1.0})
+        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.UTC), {"temp_c": 1.0})
 
 
 @respx.mock
 def test_push_live_sample_raises_core_api_error_on_connection_failure():
     respx.post(f"{BASE_URL}/api/v1/sources/1/live/weather").mock(side_effect=httpx.ConnectError("boom"))
     with pytest.raises(CoreApiError):
-        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.timezone.utc), {"temp_c": 1.0})
+        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.UTC), {"temp_c": 1.0})

@@ -7,7 +7,7 @@ import zoneinfo
 
 from local_pricing_collector.rates import CHANNELS, ceil_minute, channel_intervals, parse_windows, price_at
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 SYDNEY = zoneinfo.ZoneInfo("Australia/Sydney")
 D = decimal.Decimal
 

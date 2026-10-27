@@ -4,7 +4,6 @@ import datetime
 
 import httpx
 
-
 # Core API waits up to 30s for a held SQLite write lock (busy_timeout in
 # core_api/db.py). A shorter timeout abandons pushes the server is about to
 # complete, which happens whenever the host's disk stalls.

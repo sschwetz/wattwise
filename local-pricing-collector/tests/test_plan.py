@@ -3,12 +3,12 @@ from __future__ import annotations
 import datetime
 import zoneinfo
 
-from local_pricing_collector.models import Coverage
+from local_pricing_collector.models import Coverage, RepriceMarker
 from local_pricing_collector.plan import PlannedRange, chunk_range, local_midnight, plan_ranges
 from local_pricing_collector.rates import parse_windows
 from local_pricing_collector.triggers import Triggers
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 SYDNEY = zoneinfo.ZoneInfo("Australia/Sydney")
 ADELAIDE = zoneinfo.ZoneInfo("Australia/Adelaide")
 CATCH_UP = Triggers(catch_up=True)
@@ -34,7 +34,7 @@ def window(**overrides) -> dict:
     return {**base, **overrides}
 
 
-def plan(windows, coverage=None, floor=None, tz=SYDNEY, now=at(2026, 6, 15, 0, 0), triggers=CATCH_UP):
+def plan(windows, coverage=None, floor=None, tz=SYDNEY, now=at(2026, 6, 15, 0, 0), triggers=CATCH_UP):  # noqa: B008
     return plan_ranges(parse_windows(windows), coverage or {}, floor, tz, now, triggers)
 
 
@@ -177,7 +177,7 @@ def test_the_chunks_of_a_long_range_are_seven_days_or_less_and_join_up():
     assert chunks[0].start == planned.start
     assert chunks[-1].end == planned.end
     assert all(c.end - c.start <= datetime.timedelta(days=7) for c in chunks)
-    assert all(a.end == b.start for a, b in zip(chunks, chunks[1:]))
+    assert all(a.end == b.start for a, b in zip(chunks, chunks[1:], strict=False))
 
 
 def test_a_short_range_is_one_chunk():
@@ -207,8 +207,6 @@ def test_an_off_minute_window_end_gives_a_whole_minute_range_end():
     ranges = plan([w], floor=at(2026, 6, 1, 0, 0))
     assert ranges[-1].end == at(2026, 6, 15, 10, 48)
 
-
-from local_pricing_collector.models import RepriceMarker
 
 
 def marker(*args, version=1) -> RepriceMarker:

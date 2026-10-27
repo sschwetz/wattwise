@@ -12,13 +12,13 @@ from envoy_collector.mapping import (
     map_battery_readings,
     map_live_sample_values,
     map_livedata_readings,
-    map_meter_readings,
     map_meter_power_readings,
+    map_meter_readings,
     parse_livedata,
 )
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
-TS = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.timezone.utc)
+TS = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.UTC)
 
 
 def load_fixture(name: str) -> dict:

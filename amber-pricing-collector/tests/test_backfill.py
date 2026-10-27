@@ -54,7 +54,7 @@ def test_backfill_one_site_does_nothing_when_floor_is_none(monkeypatch):
 def test_backfill_one_site_fetches_gap_range_and_pushes(monkeypatch):
     monkeypatch.setattr(backfill, "fetch_source_config", lambda *a, **k: {"amber_site_id": "x", "amber_api_key": "y"})
     monkeypatch.setattr(
-        backfill, "fetch_site_data_floor", lambda *a, **k: datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        backfill, "fetch_site_data_floor", lambda *a, **k: datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
     )
     monkeypatch.setattr(
         backfill, "fetch_price_gaps", lambda *a, **k: [{"channel": "buy", "start_date": "2025-01-01", "end_date": "2025-01-02"}]
@@ -85,7 +85,7 @@ def test_backfill_one_site_pushes_with_generous_timeout(monkeypatch):
     backfill must ask for a much longer timeout than the live-poll path."""
     monkeypatch.setattr(backfill, "fetch_source_config", lambda *a, **k: {"amber_site_id": "x", "amber_api_key": "y"})
     monkeypatch.setattr(
-        backfill, "fetch_site_data_floor", lambda *a, **k: datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        backfill, "fetch_site_data_floor", lambda *a, **k: datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
     )
     monkeypatch.setattr(
         backfill, "fetch_price_gaps", lambda *a, **k: [{"channel": "buy", "start_date": "2025-01-01", "end_date": "2025-01-02"}]
@@ -111,7 +111,7 @@ def test_backfill_one_site_pushes_with_generous_timeout(monkeypatch):
 def test_backfill_one_site_marks_gap_when_amber_confirms_no_data(monkeypatch):
     monkeypatch.setattr(backfill, "fetch_source_config", lambda *a, **k: {"amber_site_id": "x", "amber_api_key": "y"})
     monkeypatch.setattr(
-        backfill, "fetch_site_data_floor", lambda *a, **k: datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        backfill, "fetch_site_data_floor", lambda *a, **k: datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
     )
     monkeypatch.setattr(
         backfill, "fetch_price_gaps", lambda *a, **k: [{"channel": "buy", "start_date": "2025-01-01", "end_date": "2025-01-02"}]
@@ -131,7 +131,7 @@ def test_backfill_one_site_marks_gap_when_amber_confirms_no_data(monkeypatch):
 def test_backfill_one_site_isolates_one_gap_failure_from_the_next(monkeypatch, caplog):
     monkeypatch.setattr(backfill, "fetch_source_config", lambda *a, **k: {"amber_site_id": "x", "amber_api_key": "y"})
     monkeypatch.setattr(
-        backfill, "fetch_site_data_floor", lambda *a, **k: datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        backfill, "fetch_site_data_floor", lambda *a, **k: datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
     )
     monkeypatch.setattr(
         backfill,

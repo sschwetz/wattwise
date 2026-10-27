@@ -70,12 +70,14 @@ def fetch_token(username: str, password: str, serial_num: str) -> str:
 def token_expires_at(token: str | None) -> datetime.datetime | None:
     """Reads the `exp` claim from a JWT without verifying the signature (the
     collector only needs the date). None if the token isn't a readable JWT."""
+    if token is None:
+        return None
     try:
         payload = token.split(".")[1]
         payload += "=" * (-len(payload) % 4)
         exp = json.loads(base64.urlsafe_b64decode(payload))["exp"]
         if isinstance(exp, bool) or not isinstance(exp, (int, float)):
             return None
-        return datetime.datetime.fromtimestamp(exp, tz=datetime.timezone.utc)
+        return datetime.datetime.fromtimestamp(exp, tz=datetime.UTC)
     except (AttributeError, IndexError, KeyError, TypeError, ValueError, OverflowError, OSError):
         return None

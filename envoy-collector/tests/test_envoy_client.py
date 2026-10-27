@@ -9,16 +9,15 @@ import subprocess
 import threading
 
 import pytest
-
-import envoy_collector.envoy_client as envoy_client_module
 from cryptography import x509
 
+import envoy_collector.envoy_client as envoy_client_module
 from envoy_collector.envoy_client import (
     EnvoyAuthError,
     EnvoyCertificateMismatch,
+    enable_livedata_stream,
     fetch_battery_power,
     fetch_certificate_fingerprint,
-    enable_livedata_stream,
     fetch_certificate_info,
     fetch_livedata,
     fetch_meter_readings,
@@ -152,7 +151,7 @@ def test_fetch_certificate_info_returns_fingerprint_and_expiry(envoy_server):
     pem = ssl.get_server_certificate((hostname, int(port)))
     assert info.serial == format(x509.load_pem_x509_certificate(pem.encode()).serial_number, "X")
     # The fixture certificate is valid for one day.
-    remaining = info.expires_at - datetime.datetime.now(datetime.timezone.utc)
+    remaining = info.expires_at - datetime.datetime.now(datetime.UTC)
     assert datetime.timedelta(hours=23) < remaining <= datetime.timedelta(days=1)
     assert info.expires_at.tzinfo is not None
 
@@ -173,7 +172,7 @@ def test_fetch_battery_power_sends_bearer_token(envoy_server):
     assert result == {"devices:": []}
 
 
-def test_fetch_battery_power_refuses_a_connection_with_the_wrong_pinned_fingerprint(envoy_server):
+def test_fetch_battery_power_rejects_an_all_zero_pinned_fingerprint(envoy_server):
     host, _real_fingerprint = envoy_server
     with pytest.raises(EnvoyCertificateMismatch):
         fetch_battery_power(host, VALID_TOKEN, "0" * 64)

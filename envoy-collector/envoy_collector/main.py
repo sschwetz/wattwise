@@ -20,8 +20,8 @@ from envoy_collector.envoy_client import (
     CertificateInfo,
     EnvoyAuthError,
     EnvoyCertificateMismatch,
-    fetch_battery_power,
     enable_livedata_stream,
+    fetch_battery_power,
     fetch_certificate_info,
     fetch_livedata,
     fetch_meter_readings,
@@ -36,8 +36,8 @@ from envoy_collector.mapping import (
     map_battery_readings,
     map_live_sample_values,
     map_livedata_readings,
-    map_meter_readings,
     map_meter_power_readings,
+    map_meter_readings,
 )
 
 logger = logging.getLogger("envoy_collector")
@@ -156,7 +156,7 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
             source_id,
         )
         return config
-    if not _repin_allowed(config, datetime.datetime.now(datetime.timezone.utc)):
+    if not _repin_allowed(config, datetime.datetime.now(datetime.UTC)):
         logger.error(
             "Envoy for source %s presented a different TLS certificate than pinned, and the pinned one "
             "(expires %s) is not within %s days of expiry; not re-pinning. If the device was replaced, "
@@ -442,7 +442,7 @@ def poll_once(settings: Settings, source_id: int, config: dict, sampler: LiveSam
             config.get("host"),
         )
         return config
-    ts = datetime.datetime.now(datetime.timezone.utc).replace(second=0, microsecond=0)
+    ts = datetime.datetime.now(datetime.UTC).replace(second=0, microsecond=0)
     config, readings = _collect_readings(settings, source_id, config, ts, sampler)
     if readings is None:
         return config
@@ -470,7 +470,7 @@ def _live_pusher(settings: Settings, source_id: int) -> Callable[[LiveSample, di
             bool(config.get("invert_consumption_ct")),
             include_battery=settings.live_battery_source != "ensemble",
         )
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         push_live_sample(settings.core_api_url, source_id, settings.collector_key, now, values)
 
     return push
@@ -528,7 +528,7 @@ def _refresh_sources(settings: Settings, known: dict[int, dict]) -> dict[int, di
         # skipped by poll_once for the rest of the process's life.
         if not {"cert_fingerprint", "cert_expires_at", "cert_serial"} <= refreshed[source_id].keys():
             discover_and_sync_serial(settings, source_id, refreshed[source_id])
-        if _token_expiring(refreshed[source_id], datetime.datetime.now(datetime.timezone.utc)):
+        if _token_expiring(refreshed[source_id], datetime.datetime.now(datetime.UTC)):
             refreshed[source_id] = renew_token(settings, source_id, refreshed[source_id])
     return refreshed
 

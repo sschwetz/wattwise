@@ -15,7 +15,7 @@ from weatherlink_local_collector.mapping import (
 )
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
-TS = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.timezone.utc)
+TS = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.UTC)
 
 
 def load_fixture(name: str) -> dict:

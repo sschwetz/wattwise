@@ -4,7 +4,7 @@ import datetime
 
 from local_pricing_collector.scheduling import next_aligned_tick
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def test_the_next_five_minute_boundary_plus_buffer():

@@ -114,7 +114,7 @@ def test_error_messages_never_contain_the_password_or_session_id():
 
 def test_token_expires_at_reads_the_exp_claim():
     token = make_jwt({"exp": 1_800_000_000})
-    assert token_expires_at(token) == datetime.datetime.fromtimestamp(1_800_000_000, tz=datetime.timezone.utc)
+    assert token_expires_at(token) == datetime.datetime.fromtimestamp(1_800_000_000, tz=datetime.UTC)
 
 
 @pytest.mark.parametrize(

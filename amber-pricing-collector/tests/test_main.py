@@ -10,7 +10,7 @@ class FakeProcess:
     """Stands in for multiprocessing.Process so main() doesn't actually start a
     sibling process -- records what it was constructed with."""
 
-    instances: list["FakeProcess"] = []
+    instances: list[FakeProcess] = []
 
     def __init__(self, target, args, daemon):
         self.target = target

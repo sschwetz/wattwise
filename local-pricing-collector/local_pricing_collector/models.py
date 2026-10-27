@@ -39,5 +39,5 @@ def parse_reprice(config: dict) -> RepriceMarker | None:
         return None
     start = datetime.datetime.fromisoformat(raw["from"])
     if start.tzinfo is None:
-        start = start.replace(tzinfo=datetime.timezone.utc)
-    return RepriceMarker(start=start.astimezone(datetime.timezone.utc), version=int(raw["version"]))
+        start = start.replace(tzinfo=datetime.UTC)
+    return RepriceMarker(start=start.astimezone(datetime.UTC), version=int(raw["version"]))

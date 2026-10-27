@@ -54,9 +54,17 @@ def _connect(host: str) -> http.client.HTTPSConnection:
     return conn
 
 
+def _peer_cert_der(conn: http.client.HTTPSConnection) -> bytes:
+    """The server certificate in DER form, from a connection that has already connected."""
+    sock = conn.sock
+    der = sock.getpeercert(binary_form=True) if isinstance(sock, ssl.SSLSocket) else None
+    if der is None:
+        raise EnvoyCertificateMismatch("no peer certificate on the connection")
+    return der
+
+
 def _peer_cert_fingerprint(conn: http.client.HTTPSConnection) -> str:
-    cert = conn.sock.getpeercert(binary_form=True)  # type: ignore[union-attr]
-    return hashlib.sha256(cert).hexdigest()
+    return hashlib.sha256(_peer_cert_der(conn)).hexdigest()
 
 
 def fetch_certificate_fingerprint(host: str) -> str:
@@ -86,7 +94,7 @@ def fetch_certificate_info(host: str) -> CertificateInfo:
     when a changed certificate is expected rather than suspicious."""
     conn = _connect(host)
     try:
-        der = conn.sock.getpeercert(binary_form=True)  # type: ignore[union-attr]
+        der = _peer_cert_der(conn)
     finally:
         conn.close()
     cert = x509.load_der_x509_certificate(der)

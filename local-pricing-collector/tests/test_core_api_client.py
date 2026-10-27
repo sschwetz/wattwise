@@ -9,6 +9,7 @@ import respx
 
 from local_pricing_collector.core_api_client import (
     CoreApiError,
+    clear_reprice_marker,
     fetch_collector_sources,
     fetch_price_coverage,
     fetch_site_data_floor,
@@ -82,7 +83,7 @@ def test_push_price_intervals_raises_on_failure():
         push_price_intervals(BASE_URL, 4, "k", [])
 
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 @respx.mock
@@ -151,8 +152,6 @@ def test_fetch_price_coverage_raises_on_an_unexpected_body(body):
     with pytest.raises(CoreApiError):
         fetch_price_coverage(BASE_URL, 4, "k")
 
-
-from local_pricing_collector.core_api_client import clear_reprice_marker
 
 
 @respx.mock

@@ -11,8 +11,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
     "pytest>=8.0,<9.0",
     "respx>=0.21,<1.0",
+    "ruff>=0.17.2",
+    "types-defusedxml>=0.7.0.20260504",
 ]
 
 [build-system]
@@ -21,3 +24,19 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["envoy_collector"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Long lines are left to the formatter's discretion; docstrings and URLs exceed 120.
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["envoy_collector"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true

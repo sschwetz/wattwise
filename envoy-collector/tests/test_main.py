@@ -18,13 +18,13 @@ from envoy_collector.failure_log import FAILURE_LOG_INTERVAL_SECONDS
 from envoy_collector.mapping import LiveSample, map_live_sample_values
 from tests.test_enlighten_client import make_jwt
 
-FAR_EXPIRY = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=300)).isoformat()
+FAR_EXPIRY = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=300)).isoformat()
 
 
 def _cert(fingerprint: str, days_left: int) -> CertificateInfo:
     return CertificateInfo(
         fingerprint=fingerprint,
-        expires_at=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days_left),
+        expires_at=datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=days_left),
         serial="ABC123",
     )
 
@@ -830,7 +830,7 @@ def test_poll_once_falls_back_to_the_manual_message_when_renewal_fails(monkeypat
     assert not any("pw-secret" in m for m in caplog.messages)
 
 
-NOW = datetime.datetime(2026, 10, 13, tzinfo=datetime.timezone.utc)
+NOW = datetime.datetime(2026, 10, 13, tzinfo=datetime.UTC)
 
 
 @pytest.mark.parametrize(
@@ -847,7 +847,7 @@ def test_token_expiring_ignores_unreadable_tokens(token):
 
 
 def test_refresh_sources_renews_a_token_close_to_expiry(monkeypatch):
-    soon = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3)).timestamp()
+    soon = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=3)).timestamp()
     expiring = {"host": "h", "token": make_jwt({"exp": soon}), "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY, "cert_serial": "ABC123", **CREDS}
     monkeypatch.setattr(
         main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": dict(expiring)}]
@@ -861,7 +861,7 @@ def test_refresh_sources_renews_a_token_close_to_expiry(monkeypatch):
 
 
 def test_refresh_sources_leaves_a_healthy_token_alone(monkeypatch):
-    later = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=200)).timestamp()
+    later = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=200)).timestamp()
     healthy = {"host": "h", "token": make_jwt({"exp": later}), "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY, "cert_serial": "ABC123", **CREDS}
     monkeypatch.setattr(
         main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": dict(healthy)}]
@@ -886,7 +886,7 @@ def _mismatch(*_args):
 
 
 def _expiring_config(days_left: int, **extra) -> dict:
-    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days_left)
+    expires = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=days_left)
     return {
         "host": "envoy.local",
         "token": "abc",
@@ -933,7 +933,7 @@ def test_poll_once_repins_a_changed_certificate_within_100_days_of_expiry(monkey
 
     assert result["cert_fingerprint"] == "new"
     new_expiry = datetime.datetime.fromisoformat(result["cert_expires_at"])
-    assert new_expiry > datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=360)
+    assert new_expiry > datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=360)
     assert result["cert_serial"] == "ABC123"
     assert reported == [
         {"cert_fingerprint": "new", "cert_expires_at": result["cert_expires_at"], "cert_serial": "ABC123"}
@@ -1287,7 +1287,7 @@ def test_meters_listing_is_fetched_once_per_source(monkeypatch):
 
 def test_meters_cache_cleared_on_auth_failure(monkeypatch):
     _stub_meters(monkeypatch)
-    ts = datetime.datetime.now(datetime.timezone.utc)
+    ts = datetime.datetime.now(datetime.UTC)
     assert main_module._meter_readings_or_empty(1, dict(PINNED), ts)
     assert 1 in main_module._meters_cache
 
@@ -1309,7 +1309,7 @@ def test_meter_failures_are_rate_limited_per_source(monkeypatch, caplog):
         raise RuntimeError("meters down")
 
     monkeypatch.setattr(main_module, "fetch_meter_readings", boom)
-    ts = datetime.datetime.now(datetime.timezone.utc)
+    ts = datetime.datetime.now(datetime.UTC)
 
     for source_id in (1, 1, 2):
         assert main_module._meter_readings_or_empty(source_id, dict(PINNED), ts) == []
@@ -1325,7 +1325,7 @@ def test_meter_failures_are_rate_limited_per_source(monkeypatch, caplog):
 
 def test_meter_success_resets_the_failure_streak(monkeypatch, caplog):
     caplog.set_level(logging.WARNING, logger="envoy_collector")
-    ts = datetime.datetime.now(datetime.timezone.utc)
+    ts = datetime.datetime.now(datetime.UTC)
     failing = [True]
 
     def readings(host, token, fp):
@@ -1371,7 +1371,7 @@ def test_poll_once_runs_meters_after_auth_recovery(monkeypatch):
 
 
 class FakeLiveSampler:
-    instances: list["FakeLiveSampler"] = []
+    instances: list[FakeLiveSampler] = []
 
     def __init__(
         self, config, fetch, enable_stream, *, label, interval_seconds, stale_seconds, on_sample=None

@@ -4,7 +4,7 @@ import datetime
 
 from amber_pricing_collector.scheduling import next_aligned_tick
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def dt(h: int, m: int, s: int = 0) -> datetime.datetime:

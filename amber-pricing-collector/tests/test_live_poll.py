@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import os
 
 import pytest
@@ -172,7 +171,7 @@ class FakeProcess:
     """Stands in for multiprocessing.Process so tests don't actually fork --
     records what it was constructed with and what was called on it."""
 
-    instances: list["FakeProcess"] = []
+    instances: list[FakeProcess] = []
 
     def __init__(self, target, args):
         self.target = target
