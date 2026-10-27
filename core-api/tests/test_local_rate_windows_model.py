@@ -11,7 +11,7 @@ from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import Site, User
 from core_api.models.sources import Source, SourceKind
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def make_pricing_source(db: Session, site_id: int) -> Source:

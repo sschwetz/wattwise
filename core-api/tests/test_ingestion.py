@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import Site, User
@@ -29,7 +29,7 @@ def make_energy_source_full(db_url: str) -> tuple[int, int, int]:
         kind=SourceKind.ENERGY,
         provider="envoy",
         config={},
-        effective_from=datetime.now(timezone.utc),
+        effective_from=datetime.now(UTC),
     )
     session.add(source)
     session.commit()
@@ -166,7 +166,7 @@ def make_pricing_source(db_url: str) -> int:
         kind=SourceKind.PRICING,
         provider="amber",
         config={},
-        effective_from=datetime.now(timezone.utc),
+        effective_from=datetime.now(UTC),
     )
     session.add(source)
     session.commit()

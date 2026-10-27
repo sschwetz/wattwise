@@ -10,7 +10,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from core_api.cost import CostBucket, compute_cost, compute_cost_series, monthly_fee_discounts_c, partial_period_discounts_c
+from core_api.cost import (
+    CostBucket,
+    compute_cost,
+    compute_cost_series,
+    monthly_fee_discounts_c,
+    partial_period_discounts_c,
+)
 from core_api.deps import get_db_session, require_site_access
 from core_api.errors import AppError
 from core_api.export_allowance_data import marginal_adjustment_fn
@@ -39,7 +45,18 @@ from core_api.models.readings import (
 from core_api.models.sources import Source, SourceKind
 from core_api.price_bands import IntervalBand, band_at, interval_bands
 from core_api.readings_query import query_readings
-from core_api.schemas import BillingPeriodBoundsOut, BillingPeriodCostOut, CostOut, CostSeriesPointOut, DemandChargeOut, DemandWindowOut, LatestReadingOut, PriceReadingOut, ReadingOut, UtcDatetime
+from core_api.schemas import (
+    BillingPeriodBoundsOut,
+    BillingPeriodCostOut,
+    CostOut,
+    CostSeriesPointOut,
+    DemandChargeOut,
+    DemandWindowOut,
+    LatestReadingOut,
+    PriceReadingOut,
+    ReadingOut,
+    UtcDatetime,
+)
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["query"])
 
@@ -153,7 +170,7 @@ def _displayed_price_fn(
         return lambda r: decimal.Decimal(str(r.value))
     tariffs = site_tariffs_for_site(db, site.id)
     windows_by_tariff = export_adjustment_windows_by_tariff(db, site.id)
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     adjustment_at = marginal_adjustment_fn(db, site.id, site.timezone, tariffs, windows_by_tariff, start, end, now)
     return lambda r: decimal.Decimal(str(r.value)) - adjustment_at(r.ts)
 
@@ -169,7 +186,7 @@ def get_prices(
     stmt = select(Source.id).where(Source.site_id == site.id, Source.kind == SourceKind.PRICING)
     source_ids = list(db.execute(stmt).scalars().all())
     rows = _price_rows(db, source_ids, channel, start, end)
-    fallbacks = fallback_ranges(db, source_ids, channel, start, end, datetime.datetime.now(datetime.timezone.utc))
+    fallbacks = fallback_ranges(db, source_ids, channel, start, end, datetime.datetime.now(datetime.UTC))
 
     bands = interval_bands(db, source_ids, channel, start, end)
 
@@ -186,8 +203,8 @@ def _price_reading_out(
         metric=reading.channel.value,
         value=float(value),
         forecast_fallback=in_fallback(reading.ts, fallbacks),
-        price_low=band.price_low if band else None,
-        price_high=band.price_high if band else None,
+        price_low=float(band.price_low) if band and band.price_low is not None else None,
+        price_high=float(band.price_high) if band and band.price_high is not None else None,
         spike_status=band.spike_status if band else SpikeStatus.NONE,
     )
 
@@ -229,7 +246,7 @@ def get_billing_period_cost(
     monthly fee covered by discount windows across the whole period, not just
     the part elapsed. Before the cycle's first anchor day it is the full
     discounted fee of any covering window, not prorated."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     cycles = effective_billing_cycles_for_site(db, site.id)
     bounds = current_billing_period_bounds(cycles, site.timezone, now)
     if bounds is None:
@@ -251,7 +268,7 @@ def get_billing_period_bounds(
 ) -> BillingPeriodBoundsOut:
     """Start and end of the current billing period, so the dashboard can chart
     it as a date range. 404 `no_active_billing_cycle` when no cycle is active."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     cycles = effective_billing_cycles_for_site(db, site.id)
     bounds = current_billing_period_bounds(cycles, site.timezone, now)
     if bounds is None:
@@ -277,7 +294,7 @@ def get_demand_charges(
     site: Site = Depends(require_site_access), db: Session = Depends(get_db_session)
 ) -> list[DemandCharge]:
     stmt = select(DemandCharge).where(DemandCharge.site_id == site.id).order_by(DemandCharge.billing_period_start)
-    return db.execute(stmt).scalars().all()
+    return list(db.execute(stmt).scalars())
 
 
 @router.get("/demand-window/active", response_model=DemandWindowOut)
@@ -288,7 +305,7 @@ def get_active_demand_window(
     wins' resolution the demand-charge job itself uses. 404s (code
     "no_active_demand_window") when none matches, the same "nothing to show,
     not an error" convention as /cost/billing-period."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     window = first_matching_demand_window(db, site.id, now, site.timezone)
     if window is None:
         raise AppError(404, "no_active_demand_window", "No demand window is currently active for this site")

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import cast
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import CursorResult, Engine, Result, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from core_api.config import get_settings
+
+
+def rows_affected(result: Result) -> int:
+    """Row count of an UPDATE/DELETE. `Session.execute` is typed as returning
+    a plain Result, but a DML statement always yields a CursorResult."""
+    return cast(CursorResult, result).rowcount
 
 
 def _pool_options(url: str) -> dict:

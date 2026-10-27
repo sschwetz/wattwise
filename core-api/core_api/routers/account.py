@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import logging
 import os
 import secrets
 import uuid
@@ -14,8 +13,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core_api.config import get_settings
+from core_api.db import rows_affected
 from core_api.deps import get_current_user, get_db_session, get_email_sender
-from core_api.email_sender import EmailSender
+from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
 from core_api.models.identity import EmailChangeToken, RecoveryCode, User
 from core_api.routers.totp import _claim_totp_step, _consume_recovery_code
@@ -43,8 +43,6 @@ from core_api.security import (
     verify_totp_code,
     verify_totp_code_once,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users/me", tags=["account"])
 
@@ -249,14 +247,13 @@ def _try_send_email_change_email(email_sender: EmailSender, to: str, raw_token: 
     caller being protected from an enumeration oracle (that concern is what
     password_reset._try_send_reset_email guards; it doesn't apply here)."""
     confirm_url = f"{get_settings().frontend_base_url}/confirm-email-change?token={raw_token}"
-    try:
-        email_sender.send(
-            to=to,
-            subject="Confirm your new email address",
-            body=f"Click the link to confirm this email change: {confirm_url}\nThis link expires in 1 hour.",
-        )
-    except Exception:
-        logger.exception("Failed to send email-change confirmation email")
+    try_send_email(
+        email_sender,
+        to,
+        "Confirm your new email address",
+        f"Click the link to confirm this email change: {confirm_url}\nThis link expires in 1 hour.",
+        "email-change confirmation",
+    )
 
 
 @router.post("/email/change/request", response_model=RequestEmailChangeOut)
@@ -275,7 +272,7 @@ def request_email_change(
     if existing is not None:
         raise AppError(409, "email_taken", "An account with this email already exists")
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     _invalidate_outstanding_email_change_tokens(db, current_user.id, now)
     raw_token = secrets.token_urlsafe(32)
     db.add(
@@ -306,7 +303,7 @@ def _claim_email_change_token(db: Session, raw_token: str, now: datetime.datetim
 
     expires_at = token.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+        expires_at = expires_at.replace(tzinfo=datetime.UTC)
     if expires_at <= now:
         raise AppError(400, "invalid_token", "This confirmation link is invalid or has expired")
 
@@ -315,14 +312,14 @@ def _claim_email_change_token(db: Session, raw_token: str, now: datetime.datetim
         .where(EmailChangeToken.id == token.id, EmailChangeToken.used_at.is_(None))
         .values(used_at=now)
     )
-    if result.rowcount == 0:
+    if rows_affected(result) == 0:
         raise AppError(400, "invalid_token", "This confirmation link is invalid or has expired")
     return token
 
 
 @router.post("/email/change/confirm", status_code=status.HTTP_204_NO_CONTENT)
 def confirm_email_change(payload: ConfirmEmailChangeIn, db: Session = Depends(get_db_session)) -> None:
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     token = _claim_email_change_token(db, payload.token, now)
     target_user = db.get(User, token.user_id)
     assert target_user is not None  # FK guarantees the referenced user still exists
@@ -372,14 +369,14 @@ def confirm_totp_reenroll(
         .where(User.id == current_user.id, User.pending_totp_secret.is_not(None))
         .values(totp_secret=pending_secret, pending_totp_secret=None)
     )
-    if result.rowcount == 0:
+    if rows_affected(result) == 0:
         raise AppError(400, "invalid_state", "No authenticator replacement is in progress")
 
     # Burn every previously-unused recovery code: a lost-phone re-enrollment
     # must not leave the OLD 10 codes live alongside the new 10 (same
     # used_at-as-invalidation convention as password_reset's outstanding-token
     # burn, reused here for a different table).
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     stale_codes = (
         db.execute(
             select(RecoveryCode).where(

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import Depends, FastAPI, Header
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
 from core_api.bootstrap import run_migrations
-from core_api.db import get_db, make_engine, make_session_factory
+from core_api.db import make_engine, make_session_factory
 from core_api.deps import get_current_user, get_source_by_collector_key, require_site_access, require_site_owner
 from core_api.errors import AppError
 from core_api.main import create_app
@@ -108,7 +108,7 @@ def test_collector_key_auth(wired_app):
         kind=SourceKind.ENERGY,
         provider="envoy",
         config={},
-        effective_from=datetime.datetime.now(datetime.timezone.utc),
+        effective_from=datetime.datetime.now(datetime.UTC),
     )
     session.add(source)
     session.commit()

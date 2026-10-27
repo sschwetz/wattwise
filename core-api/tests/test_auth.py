@@ -332,7 +332,7 @@ def test_register_confirm_rejects_expired_token(client, app_and_db_url):
         EmailConfirmationToken(
             user_id=user.id,
             token_hash=hash_token("expired-token"),
-            expires_at=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1),
+            expires_at=datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1),
         )
     )
     session.commit()

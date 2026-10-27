@@ -23,11 +23,11 @@ class AttemptTracker:
         self._failures: dict[object, list[datetime.datetime]] = {}
 
     def register_failure(self, key: object) -> None:
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         self._failures.setdefault(key, []).append(now)
 
     def is_locked(self, key: object) -> bool:
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         cutoff = now - self._window
         recent = [ts for ts in self._failures.get(key, []) if ts > cutoff]
         self._failures[key] = recent

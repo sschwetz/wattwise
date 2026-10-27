@@ -9,7 +9,13 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core_api.jobs.billing_periods import BillingPeriod, billing_period_days, billing_periods_for_site, effective_billing_cycles_for_site
+from core_api.export_allowance_data import allowance_cost_deltas, period_containing, periods_for_allowance_windows
+from core_api.jobs.billing_periods import (
+    BillingPeriod,
+    billing_period_days,
+    billing_periods_for_site,
+    effective_billing_cycles_for_site,
+)
 from core_api.jobs.demand_config import (
     conditional_credit_windows_by_tariff,
     credit_window_applies_on,
@@ -21,10 +27,9 @@ from core_api.jobs.demand_config import (
     monthly_fee_discount_windows_by_tariff,
     site_tariffs_for_site,
     tariff_effective_at,
-    window_in_force,
     total_export_adjustment_c_per_kwh,
+    window_in_force,
 )
-from core_api.export_allowance_data import allowance_cost_deltas, period_containing, periods_for_allowance_windows
 from core_api.models.billing import ConditionalCreditWindow, ExportAdjustmentWindow, SiteTariff
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
@@ -105,10 +110,10 @@ def _local_days_in_range(
 
     days = []
     while True:
-        midnight_utc = local_midnight(local_date, tz).astimezone(datetime.timezone.utc)
+        midnight_utc = local_midnight(local_date, tz).astimezone(datetime.UTC)
         if midnight_utc >= end_utc:
             break
-        next_midnight_utc = local_midnight(local_date + datetime.timedelta(days=1), tz).astimezone(datetime.timezone.utc)
+        next_midnight_utc = local_midnight(local_date + datetime.timedelta(days=1), tz).astimezone(datetime.UTC)
         if midnight_utc >= start_utc:
             days.append((midnight_utc, next_midnight_utc))
         local_date += datetime.timedelta(days=1)
@@ -298,8 +303,8 @@ def _window_credit_c(
     the window has not ended yet, a minute is missing, or the average is not
     below the limit. The window's wall-clock bounds are converted to UTC, so a
     DST day has its real length."""
-    start_utc = datetime.datetime.combine(local_date, window.start_time, tzinfo=tz).astimezone(datetime.timezone.utc)
-    end_utc = datetime.datetime.combine(local_date, window.end_time, tzinfo=tz).astimezone(datetime.timezone.utc)
+    start_utc = datetime.datetime.combine(local_date, window.start_time, tzinfo=tz).astimezone(datetime.UTC)
+    end_utc = datetime.datetime.combine(local_date, window.end_time, tzinfo=tz).astimezone(datetime.UTC)
     if end_utc > real_now_utc:
         return decimal.Decimal("0")
     average_w = _window_average_import_w(db, energy_source_ids, start_utc, end_utc)
@@ -349,7 +354,7 @@ def partial_period_discounts_c(
     tariffs = site_tariffs_for_site(db, site_id)
     windows_by_tariff = monthly_fee_discount_windows_by_tariff(db, site_id)
     tz = site_tz(site_timezone)
-    first_day = local_midnight(as_utc(start).astimezone(tz).date(), tz).astimezone(datetime.timezone.utc)
+    first_day = local_midnight(as_utc(start).astimezone(tz).date(), tz).astimezone(datetime.UTC)
     covering = {}
     for midnight, _next_midnight in _local_days_in_range(first_day, end, site_timezone):
         tariff = tariff_effective_at(tariffs, midnight)
@@ -434,9 +439,9 @@ def _minute_costs(
         import_kwh = import_w * MINUTES_TO_KWH
         export_kwh = export_w * MINUTES_TO_KWH
         cost_c = decimal.Decimal("0")
-        if import_w:
+        if import_w and buy_price is not None:
             cost_c += import_kwh * buy_price
-        if export_w:
+        if export_w and sell_price is not None:
             adjustment_c_per_kwh = _plain_export_adjustment_c_per_kwh(
                 tariffs, export_windows_by_tariff, minute_utc, tz, periods
             )
@@ -515,7 +520,7 @@ def compute_cost(
 
     Conditional credits always compare their window end with the real current
     time, whatever `prorate_fees` is."""
-    real_now_utc = as_utc(now) if now is not None else datetime.datetime.now(datetime.timezone.utc)
+    real_now_utc = as_utc(now) if now is not None else datetime.datetime.now(datetime.UTC)
     now_utc = real_now_utc if prorate_fees else None
     tariffs = site_tariffs_for_site(db, site_id)
     rows, minutes_missing_price = _minute_costs(
@@ -587,7 +592,7 @@ def compute_cost_series(
     whichever buckets fall inside the DemandWindow pattern that earned
     them, not shown at all until the billing period closes and the charge
     is no longer an estimate."""
-    now_utc = as_utc(now) if now is not None else datetime.datetime.now(datetime.timezone.utc)
+    now_utc = as_utc(now) if now is not None else datetime.datetime.now(datetime.UTC)
     tariffs = site_tariffs_for_site(db, site_id)
     rows, _minutes_missing_price = _minute_costs(db, site_id, start, end, method, site_timezone, tariffs, now_utc)
 

@@ -3,9 +3,9 @@ from __future__ import annotations
 import os
 import pathlib
 
-from alembic import command
 from alembic.config import Config
 
+from alembic import command
 from core_api.config import get_settings
 
 CORE_API_ROOT = pathlib.Path(__file__).resolve().parent.parent

@@ -4,6 +4,9 @@ from __future__ import annotations
 import datetime
 import decimal
 
+from core_api.cost import compute_cost, compute_cost_series, monthly_fee_discounts_c
+from core_api.export_allowance_data import marginal_adjustment_fn
+from core_api.jobs.demand_config import export_adjustment_windows_by_tariff, site_tariffs_for_site
 from core_api.models.billing import (
     BillingCycle,
     ConditionalCreditWindow,
@@ -14,16 +17,12 @@ from core_api.models.billing import (
     MonthlyFeeDiscountWindow,
     SiteTariff,
 )
-from core_api.models.identity import Site, User
 from core_api.models.pricing import PriceChannel, PriceReading
 from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
-from core_api.cost import compute_cost, compute_cost_series, monthly_fee_discounts_c
-from core_api.export_allowance_data import marginal_adjustment_fn
-from core_api.jobs.demand_config import export_adjustment_windows_by_tariff, site_tariffs_for_site
 from tests.conftest import sydney_local
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def _make_tariff(

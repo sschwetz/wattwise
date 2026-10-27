@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import datetime
 
-from core_api.models.identity import Site, User
 from core_api.models.readings import EnergyMetric, EnergyReading, EnergyReadingRollup5m
 from core_api.models.sources import Source, SourceKind
 from core_api.readings_query import RAW_RETENTION, query_readings
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def test_query_readings_uses_raw_table_within_retention_window(db, site):

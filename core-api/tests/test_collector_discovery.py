@@ -35,7 +35,7 @@ def make_source(
         provider=provider,
         config=config or {},
         enabled=enabled,
-        effective_from=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
+        effective_from=datetime.datetime(2020, 1, 1, tzinfo=datetime.UTC),
         effective_to=effective_to,
     )
     session.add(source)
@@ -71,7 +71,7 @@ def test_discovery_excludes_disabled_sources(client, app_and_db_url):
 
 def test_discovery_excludes_expired_sources(client, app_and_db_url):
     _, db_url = app_and_db_url
-    past = datetime.datetime(2020, 6, 1, tzinfo=datetime.timezone.utc)
+    past = datetime.datetime(2020, 6, 1, tzinfo=datetime.UTC)
     make_source(db_url, SourceKind.WEATHER, "weatherlink_live", effective_to=past)
 
     response = client.get(

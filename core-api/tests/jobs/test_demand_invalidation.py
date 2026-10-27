@@ -61,8 +61,8 @@ def test_intervals_from_the_start_of_the_range_onward_are_deleted(db, site):
 
 
 def as_syd(value: datetime.datetime) -> tuple[int, int, int]:
-    from tests.conftest import SYDNEY
     from core_api.time_utils import as_utc
+    from tests.conftest import SYDNEY
 
     local = as_utc(value).astimezone(SYDNEY)
     return local.year, local.month, local.day

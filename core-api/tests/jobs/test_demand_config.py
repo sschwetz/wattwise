@@ -9,8 +9,8 @@ from core_api.jobs.demand_config import (
     energy_source_ids_for_site,
     export_adjustment_windows_by_tariff,
     first_matching_demand_window,
-    pricing_source_ids_for_site,
     price_interval_flags_demand,
+    pricing_source_ids_for_site,
     total_export_adjustment_c_per_kwh,
 )
 from core_api.models.billing import DemandWindow, ExportAdjustmentWindow, SiteTariff

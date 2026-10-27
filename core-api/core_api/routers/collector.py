@@ -24,7 +24,7 @@ def list_collector_sources(
 ) -> list[CollectorSourceOut]:
     if not check_collector_key(kind, x_collector_key):
         raise AppError(401, "invalid_collector_key", "Invalid collector key for this kind")
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     query = select(Source).where(
         Source.kind == kind,
         Source.enabled.is_(True),

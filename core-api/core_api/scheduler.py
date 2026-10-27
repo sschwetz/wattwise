@@ -18,7 +18,7 @@ from core_api.jobs.retention_rollup_job import run_retention_rollup_job
 def _run_with_session(session_factory: sessionmaker[Session], job_fn: Callable[[Session, datetime.datetime], None]) -> None:
     db = session_factory()
     try:
-        job_fn(db, datetime.datetime.now(datetime.timezone.utc))
+        job_fn(db, datetime.datetime.now(datetime.UTC))
     finally:
         db.close()
 

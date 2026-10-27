@@ -78,8 +78,8 @@ def partial_first_period(
         return None
     first_cycle = min(cycles, key=lambda c: as_utc(c.effective_from))
     tz = zoneinfo.ZoneInfo(site_timezone)
-    start = _previous_anchor_midnight(first_cycle, tz).astimezone(datetime.timezone.utc)
-    end = _first_anchor_midnight(first_cycle, tz).astimezone(datetime.timezone.utc)
+    start = _previous_anchor_midnight(first_cycle, tz).astimezone(datetime.UTC)
+    end = _first_anchor_midnight(first_cycle, tz).astimezone(datetime.UTC)
     if not start <= now < end:
         return None
     return BillingPeriod(start=start, end=end, cycle=first_cycle)
@@ -172,8 +172,8 @@ def billing_periods_for_site(
         local_end = local_midnight(end_date, tz)
         periods.append(
             BillingPeriod(
-                start=local_cursor.astimezone(datetime.timezone.utc),
-                end=local_end.astimezone(datetime.timezone.utc),
+                start=local_cursor.astimezone(datetime.UTC),
+                end=local_end.astimezone(datetime.UTC),
                 cycle=cyc,
             )
         )

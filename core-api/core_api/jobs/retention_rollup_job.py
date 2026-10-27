@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import datetime
 import math
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -40,8 +41,8 @@ def run_retention_rollup_job(db: Session, now: datetime.datetime) -> None:
 
 def _rollup_and_delete(
     db: Session,
-    model_raw: type,
-    model_rollup: type,
+    model_raw: type[Any],
+    model_rollup: type[Any],
     key_column_name: str,
     discriminator_column_name: str,
     aggregation_map: dict,

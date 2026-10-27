@@ -64,7 +64,7 @@ def test_period_containing_finds_the_period_or_none():
 
 
 def test_total_export_adjustment_skips_allowance_windows_on_request():
-    at_local = sydney_local(2026, 1, 1, 12).astimezone(datetime.timezone.utc)
+    at_local = sydney_local(2026, 1, 1, 12).astimezone(datetime.UTC)
     windows = [_window("0", "5"), _window("10", "-3")]
 
     assert total_export_adjustment_c_per_kwh(windows, at_local) == decimal.Decimal("2")

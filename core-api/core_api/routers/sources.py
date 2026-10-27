@@ -20,7 +20,7 @@ router = APIRouter(prefix="/sites/{site_id}/sources", tags=["sources"])
 # A site has exactly one active pricing source at a time (spec: 'Sources'
 # invariants) — ranges are enforced application-side since SQLite has no
 # native range-exclusion constraint.
-_FAR_FUTURE = datetime.datetime.max.replace(tzinfo=datetime.timezone.utc)
+_FAR_FUTURE = datetime.datetime.max.replace(tzinfo=datetime.UTC)
 
 
 def _pricing_source_overlaps(
@@ -48,7 +48,7 @@ def create_source(
     site: Site = Depends(require_site_owner),
     db: Session = Depends(get_db_session),
 ) -> SourceOut:
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     if payload.kind == SourceKind.PRICING and _pricing_source_overlaps(db, site.id, None, now, None):
         raise AppError(409, "conflict", "This site already has an active pricing source; close it before adding a new one")
     source = Source(

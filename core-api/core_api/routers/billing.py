@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,7 +18,6 @@ from core_api.models.billing import (
     SiteTariff,
 )
 from core_api.models.identity import Site
-from core_api.time_utils import as_utc
 from core_api.schemas import (
     BillingCycleCreate,
     BillingCycleOut,
@@ -34,6 +35,7 @@ from core_api.schemas import (
     SiteTariffUpdate,
     WindowUpdate,
 )
+from core_api.time_utils import as_utc
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["billing"])
 
@@ -82,7 +84,7 @@ def _check_window_inside_tariff(tariff: SiteTariff, start, end) -> None:
         raise AppError(422, "window_outside_tariff", "The window cannot run past the end of its tariff")
 
 
-def _create_dated_window(db: Session, site: Site, tariff_id: int, model_cls: type, payload):
+def _create_dated_window(db: Session, site: Site, tariff_id: int, model_cls: type[Any], payload):
     """Create-under-an-owned-tariff for the window types with their own dates.
     A missing effective_from becomes the tariff's start."""
     tariff = _get_owned_tariff(db, site, tariff_id)
@@ -101,7 +103,7 @@ def _create_dated_window(db: Session, site: Site, tariff_id: int, model_cls: typ
     return row
 
 
-def _end_dated_window(db: Session, site: Site, tariff_id: int, window_id: int, model_cls: type, payload: WindowUpdate):
+def _end_dated_window(db: Session, site: Site, tariff_id: int, window_id: int, model_cls: type[Any], payload: WindowUpdate):
     tariff = _get_owned_tariff(db, site, tariff_id)
     window = db.get(model_cls, window_id)
     if window is None or window.site_tariff_id != tariff.id:
@@ -116,7 +118,7 @@ def _end_dated_window(db: Session, site: Site, tariff_id: int, window_id: int, m
     return window
 
 
-def _create_tariff_child(db: Session, site: Site, tariff_id: int, model_cls: type, payload):
+def _create_tariff_child(db: Session, site: Site, tariff_id: int, model_cls: type[Any], payload):
     """Create-under-an-owned-tariff, shared by every window type (DemandWindow,
     ExportAdjustmentWindow, ConditionalCreditWindow, MonthlyFeeDiscountWindow) that's just
     `site_tariff_id` plus the payload's own fields."""
@@ -128,7 +130,7 @@ def _create_tariff_child(db: Session, site: Site, tariff_id: int, model_cls: typ
     return row
 
 
-def _list_tariff_children(db: Session, site: Site, tariff_id: int, model_cls: type):
+def _list_tariff_children(db: Session, site: Site, tariff_id: int, model_cls: type[Any]):
     """List-under-an-owned-tariff, shared by every window type -- see
     _create_tariff_child."""
     tariff = _get_owned_tariff(db, site, tariff_id)
@@ -155,7 +157,7 @@ def create_tariff(
 def list_tariffs(
     site: Site = Depends(require_site_access), db: Session = Depends(get_db_session)
 ) -> list[SiteTariff]:
-    return db.execute(select(SiteTariff).where(SiteTariff.site_id == site.id)).scalars().all()
+    return list(db.execute(select(SiteTariff).where(SiteTariff.site_id == site.id)).scalars())
 
 
 @router.patch("/tariffs/{tariff_id}", response_model=SiteTariffOut)
@@ -323,7 +325,7 @@ def create_billing_cycle(
 def list_billing_cycles(
     site: Site = Depends(require_site_access), db: Session = Depends(get_db_session)
 ) -> list[BillingCycle]:
-    return db.execute(select(BillingCycle).where(BillingCycle.site_id == site.id)).scalars().all()
+    return list(db.execute(select(BillingCycle).where(BillingCycle.site_id == site.id)).scalars())
 
 
 @router.patch("/billing-cycle/{cycle_id}", response_model=BillingCycleOut)

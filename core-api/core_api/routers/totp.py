@@ -3,9 +3,10 @@ from __future__ import annotations
 import datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from core_api.db import rows_affected
 from core_api.deps import get_db_session, require_mfa_token, require_setup_token
 from core_api.errors import AppError
 from core_api.mfa_attempts import clear as clear_mfa_attempts
@@ -89,7 +90,7 @@ def _claim_totp_step(db: Session, user_id: int, step: int) -> bool:
         .where(User.id == user_id, (User.last_totp_step.is_(None)) | (User.last_totp_step < step))
         .values(last_totp_step=step)
     )
-    return result.rowcount > 0
+    return rows_affected(result) > 0
 
 
 def _consume_recovery_code(db: Session, user_id: int, raw_code: str) -> bool:
@@ -100,7 +101,7 @@ def _consume_recovery_code(db: Session, user_id: int, raw_code: str) -> bool:
     the same single-use code. Only the first UPDATE to flip used_at can match
     `used_at IS NULL`; a racing second UPDATE affects zero rows."""
     code_hash = hash_recovery_code(raw_code)
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     result = db.execute(
         update(RecoveryCode)
         .where(
@@ -110,7 +111,7 @@ def _consume_recovery_code(db: Session, user_id: int, raw_code: str) -> bool:
         )
         .values(used_at=now)
     )
-    return result.rowcount > 0
+    return rows_affected(result) > 0
 
 
 @router.post("/verify", response_model=LoginResponse)

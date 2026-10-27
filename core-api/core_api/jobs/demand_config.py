@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -37,8 +37,12 @@ def tariff_effective_at(tariffs: list[SiteTariff], at: datetime.datetime) -> Sit
 
 
 class _DatedWindow(Protocol):
-    effective_from: datetime.datetime | None
-    effective_to: datetime.datetime | None
+    # Read-only properties, so windows whose columns are non-nullable also match.
+    @property
+    def effective_from(self) -> datetime.datetime | None: ...
+
+    @property
+    def effective_to(self) -> datetime.datetime | None: ...
 
 
 def window_in_force(window: _DatedWindow, at: datetime.datetime) -> bool:
@@ -128,7 +132,7 @@ def any_configured_demand_window(db: Session, site_id: int, at: datetime.datetim
     return next((w for w in db.execute(stmt).scalars() if window_in_force(w, at)), None)
 
 
-def _windows_by_tariff(db: Session, site_id: int, model_cls: type) -> dict[int, list]:
+def _windows_by_tariff(db: Session, site_id: int, model_cls: type[Any]) -> dict[int, list]:
     """All of a site's rows of a given tariff-child window model, grouped by
     site_tariff_id -- shared by export_adjustment_windows_by_tariff and
     monthly_fee_discount_windows_by_tariff, loaded once per site so a caller

@@ -31,7 +31,7 @@ def covered_days(
             counts[start.date()] = counts.get(start.date(), 0) + 1
 
     midnight = datetime.time()
-    utc = datetime.timezone.utc
+    utc = datetime.UTC
     days = set()
     day = since.date()
     while day <= now.date():

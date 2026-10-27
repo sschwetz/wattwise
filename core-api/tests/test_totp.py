@@ -374,7 +374,8 @@ def test_setup_confirm_rejects_an_already_enrolled_user_and_issues_no_extra_code
     to append 10 MORE recovery codes without invalidating the first 10, leaving
     live codes the user never saw. Uses the real TOTP secret so the code itself
     is valid — only the already-enrolled guard may reject it."""
-    from sqlalchemy import func, select as sa_select
+    from sqlalchemy import func
+    from sqlalchemy import select as sa_select
 
     from core_api.db import make_engine, make_session_factory
     from core_api.models.identity import RecoveryCode

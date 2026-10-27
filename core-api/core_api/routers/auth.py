@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import logging
 import secrets
 import time
 
@@ -12,15 +11,14 @@ from sqlalchemy.orm import Session
 
 from core_api import login_attempts
 from core_api.config import get_settings
+from core_api.db import rows_affected
 from core_api.deps import get_db_session, get_email_sender
-from core_api.email_sender import EmailSender
+from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
 from core_api.models.identity import EmailConfirmationToken, User
 from core_api.schemas import LoginChallenge, LoginRequest, RegisterConfirmIn, RegisterOut, RegisterRequest
 from core_api.security import create_scoped_token, hash_password, hash_token, verify_password
 from core_api.timing import pad_to_minimum_duration
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -83,7 +81,7 @@ def _issue_confirmation_token(db: Session, user: User) -> str:
     raw value (the only place it exists in plaintext -- it goes in the email
     and is never recoverable from the DB)."""
     raw_token = secrets.token_urlsafe(32)
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     db.add(
         EmailConfirmationToken(
             user_id=user.id,
@@ -120,14 +118,13 @@ def _try_send_confirmation_email(email_sender: EmailSender, to: str, raw_token: 
     not change the caller's response, or it becomes an enumeration oracle in
     its own right."""
     confirm_url = f"{get_settings().frontend_base_url}/confirm-registration?token={raw_token}"
-    try:
-        email_sender.send(
-            to=to,
-            subject="Confirm your account",
-            body=f"Click the link to confirm your account: {confirm_url}\nThis link expires in 24 hours.",
-        )
-    except Exception:
-        logger.exception("Failed to send registration-confirmation email")
+    try_send_email(
+        email_sender,
+        to,
+        "Confirm your account",
+        f"Click the link to confirm your account: {confirm_url}\nThis link expires in 24 hours.",
+        "registration-confirmation",
+    )
 
 
 @router.post("/register", response_model=RegisterOut)
@@ -176,7 +173,7 @@ def register(
         # every one of those links just asks "confirm and choose a
         # password" -- there's never a pre-baked attacker password for the
         # real owner to unknowingly adopt by clicking it.
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         _invalidate_outstanding_confirmation_tokens(db, existing.id, now)
         raw_token = _issue_confirmation_token(db, existing)
         background_tasks.add_task(_try_send_confirmation_email, email_sender, existing.email, raw_token)
@@ -201,7 +198,7 @@ def _claim_confirmation_token(db: Session, raw_token: str, now: datetime.datetim
 
     expires_at = token.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+        expires_at = expires_at.replace(tzinfo=datetime.UTC)
     if expires_at <= now:
         raise AppError(400, "invalid_token", "This confirmation link is invalid or has expired")
 
@@ -210,14 +207,14 @@ def _claim_confirmation_token(db: Session, raw_token: str, now: datetime.datetim
         .where(EmailConfirmationToken.id == token.id, EmailConfirmationToken.used_at.is_(None))
         .values(used_at=now)
     )
-    if result.rowcount == 0:
+    if rows_affected(result) == 0:
         raise AppError(400, "invalid_token", "This confirmation link is invalid or has expired")
     return token
 
 
 @router.post("/register/confirm", status_code=status.HTTP_204_NO_CONTENT)
 def confirm_registration(payload: RegisterConfirmIn, db: Session = Depends(get_db_session)) -> None:
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     token = _claim_confirmation_token(db, payload.token, now)
     user = db.get(User, token.user_id)
     assert user is not None  # FK guarantees the referenced user still exists

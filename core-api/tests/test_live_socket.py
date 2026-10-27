@@ -64,7 +64,7 @@ def add_site_with_source(db_url: str, owner_id: int) -> tuple[int, int]:
         kind=SourceKind.ENERGY,
         provider="envoy",
         config={},
-        effective_from=datetime.datetime.now(datetime.timezone.utc),
+        effective_from=datetime.datetime.now(datetime.UTC),
     )
     session.add(source)
     session.commit()
@@ -93,7 +93,7 @@ def test_authorised_socket_gets_current_then_new_values(live_client):
         assert first["kind"] == "energy"
         assert first["values"] == {"production_w": 1500.0}
         assert datetime.datetime.fromisoformat(first["ts"]) == datetime.datetime(
-            2026, 1, 1, 10, tzinfo=datetime.timezone.utc
+            2026, 1, 1, 10, tzinfo=datetime.UTC
         )
         push(client, source_id, 1600.0, ts="2026-01-01T10:00:05Z")
         msg = ws.receive_json()
@@ -164,7 +164,7 @@ def test_undecodable_token_closes_1008(live_client):
 def test_expired_token_closes_1008(live_client):
     client, db_url = live_client
     owner_id, site_id, _source_id = make_energy_source_full(db_url)
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     expired = jwt.encode(
         {"sub": str(owner_id), "iat": now - datetime.timedelta(hours=2), "exp": now - datetime.timedelta(hours=1)},
         "test-secret",

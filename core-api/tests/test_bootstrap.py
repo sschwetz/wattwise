@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 
-from alembic import command
 from alembic.config import Config
 
+from alembic import command
 from core_api.bootstrap import ALEMBIC_INI, CORE_API_ROOT, run_migrations
 from core_api.models import Base
 

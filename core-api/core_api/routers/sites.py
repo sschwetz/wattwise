@@ -83,7 +83,7 @@ def grant_access(
 def list_access(
     site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
 ) -> list[SiteAccess]:
-    return db.execute(select(SiteAccess).where(SiteAccess.site_id == site.id)).scalars().all()
+    return list(db.execute(select(SiteAccess).where(SiteAccess.site_id == site.id)).scalars())
 
 
 @router.delete("/{site_id}/access/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

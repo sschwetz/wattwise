@@ -34,7 +34,7 @@ def test_failures_older_than_the_window_age_out():
     Reaches into _failures directly to time-travel, since the tracker has no
     injectable clock seam."""
     tracker = AttemptTracker()
-    stale = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=30)
+    stale = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=30)
     tracker._failures["a"] = [stale] * 7
 
     # 7 recorded failures, all outside the 15-minute window -> not locked.
@@ -45,7 +45,7 @@ def test_failures_older_than_the_window_age_out():
 
 def test_recent_failures_still_count_when_mixed_with_stale_ones():
     tracker = AttemptTracker()
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     stale = now - datetime.timedelta(minutes=30)
     recent = now - datetime.timedelta(minutes=1)
     # 4 stale + 5 recent: only the recent ones are inside the window, and

@@ -11,8 +11,8 @@ def as_utc(value: datetime.datetime) -> datetime.datetime:
     routers/sources.py's original _as_utc once a second caller needed the
     identical logic)."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=datetime.timezone.utc)
-    return value.astimezone(datetime.timezone.utc)
+        return value.replace(tzinfo=datetime.UTC)
+    return value.astimezone(datetime.UTC)
 
 
 def local_midnight(day: datetime.date, tz: zoneinfo.ZoneInfo) -> datetime.datetime:

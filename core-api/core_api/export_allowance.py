@@ -44,7 +44,7 @@ def _period_events(
     events: dict[datetime.datetime, decimal.Decimal] = {}
     day = start_utc.astimezone(tz).date()
     while True:
-        midnight = local_midnight(day, tz).astimezone(datetime.timezone.utc)
+        midnight = local_midnight(day, tz).astimezone(datetime.UTC)
         if midnight >= end_utc:
             break
         events[midnight] = ZERO

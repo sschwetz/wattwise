@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import datetime
 import decimal
-from typing import Callable, Iterator, NamedTuple
+from collections.abc import Callable, Iterator
+from typing import NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -161,7 +162,7 @@ def allowance_window_spans(
             if tariff is None:
                 continue
             first_day = max(period.start.astimezone(tz).date(), as_utc(tariff.effective_from).astimezone(tz).date())
-            start = local_midnight(first_day, tz).astimezone(datetime.timezone.utc)
+            start = local_midnight(first_day, tz).astimezone(datetime.UTC)
             end = period.end if tariff.effective_to is None else min(period.end, as_utc(tariff.effective_to))
             if start >= end:
                 continue

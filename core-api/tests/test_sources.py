@@ -120,7 +120,7 @@ def test_delete_source_with_readings_rejected(client, app_and_db_url):
     session.add(
         EnergyReading(
             source_id=source_id,
-            ts=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+            ts=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
             metric=EnergyMetric.PRODUCTION_W,
             value=100.0,
         )
@@ -576,7 +576,7 @@ def add_rows(db_url: str, *rows: object) -> None:
 def flat_window(source_id: int) -> LocalRateWindow:
     return LocalRateWindow(
         source_id=source_id, channel=PriceChannel.BUY, label="Flat",
-        effective_from=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+        effective_from=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         months=[1], days_of_week=[0], start_time=datetime.time(0, 0), end_time=datetime.time(0, 0),
         rate_c_per_kwh=decimal.Decimal("30"),
     )
@@ -608,7 +608,7 @@ def test_delete_pricing_source_with_readings_keeps_its_rate_windows(client, app_
     source_id = create_pricing_source(client, site_id, owner_id)
     reading = PriceReading(
         pricing_source_id=source_id,
-        ts=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+        ts=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         channel=PriceChannel.BUY,
         value=decimal.Decimal("30"),
     )

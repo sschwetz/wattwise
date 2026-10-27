@@ -16,7 +16,6 @@ from core_api.main import create_app
 from core_api.models import Base
 from core_api.models.identity import Site, User
 
-
 TEST_SECRETS_ENCRYPTION_KEY = "Bs7vdii7tm51P9fe-7-D4L0nWd7BkKEjE8A6ixcc0FI="
 
 
@@ -103,7 +102,7 @@ def site(db: Session, user: User) -> Site:
     return s
 
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 SYDNEY = zoneinfo.ZoneInfo("Australia/Sydney")
 
