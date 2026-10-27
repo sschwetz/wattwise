@@ -118,13 +118,15 @@ describe("App routing", () => {
     vi.mocked(apiFetch).mockImplementation((path: string) =>
       path === "/api/v1/users/me"
         ? Promise.resolve({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false })
-        : resolveEmpty(path),
+        : path === "/api/v1/sites"
+          ? Promise.resolve([{ id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }])
+          : resolveEmpty(path),
     );
     renderAt("/sites/7");
     await screen.findByRole("heading", { name: "Dashboard" });
     await userEvent.click(await screen.findByRole("button", { name: "me@example.com" }));
     await userEvent.click(screen.getByRole("menuitem", { name: "Site settings" }));
-    expect(await screen.findByText(/add a site/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Site settings" })).toBeInTheDocument();
   });
 
   it("opens Help from the header menu inside the site layout, without a reload", async () => {

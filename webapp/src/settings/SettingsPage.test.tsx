@@ -61,6 +61,58 @@ describe("SettingsPage", () => {
     vi.mocked(apiFetch).mockResolvedValue([]);
     renderAt("/settings");
     expect(await screen.findByRole("link", { name: /add a site/i })).toHaveAttribute("href", "/sites/new");
+    expect(screen.queryByRole("link", { name: "View invitations" })).not.toBeInTheDocument();
+  });
+
+  it("points to invitations when there are no sites but invites are pending", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      Promise.resolve(path.includes("/invites/pending") ? [{ id: 1, site_id: 3, site_name: "Farm", inviter_email: "a@b.c", created_at: "" }] : []),
+    );
+    renderAt("/settings");
+    expect(await screen.findByRole("link", { name: "View invitations" })).toHaveAttribute("href", "/sites");
+    expect(screen.getByRole("link", { name: /add a site/i })).toHaveAttribute("href", "/sites/new");
+  });
+
+  it("shows an error with Retry and a link to /sites when the sites fail to load", async () => {
+    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("boom"));
+    renderAt("/settings");
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /your sites/i })).toHaveAttribute("href", "/sites");
+    vi.mocked(apiFetch).mockResolvedValue([site(7, "Cabin")]);
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+  });
+
+  it("redirects an unknown site id to the default site, keeping a valid tab", async () => {
+    renderAt("/settings/sites/99/billing");
+    expect(await screen.findByText("Tab: billing")).toBeInTheDocument();
+    expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/7/billing");
+  });
+
+  it("redirects a non-numeric site id to the default site", async () => {
+    renderAt("/settings/sites/abc/general");
+    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/7/general");
+  });
+
+  it("falls back to General when both site and tab are unknown", async () => {
+    renderAt("/settings/sites/99/nope");
+    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/7/general");
+  });
+
+  it("redirects an unknown tab to General for that site", async () => {
+    renderAt("/settings/sites/9/nope");
+    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/9/general");
+  });
+
+  it("marks the active tab and the selected chip with aria-current", async () => {
+    renderAt("/settings/sites/9/tariffs");
+    expect(await screen.findByRole("link", { name: "Tariffs" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "General" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Shed" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Cabin" })).not.toHaveAttribute("aria-current");
   });
 
   it("shows a chip per site including disabled ones, and an Add chip last", async () => {
