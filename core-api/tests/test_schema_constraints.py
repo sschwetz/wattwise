@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError, StatementError
 
@@ -293,3 +293,16 @@ def test_energy_reading_accepts_new_metrics(db, site):
         db.add(EnergyReading(source_id=source.id, ts=ts, metric=metric, value=1.0))
     db.commit()
     assert len(db.execute(select(EnergyReading)).scalars().all()) == len(NEW_LIVE_METRICS)
+
+
+def test_invalid_status_rejected(db, site, user):
+    # Raw SQL, because the ORM's str_enum already rejects bad values before the
+    # database sees them; this checks the CHECK constraint itself.
+    with pytest.raises(IntegrityError):
+        db.execute(
+            text(
+                "INSERT INTO site_invites (site_id, inviter_user_id, email, status, created_at) "
+                "VALUES (:s, :u, 'a@example.com', 'bogus', CURRENT_TIMESTAMP)"
+            ),
+            {"s": site.id, "u": user.id},
+        )

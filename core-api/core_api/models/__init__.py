@@ -2,11 +2,13 @@ from core_api.models.base import Base
 from core_api.models.billing import BillingCycle, DemandCharge, DemandInterval, DemandWindow, SiteTariff
 from core_api.models.identity import (
     EmailChangeToken,
+    InviteStatus,
     PasswordResetToken,
     RecoveryCode,
     Site,
     SiteAccess,
     SiteAccessRole,
+    SiteInvite,
     User,
 )
 from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
@@ -37,6 +39,8 @@ __all__ = [
     "Site",
     "SiteAccess",
     "SiteAccessRole",
+    "SiteInvite",
+    "InviteStatus",
     "RecoveryCode",
     "PasswordResetToken",
     "EmailChangeToken",

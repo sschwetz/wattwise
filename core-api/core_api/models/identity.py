@@ -17,6 +17,13 @@ class SiteAccessRole(str, enum.Enum):
     VIEWER = "viewer"
 
 
+class InviteStatus(str, enum.Enum):
+    INVITED = "invited"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    REVOKED = "revoked"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -73,6 +80,36 @@ class SiteAccess(Base):
         nullable=False,
         default=SiteAccessRole.VIEWER,
     )
+
+
+class SiteInvite(Base):
+    """Append-only record of an emailed invitation to view a site. Rows are
+    never deleted; status moves forward and its timestamp is set."""
+
+    __tablename__ = "site_invites"
+    __table_args__ = (enum_check("status", InviteStatus, "ck_site_invites_status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
+    inviter_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    status: Mapped[InviteStatus] = mapped_column(
+        str_enum(InviteStatus, length=16), nullable=False, default=InviteStatus.INVITED
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    accepted_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    declined_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    invitee_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class RecoveryCode(Base):
