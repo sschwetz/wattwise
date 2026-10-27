@@ -66,24 +66,26 @@ describe("App routing", () => {
     vi.mocked(apiFetch).mockImplementation(resolveEmpty);
     renderAt("/sites/7");
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sources" })).toHaveAttribute("href", "/sites/7/sources");
-    expect(screen.getByRole("link", { name: "Billing" })).toHaveAttribute("href", "/sites/7/billing");
+    expect(screen.getByRole("link", { name: "Reporting" })).toHaveAttribute("href", "/sites/7/reporting");
+    expect(screen.queryByRole("link", { name: "Sources" })).not.toBeInTheDocument();
   });
 
-  it("renders the sources page inside the site layout at /sites/:siteId/sources", async () => {
+  it("redirects /sites/:siteId/sources to the Collectors settings tab", async () => {
     localStorage.setItem("access_token", "a-token");
-    vi.mocked(apiFetch).mockResolvedValue([]);
-    renderAt("/sites/7/sources");
-    expect(await screen.findByRole("heading", { name: "Sources" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/sites/7");
+    vi.mocked(apiFetch).mockResolvedValue([
+      { id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
+    ]);
+    renderAt("/sites/5/sources");
+    expect(await screen.findByText("Tab: collectors")).toBeInTheDocument();
   });
 
-  it("renders the billing page inside the site layout at /sites/:siteId/billing", async () => {
+  it("redirects /sites/:siteId/billing to the Billing settings tab", async () => {
     localStorage.setItem("access_token", "a-token");
-    vi.mocked(apiFetch).mockResolvedValue([]);
-    renderAt("/sites/7/billing");
-    expect(await screen.findByRole("heading", { name: "Billing" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Switch site" })).toBeInTheDocument();
+    vi.mocked(apiFetch).mockResolvedValue([
+      { id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
+    ]);
+    renderAt("/sites/5/billing");
+    expect(await screen.findByText("Tab: billing")).toBeInTheDocument();
   });
 
   it("navigates to the add-site page at /sites/new", async () => {
@@ -111,13 +113,18 @@ describe("App routing", () => {
     expect(await screen.findByRole("heading", { name: "Account" })).toBeInTheDocument();
   });
 
-  it("lets a logged-in user reach Sources from the dashboard nav", async () => {
+  it("lets a logged-in user reach Site settings from the header dropdown", async () => {
     localStorage.setItem("access_token", "a-token");
-    vi.mocked(apiFetch).mockImplementation(resolveEmpty);
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      path === "/api/v1/users/me"
+        ? Promise.resolve({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false })
+        : resolveEmpty(path),
+    );
     renderAt("/sites/7");
     await screen.findByRole("heading", { name: "Dashboard" });
-    await userEvent.click(screen.getByRole("link", { name: "Sources" }));
-    expect(await screen.findByRole("heading", { name: "Sources" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "me@example.com" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Site settings" }));
+    expect(await screen.findByText(/add a site/i)).toBeInTheDocument();
   });
 
   it("opens Help from the header menu inside the site layout, without a reload", async () => {
@@ -132,7 +139,7 @@ describe("App routing", () => {
     await userEvent.click(await screen.findByRole("button", { name: "me@example.com" }));
     await userEvent.click(screen.getByRole("menuitem", { name: "Help" }));
     expect(await screen.findByRole("heading", { level: 1, name: "WattWise User Guide" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sources" })).toHaveAttribute("href", "/sites/7/sources");
+    expect(screen.getByRole("link", { name: "Reporting" })).toHaveAttribute("href", "/sites/7/reporting");
     expect(screen.getByRole("button", { name: "me@example.com" })).toBeInTheDocument();
   });
 
@@ -141,6 +148,6 @@ describe("App routing", () => {
     vi.mocked(apiFetch).mockResolvedValue([]);
     renderAt("/help");
     expect(await screen.findByRole("heading", { level: 1, name: "WattWise User Guide" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Sources" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Reporting" })).not.toBeInTheDocument();
   });
 });

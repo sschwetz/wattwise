@@ -121,6 +121,14 @@ export function Header() {
             >
               Account settings
             </NavLink>
+            <NavLink
+              to="/settings"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className={menuItemClass}
+            >
+              Site settings
+            </NavLink>
             <HelpMenuItem onSelect={() => setOpen(false)} />
             <button
               type="button"

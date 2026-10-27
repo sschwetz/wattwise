@@ -20,8 +20,7 @@ function renderLayout(initialPath = "/sites/7") {
           <Route path="/sites/new" element={<p>Add site page</p>} />
           <Route path="/sites/:siteId" element={<SiteLayout />}>
             <Route index element={<p>Dashboard content</p>} />
-            <Route path="sources" element={<p>Sources content</p>} />
-            <Route path="billing" element={<p>Billing content</p>} />
+            <Route path="reporting" element={<p>Reporting content</p>} />
             <Route path="help/:slug?" element={<p>Help content</p>} />
           </Route>
         </Routes>
@@ -44,30 +43,21 @@ describe("SiteLayout", () => {
     expect(screen.getByText("Dashboard content")).toBeInTheDocument();
   });
 
-  it("links to each site-scoped page for the current site id", () => {
+  it("links to the dashboard and reporting for the current site id", () => {
     renderLayout();
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/sites/7");
-    expect(screen.getByRole("link", { name: "Sources" })).toHaveAttribute("href", "/sites/7/sources");
-    expect(screen.getByRole("link", { name: "Billing" })).toHaveAttribute("href", "/sites/7/billing");
+    expect(screen.getByRole("link", { name: "Reporting" })).toHaveAttribute("href", "/sites/7/reporting");
   });
 
-  it("navigates to Sources when its link is clicked", async () => {
+  it("shows only Dashboard and Reporting in the nav", () => {
     renderLayout();
-    await userEvent.click(screen.getByRole("link", { name: "Sources" }));
-    expect(await screen.findByText("Sources content")).toBeInTheDocument();
-    // The nav stays mounted across child-route changes.
-    expect(screen.getByRole("link", { name: "Billing" })).toBeInTheDocument();
-  });
-
-  it("navigates to Billing when its link is clicked", async () => {
-    renderLayout();
-    await userEvent.click(screen.getByRole("link", { name: "Billing" }));
-    expect(await screen.findByText("Billing content")).toBeInTheDocument();
+    const nav = screen.getByRole("navigation");
+    expect(Array.from(nav.querySelectorAll("a")).map((a) => a.textContent)).toEqual(["Dashboard", "Reporting"]);
   });
 
   it("navigates back to the dashboard from a sibling page", async () => {
-    renderLayout("/sites/7/billing");
-    expect(screen.getByText("Billing content")).toBeInTheDocument();
+    renderLayout("/sites/7/reporting");
+    expect(screen.getByText("Reporting content")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("link", { name: "Dashboard" }));
     expect(await screen.findByText("Dashboard content")).toBeInTheDocument();
   });
@@ -109,7 +99,7 @@ describe("SiteLayout", () => {
   it("keeps the sidebar on a help route and highlights none of its links", () => {
     renderLayout("/sites/7/help/07-billing");
     expect(screen.getByText("Help content")).toBeInTheDocument();
-    for (const name of ["Dashboard", "Reporting", "Sources", "Billing"]) {
+    for (const name of ["Dashboard", "Reporting"]) {
       expect(screen.getByRole("link", { name })).not.toHaveAttribute("aria-current");
     }
   });

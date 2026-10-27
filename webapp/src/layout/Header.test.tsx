@@ -86,6 +86,7 @@ describe("Header", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /ada lovelace/i }));
     expect(screen.getByRole("menuitem", { name: "Account settings" })).toHaveAttribute("href", "/account");
+    expect(screen.getByRole("menuitem", { name: "Site settings" })).toHaveAttribute("href", "/settings");
     expect(screen.getByRole("menuitem", { name: "Log off" })).toBeInTheDocument();
   });
 
@@ -181,7 +182,7 @@ describe("Header", () => {
     it("sits between Account settings and Log off", async () => {
       await openMenu("/sites/7");
       const labels = screen.getAllByRole("menuitem").map((item) => item.textContent);
-      expect(labels).toEqual(["Account settings", "Help", "Log off"]);
+      expect(labels).toEqual(["Account settings", "Site settings", "Help", "Log off"]);
     });
 
     it("targets the current site on a site route", async () => {
