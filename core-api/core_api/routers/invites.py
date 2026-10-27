@@ -20,16 +20,6 @@ recipient_router = APIRouter(prefix="/invites", tags=["invites"])
 MAX_PENDING_INVITES = 20
 
 
-def status_changed_at(invite: SiteInvite) -> datetime.datetime:
-    """Latest transition time: the timestamp matching the current status."""
-    stamps = {
-        InviteStatus.ACCEPTED: invite.accepted_at,
-        InviteStatus.DECLINED: invite.declined_at,
-        InviteStatus.REVOKED: invite.revoked_at,
-    }
-    return stamps.get(invite.status) or invite.created_at
-
-
 def _invite_email(inviter: User, site: Site) -> tuple[str, str]:
     """Subject and body. Identical whether or not the address has an account."""
     inviter_name = inviter.display_name or inviter.email
@@ -108,8 +98,7 @@ def get_invite(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> SiteInvite:
-    invite = _get_visible_invite(db, site, user, invite_id)
-    return invite
+    return _get_visible_invite(db, site, user, invite_id)
 
 
 @router.post("/{invite_id}/revoke", response_model=InviteOut)

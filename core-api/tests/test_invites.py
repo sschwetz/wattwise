@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import datetime
-
 import pytest
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import InviteStatus, SiteAccess, SiteInvite, User
-from core_api.routers.invites import status_changed_at
 from tests.test_sites import auth, make_user
 
 
@@ -180,23 +177,6 @@ def pending(client, user_id: int):
 
 def act(client, user_id: int, invite_id: int, action: str):
     return client.post(f"/api/v1/invites/{invite_id}/{action}", headers=auth(user_id))
-
-
-def test_status_changed_at_uses_timestamp_for_each_status():
-    created = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    accepted = created + datetime.timedelta(days=1)
-    declined = created + datetime.timedelta(days=2)
-    revoked = created + datetime.timedelta(days=3)
-    row = SiteInvite(created_at=created, accepted_at=accepted, declined_at=declined, revoked_at=revoked)
-    expected = {
-        InviteStatus.INVITED: created,
-        InviteStatus.ACCEPTED: accepted,
-        InviteStatus.DECLINED: declined,
-        InviteStatus.REVOKED: revoked,
-    }
-    for status, stamp in expected.items():
-        row.status = status
-        assert status_changed_at(row) == stamp
 
 
 def test_pending_lists_invites_for_confirmed_email_case_insensitively(client, app_and_db_url):

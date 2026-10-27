@@ -13,8 +13,7 @@ const tabLinkClass = ({ isActive }: { isActive: boolean }) =>
   }`;
 
 /** Tab content for the selected site. */
-function TabContent({ tab, site }: { tab: string; site: Site | undefined }) {
-  if (!site) return <div>Tab: {tab}</div>;
+function TabContent({ tab, site }: { tab: string; site: Site }) {
   switch (tab) {
     case "general":
       return <GeneralTab key={site.id} site={site} />;
@@ -46,15 +45,15 @@ function TabRail({ siteId }: { siteId: number }) {
   );
 }
 
-export function SettingsShell({ sites, siteId, tab }: { sites: Site[]; siteId: number; tab: string }) {
+export function SettingsShell({ sites, site, tab }: { sites: Site[]; site: Site; tab: string }) {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
       <h1 className="sr-only">Site settings</h1>
-      <SiteChips sites={sites} selectedId={siteId} tab={tab} />
+      <SiteChips sites={sites} selectedId={site.id} tab={tab} />
       <div className="flex flex-col gap-4 sm:flex-row">
-        <TabRail siteId={siteId} />
+        <TabRail siteId={site.id} />
         <div className="min-w-0 flex-1">
-          <TabContent tab={tab} site={sites.find((s) => s.id === siteId)} />
+          <TabContent tab={tab} site={site} />
         </div>
       </div>
     </div>

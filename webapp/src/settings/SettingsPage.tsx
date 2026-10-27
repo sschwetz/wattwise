@@ -28,5 +28,5 @@ export function SettingsPage() {
   if (!target.valid) {
     return <Navigate to={`/settings/sites/${target.site.id}/${target.tab}`} replace />;
   }
-  return <SettingsShell sites={sites} siteId={target.site.id} tab={target.tab} />;
+  return <SettingsShell sites={sites} site={target.site} tab={target.tab} />;
 }
