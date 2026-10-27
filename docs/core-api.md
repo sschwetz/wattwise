@@ -63,7 +63,7 @@ All paths are under `/api/v1`. "Owner" means `require_site_owner`, "Viewer" mean
 | Two-factor | `POST /auth/totp/setup/start`, `/setup/confirm`, `/verify` | Scoped tokens |
 | Password reset | `POST /auth/password-reset/request`, `/confirm` | Anyone |
 | Account | `GET/PATCH /users/me`, `PATCH /users/me/profile`, `POST/GET/DELETE /users/me/avatar`, `POST /users/me/password`, `POST /users/me/email/change/request` and `/confirm`, `POST /users/me/totp/reenroll/start` and `/confirm` | Logged-in user. Password, email and TOTP changes require a current password or code. |
-| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}`, `POST/GET /sites/{id}/access`, `DELETE /sites/{id}/access/{user_id}` | Owner for writes |
+| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}`, `POST/GET /sites/{id}/invites`, `GET /sites/{id}/invites/{iid}`, `POST /sites/{id}/invites/{iid}/revoke`, `GET /invites/pending`, `POST /invites/{iid}/accept` and `/decline` | Owner for writes. Owner or the invitee revokes. Invitees accept or decline. |
 
 ### Site configuration
 

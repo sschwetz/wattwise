@@ -15,6 +15,7 @@ from core_api.time_utils import as_utc
 from tests.conftest import PRICING_COLLECTOR_KEY
 from tests.test_billing import auth, make_owner_and_site
 from tests.test_collector_discovery import make_source
+from tests.test_invites import share_site
 from tests.test_sites import make_user
 
 FLAT = {
@@ -167,11 +168,9 @@ def test_only_the_site_owner_can_add_windows(client, local_source, app_and_db_ur
 def test_a_viewer_can_list_windows_but_not_change_them(client, local_source):
     owner_headers = auth(local_source["owner"])
     window_id = client.post(_url(local_source), json=_window(), headers=owner_headers).json()["id"]
-    viewer_id = make_user(local_source["db_url"], f"viewer-{secrets.token_hex(4)}@example.com")
-    grant = client.post(
-        f"/api/v1/sites/{local_source['site']}/access", json={"user_id": viewer_id}, headers=owner_headers
-    )
-    assert grant.status_code == 201, grant.text
+    viewer_email = f"viewer-{secrets.token_hex(4)}@example.com"
+    viewer_id = make_user(local_source["db_url"], viewer_email)
+    share_site(client, local_source["owner"], local_source["site"], viewer_id, viewer_email)
     viewer = auth(viewer_id)
 
     assert client.get(_url(local_source), headers=viewer).status_code == 200

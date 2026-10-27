@@ -91,6 +91,50 @@ def list_invites(
     return list(db.execute(query).scalars().all())
 
 
+def _get_visible_invite(db: Session, site: Site, user: User, invite_id: int) -> SiteInvite:
+    """404 unless the invite belongs to this site and the user is its owner or its invitee."""
+    invite = db.get(SiteInvite, invite_id)
+    if invite is None or invite.site_id != site.id:
+        raise AppError(404, "invite_not_found", "Invitation not found")
+    if site.owner_user_id != user.id and invite.invitee_user_id != user.id:
+        raise AppError(404, "invite_not_found", "Invitation not found")
+    return invite
+
+
+@router.get("/{invite_id}", response_model=InviteOut)
+def get_invite(
+    invite_id: int,
+    site: Site = Depends(require_site_access),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> SiteInvite:
+    invite = _get_visible_invite(db, site, user, invite_id)
+    return invite
+
+
+@router.post("/{invite_id}/revoke", response_model=InviteOut)
+def revoke_invite(
+    invite_id: int,
+    site: Site = Depends(require_site_access),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> SiteInvite:
+    """The owner may revoke any open invite. An invitee may revoke only their own accepted one."""
+    invite = _get_visible_invite(db, site, user, invite_id)
+    if invite.status not in (InviteStatus.INVITED, InviteStatus.ACCEPTED):
+        raise AppError(409, "invite_final", "This invitation was already declined or revoked")
+    if invite.status == InviteStatus.ACCEPTED and invite.invitee_user_id is not None:
+        grant = db.get(SiteAccess, (site.id, invite.invitee_user_id))
+        if grant is not None:
+            db.delete(grant)
+    invite.status = InviteStatus.REVOKED
+    invite.revoked_at = datetime.datetime.now(datetime.UTC)
+    invite.revoked_by_user_id = user.id
+    db.commit()
+    db.refresh(invite)
+    return invite
+
+
 def _is_for(invite: SiteInvite, user: User) -> bool:
     return user.email_confirmed and invite.email == user.email.lower()
 

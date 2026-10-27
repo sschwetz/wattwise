@@ -28,6 +28,14 @@ def set_status(db_url: str, invite_id: int, status: InviteStatus) -> None:
     session.close()
 
 
+def share_site(client, owner_id: int, site_id: int, viewer_id: int, email: str) -> dict:
+    """Invite `email` and accept as `viewer_id`. Returns the accepted invite."""
+    created = invite(client, owner_id, site_id, email).json()
+    accepted = client.post(f"/api/v1/invites/{created['id']}/accept", headers=auth(viewer_id))
+    assert accepted.status_code == 200, accepted.text
+    return accepted.json()
+
+
 def test_invite_to_unregistered_email_sends_email_and_is_invited(client, app_and_db_url, fake_email_sender):
     _, db_url = app_and_db_url
     owner_id = make_user(db_url, "owner@example.com")
@@ -113,7 +121,7 @@ def test_viewer_cannot_create_invite(client, app_and_db_url):
     owner_id = make_user(db_url, "owner@example.com")
     viewer_id = make_user(db_url, "viewer@example.com")
     site_id = make_site(client, owner_id)
-    client.post(f"/api/v1/sites/{site_id}/access", json={"user_id": viewer_id}, headers=auth(owner_id))
+    share_site(client, owner_id, site_id, viewer_id, "viewer@example.com")
     assert invite(client, viewer_id, site_id, "x@example.com").status_code == 403
 
 
@@ -300,3 +308,157 @@ def test_decline_after_accept_returns_409(client, app_and_db_url):
     invite_id = invite(client, owner_id, site_id, "bob@example.com").json()["id"]
     assert act(client, bob_id, invite_id, "accept").status_code == 200
     assert act(client, bob_id, invite_id, "decline").status_code == 409
+
+
+def revoke(client, user_id: int, site_id: int, invite_id: int):
+    return client.post(f"/api/v1/sites/{site_id}/invites/{invite_id}/revoke", headers=auth(user_id))
+
+
+def load_invite(db_url: str, invite_id: int) -> SiteInvite:
+    session = make_session_factory(make_engine(db_url))()
+    row = session.get(SiteInvite, invite_id)
+    session.expunge(row)
+    session.close()
+    return row
+
+
+def site_ids(client, user_id: int) -> list[int]:
+    return [s["id"] for s in client.get("/api/v1/sites", headers=auth(user_id)).json()]
+
+
+@pytest.mark.parametrize("status", [InviteStatus.REVOKED, InviteStatus.DECLINED])
+def test_accepting_a_final_invite_returns_409_and_grants_nothing(client, app_and_db_url, status):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    site_id = make_site(client, owner_id)
+    created = invite(client, owner_id, site_id, "bob@example.com").json()
+    set_status(db_url, created["id"], status)
+    resp = act(client, bob_id, created["id"], "accept")
+    assert resp.status_code == 409
+    assert access_rows(db_url, site_id) == []
+
+
+def test_owner_revokes_pending_invite(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_id = make_site(client, owner_id)
+    created = invite(client, owner_id, site_id, "bob@example.com").json()
+    resp = revoke(client, owner_id, site_id, created["id"])
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "revoked"
+    assert resp.json()["revoked_at"] is not None
+    assert load_invite(db_url, created["id"]).revoked_by_user_id == owner_id
+
+
+def test_owner_revokes_accepted_invite_removes_access(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    viewer_id = make_user(db_url, "viewer@example.com")
+    site_id = make_site(client, owner_id)
+    accepted = share_site(client, owner_id, site_id, viewer_id, "viewer@example.com")
+    assert site_id in site_ids(client, viewer_id)
+    assert revoke(client, owner_id, site_id, accepted["id"]).status_code == 200
+    assert site_id not in site_ids(client, viewer_id)
+    assert access_rows(db_url, site_id) == []
+    row = load_invite(db_url, accepted["id"])
+    assert row.status == InviteStatus.REVOKED
+    assert row.revoked_by_user_id == owner_id
+
+
+def test_viewer_revokes_own_accepted_invite(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    viewer_id = make_user(db_url, "viewer@example.com")
+    site_id = make_site(client, owner_id)
+    accepted = share_site(client, owner_id, site_id, viewer_id, "viewer@example.com")
+    resp = revoke(client, viewer_id, site_id, accepted["id"])
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "revoked"
+    assert load_invite(db_url, accepted["id"]).revoked_by_user_id == viewer_id
+    assert site_id not in site_ids(client, viewer_id)
+    assert access_rows(db_url, site_id) == []
+
+
+def test_viewer_cannot_revoke_pending_invite_or_anyone_elses(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    viewer_id = make_user(db_url, "viewer@example.com")
+    other_id = make_user(db_url, "other@example.com")
+    site_id = make_site(client, owner_id)
+    mine = share_site(client, owner_id, site_id, viewer_id, "viewer@example.com")
+    theirs = share_site(client, owner_id, site_id, other_id, "other@example.com")
+    pending_invite = invite(client, owner_id, site_id, "late@example.com").json()
+    assert revoke(client, viewer_id, site_id, theirs["id"]).status_code in (403, 404)
+    assert revoke(client, viewer_id, site_id, pending_invite["id"]).status_code in (403, 404)
+    assert load_invite(db_url, theirs["id"]).status == InviteStatus.ACCEPTED
+    assert load_invite(db_url, pending_invite["id"]).status == InviteStatus.INVITED
+    assert load_invite(db_url, mine["id"]).status == InviteStatus.ACCEPTED
+
+
+def test_stranger_cannot_revoke(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    stranger_id = make_user(db_url, "stranger@example.com")
+    site_id = make_site(client, owner_id)
+    created = invite(client, owner_id, site_id, "bob@example.com").json()
+    assert revoke(client, stranger_id, site_id, created["id"]).status_code == 404
+
+
+def test_revoke_invite_from_another_site_returns_404(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_a = make_site(client, owner_id, "A")
+    site_b = make_site(client, owner_id, "B")
+    created = invite(client, owner_id, site_a, "bob@example.com").json()
+    assert revoke(client, owner_id, site_b, created["id"]).status_code == 404
+    assert load_invite(db_url, created["id"]).status == InviteStatus.INVITED
+
+
+@pytest.mark.parametrize("status", [InviteStatus.DECLINED, InviteStatus.REVOKED])
+def test_revoke_declined_or_revoked_returns_409(client, app_and_db_url, status):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_id = make_site(client, owner_id)
+    created = invite(client, owner_id, site_id, "bob@example.com").json()
+    set_status(db_url, created["id"], status)
+    assert revoke(client, owner_id, site_id, created["id"]).status_code == 409
+    assert load_invite(db_url, created["id"]).status == status
+
+
+def test_reinvite_after_revoke_creates_new_row_and_old_row_unchanged(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_id = make_site(client, owner_id)
+    first = invite(client, owner_id, site_id, "bob@example.com").json()
+    revoke(client, owner_id, site_id, first["id"])
+    before = load_invite(db_url, first["id"])
+    second = invite(client, owner_id, site_id, "bob@example.com")
+    assert second.status_code == 201
+    assert second.json()["id"] != first["id"]
+    after = load_invite(db_url, first["id"])
+    assert (after.status, after.revoked_at, after.revoked_by_user_id) == (
+        before.status,
+        before.revoked_at,
+        before.revoked_by_user_id,
+    )
+
+
+def test_no_endpoint_deletes_an_invite(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_id = make_site(client, owner_id)
+    created = invite(client, owner_id, site_id, "bob@example.com").json()
+    resp = client.delete(f"/api/v1/sites/{site_id}/invites/{created['id']}", headers=auth(owner_id))
+    assert resp.status_code == 405
+    assert load_invite(db_url, created["id"]) is not None
+
+
+def test_old_access_routes_are_gone(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_id = make_site(client, owner_id)
+    headers = auth(owner_id)
+    assert client.post(f"/api/v1/sites/{site_id}/access", json={"user_id": owner_id}, headers=headers).status_code in (404, 405)
+    assert client.get(f"/api/v1/sites/{site_id}/access", headers=headers).status_code in (404, 405)
+    assert client.delete(f"/api/v1/sites/{site_id}/access/{owner_id}", headers=headers).status_code in (404, 405)

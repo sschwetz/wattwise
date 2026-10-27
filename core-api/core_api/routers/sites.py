@@ -5,9 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core_api.deps import get_current_user, get_db_session, require_site_access, require_site_owner
-from core_api.errors import AppError
-from core_api.models.identity import Site, SiteAccess, SiteAccessRole, User
-from core_api.schemas import SiteAccessGrant, SiteAccessOut, SiteCreate, SiteOut, SiteUpdate
+from core_api.models.identity import Site, SiteAccess, User
+from core_api.schemas import SiteCreate, SiteOut, SiteUpdate
 
 router = APIRouter(prefix="/sites", tags=["sites"])
 
@@ -61,41 +60,3 @@ def update_site(
     db.commit()
     db.refresh(site)
     return site
-
-
-@router.post("/{site_id}/access", response_model=SiteAccessOut, status_code=status.HTTP_201_CREATED)
-def grant_access(
-    payload: SiteAccessGrant,
-    site: Site = Depends(require_site_owner),
-    db: Session = Depends(get_db_session),
-) -> SiteAccess:
-    user = db.get(User, payload.user_id)
-    if user is None:
-        raise AppError(404, "not_found", "No such user")
-    existing = db.get(SiteAccess, (site.id, payload.user_id))
-    if existing is not None:
-        raise AppError(409, "already_granted", "This user already has access to the site")
-    access = SiteAccess(site_id=site.id, user_id=payload.user_id, role=SiteAccessRole.VIEWER)
-    db.add(access)
-    db.commit()
-    return access
-
-
-@router.get("/{site_id}/access", response_model=list[SiteAccessOut])
-def list_access(
-    site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
-) -> list[SiteAccess]:
-    return list(db.execute(select(SiteAccess).where(SiteAccess.site_id == site.id)).scalars())
-
-
-@router.delete("/{site_id}/access/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def revoke_access(
-    user_id: int,
-    site: Site = Depends(require_site_owner),
-    db: Session = Depends(get_db_session),
-) -> None:
-    access = db.get(SiteAccess, (site.id, user_id))
-    if access is None:
-        raise AppError(404, "not_found", "No such access grant")
-    db.delete(access)
-    db.commit()

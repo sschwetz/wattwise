@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, field_validator, model_validator
 
 from core_api.live import ENERGY_LIVE_METRICS, MAX_LIVE_VALUES, WEATHER_LIVE_METRICS
-from core_api.models.identity import InviteStatus, SiteAccessRole
+from core_api.models.identity import InviteStatus
 from core_api.models.local_rates import LOCAL_RATE_CHANNELS
 from core_api.models.pricing import PriceChannel, SpikeStatus
 from core_api.models.readings import EnergyMetric, WeatherMetric
@@ -220,18 +220,6 @@ class SiteUpdate(BaseModel):
     name: str | None = None
     timezone: str | None = None
     enabled: bool | None = None
-
-
-class SiteAccessGrant(BaseModel):
-    user_id: int
-
-
-class SiteAccessOut(BaseModel):
-    site_id: int
-    user_id: int
-    role: SiteAccessRole
-
-    model_config = {"from_attributes": True}
 
 
 def normalize_tariff_name(name: str | None) -> str:
