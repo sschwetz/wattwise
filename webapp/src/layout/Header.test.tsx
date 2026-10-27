@@ -158,8 +158,8 @@ describe("Header", () => {
 
   describe("Help menu item", () => {
     const sites = [
-      { id: 4, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney" },
-      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart" },
+      { id: 4, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
+      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: true },
     ];
 
     function mockApi(siteList: typeof sites) {

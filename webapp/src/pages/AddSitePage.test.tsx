@@ -42,7 +42,7 @@ describe("AddSitePage", () => {
   });
 
   it("creates the site and navigates to its dashboard", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart" });
+    vi.mocked(apiFetch).mockResolvedValueOnce({ id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: true });
     renderPage();
     await userEvent.type(screen.getByPlaceholderText("Site name"), "Cabin");
     await userEvent.type(screen.getByPlaceholderText("Timezone (e.g. Australia/Sydney)"), "Australia/Hobart");

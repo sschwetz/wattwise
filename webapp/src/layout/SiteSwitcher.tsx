@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useSites } from "../sites/useSites";
+import { useEnabledSites } from "../sites/useSites";
 
 const ADD_NEW_SITE = "new";
 
@@ -10,7 +10,7 @@ const ADD_NEW_SITE = "new";
 export function SiteSwitcher() {
   const { siteId } = useParams<{ siteId: string }>();
   const navigate = useNavigate();
-  const { data: sites } = useSites();
+  const { data: sites } = useEnabledSites();
 
   function handleChange(event: ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;

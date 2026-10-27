@@ -34,8 +34,8 @@ describe("SiteLayout", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
     vi.mocked(apiFetch).mockResolvedValue([
-      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney" },
-      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart" },
+      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
+      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: true },
     ]);
   });
 
@@ -79,6 +79,17 @@ describe("SiteLayout", () => {
     const options = screen.getAllByRole("option").map((o) => o.textContent);
     expect(options).toEqual(["Home", "Cabin", "Add new site"]);
     expect(select).toHaveValue("7");
+  });
+
+  it("omits disabled sites from the switcher", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
+      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: false },
+    ]);
+    renderLayout();
+    await screen.findByText("Home");
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(["Home", "Add new site"]);
   });
 
   it("switches to another site when it's picked from the dropdown", async () => {

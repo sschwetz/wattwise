@@ -11,7 +11,7 @@ vi.mock("../api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
-const SITE = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney" };
+const SITE = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true };
 const TARIFF = {
   id: 1,
   site_id: 7,

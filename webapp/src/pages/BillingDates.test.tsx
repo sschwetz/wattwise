@@ -11,7 +11,7 @@ vi.mock("../api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
-const SITE = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney" };
+const SITE = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true };
 const JUN_30_END = "2026-06-30T14:00:00.000Z"; // 00:00 on 1 July in Sydney
 
 function tariff(id: number, effective_from: string, effective_to: string | null) {
