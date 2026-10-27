@@ -491,8 +491,9 @@ describe("BillingPage", () => {
     await screen.findByText(/95\.00c\/day/);
     const item = await screen.findByText(/New customer promo/);
     expect(item.closest("li")).toHaveTextContent(/-\$10\.00\/month/);
-    expect(item.closest("li")).toHaveTextContent(/01\/01\/2026/);
-    expect(item.closest("li")).toHaveTextContent(/01\/04\/2026/);
+    // The page formats dates in the viewer's locale, so build the expectation the same way.
+    expect(item.closest("li")).toHaveTextContent(new Date(MONTHLY_FEE_DISCOUNT.starts_at).toLocaleDateString());
+    expect(item.closest("li")).toHaveTextContent(new Date(MONTHLY_FEE_DISCOUNT.ends_at).toLocaleDateString());
   });
 
   it("does not style a current fee discount window as disabled", async () => {
