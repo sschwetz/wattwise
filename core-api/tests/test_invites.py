@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime
+
 import pytest
 
 from core_api.db import make_engine, make_session_factory
@@ -150,11 +152,98 @@ def test_email_failure_does_not_fail_the_request(client, app_and_db_url, fake_em
     owner_id = make_user(db_url, "owner@example.com")
     site_id = make_site(client, owner_id)
 
-    def boom(**_kwargs):
+    attempts: list[str] = []
+
+    def boom(**kwargs):
+        attempts.append(kwargs["to"])
         raise RuntimeError("smtp down")
 
     monkeypatch.setattr(fake_email_sender, "send", boom)
     assert invite(client, owner_id, site_id, "bob@example.com").status_code == 201
+    assert attempts == ["bob@example.com"]
+
+
+def test_newlines_in_site_name_are_replaced_so_the_email_is_sent(client, app_and_db_url, fake_email_sender):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_id = make_site(client, owner_id, "Beach\r\nHouse")
+    assert invite(client, owner_id, site_id, "bob@example.com").status_code == 201
+    (to, subject, body), = fake_email_sender.sent
+    assert to == "bob@example.com"
+    assert subject == "owner@example.com invited you to view Beach  House on WattWise"
+    assert "\r" not in subject and "\n" not in subject
+    assert '"Beach  House"' in body
+
+
+def test_rolling_daily_limit_stops_the_21st_invite_in_24_hours(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_id = make_site(client, owner_id)
+    for _ in range(20):
+        created = invite(client, owner_id, site_id, "bob@example.com")
+        assert created.status_code == 201, created.text
+        assert revoke(client, owner_id, site_id, created.json()["id"]).status_code == 200
+    over = invite(client, owner_id, site_id, "bob@example.com")
+    assert over.status_code == 409
+    assert over.json()["code"] == "invite_limit"
+    assert "try again later" in over.json()["message"].lower()
+
+
+def test_invites_older_than_24_hours_do_not_count_toward_the_daily_limit(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site_id = make_site(client, owner_id)
+    ids = []
+    for _ in range(20):
+        created = invite(client, owner_id, site_id, "bob@example.com").json()
+        revoke(client, owner_id, site_id, created["id"])
+        ids.append(created["id"])
+    session = make_session_factory(make_engine(db_url))()
+    old = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=25)
+    for invite_id in ids:
+        session.get(SiteInvite, invite_id).created_at = old
+    session.commit()
+    session.close()
+    assert invite(client, owner_id, site_id, "bob@example.com").status_code == 201
+
+
+def test_get_invite_visible_to_owner_and_invitee_only(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    viewer_id = make_user(db_url, "viewer@example.com")
+    other_viewer_id = make_user(db_url, "other@example.com")
+    stranger_id = make_user(db_url, "stranger@example.com")
+    site_id = make_site(client, owner_id)
+    mine = share_site(client, owner_id, site_id, viewer_id, "viewer@example.com")
+    share_site(client, owner_id, site_id, other_viewer_id, "other@example.com")
+    url = f"/api/v1/sites/{site_id}/invites/{mine['id']}"
+    for user_id in (owner_id, viewer_id):
+        resp = client.get(url, headers=auth(user_id))
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["id"] == mine["id"]
+    for user_id in (stranger_id, other_viewer_id):
+        assert client.get(url, headers=auth(user_id)).status_code == 404
+
+
+def test_every_invite_response_includes_the_inviter_email(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    carol_id = make_user(db_url, "carol@example.com")
+    site_id = make_site(client, owner_id)
+    base = f"/api/v1/sites/{site_id}/invites"
+    created = invite(client, owner_id, site_id, "bob@example.com").json()
+    to_decline = invite(client, owner_id, site_id, "carol@example.com").json()
+    responses = [
+        created,
+        client.get(base, headers=auth(owner_id)).json()[0],
+        client.get(f"{base}/{created['id']}", headers=auth(owner_id)).json(),
+        act(client, bob_id, created["id"], "accept").json(),
+        act(client, carol_id, to_decline["id"], "decline").json(),
+        revoke(client, owner_id, site_id, created["id"]).json(),
+    ]
+    for body in responses:
+        assert body["inviter_email"] == "owner@example.com"
 
 
 def unconfirm(db_url: str, user_id: int) -> None:

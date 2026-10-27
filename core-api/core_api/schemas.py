@@ -204,8 +204,7 @@ class InviteOut(BaseModel):
     declined_at: datetime.datetime | None
     revoked_at: datetime.datetime | None
     inviter_user_id: int
-
-    model_config = {"from_attributes": True}
+    inviter_email: str
 
 
 class PendingInviteOut(BaseModel):

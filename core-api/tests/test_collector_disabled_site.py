@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import func, select
 
 from core_api.db import make_engine, make_session_factory
+from core_api.models.readings import EnergyReading
 from core_api.models.sources import Source, SourceKind
 from tests.conftest import ENVOY_COLLECTOR_KEY, PRICING_COLLECTOR_KEY, WEATHER_COLLECTOR_KEY
 from tests.test_ingestion import make_energy_source_full
@@ -25,6 +27,7 @@ PRICE_BATCH = {
     ]
 }
 LIVE_SAMPLE = {"ts": "2026-01-01T10:00:00Z", "values": {"production_w": 1500.5}}
+WEATHER_LIVE_SAMPLE = {"ts": "2026-01-01T10:00:00Z", "values": {"temp_c": 21.0}}
 GAP_MARKER = {"channel": "buy", "gap_date": "2025-03-01"}
 
 
@@ -63,16 +66,20 @@ def test_collector_source_list_omits_disabled_site(client, app_and_db_url):
 
 
 @pytest.mark.parametrize(
-    "family,suffix,body,key",
+    "method,family,suffix,body,key",
     [
-        ("energy", "readings/energy", ENERGY_BATCH, ENVOY_COLLECTOR_KEY),
-        ("weather", "readings/weather", WEATHER_BATCH, WEATHER_COLLECTOR_KEY),
-        ("pricing", "prices", PRICE_BATCH, PRICING_COLLECTOR_KEY),
-        ("energy", "live/energy", LIVE_SAMPLE, ENVOY_COLLECTOR_KEY),
-        ("pricing", "prices/gap-markers", GAP_MARKER, PRICING_COLLECTOR_KEY),
+        ("POST", "energy", "readings/energy", ENERGY_BATCH, ENVOY_COLLECTOR_KEY),
+        ("POST", "weather", "readings/weather", WEATHER_BATCH, WEATHER_COLLECTOR_KEY),
+        ("POST", "pricing", "prices", PRICE_BATCH, PRICING_COLLECTOR_KEY),
+        ("POST", "energy", "live/energy", LIVE_SAMPLE, ENVOY_COLLECTOR_KEY),
+        ("POST", "weather", "live/weather", WEATHER_LIVE_SAMPLE, WEATHER_COLLECTOR_KEY),
+        ("POST", "pricing", "prices/gap-markers", GAP_MARKER, PRICING_COLLECTOR_KEY),
+        ("POST", "pricing", "prices/reprice-marker/clear", {"version": 1}, PRICING_COLLECTOR_KEY),
+        ("PATCH", "energy", "discovered-config", {"serial_num": "123456789012"}, ENVOY_COLLECTOR_KEY),
+        ("GET", "energy", "config", None, ENVOY_COLLECTOR_KEY),
     ],
 )
-def test_ingestion_rejected_for_disabled_site(client, app_and_db_url, family, suffix, body, key):
+def test_ingestion_rejected_for_disabled_site(client, app_and_db_url, method, family, suffix, body, key):
     _, db_url = app_and_db_url
     owner_id, site_id, energy_id = make_energy_source_full(db_url)
     source_ids = {
@@ -83,10 +90,31 @@ def test_ingestion_rejected_for_disabled_site(client, app_and_db_url, family, su
     url = f"/api/v1/sources/{source_ids[family]}/{suffix}"
     set_enabled(client, owner_id, site_id, False)
 
-    response = client.post(url, json=body, headers={"X-Collector-Key": key})
+    response = client.request(method, url, json=body, headers={"X-Collector-Key": key})
 
     assert response.status_code == 403, response.text
     assert response.json()["code"] == "site_disabled"
+
+
+def count_energy_rows(db_url: str) -> int:
+    session = make_session_factory(make_engine(db_url))()
+    count = session.execute(select(func.count()).select_from(EnergyReading)).scalar_one()
+    session.close()
+    return count
+
+
+def test_rejected_push_for_disabled_site_stores_nothing(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id, source_id = make_energy_source_full(db_url)
+    set_enabled(client, owner_id, site_id, False)
+    before = count_energy_rows(db_url)
+
+    response = client.post(
+        f"/api/v1/sources/{source_id}/readings/energy", json=ENERGY_BATCH, headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY}
+    )
+
+    assert response.json()["code"] == "site_disabled"
+    assert count_energy_rows(db_url) == before
 
 
 def test_ingestion_accepted_after_reenable(client, app_and_db_url):

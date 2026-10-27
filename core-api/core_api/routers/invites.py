@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core_api.config import get_settings
@@ -18,15 +18,23 @@ router = APIRouter(prefix="/sites/{site_id}/invites", tags=["invites"])
 recipient_router = APIRouter(prefix="/invites", tags=["invites"])
 
 MAX_PENDING_INVITES = 20
+MAX_DAILY_INVITES = 20
+DAILY_WINDOW = datetime.timedelta(hours=24)
+
+
+def _one_line(text: str) -> str:
+    """A CR or LF in an email header makes EmailMessage raise, so each becomes a space."""
+    return text.replace("\r", " ").replace("\n", " ")
 
 
 def _invite_email(inviter: User, site: Site) -> tuple[str, str]:
     """Subject and body. Identical whether or not the address has an account."""
-    inviter_name = inviter.display_name or inviter.email
+    inviter_name = _one_line(inviter.display_name or inviter.email)
+    site_name = _one_line(site.name)
     link = f"{get_settings().frontend_base_url}/sites"
-    subject = f"{inviter_name} invited you to view {site.name} on WattWise"
+    subject = f"{inviter_name} invited you to view {site_name} on WattWise"
     body = (
-        f"{inviter_name} invited you to view the site \"{site.name}\" on WattWise.\n\n"
+        f"{inviter_name} invited you to view the site \"{site_name}\" on WattWise.\n\n"
         f"Sign in or register with this email address, then open the sites page to accept or decline: {link}"
     )
     return subject, body
@@ -46,6 +54,44 @@ def _check_can_invite(db: Session, site: Site, owner: User, email: str) -> None:
     pending = sum(1 for row in rows if row.status == InviteStatus.INVITED)
     if pending >= MAX_PENDING_INVITES:
         raise AppError(409, "invite_limit", f"A site can have at most {MAX_PENDING_INVITES} pending invitations")
+    _check_daily_limit(db, site)
+
+
+def _check_daily_limit(db: Session, site: Site) -> None:
+    """Counts every invite created for the site in the last 24 hours, whatever its
+    status, so revoking and re-inviting cannot send unlimited email."""
+    since = datetime.datetime.now(datetime.UTC) - DAILY_WINDOW
+    recent = db.execute(
+        select(func.count()).select_from(SiteInvite).where(
+            SiteInvite.site_id == site.id, SiteInvite.created_at >= since
+        )
+    ).scalar_one()
+    if recent >= MAX_DAILY_INVITES:
+        raise AppError(
+            409,
+            "invite_limit",
+            f"Invitations are limited to {MAX_DAILY_INVITES} per site per day. Try again later.",
+        )
+
+
+def _to_out(invite: SiteInvite, inviter_email: str) -> InviteOut:
+    return InviteOut(
+        id=invite.id,
+        site_id=invite.site_id,
+        email=invite.email,
+        status=invite.status,
+        created_at=invite.created_at,
+        accepted_at=invite.accepted_at,
+        declined_at=invite.declined_at,
+        revoked_at=invite.revoked_at,
+        inviter_user_id=invite.inviter_user_id,
+        inviter_email=inviter_email,
+    )
+
+
+def _out(db: Session, invite: SiteInvite) -> InviteOut:
+    inviter_email = db.execute(select(User.email).where(User.id == invite.inviter_user_id)).scalar_one()
+    return _to_out(invite, inviter_email)
 
 
 @router.post("", response_model=InviteOut, status_code=status.HTTP_201_CREATED)
@@ -56,7 +102,7 @@ def create_invite(
     owner: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     email_sender: EmailSender = Depends(get_email_sender),
-) -> SiteInvite:
+) -> InviteOut:
     email = payload.email.lower()
     _check_can_invite(db, site, owner, email)
     invite = SiteInvite(site_id=site.id, inviter_user_id=owner.id, email=email)
@@ -65,7 +111,7 @@ def create_invite(
     db.refresh(invite)
     subject, body = _invite_email(owner, site)
     background_tasks.add_task(try_send_email, email_sender, email, subject, body, "site-invite")
-    return invite
+    return _to_out(invite, owner.email)
 
 
 @router.get("", response_model=list[InviteOut])
@@ -73,12 +119,16 @@ def list_invites(
     site: Site = Depends(require_site_access),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> list[SiteInvite]:
-    query = select(SiteInvite).where(SiteInvite.site_id == site.id)
+) -> list[InviteOut]:
+    query = (
+        select(SiteInvite, User.email)
+        .join(User, User.id == SiteInvite.inviter_user_id)
+        .where(SiteInvite.site_id == site.id)
+    )
     if site.owner_user_id != user.id:
         query = query.where(SiteInvite.invitee_user_id == user.id)
     query = query.order_by(SiteInvite.created_at.desc(), SiteInvite.id.desc())
-    return list(db.execute(query).scalars().all())
+    return [_to_out(invite, inviter_email) for invite, inviter_email in db.execute(query).all()]
 
 
 def _get_visible_invite(db: Session, site: Site, user: User, invite_id: int) -> SiteInvite:
@@ -97,8 +147,8 @@ def get_invite(
     site: Site = Depends(require_site_access),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> SiteInvite:
-    return _get_visible_invite(db, site, user, invite_id)
+) -> InviteOut:
+    return _out(db, _get_visible_invite(db, site, user, invite_id))
 
 
 @router.post("/{invite_id}/revoke", response_model=InviteOut)
@@ -107,7 +157,7 @@ def revoke_invite(
     site: Site = Depends(require_site_access),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> SiteInvite:
+) -> InviteOut:
     """The owner may revoke any open invite. An invitee may revoke only their own accepted one."""
     invite = _get_visible_invite(db, site, user, invite_id)
     if invite.status not in (InviteStatus.INVITED, InviteStatus.ACCEPTED):
@@ -121,7 +171,7 @@ def revoke_invite(
     invite.revoked_by_user_id = user.id
     db.commit()
     db.refresh(invite)
-    return invite
+    return _out(db, invite)
 
 
 def _is_for(invite: SiteInvite, user: User) -> bool:
@@ -169,7 +219,7 @@ def accept_invite(
     invite_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> SiteInvite:
+) -> InviteOut:
     invite = _get_open_invite(db, user, invite_id)
     invite.status = InviteStatus.ACCEPTED
     invite.accepted_at = datetime.datetime.now(datetime.UTC)
@@ -178,7 +228,7 @@ def accept_invite(
         db.add(SiteAccess(site_id=invite.site_id, user_id=user.id))
     db.commit()
     db.refresh(invite)
-    return invite
+    return _out(db, invite)
 
 
 @recipient_router.post("/{invite_id}/decline", response_model=InviteOut)
@@ -186,11 +236,11 @@ def decline_invite(
     invite_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> SiteInvite:
+) -> InviteOut:
     invite = _get_open_invite(db, user, invite_id)
     invite.status = InviteStatus.DECLINED
     invite.declined_at = datetime.datetime.now(datetime.UTC)
     invite.invitee_user_id = user.id
     db.commit()
     db.refresh(invite)
-    return invite
+    return _out(db, invite)
