@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import datetime
+
 import pytest
 
 from core_api.db import make_engine, make_session_factory
-from core_api.models.identity import InviteStatus, SiteAccess, SiteInvite
+from core_api.models.identity import InviteStatus, SiteAccess, SiteInvite, User
+from core_api.routers.invites import status_changed_at
 from tests.test_sites import auth, make_user
 
 
@@ -147,3 +150,153 @@ def test_email_failure_does_not_fail_the_request(client, app_and_db_url, fake_em
 
     monkeypatch.setattr(fake_email_sender, "send", boom)
     assert invite(client, owner_id, site_id, "bob@example.com").status_code == 201
+
+
+def unconfirm(db_url: str, user_id: int) -> None:
+    session = make_session_factory(make_engine(db_url))()
+    session.get(User, user_id).email_confirmed = False
+    session.commit()
+    session.close()
+
+
+def access_rows(db_url: str, site_id: int) -> list[SiteAccess]:
+    session = make_session_factory(make_engine(db_url))()
+    rows = list(session.query(SiteAccess).filter_by(site_id=site_id))
+    session.close()
+    return rows
+
+
+def pending(client, user_id: int):
+    return client.get("/api/v1/invites/pending", headers=auth(user_id))
+
+
+def act(client, user_id: int, invite_id: int, action: str):
+    return client.post(f"/api/v1/invites/{invite_id}/{action}", headers=auth(user_id))
+
+
+def test_status_changed_at_uses_timestamp_for_each_status():
+    created = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    accepted = created + datetime.timedelta(days=1)
+    declined = created + datetime.timedelta(days=2)
+    revoked = created + datetime.timedelta(days=3)
+    row = SiteInvite(created_at=created, accepted_at=accepted, declined_at=declined, revoked_at=revoked)
+    expected = {
+        InviteStatus.INVITED: created,
+        InviteStatus.ACCEPTED: accepted,
+        InviteStatus.DECLINED: declined,
+        InviteStatus.REVOKED: revoked,
+    }
+    for status, stamp in expected.items():
+        row.status = status
+        assert status_changed_at(row) == stamp
+
+
+def test_pending_lists_invites_for_confirmed_email_case_insensitively(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "Bob@Example.com")
+    site_id = make_site(client, owner_id, "Beach House")
+    invite(client, owner_id, site_id, "BOB@example.com")
+    resp = pending(client, bob_id)
+    assert resp.status_code == 200, resp.text
+    (item,) = resp.json()
+    assert item["site_id"] == site_id
+    assert item["site_name"] == "Beach House"
+    assert item["inviter_email"] == "owner@example.com"
+    assert {"id", "created_at"} <= item.keys()
+
+
+def test_pending_hidden_when_email_not_confirmed(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    site_id = make_site(client, owner_id)
+    invite(client, owner_id, site_id, "bob@example.com")
+    unconfirm(db_url, bob_id)
+    assert pending(client, bob_id).json() == []
+
+
+@pytest.mark.parametrize("status", [InviteStatus.ACCEPTED, InviteStatus.DECLINED, InviteStatus.REVOKED])
+def test_pending_excludes_non_invited_statuses(client, app_and_db_url, status):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    site_id = make_site(client, owner_id)
+    invite_id = invite(client, owner_id, site_id, "bob@example.com").json()["id"]
+    set_status(db_url, invite_id, status)
+    assert pending(client, bob_id).json() == []
+
+
+def test_accept_creates_site_access_and_sets_accepted_at_and_invitee(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    site_id = make_site(client, owner_id)
+    invite_id = invite(client, owner_id, site_id, "bob@example.com").json()["id"]
+    resp = act(client, bob_id, invite_id, "accept")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "accepted"
+    assert body["accepted_at"] is not None
+    sites = client.get("/api/v1/sites", headers=auth(bob_id)).json()
+    assert site_id in [s["id"] for s in sites]
+    session = make_session_factory(make_engine(db_url))()
+    assert session.get(SiteInvite, invite_id).invitee_user_id == bob_id
+    session.close()
+
+
+def test_accept_twice_returns_409_and_one_access_row(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    site_id = make_site(client, owner_id)
+    invite_id = invite(client, owner_id, site_id, "bob@example.com").json()["id"]
+    assert act(client, bob_id, invite_id, "accept").status_code == 200
+    assert act(client, bob_id, invite_id, "accept").status_code == 409
+    assert len(access_rows(db_url, site_id)) == 1
+
+
+def test_accept_someone_elses_invite_returns_404(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    make_user(db_url, "bob@example.com")
+    eve_id = make_user(db_url, "eve@example.com")
+    site_id = make_site(client, owner_id)
+    invite_id = invite(client, owner_id, site_id, "bob@example.com").json()["id"]
+    assert act(client, eve_id, invite_id, "accept").status_code == 404
+    assert act(client, eve_id, invite_id, "decline").status_code == 404
+    assert act(client, eve_id, 99999, "accept").status_code == 404
+    assert access_rows(db_url, site_id) == []
+
+
+def test_accept_with_unconfirmed_email_returns_404(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    site_id = make_site(client, owner_id)
+    invite_id = invite(client, owner_id, site_id, "bob@example.com").json()["id"]
+    unconfirm(db_url, bob_id)
+    assert act(client, bob_id, invite_id, "accept").status_code == 404
+
+
+def test_decline_marks_declined_with_timestamp_and_creates_no_access(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    site_id = make_site(client, owner_id)
+    invite_id = invite(client, owner_id, site_id, "bob@example.com").json()["id"]
+    resp = act(client, bob_id, invite_id, "decline")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "declined"
+    assert resp.json()["declined_at"] is not None
+    assert access_rows(db_url, site_id) == []
+
+
+def test_decline_after_accept_returns_409(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    bob_id = make_user(db_url, "bob@example.com")
+    site_id = make_site(client, owner_id)
+    invite_id = invite(client, owner_id, site_id, "bob@example.com").json()["id"]
+    assert act(client, bob_id, invite_id, "accept").status_code == 200
+    assert act(client, bob_id, invite_id, "decline").status_code == 409

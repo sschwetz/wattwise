@@ -10,10 +10,12 @@ from core_api.config import get_settings
 from core_api.deps import get_current_user, get_db_session, get_email_sender, require_site_access, require_site_owner
 from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
-from core_api.models.identity import InviteStatus, Site, SiteInvite, User
-from core_api.schemas import InviteCreate, InviteOut
+from core_api.models.identity import InviteStatus, Site, SiteAccess, SiteInvite, User
+from core_api.schemas import InviteCreate, InviteOut, PendingInviteOut
 
 router = APIRouter(prefix="/sites/{site_id}/invites", tags=["invites"])
+
+recipient_router = APIRouter(prefix="/invites", tags=["invites"])
 
 MAX_PENDING_INVITES = 20
 
@@ -87,3 +89,75 @@ def list_invites(
         query = query.where(SiteInvite.invitee_user_id == user.id)
     query = query.order_by(SiteInvite.created_at.desc(), SiteInvite.id.desc())
     return list(db.execute(query).scalars().all())
+
+
+def _is_for(invite: SiteInvite, user: User) -> bool:
+    return user.email_confirmed and invite.email == user.email.lower()
+
+
+def _get_open_invite(db: Session, user: User, invite_id: int) -> SiteInvite:
+    """404 unless the invite is addressed to this confirmed user; 409 unless still invited."""
+    invite = db.get(SiteInvite, invite_id)
+    if invite is None or not _is_for(invite, user):
+        raise AppError(404, "invite_not_found", "Invitation not found")
+    if invite.status != InviteStatus.INVITED:
+        raise AppError(409, "invite_not_pending", "This invitation has already been answered or withdrawn")
+    return invite
+
+
+@recipient_router.get("/pending", response_model=list[PendingInviteOut])
+def list_pending_invites(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> list[PendingInviteOut]:
+    if not user.email_confirmed:
+        return []
+    rows = db.execute(
+        select(SiteInvite, Site.name, User.email)
+        .join(Site, Site.id == SiteInvite.site_id)
+        .join(User, User.id == SiteInvite.inviter_user_id)
+        .where(SiteInvite.email == user.email.lower(), SiteInvite.status == InviteStatus.INVITED)
+        .order_by(SiteInvite.created_at.desc(), SiteInvite.id.desc())
+    ).all()
+    return [
+        PendingInviteOut(
+            id=invite.id,
+            site_id=invite.site_id,
+            site_name=site_name,
+            inviter_email=inviter_email,
+            created_at=invite.created_at,
+        )
+        for invite, site_name, inviter_email in rows
+    ]
+
+
+@recipient_router.post("/{invite_id}/accept", response_model=InviteOut)
+def accept_invite(
+    invite_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> SiteInvite:
+    invite = _get_open_invite(db, user, invite_id)
+    invite.status = InviteStatus.ACCEPTED
+    invite.accepted_at = datetime.datetime.now(datetime.UTC)
+    invite.invitee_user_id = user.id
+    if db.get(SiteAccess, (invite.site_id, user.id)) is None:
+        db.add(SiteAccess(site_id=invite.site_id, user_id=user.id))
+    db.commit()
+    db.refresh(invite)
+    return invite
+
+
+@recipient_router.post("/{invite_id}/decline", response_model=InviteOut)
+def decline_invite(
+    invite_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> SiteInvite:
+    invite = _get_open_invite(db, user, invite_id)
+    invite.status = InviteStatus.DECLINED
+    invite.declined_at = datetime.datetime.now(datetime.UTC)
+    invite.invitee_user_id = user.id
+    db.commit()
+    db.refresh(invite)
+    return invite

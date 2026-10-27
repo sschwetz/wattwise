@@ -208,6 +208,14 @@ class InviteOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PendingInviteOut(BaseModel):
+    id: int
+    site_id: int
+    site_name: str
+    inviter_email: str
+    created_at: datetime.datetime
+
+
 class SiteUpdate(BaseModel):
     name: str | None = None
     timezone: str | None = None

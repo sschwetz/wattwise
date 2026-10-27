@@ -18,6 +18,7 @@ from core_api.routers.billing import router as billing_router
 from core_api.routers.collector import router as collector_router
 from core_api.routers.collector_config import router as collector_config_router
 from core_api.routers.ingestion import router as ingestion_router
+from core_api.routers.invites import recipient_router as invite_recipient_router
 from core_api.routers.invites import router as invites_router
 from core_api.routers.live import router as live_router
 from core_api.routers.live import socket_router as live_socket_router
@@ -99,6 +100,7 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
     app.include_router(account_router, prefix=api_prefix)
     app.include_router(sites_router, prefix=api_prefix)
     app.include_router(invites_router, prefix=api_prefix)
+    app.include_router(invite_recipient_router, prefix=api_prefix)
     app.include_router(sources_router, prefix=api_prefix)
     app.include_router(local_rates_router, prefix=api_prefix)
     app.include_router(billing_router, prefix=api_prefix)
