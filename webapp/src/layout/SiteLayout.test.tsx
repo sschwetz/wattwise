@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -122,8 +122,8 @@ describe("SiteLayout", () => {
 
   it("shows no banner for an enabled site", async () => {
     renderLayout();
-    await screen.findByText("Dashboard content");
-    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    // The site names only render once the sites response has been processed.
+    expect(await screen.findByRole("option", { name: "Home" })).toBeInTheDocument();
     expect(screen.queryByText(/disabled/i)).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMe } from "../account/useAccount";
 import { errorMessage } from "../api/client";
@@ -14,15 +14,18 @@ function ConfirmDisable({ onConfirm, onCancel }: { onConfirm: () => void; onCanc
 
   useEffect(() => {
     cancelRef.current?.focus();
-  }, []);
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
 
   return (
     <div
       role="alertdialog"
-      aria-modal="true"
       aria-labelledby="disable-title"
       aria-describedby="disable-body"
-      onKeyDown={(e) => e.key === "Escape" && onCancel()}
       className="rounded-md border border-line bg-surface-2 p-4"
     >
       <h3 id="disable-title" className="font-medium text-ink">
@@ -43,20 +46,19 @@ function ConfirmDisable({ onConfirm, onCancel }: { onConfirm: () => void; onCanc
   );
 }
 
-function EnabledToggle({
-  site,
-  disabled,
-  onChange,
-}: {
-  site: Site;
-  disabled: boolean;
-  onChange: (enabled: boolean) => void;
-}) {
+function EnabledToggle({ site, disabled }: { site: Site; disabled: boolean }) {
   const [confirming, setConfirming] = useState(false);
+  const switchRef = useRef<HTMLButtonElement>(null);
+  const update = useUpdateSite(site.id);
+
+  const closeConfirm = useCallback(() => {
+    setConfirming(false);
+    switchRef.current?.focus();
+  }, []);
 
   function handleClick() {
     if (site.enabled) setConfirming(true);
-    else onChange(true);
+    else update.mutate({ enabled: true });
   }
 
   return (
@@ -64,10 +66,11 @@ function EnabledToggle({
       <div className="flex items-center gap-3">
         <button
           type="button"
+          ref={switchRef}
           role="switch"
           aria-checked={site.enabled}
           aria-label="Enabled"
-          disabled={disabled}
+          disabled={disabled || update.isPending}
           onClick={handleClick}
           className={`relative h-6 w-11 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50 ${
             site.enabled ? "bg-solar" : "bg-line"
@@ -82,17 +85,28 @@ function EnabledToggle({
         <span className="text-sm text-ink">Enabled</span>
         <span className="text-sm text-ink-muted">{site.enabled ? "Collecting" : "Collection is off"}</span>
       </div>
+      {update.isError && (
+        <p role="alert" data-testid="toggle-error" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
+          {errorMessage(update.error, "Failed to change collection. Please try again.")}
+        </p>
+      )}
       {confirming && (
         <ConfirmDisable
-          onCancel={() => setConfirming(false)}
+          onCancel={closeConfirm}
           onConfirm={() => {
-            setConfirming(false);
-            onChange(false);
+            closeConfirm();
+            update.mutate({ enabled: false });
           }}
         />
       )}
     </div>
   );
+}
+
+function accessNote(meFailed: boolean, viewer: boolean): string | null {
+  if (meFailed) return "Your account details could not be loaded, so settings are read-only.";
+  if (viewer) return "Only the owner can change this site's settings.";
+  return null;
 }
 
 export function GeneralTab({ site }: { site: Site }) {
@@ -101,6 +115,7 @@ export function GeneralTab({ site }: { site: Site }) {
   const [name, setName] = useState(site.name);
   const [timezone, setTimezone] = useState(site.timezone);
   const readOnly = me.data?.id !== site.owner_user_id;
+  const note = accessNote(me.isError, me.isSuccess && readOnly);
 
   function handleSave(event: FormEvent) {
     event.preventDefault();
@@ -109,6 +124,7 @@ export function GeneralTab({ site }: { site: Site }) {
 
   return (
     <div className="space-y-6">
+      {note && <p className="text-sm text-ink-muted">{note}</p>}
       <form onSubmit={handleSave} className="space-y-4">
         <label className="block space-y-1 text-sm text-ink">
           Name
@@ -137,7 +153,7 @@ export function GeneralTab({ site }: { site: Site }) {
           Save
         </button>
       </form>
-      <EnabledToggle site={site} disabled={readOnly || update.isPending} onChange={(enabled) => update.mutate({ enabled })} />
+      <EnabledToggle site={site} disabled={readOnly} />
       <Link to={`/sites/${site.id}`} className="inline-block text-sm text-solar underline">
         Open dashboard
       </Link>

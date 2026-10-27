@@ -119,4 +119,66 @@ describe("GeneralTab", () => {
     expect(screen.getByRole("switch", { name: "Enabled" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
+
+  it("shows a failed toggle error near the toggle, not in the Save form", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/api/v1/users/me") return { id: 1 } as never;
+      if (init?.method === "PATCH") throw new Error("Boom");
+      return [] as never;
+    });
+    renderTab({ ...site, enabled: false });
+    await userEvent.click(await screen.findByRole("switch", { name: "Enabled" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Boom");
+    expect(alert).toHaveAttribute("data-testid", "toggle-error");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  it("does not show Saved after a successful toggle", async () => {
+    renderTab({ ...site, enabled: false });
+    await userEvent.click(await screen.findByRole("switch", { name: "Enabled" }));
+    await waitFor(() => expect(patchCalls()).toHaveLength(1));
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+  });
+
+  it("explains read-only mode to a viewer", async () => {
+    renderTab({ ...site, owner_user_id: 2 });
+    expect(await screen.findByText("Only the owner can change this site's settings.")).toBeInTheDocument();
+  });
+
+  it("explains read-only mode when the account lookup fails", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error("down"));
+    renderTab();
+    expect(await screen.findByText(/account details could not be loaded/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toBeDisabled();
+  });
+
+  it("shows no note for the owner", async () => {
+    renderTab();
+    await waitFor(() => expect(screen.getByLabelText("Name")).toBeEnabled());
+    expect(screen.queryByText(/only the owner/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/could not be loaded/i)).not.toBeInTheDocument();
+  });
+
+  it("returns focus to the toggle on Cancel and on Escape", async () => {
+    renderTab();
+    const toggle = await screen.findByRole("switch", { name: "Enabled" });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(toggle).toHaveFocus();
+    await userEvent.click(toggle);
+    await userEvent.keyboard("{Escape}");
+    expect(toggle).toHaveFocus();
+  });
+
+  it("cancels with Escape when focus is outside the dialog", async () => {
+    renderTab();
+    const toggle = await screen.findByRole("switch", { name: "Enabled" });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await userEvent.click(toggle);
+    screen.getByLabelText("Name").focus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
 });
