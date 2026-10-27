@@ -43,7 +43,7 @@ function useInvalidateAfterInviteChange(siteId?: number) {
   return () => {
     queryClient.invalidateQueries({ queryKey: ["sites"] });
     queryClient.invalidateQueries({ queryKey: ["invites"] });
-    queryClient.invalidateQueries({ queryKey: ["siteInvites", siteId] });
+    queryClient.invalidateQueries({ queryKey: siteId === undefined ? ["siteInvites"] : ["siteInvites", siteId] });
   };
 }
 

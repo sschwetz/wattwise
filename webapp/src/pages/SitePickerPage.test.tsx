@@ -11,12 +11,12 @@ vi.mock("../api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn(), ApiError: actual.ApiError };
 });
 
-interface Routes_ {
+interface ApiFixtures {
   sites?: unknown[];
   pending?: unknown[];
 }
 
-function mockApi({ sites = [], pending = [] }: Routes_) {
+function mockApi({ sites = [], pending = [] }: ApiFixtures) {
   vi.mocked(apiFetch).mockImplementation(async (path: string) => {
     if (path === "/api/v1/sites") return sites;
     if (path === "/api/v1/invites/pending") return pending;
@@ -45,6 +45,7 @@ function renderRouted(entry: string) {
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path="/sites" element={<SitePickerPage />} />
+          <Route path="/sites/new" element={<div>New site page</div>} />
           <Route path="/settings" element={<div>Settings page</div>} />
           <Route path="/sites/:siteId" element={<div>Dashboard for site</div>} />
         </Routes>
@@ -59,7 +60,7 @@ describe("SitePickerPage", () => {
   });
 
   it("shows an onboarding form when the user has no sites", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    mockApi({});
     renderPage();
     expect(await screen.findByText("Create your first site")).toBeInTheDocument();
   });
@@ -97,18 +98,13 @@ describe("SitePickerPage", () => {
   });
 
   it("redirects straight through when the user has exactly one site", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce([
-      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
-    ]);
+    mockApi({ sites: [{ id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }] });
     renderPage();
     expect(await screen.findByText("Dashboard for site")).toBeInTheDocument();
   });
 
   it("shows a switcher when the user has multiple sites", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce([
-      { id: 1, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
-      { id: 2, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: true },
-    ]);
+    mockApi({ sites: [home, { ...cabin, enabled: true }] });
     renderPage();
     expect(await screen.findByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Cabin")).toBeInTheDocument();
@@ -169,7 +165,6 @@ describe("SitePickerPage", () => {
 
   it("shows an inline error when accepting fails", async () => {
     const { ApiError } = await import("../api/client");
-    mockApi({ pending: [pendingInvite] });
     vi.mocked(apiFetch).mockImplementation(async (path: string) => {
       if (path === "/api/v1/invites/pending") return [pendingInvite];
       if (path === "/api/v1/sites") return [];
@@ -178,6 +173,50 @@ describe("SitePickerPage", () => {
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "Accept" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("omits a disabled site from a list of enabled sites", async () => {
+    const lodge = { ...home, id: 3, name: "Lodge" };
+    mockApi({ sites: [home, lodge, cabin] });
+    renderPage();
+    expect(await screen.findByText("Lodge")).toBeInTheDocument();
+    expect(screen.getByText("Home")).toBeInTheDocument();
+    expect(screen.queryByText("Cabin")).not.toBeInTheDocument();
+  });
+
+  it("shows an invitation instead of redirecting a single-site user", async () => {
+    mockApi({ sites: [home], pending: [pendingInvite] });
+    renderPage();
+    expect(await screen.findByText("Pending invitations")).toBeInTheDocument();
+    expect(screen.queryByText("Dashboard for site")).not.toBeInTheDocument();
+  });
+
+  it("shows an invitation and a settings link when every site is disabled", async () => {
+    mockApi({ sites: [cabin], pending: [pendingInvite] });
+    renderPage();
+    expect(await screen.findByText("Pending invitations")).toBeInTheDocument();
+    expect(screen.queryByText("Settings page")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings");
+  });
+
+  it("redirects a single-site user after the last invitation is declined", async () => {
+    let pending = [pendingInvite];
+    vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/api/v1/sites") return [home];
+      if (path === "/api/v1/invites/pending") return pending;
+      if (init?.method === "POST") pending = [];
+      return {};
+    });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Decline" }));
+    expect(await screen.findByText("Dashboard for site")).toBeInTheDocument();
+  });
+
+  it("links to site creation when the user has no sites but has an invitation", async () => {
+    mockApi({ pending: [pendingInvite] });
+    renderPage();
+    const link = await screen.findByRole("link", { name: "Create your own site" });
+    expect(link).toHaveAttribute("href", "/sites/new");
   });
 
   it("fills its parent's height instead of forcing its own full viewport height while loading", () => {
@@ -189,7 +228,7 @@ describe("SitePickerPage", () => {
   });
 
   it("fills its parent's height instead of forcing its own full viewport height during onboarding", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    mockApi({});
     const { container } = renderPage();
     await screen.findByText("Create your first site");
     const root = container.firstChild as HTMLElement;
@@ -198,10 +237,7 @@ describe("SitePickerPage", () => {
   });
 
   it("fills its parent's height instead of forcing its own full viewport height in the switcher", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce([
-      { id: 1, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
-      { id: 2, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: true },
-    ]);
+    mockApi({ sites: [home, { ...cabin, enabled: true }] });
     const { container } = renderPage();
     await screen.findByText("Home");
     const root = container.firstChild as HTMLElement;

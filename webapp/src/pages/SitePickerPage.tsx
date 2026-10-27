@@ -66,38 +66,48 @@ function SiteList({ sites }: { sites: { id: number; name: string }[] }) {
   );
 }
 
+function LoadingSites() {
+  return (
+    <div className="flex flex-1 items-center justify-center bg-bg">
+      <p className="text-ink-muted">Loading your sites…</p>
+    </div>
+  );
+}
+
 export function SitePickerPage() {
   const { data: allSites, isLoading: sitesLoading } = useSites();
-  const { data: sites } = useEnabledSites();
+  const { data: sites = [] } = useEnabledSites();
   const { data: pending, isLoading: pendingLoading } = usePendingInvites();
   const invites = pending ?? [];
 
-  if (sitesLoading) {
-    return (
-      <div className="flex flex-1 items-center justify-center bg-bg">
-        <p className="text-ink-muted">Loading your sites…</p>
-      </div>
-    );
-  }
-  if (sites?.length === 1) {
+  if (sitesLoading || pendingLoading) return <LoadingSites />;
+  const hasInvites = invites.length > 0;
+  if (!hasInvites && sites.length === 1) {
     return <Navigate to={`/sites/${sites[0].id}`} replace />;
   }
-  if (allSites && allSites.length > 0 && sites?.length === 0) {
+  if (!hasInvites && allSites && allSites.length > 0 && sites.length === 0) {
     return <Navigate to="/settings" replace />;
   }
-  if (!sites || sites.length === 0) {
-    if (pendingLoading) return null;
-    if (invites.length === 0) return <SiteForm title="Create your first site" />;
+  if (!allSites || allSites.length === 0) {
+    if (!hasInvites) return <SiteForm title="Create your first site" />;
     return (
       <AuthCard title="Welcome to WattWise" fill>
         <PendingInvitations invites={invites} />
+        <Link to="/sites/new" className="mt-4 block text-sm text-solar hover:underline">
+          Create your own site
+        </Link>
       </AuthCard>
     );
   }
   return (
     <AuthCard title="Choose a site" fill>
       <SiteList sites={sites} />
-      {invites.length > 0 && <PendingInvitations invites={invites} />}
+      {hasInvites && <PendingInvitations invites={invites} />}
+      {sites.length === 0 && (
+        <Link to="/settings" className="mt-4 block text-sm text-solar hover:underline">
+          Go to settings
+        </Link>
+      )}
     </AuthCard>
   );
 }
