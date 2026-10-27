@@ -72,8 +72,10 @@ Invitation rules ([`routers/invites.py`](../core-api/core_api/routers/invites.py
 - Statuses are `invited`, `accepted`, `declined` and `revoked`. `declined` and `revoked` are final. Only the recipient can decline, and only while the invite is `invited`.
 - Accepting inserts the `site_access` row. Revoking an accepted invite deletes that row. The invite row stays. Nothing deletes invite rows.
 - Addresses are lowercased on create and matched case-insensitively. The recipient needs `email_confirmed`. `GET /invites/pending` returns an empty list for an unconfirmed account.
-- Errors: 400 `cannot_invite_self`, 409 `already_invited` (an `invited` or `accepted` invite for that address exists), 409 `invite_limit` (20 `invited` invites on the site), 409 `invite_final` (revoking a declined or revoked invite), 409 `invite_not_pending` (accepting or declining an answered invite), 404 `invite_not_found`.
+- Errors: 400 `cannot_invite_self`, 409 `already_invited` (an `invited` or `accepted` invite for that address exists), 409 `invite_limit` (20 `invited` invites on the site, or 20 invites of any status created for the site in the last 24 hours, so revoking and re-inviting cannot send unlimited email), 409 `invite_final` (revoking a declined or revoked invite), 409 `invite_not_pending` (accepting or declining an answered invite), 404 `invite_not_found`.
+- Every site-side and accept/decline response is an `InviteOut`: `id`, `site_id`, `email`, `status`, `created_at`, `accepted_at`, `declined_at`, `revoked_at`, `inviter_user_id` and `inviter_email` (the address of the owner who sent it).
 - The create response is the invite row and the email text is the same for every address, so neither shows whether an account exists.
+- CR and LF in the inviter's name and the site name become spaces in the email subject and body, so a site name with a line break cannot stop the email.
 - A disabled site (`sites.enabled = false`) keeps its reads and its invite routes. Only collector routes change: `GET /collector/sources` leaves its sources out, and every collector write returns 403 `site_disabled`.
 
 ### Site configuration

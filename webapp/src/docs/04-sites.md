@@ -30,13 +30,13 @@ What you see after sign-in depends on how many sites you have:
 | Two or more enabled sites | **Choose a site** list. Click a name to open its dashboard. |
 | Sites, but all [disabled](#disabling-a-site) | **Choose a site** with a **Go to settings** link, or the Settings page directly when you have no pending invitations |
 
-The list shows only enabled sites. If someone has [invited you](#sharing-a-site) to a site, a **Pending invitations** section appears under the list, and the page stays open instead of jumping to your only site.
+The list shows only enabled sites. If someone has [invited you](#sharing-a-site) to a site, a **Pending invitations** section appears above the list, and the page stays open instead of jumping to your only site.
 
 ![The Choose a site list showing two sites](images/site-picker.png)
 
 ## Switching sites
 
-Use the site switcher at the top of the sidebar. Pick a site name to open its dashboard, or **Add new site** to create another. The switcher lists enabled sites only. The sidebar links **Dashboard** and **Reporting** then apply to the site you picked. Sources, tariffs and billing are in [Site settings](#site-settings).
+Use the site switcher at the top of the sidebar. Pick a site name to open its dashboard, or **Add new site** to create another. The switcher lists enabled sites only, plus the site you are viewing if it is disabled, marked *(disabled)*. The sidebar links **Dashboard** and **Reporting** then apply to the site you picked. Sources, tariffs and billing are in [Site settings](#site-settings).
 
 ## Site settings
 
@@ -64,7 +64,7 @@ Use this when you move out of a property but want to keep its history.
 
 A disabled site:
 
-- no longer appears in the sign-in site list or the site switcher, for you and for anyone you share it with
+- no longer appears in the sign-in site list or the site switcher, for you and for anyone you share it with. The switcher still shows it, marked *(disabled)*, while you are on its dashboard
 - stops collecting: its collectors leave it out of their source lists, and Core API refuses any reading a collector still sends for it
 - keeps all its data. Its dashboard and reporting still open from the **Open dashboard** link, with a banner saying the site is disabled and not collecting data
 
@@ -85,9 +85,9 @@ Open the **Sharing** tab to give someone read-only access.
 | **Declined** | They declined. Final. |
 | **Revoked** | Access ended or the invite was withdrawn. Final. |
 
-Each row shows the date its status last changed. Invitations are never deleted. To invite the same address again after a decline or revoke, send a new invite.
+Each row shows who sent the invite and the date its status last changed, in your own time zone. Invitations are never deleted. To invite the same address again after a decline or revoke, send a new invite.
 
-Limits: you cannot invite your own address, an address that already has an invited or accepted invite for the site is refused (*already invited*), and a site can have at most 20 pending invitations. People you share with see only their own invitation on the **Sharing** tab, with a **Revoke** button.
+Limits: you cannot invite your own address, an address that already has an invited or accepted invite for the site is refused (*already invited*), a site can have at most 20 pending invitations, and a site can send at most 20 invitations in any 24 hours, counting revoked and declined ones. Past that, wait and try again later. People you share with see only their own invitation on the **Sharing** tab, with a **Revoke** button.
 
 ## Next
 
