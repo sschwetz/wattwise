@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, field_validator, model_validator
 
 from core_api.live import ENERGY_LIVE_METRICS, MAX_LIVE_VALUES, WEATHER_LIVE_METRICS
-from core_api.models.identity import SiteAccessRole
+from core_api.models.identity import InviteStatus, SiteAccessRole
 from core_api.models.local_rates import LOCAL_RATE_CHANNELS
 from core_api.models.pricing import PriceChannel, SpikeStatus
 from core_api.models.readings import EnergyMetric, WeatherMetric
@@ -186,6 +186,24 @@ class SiteOut(BaseModel):
     name: str
     timezone: str
     enabled: bool
+
+    model_config = {"from_attributes": True}
+
+
+class InviteCreate(BaseModel):
+    email: EmailStr
+
+
+class InviteOut(BaseModel):
+    id: int
+    site_id: int
+    email: str
+    status: InviteStatus
+    created_at: datetime.datetime
+    accepted_at: datetime.datetime | None
+    declined_at: datetime.datetime | None
+    revoked_at: datetime.datetime | None
+    inviter_user_id: int
 
     model_config = {"from_attributes": True}
 
