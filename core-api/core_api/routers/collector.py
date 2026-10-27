@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from core_api.deps import check_collector_key, get_db_session
 from core_api.errors import AppError
+from core_api.models.identity import Site
 from core_api.models.sources import Source, SourceKind
 from core_api.routers.collector_config import resolve_source_config
 from core_api.schemas import CollectorSourceOut
@@ -25,9 +26,10 @@ def list_collector_sources(
     if not check_collector_key(kind, x_collector_key):
         raise AppError(401, "invalid_collector_key", "Invalid collector key for this kind")
     now = datetime.datetime.now(datetime.UTC)
-    query = select(Source).where(
+    query = select(Source).join(Site, Site.id == Source.site_id).where(
         Source.kind == kind,
         Source.enabled.is_(True),
+        Site.enabled.is_(True),
         or_(Source.effective_to.is_(None), Source.effective_to > now),
     )
     if provider is not None:
