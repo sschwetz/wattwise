@@ -46,14 +46,14 @@ describe("SettingsPage", () => {
 
   it("redirects /settings to the General tab of the first enabled site", async () => {
     renderAt("/settings");
-    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/7/general");
   });
 
   it("falls back to the first site when every site is disabled", async () => {
     vi.mocked(apiFetch).mockResolvedValue([site(4, "Home", false), site(7, "Cabin", false)]);
     renderAt("/settings");
-    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/4/general");
   });
 
@@ -80,7 +80,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("link", { name: /your sites/i })).toHaveAttribute("href", "/sites");
     vi.mocked(apiFetch).mockResolvedValue([site(7, "Cabin")]);
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
   });
 
   it("redirects an unknown site id to the default site, keeping a valid tab", async () => {
@@ -91,19 +91,19 @@ describe("SettingsPage", () => {
 
   it("redirects a non-numeric site id to the default site", async () => {
     renderAt("/settings/sites/abc/general");
-    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/7/general");
   });
 
   it("falls back to General when both site and tab are unknown", async () => {
     renderAt("/settings/sites/99/nope");
-    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/7/general");
   });
 
   it("redirects an unknown tab to General for that site", async () => {
     renderAt("/settings/sites/9/nope");
-    expect(await screen.findByText("Tab: general")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/9/general");
   });
 

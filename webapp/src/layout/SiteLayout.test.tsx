@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -109,5 +109,21 @@ describe("SiteLayout", () => {
     const root = container.firstChild as HTMLElement;
     expect(root.className).toContain("flex-1");
     expect(root.className).not.toContain("min-h-screen");
+  });
+
+  it("shows a disabled banner linking to the General settings tab", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: false },
+    ]);
+    renderLayout();
+    expect(await screen.findByText(/disabled/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings/sites/7/general");
+  });
+
+  it("shows no banner for an enabled site", async () => {
+    renderLayout();
+    await screen.findByText("Dashboard content");
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(screen.queryByText(/disabled/i)).not.toBeInTheDocument();
   });
 });

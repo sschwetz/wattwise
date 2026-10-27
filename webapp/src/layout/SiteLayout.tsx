@@ -1,4 +1,5 @@
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { Link, NavLink, Outlet, useParams } from "react-router-dom";
+import { useSites } from "../sites/useSites";
 import { SiteSwitcher } from "./SiteSwitcher";
 
 const primaryLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -13,6 +14,8 @@ const primaryLinkClass = ({ isActive }: { isActive: boolean }) =>
  */
 export function SiteLayout() {
   const { siteId } = useParams<{ siteId: string }>();
+  const { data: sites } = useSites();
+  const disabled = sites?.find((s) => String(s.id) === siteId)?.enabled === false;
 
   return (
     <div className="flex flex-1 flex-col bg-bg sm:flex-row">
@@ -28,6 +31,14 @@ export function SiteLayout() {
         </NavLink>
       </nav>
       <main className="flex-1">
+        {disabled && (
+          <div role="status" className="border-b border-line bg-surface-2 px-4 py-2 text-sm text-ink">
+            This site is disabled and not collecting data.{" "}
+            <Link to={`/settings/sites/${siteId}/general`} className="text-solar underline">
+              Open settings
+            </Link>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

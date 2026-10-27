@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import type { Site } from "../sites/useSites";
+import { GeneralTab } from "./GeneralTab";
 import { SiteChips } from "./SiteChips";
 import { TABS } from "./tabs";
 
@@ -9,7 +10,8 @@ const tabLinkClass = ({ isActive }: { isActive: boolean }) =>
   }`;
 
 /** Placeholder tab content. Later tasks replace this with the real panels. */
-function TabContent({ tab }: { tab: string }) {
+function TabContent({ tab, site }: { tab: string; site: Site | undefined }) {
+  if (tab === "general" && site) return <GeneralTab key={site.id} site={site} />;
   return <div>Tab: {tab}</div>;
 }
 
@@ -36,7 +38,7 @@ export function SettingsShell({ sites, siteId, tab }: { sites: Site[]; siteId: n
       <div className="flex flex-col gap-4 sm:flex-row">
         <TabRail siteId={siteId} />
         <div className="min-w-0 flex-1">
-          <TabContent tab={tab} />
+          <TabContent tab={tab} site={sites.find((s) => s.id === siteId)} />
         </div>
       </div>
     </div>
