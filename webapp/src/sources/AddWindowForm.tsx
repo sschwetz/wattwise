@@ -1,7 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { Spinner } from "../components/Spinner";
 import { CHANNEL_SECTIONS, inputClass } from "./rateWindowUi";
-import { CheckboxGroup, DAY_OPTIONS, MONTH_OPTIONS } from "../billing/CheckboxGroup";
+import { CheckboxGroup } from "../billing/CheckboxGroup";
+import { DAY_OPTIONS, MONTH_OPTIONS } from "../billing/checkboxOptions";
 import { todayIn } from "../billing/dateHooks";
 import { endOfDayIso, startOfDayIso, suggestStart } from "../billing/dates";
 import type { RateChannel, RateWindow, RateWindowInput } from "./useRateWindows";

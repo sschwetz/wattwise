@@ -10,8 +10,8 @@ from sqlalchemy.engine import Engine
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.local_rates import LocalRepriceMarker
-from core_api.time_utils import as_utc
 from core_api.models.sources import SourceKind
+from core_api.time_utils import as_utc
 from tests.conftest import PRICING_COLLECTOR_KEY
 from tests.test_billing import auth, make_owner_and_site
 from tests.test_collector_discovery import make_source
@@ -299,7 +299,7 @@ def test_amber_config_has_no_rate_windows(client, app_and_db_url):
     assert "rate_windows" not in response.json()["config"]
 
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def _marker(ctx):

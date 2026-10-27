@@ -8,7 +8,7 @@ from local_pricing_collector.models import Coverage
 from local_pricing_collector.rates import CHANNELS, RateWindow, ceil_minute
 from local_pricing_collector.triggers import Triggers
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 ONE_DAY = datetime.timedelta(days=1)
 CHUNK_DAYS = 7
 
@@ -51,9 +51,11 @@ def _history_start(
 
 def _end_limit(windows: list[RateWindow]) -> datetime.datetime | None:
     """The latest end among the windows, or None when any window is open ended."""
-    if any(w.effective_to is None for w in windows):
+    ends = [w.effective_to for w in windows]
+    latest = [end for end in ends if end is not None]
+    if len(latest) < len(ends):
         return None
-    return ceil_minute(max(w.effective_to for w in windows))
+    return ceil_minute(max(latest))
 
 
 Wanted = tuple[datetime.datetime, datetime.datetime, bool]

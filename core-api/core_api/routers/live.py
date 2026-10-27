@@ -50,7 +50,7 @@ async def _read_token(websocket: WebSocket) -> int | None:
         raw = await asyncio.wait_for(websocket.receive_text(), LIVE_AUTH_TIMEOUT_SECONDS)
         token = json.loads(raw)["token"]
         return decode_access_token(token)
-    except (asyncio.TimeoutError, WebSocketDisconnect, ValueError, KeyError, TypeError, pyjwt.InvalidTokenError):
+    except (TimeoutError, WebSocketDisconnect, ValueError, KeyError, TypeError, pyjwt.InvalidTokenError):
         return None
 
 

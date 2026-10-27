@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import Site, User
@@ -23,7 +23,7 @@ def make_energy_source(db_url: str, config: dict | None = None) -> int:
         kind=SourceKind.ENERGY,
         provider="envoy",
         config=config or {"host": "envoy.local", "token": "abc"},
-        effective_from=datetime.now(timezone.utc),
+        effective_from=datetime.now(UTC),
     )
     session.add(source)
     session.commit()
@@ -149,7 +149,7 @@ def make_pricing_source(db_url: str, amber_api_key: str | None, config: dict | N
         kind=SourceKind.PRICING,
         provider="amber",
         config=config or {"amber_site_id": "example-site-id"},
-        effective_from=datetime.now(timezone.utc),
+        effective_from=datetime.now(UTC),
     )
     session.add(source)
     session.commit()

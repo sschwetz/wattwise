@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from core_api.local_rates import find_overlap, minutes_of_day, windows_overlap
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 T = datetime.time
 
 

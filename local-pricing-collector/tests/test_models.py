@@ -6,7 +6,7 @@ import pytest
 
 from local_pricing_collector.models import RepriceMarker, parse_reprice
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def test_no_marker_in_the_config_is_none():

@@ -87,7 +87,7 @@ def test_push_energy_readings_sends_batch_as_iso_timestamps():
     route = respx.post(f"{BASE_URL}/api/v1/sources/1/readings/energy").mock(
         return_value=httpx.Response(202, json={"ingested": 1})
     )
-    ts = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.timezone.utc)
+    ts = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.UTC)
     push_energy_readings(BASE_URL, 1, "my-key", [{"ts": ts, "metric": "production_w", "value": 100.0}])
 
     import json as _json
@@ -196,7 +196,7 @@ def test_report_discovered_config_sends_cert_serial():
 @respx.mock
 def test_push_live_sample_posts_values_with_key_and_short_timeout():
     route = respx.post(f"{BASE_URL}/api/v1/sources/1/live/energy").mock(return_value=httpx.Response(202))
-    ts = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.timezone.utc)
+    ts = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.UTC)
     push_live_sample(BASE_URL, 1, "my-key", ts, {"production_w": 100.0})
 
     request = route.calls[0].request
@@ -209,4 +209,4 @@ def test_push_live_sample_posts_values_with_key_and_short_timeout():
 def test_push_live_sample_raises_on_non_202():
     respx.post(f"{BASE_URL}/api/v1/sources/1/live/energy").mock(return_value=httpx.Response(500))
     with pytest.raises(CoreApiError):
-        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.timezone.utc), {})
+        push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.UTC), {})

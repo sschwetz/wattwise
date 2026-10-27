@@ -5,8 +5,8 @@ import time
 
 import jwt
 import pyotp
-from cryptography.fernet import Fernet
 import pytest
+from cryptography.fernet import Fernet
 
 from core_api.security import (
     create_access_token,
@@ -90,7 +90,7 @@ def test_decode_scoped_token_rejects_a_token_missing_its_jti_claim(monkeypatch):
     KeyError, which no caller's `except pyjwt.InvalidTokenError` catches — so it
     became an unhandled 500 instead of a clean 401."""
     monkeypatch.setenv("JWT_SECRET", "test-secret")
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     token = jwt.encode(
         {"sub": "42", "scope": "mfa", "iat": now, "exp": now + datetime.timedelta(minutes=5)},
         "test-secret",

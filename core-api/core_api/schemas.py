@@ -29,8 +29,8 @@ def _to_utc(value: datetime.datetime) -> datetime.datetime:
     timestamps for the same instant compare/round-trip identically once
     stored (SQLite's DateTime column silently drops tzinfo on write)."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=datetime.timezone.utc)
-    return value.astimezone(datetime.timezone.utc)
+        return value.replace(tzinfo=datetime.UTC)
+    return value.astimezone(datetime.UTC)
 
 
 UtcDatetime = Annotated[datetime.datetime, AfterValidator(_to_utc)]

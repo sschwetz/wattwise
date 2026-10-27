@@ -131,7 +131,7 @@ def test_fetch_site_data_floor_parses_iso_datetime():
         return_value=httpx.Response(200, json={"floor_ts": "2025-01-01T00:00:00+00:00"})
     )
     result = fetch_site_data_floor(BASE_URL, 1, "my-key")
-    assert result == datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+    assert result == datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
 
 
 @respx.mock
@@ -149,7 +149,7 @@ def test_fetch_site_data_floor_raises_core_api_error_on_connection_failure():
 
 @respx.mock
 def test_fetch_price_gaps_sends_since_param_and_parses_response():
-    since = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+    since = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
     route = respx.get(f"{BASE_URL}/api/v1/sources/1/prices/gaps").mock(
         return_value=httpx.Response(200, json={"gaps": [{"channel": "buy", "start_date": "2025-01-01", "end_date": "2025-01-03"}]})
     )
@@ -162,7 +162,7 @@ def test_fetch_price_gaps_sends_since_param_and_parses_response():
 def test_fetch_price_gaps_raises_core_api_error_on_connection_failure():
     respx.get(f"{BASE_URL}/api/v1/sources/1/prices/gaps").mock(side_effect=httpx.ConnectError("boom"))
     with pytest.raises(CoreApiError):
-        fetch_price_gaps(BASE_URL, 1, "my-key", datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc))
+        fetch_price_gaps(BASE_URL, 1, "my-key", datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC))
 
 
 @respx.mock

@@ -44,7 +44,7 @@ def _map_barometer_or_empty(conditions: list[dict], ts: datetime.datetime) -> li
 def poll_once(settings: Settings, source_id: int, config: dict, rain_state: RainState) -> None:
     """Runs one poll cycle for one source. Unlike the Envoy collector there's
     no config to refresh (no auth), so config is read-only here."""
-    ts = datetime.datetime.now(datetime.timezone.utc).replace(second=0, microsecond=0)
+    ts = datetime.datetime.now(datetime.UTC).replace(second=0, microsecond=0)
     try:
         data = fetch_current_conditions(config["host"])
         conditions = data["data"]["conditions"]
@@ -118,7 +118,7 @@ def live_poll_once(settings: Settings, source_id: int, config: dict) -> None:
                 settings.core_api_url,
                 source_id,
                 settings.collector_key,
-                datetime.datetime.now(datetime.timezone.utc),
+                datetime.datetime.now(datetime.UTC),
                 values,
             )
     except Exception:

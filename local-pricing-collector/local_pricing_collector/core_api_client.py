@@ -31,8 +31,8 @@ def _parse_utc(value: str) -> datetime.datetime:
     offset (the site data floor); those are UTC."""
     parsed = datetime.datetime.fromisoformat(value)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=datetime.timezone.utc)
-    return parsed.astimezone(datetime.timezone.utc)
+        return parsed.replace(tzinfo=datetime.UTC)
+    return parsed.astimezone(datetime.UTC)
 
 
 def _get_json(url: str, collector_key: str, what: str):

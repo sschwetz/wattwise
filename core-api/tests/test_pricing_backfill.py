@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import Site, User
@@ -23,7 +23,7 @@ def make_pricing_source(db_url: str, config: dict | None = None) -> int:
         kind=SourceKind.PRICING,
         provider="amber",
         config=config or {"amber_site_id": "example-site-id"},
-        effective_from=datetime.now(timezone.utc),
+        effective_from=datetime.now(UTC),
     )
     session.add(source)
     session.commit()
@@ -71,7 +71,7 @@ def make_energy_source_for_site(db_url: str, site_id: int) -> int:
         kind=SourceKind.ENERGY,
         provider="envoy",
         config={},
-        effective_from=datetime.now(timezone.utc),
+        effective_from=datetime.now(UTC),
     )
     session.add(source)
     session.commit()
@@ -97,18 +97,18 @@ def test_site_data_floor_is_earliest_reading_across_any_source_kind(client, app_
     pricing_source = session.get(Source, source_id)
     energy_source_id = make_energy_source_for_site(db_url, pricing_source.site_id)
 
-    from core_api.models.readings import EnergyMetric, EnergyReading
     from core_api.models.pricing import PriceChannel, PriceReading
+    from core_api.models.readings import EnergyMetric, EnergyReading
 
     session.add(EnergyReading(
         source_id=energy_source_id,
-        ts=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        ts=datetime(2025, 1, 1, tzinfo=UTC),
         metric=EnergyMetric.PRODUCTION_W,
         value=100.0,
     ))
     session.add(PriceReading(
         pricing_source_id=source_id,
-        ts=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        ts=datetime(2025, 6, 1, tzinfo=UTC),
         channel=PriceChannel.BUY,
         value=25.0,
     ))
@@ -142,7 +142,7 @@ def test_prices_gaps_reports_uncovered_days_for_known_channel(client, app_and_db
     _, db_url = app_and_db_url
     source_id = make_pricing_source(db_url)
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     since_date = today - timedelta(days=4)
     covered_day = since_date
     marked_day = since_date + timedelta(days=1)
@@ -152,7 +152,7 @@ def test_prices_gaps_reports_uncovered_days_for_known_channel(client, app_and_db
     session = make_session_factory(engine)()
     from core_api.models.pricing import PriceChannel, PriceGapMarker, PriceInterval
 
-    covered_start = datetime(covered_day.year, covered_day.month, covered_day.day, tzinfo=timezone.utc)
+    covered_start = datetime(covered_day.year, covered_day.month, covered_day.day, tzinfo=UTC)
     for i in range(24 * 12):
         interval_start = covered_start + timedelta(minutes=5 * i)
         session.add(PriceInterval(
@@ -166,7 +166,7 @@ def test_prices_gaps_reports_uncovered_days_for_known_channel(client, app_and_db
     session.commit()
     session.close()
 
-    since_dt = datetime(since_date.year, since_date.month, since_date.day, tzinfo=timezone.utc)
+    since_dt = datetime(since_date.year, since_date.month, since_date.day, tzinfo=UTC)
     response = client.get(
         f"/api/v1/sources/{source_id}/prices/gaps",
         params={"since": since_dt.isoformat()},
@@ -185,8 +185,8 @@ def test_prices_gaps_reports_a_partly_covered_day(client, app_and_db_url):
 
     _, db_url = app_and_db_url
     source_id = make_pricing_source(db_url)
-    day = datetime.now(timezone.utc).date() - timedelta(days=2)
-    day_start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+    day = datetime.now(UTC).date() - timedelta(days=2)
+    day_start = datetime(day.year, day.month, day.day, tzinfo=UTC)
 
     engine = make_engine(db_url)
     session = make_session_factory(engine)()
@@ -221,7 +221,7 @@ def test_prices_gaps_reports_a_partly_covered_day(client, app_and_db_url):
         headers={"X-Collector-Key": PRICING_COLLECTOR_KEY},
     )
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     assert response.json() == {
         "gaps": [
             {"channel": "buy", "start_date": day.isoformat(), "end_date": day.isoformat()},
@@ -276,7 +276,7 @@ def test_price_coverage_gives_the_first_and_last_instant_per_channel(client, app
     ).json()["channels"]
 
     assert set(channels) == {"buy", "sell"}
-    utc = timezone.utc
+    utc = UTC
     assert _utc(channels["buy"]["first"]) == datetime(2026, 6, 1, 10, 0, tzinfo=utc)
     assert _utc(channels["buy"]["last"]) == datetime(2026, 6, 1, 10, 10, tzinfo=utc)
     assert _utc(channels["sell"]["first"]) == datetime(2026, 6, 1, 9, 0, tzinfo=utc)

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import datetime
+import re
 import time
 
 import pyotp
 import pytest
-import re
 from fastapi.testclient import TestClient
-
 from sqlalchemy import select
 
 from core_api.db import make_engine, make_session_factory
@@ -15,7 +14,13 @@ from core_api.errors import AppError
 from core_api.models.identity import EmailChangeToken, RecoveryCode, User
 from core_api.routers.account import confirm_totp_reenroll
 from core_api.schemas import ConfirmTotpReenrollIn
-from core_api.security import create_access_token, generate_totp_secret, hash_password, hash_recovery_code, hash_token, verify_totp_code
+from core_api.security import (
+    create_access_token,
+    generate_totp_secret,
+    hash_password,
+    hash_recovery_code,
+    hash_token,
+)
 
 
 def make_user(db_url: str, amber_api_key: str | None = None) -> int:
@@ -391,7 +396,7 @@ def test_confirm_email_change_rejects_expired_token(client, app_and_db_url):
             user_id=user_id,
             new_email="new@example.com",
             token_hash=hash_token("expired-token"),
-            expires_at=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1),
+            expires_at=datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1),
         )
     )
     session.commit()

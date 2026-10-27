@@ -163,7 +163,7 @@ def get_source_by_collector_key(
         raise AppError(401, "invalid_collector_key", "Invalid collector key for this source")
     if not source.enabled:
         raise AppError(403, "source_disabled", "This source is disabled")
-    if source.effective_to is not None and source.effective_to <= datetime.datetime.now(datetime.timezone.utc):
+    if source.effective_to is not None and source.effective_to <= datetime.datetime.now(datetime.UTC):
         raise AppError(403, "source_expired", "This source's effective period has ended")
     return source
 

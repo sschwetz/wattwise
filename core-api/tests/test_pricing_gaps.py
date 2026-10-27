@@ -36,7 +36,7 @@ def test_coalesce_of_empty_list_is_empty():
     assert coalesce_missing_days([]) == []
 
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def five_min_starts(day: str, count: int, start_minute: int = 0) -> list[datetime.datetime]:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import InstrumentedAttribute, Session
@@ -11,7 +12,7 @@ RAW_RETENTION = datetime.timedelta(days=365)
 
 def _query_one_table(
     db: Session,
-    model: type,
+    model: type[Any],
     key_column: InstrumentedAttribute,
     key_value: int,
     ts_start: datetime.datetime,
@@ -50,7 +51,7 @@ def query_readings(
     cutoff must be read from raw, and the portion before it from rollup.
     Querying only one table based on ts_start alone would silently drop the
     raw-side data for any range that starts more than RAW_RETENTION ago."""
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - RAW_RETENTION
+    cutoff = datetime.datetime.now(datetime.UTC) - RAW_RETENTION
     results: list = []
     if ts_end >= cutoff:
         raw_window_start = max(ts_start, cutoff)

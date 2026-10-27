@@ -28,7 +28,7 @@ def test_source_config_and_amber_key_are_ciphertext_in_the_database(db, user, si
     user.totp_secret = "JBSWY3DPEHPK3PXP"
     user.pending_totp_secret = "KRSXG5CTMVRXEZLU"
     db.add(Source(site_id=site.id, kind=SourceKind.ENERGY, provider="envoy", config=ENVOY_CONFIG,
-                  effective_from=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)))
+                  effective_from=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)))
     db.commit()
     db.expire_all()
 

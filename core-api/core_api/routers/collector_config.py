@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core_api.deps import get_db_session, get_source_by_collector_key
+from core_api.errors import AppError
 from core_api.models.identity import Site, User
 from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
 from core_api.models.sources import Source
@@ -37,6 +38,8 @@ def _local_config(db: Session, source: Source, config: dict) -> None:
     windows = db.execute(
         select(LocalRateWindow).where(LocalRateWindow.source_id == source.id).order_by(LocalRateWindow.id)
     ).scalars().all()
+    if site is None:
+        raise AppError(404, "not_found", "Site not found")
     config["timezone"] = site.timezone
     config["rate_windows"] = [_rate_window_config(w) for w in windows]
     if marker is not None:
@@ -54,8 +57,8 @@ def resolve_source_config(db: Session, source: Source) -> dict:
     config = dict(source.config or {})
     if source.provider == "amber":
         site = db.get(Site, source.site_id)
-        owner = db.get(User, site.owner_user_id)
-        config["amber_api_key"] = owner.amber_api_key
+        owner = db.get(User, site.owner_user_id) if site else None
+        config["amber_api_key"] = owner.amber_api_key if owner else None
     return config
 
 

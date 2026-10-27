@@ -225,8 +225,8 @@ def run_forever(settings: Settings) -> None:
     tick = TickState()
     while True:
         try:
-            now = datetime.datetime.now(datetime.timezone.utc)
+            now = datetime.datetime.now(datetime.UTC)
             time.sleep(max((next_aligned_tick(now, interval_minutes=1) - now).total_seconds(), 0))
-            run_tick(settings, tick, datetime.datetime.now(datetime.timezone.utc))
+            run_tick(settings, tick, datetime.datetime.now(datetime.UTC))
         except Exception:
             logger.exception("Unexpected error in the local pricing loop; continuing")

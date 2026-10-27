@@ -289,6 +289,6 @@ def map_meter_readings(
             rows.append({"ts": ts, "metric": "grid_import_wh_lifetime", "value": reading["actEnergyDlvd"]})
             rows.append({"ts": ts, "metric": "grid_export_wh_lifetime", "value": reading["actEnergyRcvd"]})
             phases = min(meter.get("phaseCount", 3), len(_PHASE_LETTERS))
-            for letter, channel in zip(_PHASE_LETTERS[:phases], reading.get("channels", [])):
+            for letter, channel in zip(_PHASE_LETTERS[:phases], reading.get("channels", []), strict=False):
                 rows.append({"ts": ts, "metric": f"grid_voltage_ph_{letter}_v", "value": channel["voltage"]})
     return rows

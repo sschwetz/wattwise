@@ -10,7 +10,7 @@ from local_pricing_collector.core_api_client import CoreApiError
 from local_pricing_collector.models import Coverage, LocalSource, RepriceMarker
 from local_pricing_collector.triggers import SourceState, Triggers
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 SETTINGS = Settings(core_api_url="http://core-api:8000", collector_key="k")
 # 00:00Z on 15 June is 10:00 in Sydney. Local midnights: 2026-06-15T14:00Z and 2026-06-16T14:00Z.
 NOW = datetime.datetime(2026, 6, 15, 0, 0, tzinfo=UTC)
@@ -190,7 +190,7 @@ def test_sync_child_exits_with_the_sync_result(monkeypatch):
 
 
 class FakeProcess:
-    instances: list["FakeProcess"] = []
+    instances: list[FakeProcess] = []
 
     def __init__(self, target, args):
         self.target = target

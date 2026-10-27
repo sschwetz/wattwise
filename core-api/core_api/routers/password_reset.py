@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import logging
 import secrets
 import time
 
@@ -10,15 +9,14 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from core_api.config import get_settings
+from core_api.db import rows_affected
 from core_api.deps import get_db_session, get_email_sender
-from core_api.email_sender import EmailSender
+from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
 from core_api.models.identity import PasswordResetToken, User
 from core_api.schemas import PasswordResetConfirmIn, PasswordResetRequestIn, PasswordResetRequestOut
 from core_api.security import hash_password, hash_token
 from core_api.timing import pad_to_minimum_duration
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth/password-reset", tags=["auth"])
 
@@ -40,7 +38,7 @@ def _issue_reset_token(db: Session, user: User) -> str:
     (the only place it exists in plaintext — it goes in the email and is never
     recoverable from the DB)."""
     raw_token = secrets.token_urlsafe(32)
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     db.add(
         PasswordResetToken(
             user_id=user.id,
@@ -62,14 +60,13 @@ def _try_send_reset_email(email_sender: EmailSender, to: str, raw_token: str) ->
     relay outage is an operational problem, surfaced in the log here, not
     something to report to an unauthenticated caller."""
     reset_url = f"{get_settings().frontend_base_url}/reset-password?token={raw_token}"
-    try:
-        email_sender.send(
-            to=to,
-            subject="Reset your password",
-            body=f"Click the link to reset your password: {reset_url}\nThis link expires in 1 hour.",
-        )
-    except Exception:
-        logger.exception("Failed to send password-reset email")
+    try_send_email(
+        email_sender,
+        to,
+        "Reset your password",
+        f"Click the link to reset your password: {reset_url}\nThis link expires in 1 hour.",
+        "password-reset",
+    )
 
 
 @router.post("/request", response_model=PasswordResetRequestOut)
@@ -116,7 +113,7 @@ def _claim_token(db: Session, raw_token: str, now: datetime.datetime) -> Passwor
     # before comparing against `now`, which is always aware.
     expires_at = token.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+        expires_at = expires_at.replace(tzinfo=datetime.UTC)
     if expires_at <= now:
         raise AppError(400, "invalid_token", "This reset link is invalid or has expired")
 
@@ -125,7 +122,7 @@ def _claim_token(db: Session, raw_token: str, now: datetime.datetime) -> Passwor
         .where(PasswordResetToken.id == token.id, PasswordResetToken.used_at.is_(None))
         .values(used_at=now)
     )
-    if result.rowcount == 0:
+    if rows_affected(result) == 0:
         raise AppError(400, "invalid_token", "This reset link is invalid or has expired")
     return token
 
@@ -152,7 +149,7 @@ def _invalidate_outstanding_tokens(db: Session, user_id: int, now: datetime.date
 
 @router.post("/confirm", status_code=status.HTTP_204_NO_CONTENT)
 def confirm_reset(payload: PasswordResetConfirmIn, db: Session = Depends(get_db_session)) -> None:
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     token = _claim_token(db, payload.token, now)
     user = db.get(User, token.user_id)
     assert user is not None  # FK guarantees the referenced user still exists

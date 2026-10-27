@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +12,6 @@ from core_api.db import make_engine, make_session_factory
 from core_api.email_sender import EmailSender, SmtpEmailSender
 from core_api.errors import install_error_handlers
 from core_api.live import LiveHub
-from core_api.scheduler import build_scheduler
 from core_api.routers.account import router as account_router
 from core_api.routers.auth import router as auth_router
 from core_api.routers.billing import router as billing_router
@@ -29,6 +28,7 @@ from core_api.routers.query import router as query_router
 from core_api.routers.sites import router as sites_router
 from core_api.routers.sources import router as sources_router
 from core_api.routers.totp import router as totp_router
+from core_api.scheduler import build_scheduler
 
 
 def create_app(database_url: str | None = None, email_sender: EmailSender | None = None) -> FastAPI:

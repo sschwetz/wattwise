@@ -89,7 +89,7 @@ def map_live_values(conditions: list[dict]) -> dict[str, float]:
     rain baseline is untouched and a fresh state emits no rain_mm. The ISS or
     barometer block is skipped when absent.
     """
-    ts = datetime.datetime.now(datetime.timezone.utc)
+    ts = datetime.datetime.now(datetime.UTC)
     readings: list[dict] = []
     iss = next((c for c in conditions if c["data_structure_type"] == 1), None)
     if iss is not None:

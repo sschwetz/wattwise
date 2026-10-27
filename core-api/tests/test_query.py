@@ -23,7 +23,7 @@ from core_api.models.readings import EnergyMetric, EnergyReading
 from core_api.models.sources import Source, SourceKind
 from core_api.security import create_access_token
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def seed_energy_reading(db_url: str) -> tuple[int, int]:
@@ -396,7 +396,7 @@ def seed_forecast_intervals(db_url: str) -> tuple[int, int]:
     five = datetime.timedelta(minutes=5)
     one_second = datetime.timedelta(seconds=1)
     # (offset from now, price_low): settled (no band), forecast with band, forecast without band
-    for i, (offset, low) in enumerate([(-10, None), (10, decimal.Decimal("20")), (20, None)]):
+    for offset, low in [(-10, None), (10, decimal.Decimal("20")), (20, None)]:
         start = base + datetime.timedelta(minutes=offset)
         session.add(
             PriceInterval(

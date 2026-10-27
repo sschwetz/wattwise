@@ -7,16 +7,28 @@ from typing import Protocol, TypeVar
 from core_api.time_utils import as_utc
 
 DAY_MINUTES = 24 * 60
-_FAR_FUTURE = datetime.datetime.max.replace(tzinfo=datetime.timezone.utc)
+_FAR_FUTURE = datetime.datetime.max.replace(tzinfo=datetime.UTC)
 
 
 class RateWindowLike(Protocol):
-    effective_from: datetime.datetime
-    effective_to: datetime.datetime | None
-    months: Sequence[int]
-    days_of_week: Sequence[int]
-    start_time: datetime.time
-    end_time: datetime.time
+    # Read-only properties, so list[int] columns and pydantic fields both match.
+    @property
+    def effective_from(self) -> datetime.datetime: ...
+
+    @property
+    def effective_to(self) -> datetime.datetime | None: ...
+
+    @property
+    def months(self) -> Sequence[int]: ...
+
+    @property
+    def days_of_week(self) -> Sequence[int]: ...
+
+    @property
+    def start_time(self) -> datetime.time: ...
+
+    @property
+    def end_time(self) -> datetime.time: ...
 
 
 W = TypeVar("W", bound=RateWindowLike)

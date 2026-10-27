@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import smtplib
 from email.message import EmailMessage
 from typing import Protocol
 
 from core_api.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class EmailSender(Protocol):
@@ -39,3 +42,14 @@ class FakeEmailSender:
 
     def send(self, to: str, subject: str, body: str) -> None:
         self.sent.append((to, subject, body))
+
+
+def try_send_email(email_sender: EmailSender, to: str, subject: str, body: str, description: str) -> None:
+    """Send an email, logging instead of raising on delivery failure.
+
+    Callers use this when a relay outage must not change the HTTP response.
+    `description` names the email in the log line."""
+    try:
+        email_sender.send(to=to, subject=subject, body=body)
+    except Exception:
+        logger.exception("Failed to send %s email", description)

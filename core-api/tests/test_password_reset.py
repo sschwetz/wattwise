@@ -127,10 +127,11 @@ def test_confirm_rejects_reused_token(client, fake_email_sender):
 def test_confirm_rejects_expired_token(client, fake_email_sender, app_and_db_url):
     import datetime
 
+    from sqlalchemy import select
+
     from core_api.db import make_engine, make_session_factory
     from core_api.models.identity import PasswordResetToken, User
     from core_api.security import hash_token
-    from sqlalchemy import select
 
     _app, db_url = app_and_db_url
     _register_and_confirm(client, "a@example.com", "old-password")
@@ -142,7 +143,7 @@ def test_confirm_rejects_expired_token(client, fake_email_sender, app_and_db_url
         PasswordResetToken(
             user_id=user.id,
             token_hash=hash_token("expired-token"),
-            expires_at=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1),
+            expires_at=datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1),
         )
     )
     session.commit()

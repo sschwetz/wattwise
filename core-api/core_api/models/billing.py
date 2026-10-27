@@ -53,7 +53,7 @@ class BillingCycle(Base):
     anchor_day: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
-WINDOW_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+WINDOW_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
 
 
 class DatedWindowMixin:

@@ -35,7 +35,7 @@ def verify_password(password: str, password_hash: str | None) -> bool:
 
 def create_access_token(user_id: int) -> str:
     settings = get_settings()
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     payload = {
         "sub": str(user_id),
         "iat": now,
@@ -59,7 +59,7 @@ def create_scoped_token(user_id: int, scope: str, *, expiry_minutes: int = 5) ->
     endpoint. jti lets the caller track failed-attempt counts server-side
     without the stateless JWT itself needing to carry mutable state."""
     settings = get_settings()
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     jti = secrets.token_urlsafe(16)
     payload = {
         "sub": str(user_id),

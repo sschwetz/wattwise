@@ -190,15 +190,15 @@ def test_adding_a_demand_window_into_a_finalized_period_clears_its_stored_charge
 
     _, db_url = app_and_db_url
     tariff_id = _tariff(client, owner_site)
-    slot = datetime.datetime(2026, 3, 10, tzinfo=datetime.timezone.utc)
+    slot = datetime.datetime(2026, 3, 10, tzinfo=datetime.UTC)
     session = make_session_factory(make_engine(db_url))()
     session.add(DemandInterval(site_id=owner_site[1], interval_start=slot, interval_end=slot + datetime.timedelta(minutes=5), rolling_sum_w=1.0))
     session.flush()
     session.add(
         DemandCharge(
             site_id=owner_site[1],
-            billing_period_start=datetime.datetime(2026, 3, 1, tzinfo=datetime.timezone.utc),
-            billing_period_end=datetime.datetime(2026, 4, 1, tzinfo=datetime.timezone.utc),
+            billing_period_start=datetime.datetime(2026, 3, 1, tzinfo=datetime.UTC),
+            billing_period_end=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC),
             peak_interval_start=slot,
             peak_avg_import_w=1.0,
             rate_applied="45.0",

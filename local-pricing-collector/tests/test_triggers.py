@@ -3,9 +3,10 @@ from __future__ import annotations
 import datetime
 import zoneinfo
 
+from local_pricing_collector.models import RepriceMarker
 from local_pricing_collector.triggers import SourceState, Triggers, after_success, due
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 SYDNEY = zoneinfo.ZoneInfo("Australia/Sydney")
 ADELAIDE = zoneinfo.ZoneInfo("Australia/Adelaide")
 KEY = "windows-a"
@@ -123,8 +124,6 @@ def test_a_scheduled_push_keeps_the_old_windows_key():
     state = after_success(before, triggers, at(2026, 6, 15, 13, 59), SYDNEY, "new")
     assert state.windows_key == "old"
 
-
-from local_pricing_collector.models import RepriceMarker
 
 MARKER = RepriceMarker(datetime.datetime(2026, 6, 1, tzinfo=UTC), 3)
 

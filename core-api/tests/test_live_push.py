@@ -8,13 +8,13 @@ from sqlalchemy import func, select
 
 from core_api.db import make_engine, make_session_factory
 from core_api.live import LIVE_MAX_AGE_SECONDS, MAX_LIVE_VALUES, LiveHub, LiveSample
-from core_api.schemas import _check_live_values
 from core_api.models.readings import EnergyReading, WeatherReading
 from core_api.models.sources import Source, SourceKind
+from core_api.schemas import _check_live_values
 from tests.conftest import ENVOY_COLLECTOR_KEY, WEATHER_COLLECTOR_KEY
 from tests.test_ingestion import make_energy_source_full
 
-T0 = datetime.datetime(2026, 1, 1, 10, 0, 0, tzinfo=datetime.timezone.utc)
+T0 = datetime.datetime(2026, 1, 1, 10, 0, 0, tzinfo=datetime.UTC)
 
 
 def sample(source_id: int = 1, seconds: int = 0, value: float = 1.0) -> LiveSample:

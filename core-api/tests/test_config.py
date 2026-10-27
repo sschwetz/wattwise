@@ -4,7 +4,6 @@ import pytest
 
 from core_api.config import get_settings
 
-
 REQUIRED_ENV = {
     "JWT_SECRET": "test-secret",
     "ENVOY_COLLECTOR_KEY": "envoy-key",

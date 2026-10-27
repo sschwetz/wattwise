@@ -9,11 +9,19 @@ from sqlalchemy.orm import Session
 
 from core_api.deps import get_db_session, get_source_by_collector_key, require_source_kind
 from core_api.models.local_rates import LocalRepriceMarker
-from core_api.models.pricing import PriceChannel, PriceGapMarker, PriceInterval, PriceReading
+from core_api.models.pricing import PriceGapMarker, PriceInterval, PriceReading
 from core_api.models.readings import EnergyReading, WeatherReading
 from core_api.models.sources import Source, SourceKind
-from core_api.pricing_gaps import coalesce_missing_days, covered_days as covered_days_from, missing_days_in_range
-from core_api.schemas import ChannelCoverageOut, GapMarkerCreate, PriceCoverageOut, RepriceMarkerClear, SiteDataFloorOut, UtcDatetime
+from core_api.pricing_gaps import coalesce_missing_days, missing_days_in_range
+from core_api.pricing_gaps import covered_days as covered_days_from
+from core_api.schemas import (
+    ChannelCoverageOut,
+    GapMarkerCreate,
+    PriceCoverageOut,
+    RepriceMarkerClear,
+    SiteDataFloorOut,
+    UtcDatetime,
+)
 
 router = APIRouter(prefix="/sources/{source_id}/prices", tags=["pricing-backfill"])
 
@@ -39,7 +47,7 @@ def get_price_gaps(
     db: Session = Depends(get_db_session),
 ) -> dict:
     since_date = since.date()
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     today = now.date()
 
     channels = list(

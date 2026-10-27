@@ -4,11 +4,11 @@ import datetime
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError, StatementError
 
 from core_api.models.billing import BillingCycle, DemandCharge, DemandInterval
-from core_api.models.identity import Site, SiteAccess, SiteAccessRole, User
+from core_api.models.identity import SiteAccess, SiteAccessRole, User
 from core_api.models.readings import (
     ENERGY_METRIC_AGGREGATION,
     AggregationMethod,
@@ -227,7 +227,7 @@ def test_password_reset_token_round_trip(db, user):
     token = PasswordResetToken(
         user_id=user.id,
         token_hash="b" * 64,
-        expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1),
+        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=1),
     )
     db.add(token)
     db.commit()
@@ -252,7 +252,7 @@ def test_email_change_token_round_trip(db, user):
         user_id=user.id,
         new_email="new@example.com",
         token_hash="c" * 64,
-        expires_at=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+        expires_at=datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
     )
     db.add(token)
     db.commit()

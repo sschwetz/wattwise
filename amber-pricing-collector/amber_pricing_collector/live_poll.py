@@ -7,7 +7,12 @@ import time
 from collections.abc import Callable
 
 from amber_pricing_collector.amber_client import fetch_current_prices
-from amber_pricing_collector.core_api_client import CoreApiError, fetch_collector_sources, fetch_source_config, push_price_intervals
+from amber_pricing_collector.core_api_client import (
+    CoreApiError,
+    fetch_collector_sources,
+    fetch_source_config,
+    push_price_intervals,
+)
 from amber_pricing_collector.mapping import map_price_intervals
 from amber_pricing_collector.scheduling import next_aligned_tick
 
@@ -92,7 +97,7 @@ def _run_poll_loop_forever(
     'spawn' multiprocessing start methods."""
     while True:
         try:
-            now = datetime.datetime.now(datetime.timezone.utc)
+            now = datetime.datetime.now(datetime.UTC)
             tick = next_tick(now)
             time.sleep(max((tick - now).total_seconds(), 0))
 

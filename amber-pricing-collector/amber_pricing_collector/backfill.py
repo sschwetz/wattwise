@@ -66,7 +66,7 @@ def _backfill_one_gap(
         if mapped:
             push_price_intervals(core_api_url, source_id, collector_key, mapped, timeout=PUSH_TIMEOUT_SECONDS)
 
-        target_channel_present = any(CHANNEL_MAP.get(i.get("channelType")) == channel for i in raw_intervals)
+        target_channel_present = any(CHANNEL_MAP.get(i.get("channelType", "")) == channel for i in raw_intervals)
         if not target_channel_present:
             for day in _days_in_range(chunk_start, chunk_end):
                 report_gap_marker(core_api_url, source_id, collector_key, channel, day)

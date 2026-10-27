@@ -5,7 +5,7 @@ import decimal
 
 from core_api.local_reprice import reprice_start
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def dt(*args) -> datetime.datetime:
