@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import os
 import zoneinfo
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -75,7 +76,7 @@ def client(app_and_db_url):
 
 
 @pytest.fixture()
-def db(tmp_path) -> Session:
+def db(tmp_path) -> Iterator[Session]:
     engine = make_engine(f"sqlite:///{tmp_path}/test.db")
     Base.metadata.create_all(engine)
     session_factory = make_session_factory(engine)

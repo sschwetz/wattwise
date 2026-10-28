@@ -131,7 +131,9 @@ def push(client, source_id, kind, key=ENVOY_COLLECTOR_KEY, content=None):
 def row_count(db_url: str, model) -> int:
     session = make_session_factory(make_engine(db_url))()
     try:
-        return session.scalar(select(func.count()).select_from(model))
+        count = session.scalar(select(func.count()).select_from(model))
+        assert count is not None
+        return count
     finally:
         session.close()
 

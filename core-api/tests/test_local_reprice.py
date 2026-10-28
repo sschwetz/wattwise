@@ -8,8 +8,8 @@ from core_api.local_reprice import reprice_start
 UTC = datetime.UTC
 
 
-def dt(*args) -> datetime.datetime:
-    return datetime.datetime(*args, tzinfo=UTC)
+def dt(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime.datetime:
+    return datetime.datetime(year, month, day, hour, minute, tzinfo=UTC)
 
 
 def snap(**overrides) -> dict:

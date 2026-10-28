@@ -22,6 +22,7 @@ def invite(client, owner_id: int, site_id: int, email: str):
 def set_status(db_url: str, invite_id: int, status: InviteStatus) -> None:
     session = make_session_factory(make_engine(db_url))()
     row = session.get(SiteInvite, invite_id)
+    assert row is not None
     row.status = status
     session.commit()
     session.close()
@@ -248,7 +249,9 @@ def test_every_invite_response_includes_the_inviter_email(client, app_and_db_url
 
 def unconfirm(db_url: str, user_id: int) -> None:
     session = make_session_factory(make_engine(db_url))()
-    session.get(User, user_id).email_confirmed = False
+    user = session.get(User, user_id)
+    assert user is not None
+    user.email_confirmed = False
     session.commit()
     session.close()
 
@@ -386,6 +389,7 @@ def revoke(client, user_id: int, site_id: int, invite_id: int):
 def load_invite(db_url: str, invite_id: int) -> SiteInvite:
     session = make_session_factory(make_engine(db_url))()
     row = session.get(SiteInvite, invite_id)
+    assert row is not None
     session.expunge(row)
     session.close()
     return row
