@@ -54,7 +54,7 @@ function TabRail({ siteId }: { siteId: number }) {
 export function SettingsShell({ sites, site, tab }: { sites: Site[]; site: Site; tab: string }) {
   const access = useSiteAccess(site);
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4">
       <div className="flex items-center gap-2">
         <BackLink to={`/sites/${site.id}`} />
         <h1 className="font-display text-2xl font-semibold text-ink">Site settings</h1>
