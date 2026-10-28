@@ -168,3 +168,22 @@ def test_list_sites_includes_disabled_sites_with_flag(client, app_and_db_url):
     client.patch(f"/api/v1/sites/{site_id}", json={"enabled": False}, headers=auth(owner_id))
     sites = client.get("/api/v1/sites", headers=auth(owner_id)).json()
     assert [(s["id"], s["enabled"]) for s in sites] == [(site_id, False)]
+
+
+def test_create_site_rejects_unknown_timezone(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    for bad in ("Mars/Olympus", "", "../etc/passwd", "Europe"):
+        resp = client.post("/api/v1/sites", json={"name": "Home", "timezone": bad}, headers=auth(owner_id))
+        assert resp.status_code == 422, bad
+
+
+def test_patch_site_rejects_unknown_timezone(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "owner@example.com")
+    site = client.post(
+        "/api/v1/sites", json={"name": "Home", "timezone": "Australia/Sydney"}, headers=auth(owner_id)
+    ).json()
+    resp = client.patch(f"/api/v1/sites/{site['id']}", json={"timezone": "Mars/Olympus"}, headers=auth(owner_id))
+    assert resp.status_code == 422
+    assert client.get(f"/api/v1/sites/{site['id']}", headers=auth(owner_id)).json()["timezone"] == "Australia/Sydney"

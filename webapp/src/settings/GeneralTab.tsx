@@ -1,9 +1,9 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { errorMessage } from "../api/client";
+import { TimezoneSelect } from "../sites/TimezoneSelect";
 import { type Site, useUpdateSite } from "../sites/useSites";
 import { AccessNote } from "./AccessNote";
-import { TimezoneSelect } from "./TimezoneSelect";
 import { useSiteAccess } from "./useSiteAccess";
 
 const inputClass =

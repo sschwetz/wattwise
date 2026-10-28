@@ -45,7 +45,7 @@ describe("AddSitePage", () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({ id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: true });
     renderPage();
     await userEvent.type(screen.getByPlaceholderText("Site name"), "Cabin");
-    await userEvent.type(screen.getByPlaceholderText("Timezone (e.g. Australia/Sydney)"), "Australia/Hobart");
+    await userEvent.selectOptions(screen.getByLabelText("Timezone"), "Australia/Hobart");
     await userEvent.click(screen.getByText("Create site"));
     expect(await screen.findByText("Dashboard for site")).toBeInTheDocument();
   });

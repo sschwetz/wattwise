@@ -6,6 +6,11 @@ function listTimezones(): string[] {
   return zones.includes("UTC") ? zones : ["UTC", ...zones];
 }
 
+/** The browser's own zone, used as the starting choice on the add-site form. */
+export function browserTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 /** A site's stored zone may be missing from the browser list, so it is added rather than dropped. */
 export function TimezoneSelect({
   value,

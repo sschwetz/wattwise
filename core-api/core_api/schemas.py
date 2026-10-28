@@ -3,6 +3,8 @@ from __future__ import annotations
 import datetime
 import decimal
 import math
+import zoneinfo
+from functools import lru_cache
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, field_validator, model_validator
@@ -175,9 +177,21 @@ class TotpReenrollConfirmOut(BaseModel):
     recovery_codes: list[str]
 
 
+@lru_cache(maxsize=1)
+def _known_timezones() -> frozenset[str]:
+    return frozenset(zoneinfo.available_timezones())
+
+
+def validate_timezone(value: str) -> str:
+    """Accepts only IANA zone names the server's tz database knows."""
+    if value not in _known_timezones():
+        raise ValueError(f"unknown timezone: {value!r}")
+    return value
+
+
 class SiteCreate(BaseModel):
     name: str
-    timezone: str
+    timezone: Annotated[str, AfterValidator(validate_timezone)]
 
 
 class SiteOut(BaseModel):
@@ -217,7 +231,7 @@ class PendingInviteOut(BaseModel):
 
 class SiteUpdate(BaseModel):
     name: str | None = None
-    timezone: str | None = None
+    timezone: Annotated[str, AfterValidator(validate_timezone)] | None = None
     enabled: bool | None = None
 
 

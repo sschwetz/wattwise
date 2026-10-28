@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AuthCard } from "../layout/AuthCard";
+import { browserTimezone, TimezoneSelect } from "./TimezoneSelect";
 import { useCreateSite } from "./useSites";
 
 /** The "create a site" form, shared by first-run onboarding (SitePickerPage)
@@ -8,7 +9,7 @@ import { useCreateSite } from "./useSites";
  * behavior, just a different card title. */
 export function SiteForm({ title }: { title: string }) {
   const [name, setName] = useState("");
-  const [timezone, setTimezone] = useState("");
+  const [timezone, setTimezone] = useState(browserTimezone());
   const createSite = useCreateSite();
 
   function handleSubmit(event: FormEvent) {
@@ -37,17 +38,15 @@ export function SiteForm({ title }: { title: string }) {
           className="w-full rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
           required
         />
-        <input
-          value={timezone}
-          onChange={(e) => setTimezone(e.target.value)}
-          placeholder="Timezone (e.g. Australia/Sydney)"
-          aria-label="Timezone"
-          name="timezone"
-          autoComplete="off"
-          spellCheck={false}
-          className="w-full rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
-          required
-        />
+        <label className="block space-y-1 text-sm text-ink">
+          Timezone
+          <TimezoneSelect
+            value={timezone}
+            onChange={setTimezone}
+            disabled={false}
+            className="w-full rounded-md border border-line bg-surface px-3 py-2 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60"
+          />
+        </label>
         <button
           type="submit"
           disabled={createSite.isPending}

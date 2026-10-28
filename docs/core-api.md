@@ -63,7 +63,7 @@ All paths are under `/api/v1`. "Owner" means `require_site_owner`, "Viewer" mean
 | Two-factor | `POST /auth/totp/setup/start`, `/setup/confirm`, `/verify` | Scoped tokens |
 | Password reset | `POST /auth/password-reset/request`, `/confirm` | Anyone |
 | Account | `GET/PATCH /users/me`, `PATCH /users/me/profile`, `POST/GET/DELETE /users/me/avatar`, `POST /users/me/password`, `POST /users/me/email/change/request` and `/confirm`, `POST /users/me/totp/reenroll/start` and `/confirm` | Logged-in user. Password, email and TOTP changes require a current password or code. |
-| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}` | Owner for writes. `PATCH` takes `name`, `timezone` and `enabled`. `GET /sites` returns disabled sites too, with `enabled: false`. |
+| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}` | Owner for writes. `PATCH` takes `name`, `timezone` and `enabled`. A `timezone` that is not an IANA zone name returns 422. `GET /sites` returns disabled sites too, with `enabled: false`. |
 | Invitations (site side) | `POST/GET /sites/{id}/invites`, `GET /sites/{id}/invites/{iid}`, `POST /sites/{id}/invites/{iid}/revoke` | Owner creates. `GET` list: owner sees all invites, a viewer sees only their own. Revoke: the owner can revoke an `invited` or `accepted` invite. The invitee can revoke only an `accepted` one. |
 | Invitations (recipient side) | `GET /invites/pending`, `POST /invites/{iid}/accept`, `POST /invites/{iid}/decline` | Logged-in user whose confirmed email matches the invite, ignoring case |
 

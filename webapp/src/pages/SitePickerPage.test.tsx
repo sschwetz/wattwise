@@ -75,7 +75,7 @@ describe("SitePickerPage", () => {
     renderPage();
     await screen.findByText("Create your first site");
     await userEvent.type(screen.getByPlaceholderText("Site name"), "Home");
-    await userEvent.type(screen.getByPlaceholderText("Timezone (e.g. Australia/Sydney)"), "Australia/Sydney");
+    await userEvent.selectOptions(screen.getByLabelText("Timezone"), "Australia/Sydney");
     await userEvent.click(screen.getByText("Create site"));
     expect(await screen.findByText("Dashboard for site")).toBeInTheDocument();
   });
@@ -91,7 +91,7 @@ describe("SitePickerPage", () => {
     renderPage();
     await screen.findByText("Create your first site");
     await userEvent.type(screen.getByPlaceholderText("Site name"), "BadSite");
-    await userEvent.type(screen.getByPlaceholderText("Timezone (e.g. Australia/Sydney)"), "Australia/Sydney");
+    await userEvent.selectOptions(screen.getByLabelText("Timezone"), "Australia/Sydney");
     await userEvent.click(screen.getByText("Create site"));
     expect(await screen.findByRole("alert")).toHaveTextContent("invalid");
     expect(screen.queryByText("Dashboard for site")).not.toBeInTheDocument();
