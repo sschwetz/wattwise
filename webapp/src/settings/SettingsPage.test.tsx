@@ -158,7 +158,7 @@ describe("SettingsPage", () => {
     });
 
     function expectNoPageChrome() {
-      expect(screen.queryByRole("link", { name: "Back" })).not.toBeInTheDocument();
+      expect(screen.getAllByRole("link", { name: "Back" })).toHaveLength(1);
       expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     }
 

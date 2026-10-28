@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { BackLink } from "../layout/BackLink";
 import type { Site } from "../sites/useSites";
 import { BillingTab, TariffsTab } from "../pages/BillingPage";
 import { CollectorsTab } from "../pages/SourcesPage";
@@ -54,7 +55,10 @@ export function SettingsShell({ sites, site, tab }: { sites: Site[]; site: Site;
   const access = useSiteAccess(site);
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
-      <h1 className="sr-only">Site settings</h1>
+      <div className="flex items-center gap-2">
+        <BackLink to={`/sites/${site.id}`} />
+        <h1 className="font-display text-2xl font-semibold text-ink">Site settings</h1>
+      </div>
       <SiteChips sites={sites} selectedId={site.id} tab={tab} />
       <div className="flex flex-col gap-4 sm:flex-row">
         <TabRail siteId={site.id} />

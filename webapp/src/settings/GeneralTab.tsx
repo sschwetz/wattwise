@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { errorMessage } from "../api/client";
 import { type Site, useUpdateSite } from "../sites/useSites";
 import { AccessNote } from "./AccessNote";
+import { TimezoneSelect } from "./TimezoneSelect";
 import { useSiteAccess } from "./useSiteAccess";
 
 const inputClass =
@@ -125,16 +126,7 @@ export function GeneralTab({ site }: { site: Site }) {
         </label>
         <label className="block space-y-1 text-sm text-ink">
           Time zone
-          <input
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-            placeholder="Timezone (e.g. Australia/Sydney)"
-            autoComplete="off"
-            spellCheck={false}
-            disabled={readOnly}
-            required
-            className={inputClass}
-          />
+          <TimezoneSelect value={timezone} onChange={setTimezone} disabled={readOnly} className={inputClass} />
         </label>
         {update.isError && (
           <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">

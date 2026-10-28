@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,6 +37,19 @@ describe("GeneralTab", () => {
       if (init?.method === "PATCH") return { ...site, ...JSON.parse(String(init.body)) } as never;
       return [] as never;
     });
+  });
+
+  it("offers IANA zones in a list and saves the chosen one", async () => {
+    const user = userEvent.setup();
+    renderTab();
+    const select = screen.getByLabelText("Time zone");
+    expect(select.tagName).toBe("SELECT");
+    expect(within(select).getByRole("option", { name: "Australia/Perth" })).toBeInTheDocument();
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "Australia/Perth");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patchCalls()).toHaveLength(1));
+    expect(JSON.parse(String(patchCalls()[0][1]?.body))).toMatchObject({ timezone: "Australia/Perth" });
   });
 
   it("saves the name and time zone with a PATCH", async () => {
