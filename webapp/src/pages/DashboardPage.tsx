@@ -18,7 +18,13 @@ import { Tile } from "../dashboard/Tile";
 import { useNow } from "../dashboard/useNow";
 import { TodayPriceChart } from "../dashboard/TodayPriceChart";
 import { type ChartZoom } from "../dashboard/useChartZoom";
-import { type DateRange, useBillingPeriodCost, useHistoricalEnergyReadings, useTodayCost } from "../dashboard/useHistoricalData";
+import {
+  type DateRange,
+  useBillingPeriodCost,
+  useHistoricalEnergyReadings,
+  useTodayCost,
+  useTodayProductionKwh,
+} from "../dashboard/useHistoricalData";
 import {
   type PriceChannel,
   type Reading,
@@ -277,18 +283,34 @@ function MetricTileGrid({
 
   return (
     <div className="space-y-4">
-      {hero && (
-        <Tile
-          label={labels[hero[0]] ?? hero[0]}
-          value={tileValueText(hero[0], hero[1].value, units[hero[0]] ?? "")}
-          accent={heroZeroed ? undefined : "solar"}
-          glow={heroZeroed ? undefined : TILE_GLOW[hero[0]]}
-          hero
-        />
-      )}
+      <div className="grid grid-cols-2 gap-4">
+        {hero && (
+          <Tile
+            label={labels[hero[0]] ?? hero[0]}
+            value={tileValueText(hero[0], hero[1].value, units[hero[0]] ?? "")}
+            accent={heroZeroed ? undefined : "solar"}
+            glow={heroZeroed ? undefined : TILE_GLOW[hero[0]]}
+            hero
+          />
+        )}
+        <TotalProductionTile siteId={siteId} />
+      </div>
       {restTiles.length > 0 && <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">{restTiles}</div>}
     </div>
   );
+}
+
+/** Today's total solar production so far, beside the live production tile. */
+function TotalProductionTile({ siteId }: { siteId: number }) {
+  const { data: kwh, isError } = useTodayProductionKwh(siteId);
+
+  if (isError) {
+    return <ErrorAlert message="Failed to load today's production." />;
+  }
+  if (kwh === undefined) {
+    return null;
+  }
+  return <Tile label="Total Production" value={`${(kwh ?? 0).toFixed(2)} kWh`} accent="solar" hero />;
 }
 
 function windTileValue(speed: Reading, direction: Reading | undefined): string {

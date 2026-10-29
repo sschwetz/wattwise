@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../api/client";
 import { LIVE_POLL_MS, type EnergyMetric, type PriceChannel, type Reading } from "./useLiveReadings";
 import type { PriceReading } from "./priceChart";
-import { dayRangeOffset } from "./dateRange";
+import { dayRangeOffset, startOfDay } from "./dateRange";
 
 export interface CostSummary {
   total_cost_c: number;
@@ -77,6 +77,31 @@ export function useTodayCost(siteId: number, method: "net" | "gross") {
         prorate_fees: "false",
       });
       return apiFetch<CostSummary>(`/api/v1/sites/${siteId}/cost?${params}`);
+    },
+    refetchInterval: LIVE_POLL_MS,
+  });
+}
+
+/** One minute at N watts is N/60000 kWh -- matches core_api.cost.MINUTES_TO_KWH. */
+const MINUTES_TO_KWH = 1 / 60_000;
+
+/** Total solar production (kWh) since local midnight, summed from the
+ * per-minute production_w readings. Null when no reading exists yet today. */
+export function useTodayProductionKwh(siteId: number) {
+  return useQuery({
+    queryKey: ["energy-readings", siteId, "today-production-kwh"],
+    queryFn: async (): Promise<number | null> => {
+      const end = new Date();
+      const params = new URLSearchParams({
+        metric: "production_w",
+        start: startOfDay(end).toISOString(),
+        end: end.toISOString(),
+      });
+      const readings = await apiFetch<Reading[]>(`/api/v1/sites/${siteId}/readings/energy?${params}`);
+      if (readings.length === 0) {
+        return null;
+      }
+      return readings.reduce((sum, reading) => sum + reading.value, 0) * MINUTES_TO_KWH;
     },
     refetchInterval: LIVE_POLL_MS,
   });

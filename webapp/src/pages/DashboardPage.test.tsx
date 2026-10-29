@@ -496,6 +496,19 @@ describe("DashboardPage battery tile background", () => {
     expect(await screen.findByText("55 %")).toBeInTheDocument();
   });
 
+  it("shows total production today as the per-minute production readings summed to kWh", async () => {
+    mockApi({
+      production_w: [
+        { ts: "2026-10-01T00:00:00Z", metric: "production_w", value: 60000 },
+        { ts: "2026-10-01T00:01:00Z", metric: "production_w", value: 60000 },
+        { ts: "2026-10-01T00:02:00Z", metric: "production_w", value: 60000 },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByText("3.00 kWh")).toBeInTheDocument();
+    expect(screen.getByText("Total Production")).toBeInTheDocument();
+  });
+
   it("shows today's rain as the sum of the rain readings since midnight", async () => {
     mockApi({}, undefined, {
       rain_mm: [
