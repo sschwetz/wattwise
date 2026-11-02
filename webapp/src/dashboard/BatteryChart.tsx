@@ -84,7 +84,7 @@ export function BatteryChart({
   return (
     <>
       <ResponsiveContainer width="100%" height={240}>
-        <ComposedChart data={data} style={ZOOMABLE_CHART_STYLE} syncId={syncId} syncMethod="value" {...handlers}>
+        <ComposedChart data={data} barCategoryGap={0} style={ZOOMABLE_CHART_STYLE} syncId={syncId} syncMethod="value" {...handlers}>
           <XAxis
             dataKey="ts"
             ticks={axisTickPlan.ticks}
@@ -100,7 +100,7 @@ export function BatteryChart({
             dataKey="socPct"
             name="Battery charge"
             fill={colors.batterySoc}
-            radius={2}
+            stroke={colors.batterySoc}
             isAnimationActive={false}
           />
           {SERIES.map((s) => (
