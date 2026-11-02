@@ -84,14 +84,22 @@ export function LegendSwatch({
 /** Wraps a chart so that, while its data loads, the chart dims and a spinner
  * with a label shows over it. Without this a slow response looks like a
  * broken, empty chart. */
-export function ChartFrame({ loading, children }: { loading: boolean; children: ReactNode }) {
+export function ChartFrame({
+  loading,
+  label = "Loading chart…",
+  children,
+}: {
+  loading: boolean;
+  label?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="relative" aria-busy={loading}>
       <div className={loading ? "opacity-30 transition-opacity" : "transition-opacity"}>{children}</div>
       {loading && (
         <div role="status" className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-ink-muted">
           <Spinner className="h-5 w-5" />
-          Loading chart…
+          {label}
         </div>
       )}
     </div>
