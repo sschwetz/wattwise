@@ -1,5 +1,6 @@
 import type { TotalsBucket, TotalsRow } from "../dashboard/useHistoricalData";
 import { formatRowTime } from "./totalsFormat";
+import { summarizeTotals, type TotalsSummary } from "./totalsSummary";
 import { DEFAULT_SORT, nextSort, type SortKey, type SortState, sortTotals } from "./totalsSort";
 
 interface Column {
@@ -50,7 +51,7 @@ function EstimateIcon() {
   );
 }
 
-function DemandChargeCell({ row }: { row: TotalsRow }) {
+function DemandChargeCell({ row }: { row: Pick<TotalsRow, "demand_charge_c" | "demand_charge_estimated"> }) {
   if (row.demand_charge_c === null) {
     return <>&ndash;</>;
   }
@@ -60,6 +61,37 @@ function DemandChargeCell({ row }: { row: TotalsRow }) {
       {formatDollars(row.demand_charge_c)}
     </>
   );
+}
+
+function TotalsFooter({ columns, summary }: { columns: Column[]; summary: TotalsSummary }) {
+  return (
+    <tfoot>
+      <tr className="border-t-2 border-line font-medium text-ink">
+        {columns.map((column) => (
+          <td key={column.key} className="px-2 py-2">
+            <SummaryCell summary={summary} column={column} />
+          </td>
+        ))}
+      </tr>
+    </tfoot>
+  );
+}
+
+function SummaryCell({ summary, column }: { summary: TotalsSummary; column: Column }) {
+  switch (column.key) {
+    case "start":
+      return <>Total</>;
+    case "cost_c":
+      return <>{formatDollars(summary.cost_c)}</>;
+    case "avg_import_price_c":
+      return <>{formatPrice(summary.avg_import_price_c)}</>;
+    case "avg_export_price_c":
+      return <>{formatPrice(summary.avg_export_price_c)}</>;
+    case "demand_charge_c":
+      return <DemandChargeCell row={summary} />;
+    default:
+      return <>{formatKwh(summary[column.key])}</>;
+  }
 }
 
 function Cell({ row, column, bucket }: { row: TotalsRow; column: Column; bucket: TotalsBucket }) {
@@ -137,6 +169,7 @@ export function TotalsTable({
             </tr>
           ))}
         </tbody>
+        {rows.length > 0 && <TotalsFooter columns={columns} summary={summarizeTotals(rows)} />}
       </table>
     </div>
   );
