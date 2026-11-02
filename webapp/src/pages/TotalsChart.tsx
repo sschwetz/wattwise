@@ -1,4 +1,4 @@
-import { Bar, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, ComposedChart, Line, type MouseHandlerDataParam, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { LegendSwatch } from "../dashboard/chartParts";
 import { axisProps, SWATCH_COLORS, useChartColors, yAxisProps } from "../dashboard/chartStyle";
 import type { TotalsBucket, TotalsRow } from "../dashboard/useHistoricalData";
@@ -91,15 +91,37 @@ function ChartLegend() {
 
 /**
  * Average power (lines, kW) and battery charge level (bars, 0 to 100%) for
- * each day, hour or minute in the table below it.
+ * each day, hour or minute in the table below it. Clicking a day or an hour
+ * calls `onSelectRow` with that row, as clicking its table row does; minutes
+ * are the lowest level, so clicking one does nothing.
  */
-export function TotalsChart({ rows, bucket }: { rows: TotalsRow[]; bucket: TotalsBucket }) {
+export function TotalsChart({
+  rows,
+  bucket,
+  onSelectRow,
+}: {
+  rows: TotalsRow[];
+  bucket: TotalsBucket;
+  onSelectRow: (row: TotalsRow) => void;
+}) {
   const colors = useChartColors();
   const data = toChartPoints(rows, bucket);
+  const drillable = bucket !== "minute";
+  const handleClick = ({ activeTooltipIndex }: MouseHandlerDataParam) => {
+    const row = typeof activeTooltipIndex === "number" ? rows[activeTooltipIndex] : undefined;
+    if (row) {
+      onSelectRow(row);
+    }
+  };
   return (
     <div data-testid="totals-chart">
       <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart data={data} barCategoryGap={0}>
+        <ComposedChart
+          data={data}
+          barCategoryGap={0}
+          style={drillable ? { cursor: "pointer" } : undefined}
+          onClick={drillable ? handleClick : undefined}
+        >
           <XAxis dataKey="label" minTickGap={24} {...axisProps(colors)} />
           <YAxis yAxisId="pct" domain={[0, 100]} {...yAxisProps(colors, "%")} />
           <YAxis yAxisId="kw" {...yAxisProps(colors, "kW", "right")} />

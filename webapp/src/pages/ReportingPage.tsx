@@ -115,7 +115,7 @@ function HistoryAndCost({ siteId }: { siteId: number }) {
         {rows && (
           <ChartFrame loading={isPlaceholderData} label="Loading report…">
             <div className="space-y-4">
-              <TotalsChart rows={rows} bucket={bucket} />
+              <TotalsChart rows={rows} bucket={bucket} onSelectRow={drillInto} />
               <TotalsTable view={{ bucket, rows }} sorting={{ sort, onSort: setSort }} onSelectRow={drillInto} />
             </div>
           </ChartFrame>
