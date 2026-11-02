@@ -1,4 +1,4 @@
-import { Bar, ComposedChart, Line, type MouseHandlerDataParam, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, ComposedChart, Line, type MouseHandlerDataParam, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { LegendSwatch } from "../dashboard/chartParts";
 import { axisProps, SWATCH_COLORS, useChartColors, yAxisProps } from "../dashboard/chartStyle";
 import type { TotalsBucket, TotalsRow } from "../dashboard/useHistoricalData";
@@ -90,7 +90,7 @@ function ChartLegend() {
 }
 
 /**
- * Average power (lines, kW) and battery charge level (bars, 0 to 100%) for
+ * Average power (lines, kW) and battery charge level (area, 0 to 100%) for
  * each day, hour or minute in the table below it. Clicking a day or an hour
  * calls `onSelectRow` with that row, as clicking its table row does; minutes
  * are the lowest level, so clicking one does nothing.
@@ -118,7 +118,6 @@ export function TotalsChart({
       <ResponsiveContainer width="100%" height={260}>
         <ComposedChart
           data={data}
-          barCategoryGap={0}
           style={drillable ? { cursor: "pointer" } : undefined}
           onClick={drillable ? handleClick : undefined}
         >
@@ -126,7 +125,16 @@ export function TotalsChart({
           <YAxis yAxisId="pct" domain={[0, 100]} {...yAxisProps(colors, "%")} />
           <YAxis yAxisId="kw" {...yAxisProps(colors, "kW", "right")} />
           <Tooltip content={(props) => <ChartTooltip {...props} />} />
-          <Bar yAxisId="pct" dataKey="socPct" name="Battery charge" fill={colors.batterySoc} stroke={colors.batterySoc} isAnimationActive={false} />
+          <Area
+            yAxisId="pct"
+            type="monotone"
+            dataKey="socPct"
+            name="Battery charge"
+            fill={colors.batterySoc}
+            stroke={colors.batterySoc}
+            fillOpacity={1}
+            isAnimationActive={false}
+          />
           {LINES.map((line) => (
             <Line
               key={line.key}

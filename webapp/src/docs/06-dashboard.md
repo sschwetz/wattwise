@@ -110,11 +110,11 @@ This chart and Today's Pricing above it share one zoom. Drag across either to zo
 
 ## Battery chart
 
-![Battery charge level as bars, with solar, grid and house power lines](images/dashboard-battery.png)
+![Battery charge level as a filled area, with solar, grid and house power lines](images/dashboard-battery.png)
 
 Below the grid and cost chart, the Battery chart shows today in 5-minute steps. It shares the zoom and hover position with the two charts above it. It appears only once your site has reported a battery reading today.
 
-- **Amber bars** are the battery's charge level at the end of each 5 minutes, from 0 to 100% (left axis).
+- **The filled area** is the battery's charge level at the end of each 5 minutes, from 0 to 100% (left axis). Its top edge is drawn as a smooth curve between readings.
 - **Solid lines** are power going into the battery, in kW (right axis): solar in green and grid in salmon.
 - **Dashed lines** are power coming out of the battery: to the house in blue and to the grid in green. The to-the-grid line is drawn below zero, the way grid export is on the chart above.
 
@@ -179,7 +179,7 @@ The hour and minute tables have these columns: **Hour** or **Time**, **Cost**, *
 Above the table on all three levels, a chart covers the same span as the table, in days, hours or minutes. Hover over it to see the values.
 
 - **Lines** show average power in kW over each row: Production, Consumption, Grid import, Grid export, Battery import (charge power) and Battery export (discharge power, dashed).
-- **Bars** show the battery charge as a percentage on a 0 to 100% left axis. Each bar is the last reading in its row. The bars touch each other, so the chart reads like a battery meter.
+- **The filled area** shows the battery charge as a percentage on a 0 to 100% left axis. It has one point per row, the last reading in that row, joined by a smooth curve.
 
 ### While a report loads
 

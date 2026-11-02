@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Bar, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { BatteryChartPoint } from "./batteryFlows";
 import { LegendSwatch, ZoomSelectionArea } from "./chartParts";
 import { axisProps, SWATCH_COLORS, useChartColors, yAxisProps, ZOOMABLE_CHART_STYLE } from "./chartStyle";
@@ -62,7 +62,7 @@ function BatteryTooltip({
 }
 
 /**
- * Battery charge level (bars, 0 to 100%) over the day against the power flowing
+ * Battery charge level (smoothed area, 0 to 100%) over the day against the power flowing
  * into the battery from solar and the grid and out of it to the house and
  * the grid (lines, kW). Drag to zoom; the zoom and hover are shared with the
  * page's other today charts through `onZoom` and `syncId`.
@@ -84,7 +84,7 @@ export function BatteryChart({
   return (
     <>
       <ResponsiveContainer width="100%" height={240}>
-        <ComposedChart data={data} barCategoryGap={0} style={ZOOMABLE_CHART_STYLE} syncId={syncId} syncMethod="value" {...handlers}>
+        <ComposedChart data={data} style={ZOOMABLE_CHART_STYLE} syncId={syncId} syncMethod="value" {...handlers}>
           <XAxis
             dataKey="ts"
             ticks={axisTickPlan.ticks}
@@ -95,12 +95,14 @@ export function BatteryChart({
           <YAxis yAxisId="kw" {...yAxisProps(colors, "kW", "right")} />
           <Tooltip content={(props) => <BatteryTooltip {...props} />} />
           <ReferenceLine yAxisId="kw" y={0} stroke={colors.line} />
-          <Bar
+          <Area
             yAxisId="pct"
+            type="monotone"
             dataKey="socPct"
             name="Battery charge"
             fill={colors.batterySoc}
             stroke={colors.batterySoc}
+            fillOpacity={1}
             isAnimationActive={false}
           />
           {SERIES.map((s) => (
