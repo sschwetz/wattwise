@@ -122,9 +122,11 @@ The collectors report total battery charge and discharge, not where the energy c
 
 ## Reporting page
 
-Open **Reporting** in the sidebar to see a chart and a table of totals for a month or a billing period. You can drill from days into hours and from hours into minutes.
+Open **Reporting** in the sidebar to see a chart and a table of totals for a month or a billing period. You can drill from days into hours and from hours into minutes, by clicking either the chart or the table.
 
 ### Daily totals
+
+![The Reporting page for October 2026: a month picker, Net and Gross options, a chart and the daily table](images/reporting-days.png)
 
 The page has a month picker and **Net** and **Gross** options. Below them is a chart, then a table with one row for each day, ending at today.
 
@@ -144,6 +146,10 @@ The month picker is empty by default and shows **Current billing period**. Pick 
 | **Grid to battery** | Battery charging estimated to come from the grid, in kWh |
 | **Total demand charge** | The day's share of the billing period's [demand charge](07-billing.md#demand-charges) |
 
+The last row of the table is **Total**. It adds up **Cost**, the energy columns and **Total demand charge** for every row listed. On the hour and minute views it also shows the **Avg import price** and **Avg export price** as the plain average of the rows that have a price. Rows with no price are left out of that average, and the cell shows a dash when no row has one. The average is not weighted by energy, so a quiet hour counts the same as a busy one.
+
+![The bottom of the daily table, with the Total row](images/reporting-total-row.png)
+
 Rows start sorted by date, newest first. Click a column header to sort by it, and click again to reverse the order. The sort stays when you change the month and when you drill in.
 
 The solar and grid split of battery charging is an estimate. For each minute, solar feeds the house first, then the battery. The rest of the charge counts as grid.
@@ -152,9 +158,15 @@ A billing period's demand charge is the peak 30-minute average import, times the
 
 ### Hours and minutes
 
-Click a day row. The table clears and lists that day by hour. Click an hour row to list it by minute. Minute rows do not click through. Hours and minutes after the current hour or minute are not listed.
+Click a day row, or click that day on the chart. The page lists that day by hour. Click an hour row, or an hour on the chart, to list it by minute. Minute rows and the minute chart do not click through.
+
+![One day listed by hour](images/reporting-hours.png)
+
+On the chart, a click opens the day or hour under the pointer, wherever it lands along the height of the chart. The pointer turns into a hand on the day and hour charts. Hours and minutes after the current hour or minute are not listed.
 
 On the hour and minute views, a back arrow (the same `<` as on the settings pages) goes up one level and keeps the month. A heading with the date, and the hour on the minute view, replaces the month picker. The level is in the page address (`?month=&day=&hour=`), so the browser's back button also goes up a level.
+
+![One hour listed by minute](images/reporting-minutes.png)
 
 The hour and minute tables have these columns: **Hour** or **Time**, **Cost**, **Avg import price**, **Avg export price**, **Total production**, **Total consumption**, **Solar to battery** and **Grid to battery**. There is no demand charge column.
 
@@ -167,7 +179,13 @@ The hour and minute tables have these columns: **Hour** or **Time**, **Cost**, *
 Above the table on all three levels, a chart covers the same span as the table, in days, hours or minutes. Hover over it to see the values.
 
 - **Lines** show average power in kW over each row: Production, Consumption, Grid import, Grid export, Battery import (charge power) and Battery export (discharge power, dashed).
-- **Bars** show the battery charge as a percentage on a 0 to 100% left axis. Each bar is the last reading in its row.
+- **Bars** show the battery charge as a percentage on a 0 to 100% left axis. Each bar is the last reading in its row. The bars touch each other, so the chart reads like a battery meter.
+
+### While a report loads
+
+The first time you open the page, a spinner with **Loading report…** shows until the numbers arrive. When you pick another month, day or hour at the same level, the previous chart and table stay on screen, dimmed, with the spinner over the chart until the new numbers arrive.
+
+![The previous month dimmed while a new one loads](images/reporting-loading.png)
 
 ### Net and gross cost
 

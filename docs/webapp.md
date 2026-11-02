@@ -29,7 +29,7 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 | `/account` | `AccountPage` | Name, photo, password, email, authenticator, Amber key |
 | `/help/:slug?` | `HelpPage` | The user guide |
 | `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts |
-| `/sites/:siteId/reporting` | `ReportingPage` | Month picker, Net/Gross option, a chart (`TotalsChart`) and a sortable totals table (`TotalsTable`). Clicking a day lists its hours and clicking an hour lists its minutes. The level is in the URL as `?month=&day=&hour=` (see `reportingView.ts`), so the browser back button works. |
+| `/sites/:siteId/reporting` | `ReportingPage` | Month picker, Net/Gross option, a chart (`TotalsChart`) and a sortable totals table (`TotalsTable`) with a total row (`totalsSummary.ts`) at the bottom. Clicking a day, on the chart or in the table, lists its hours, and clicking an hour lists its minutes. While totals load, a spinner shows, over the dimmed previous rows when the level stays the same. The level is in the URL as `?month=&day=&hour=` (see `reportingView.ts`), so the browser back button works. |
 | `/settings`, `/settings/sites/:siteId`, `/settings/sites/:siteId/:tab` | `SettingsPage` | Site chips and a tab rail. `:tab` is `general`, `collectors`, `tariffs`, `billing` or `sharing`. `/settings` goes to the first enabled site's `general` tab. An unknown site goes to the first enabled site and keeps a valid tab. An unknown or missing tab keeps the site and goes to `general`. Viewers see every tab read-only. If a background refresh of the sites fails, the page stays and shows a **Retry** alert. |
 | `/sites/:siteId/sources`, `/sites/:siteId/billing` | Redirects | Go to the `collectors` and `billing` settings tabs |
 
