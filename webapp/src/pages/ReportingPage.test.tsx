@@ -90,7 +90,7 @@ describe("ReportingPage totals", () => {
     const rows = within(screen.getByTestId("totals-table")).getAllByRole("row");
     expect(within(rows[rows.length - 1]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
       "Total",
-      "$-1.00",
+      "-$1.00",
       "22.34 kWh",
       "16.00 kWh",
       "4.00 kWh",

@@ -33,7 +33,11 @@ function columnsFor(bucket: TotalsBucket): Column[] {
   ];
 }
 
-const formatDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+/** Dollars with the sign in front (-$1.00). Rounds to whole cents first so a fraction of a cent is "$0.00", not "-$0.00". */
+function formatDollars(cents: number): string {
+  const whole = Math.round(cents);
+  return `${whole < 0 ? "-" : ""}$${(Math.abs(whole) / 100).toFixed(2)}`;
+}
 const formatKwh = (kwh: number) => `${kwh.toFixed(2)} kWh`;
 const formatPrice = (cents: number | null) => (cents === null ? "–" : `${cents.toFixed(1)} c/kWh`);
 

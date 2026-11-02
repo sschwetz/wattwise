@@ -113,12 +113,14 @@ function HistoryAndCost({ siteId }: { siteId: number }) {
           </div>
         )}
         {rows && (
-          <ChartFrame loading={isPlaceholderData} label="Loading report…">
-            <div className="space-y-4">
+          <div className="space-y-4" aria-busy={isPlaceholderData}>
+            <ChartFrame loading={isPlaceholderData} label="Loading report…">
               <TotalsChart rows={rows} bucket={bucket} onSelectRow={drillInto} />
+            </ChartFrame>
+            <div className={isPlaceholderData ? "opacity-30 transition-opacity" : "transition-opacity"}>
               <TotalsTable view={{ bucket, rows }} sorting={{ sort, onSort: setSort }} onSelectRow={drillInto} />
             </div>
-          </ChartFrame>
+          </div>
         )}
       </div>
     </div>
