@@ -55,8 +55,10 @@ from core_api.schemas import (
     LatestReadingOut,
     PriceReadingOut,
     ReadingOut,
+    TotalsRowOut,
     UtcDatetime,
 )
+from core_api.totals import TotalsBucket, compute_totals
 
 router = APIRouter(prefix="/sites/{site_id}", tags=["query"])
 
@@ -287,6 +289,24 @@ def get_cost_series(
 ) -> list[CostSeriesPointOut]:
     points = compute_cost_series(db, site.id, start, end, method, bucket, site.timezone)
     return [CostSeriesPointOut(bucket_start=p.bucket_start, cost_c=p.cost_c) for p in points]
+
+
+@router.get("/totals", response_model=list[TotalsRowOut])
+def get_totals(
+    start: UtcDatetime,
+    end: UtcDatetime,
+    method: Literal["net", "gross"],
+    bucket: TotalsBucket = "day",
+    site: Site = Depends(require_site_access),
+    db: Session = Depends(get_db_session),
+) -> list[TotalsRowOut]:
+    """One row per local day, hour or minute in [start, end): cost, energy
+    totals, the estimated solar/grid split of battery charging and the
+    average power and state of charge for charting. Day rows add the day's
+    share of the demand charge; hour and minute rows add average buy and sell
+    prices. Pass bounds aligned to the bucket (local midnight for days)."""
+    totals = compute_totals(db, site.id, start, end, method, bucket, site.timezone)
+    return [TotalsRowOut.model_validate(t) for t in totals]
 
 
 @router.get("/demand-charges", response_model=list[DemandChargeOut])

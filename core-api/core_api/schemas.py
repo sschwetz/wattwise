@@ -622,6 +622,31 @@ class CostSeriesPointOut(BaseModel):
     cost_c: decimal.Decimal
 
 
+class TotalsRowOut(BaseModel):
+    """One day, hour or minute. Average prices are None on day rows and the
+    demand charge is None on hour and minute rows."""
+
+    start: UtcDatetime
+    date: datetime.date
+    hours: float
+    cost_c: decimal.Decimal
+    avg_import_price_c: decimal.Decimal | None
+    avg_export_price_c: decimal.Decimal | None
+    production_kwh: decimal.Decimal
+    consumption_kwh: decimal.Decimal
+    solar_to_battery_kwh: decimal.Decimal
+    grid_to_battery_kwh: decimal.Decimal
+    grid_import_kwh: decimal.Decimal
+    grid_export_kwh: decimal.Decimal
+    battery_charge_kwh: decimal.Decimal
+    battery_discharge_kwh: decimal.Decimal
+    battery_soc_pct: decimal.Decimal | None
+    demand_charge_c: decimal.Decimal | None
+    demand_charge_estimated: bool
+
+    model_config = {"from_attributes": True}
+
+
 class SourceConfigOut(BaseModel):
     config: dict
 

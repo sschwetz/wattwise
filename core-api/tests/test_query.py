@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime
 import decimal
 
+import pytest
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
@@ -1027,3 +1028,152 @@ def test_get_billing_period_bounds_404s_without_a_billing_cycle(client, app_and_
 
     assert response.status_code == 404
     assert response.json()["code"] == "no_active_billing_cycle"
+
+
+def test_get_totals_by_day_splits_battery_charge_and_spreads_demand_charge(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="daily-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    source = Source(
+        site_id=site.id,
+        kind=SourceKind.ENERGY,
+        provider="envoy",
+        config={},
+        effective_from=datetime.datetime(2020, 1, 1, tzinfo=UTC),
+    )
+    session.add(source)
+    session.commit()
+    day1 = datetime.datetime(2026, 1, 1, tzinfo=UTC)
+    minute = day1 + datetime.timedelta(hours=12)
+    # 3000 W solar, 1000 W house, 1500 W battery charge: 1500 W comes from the
+    # 2000 W of spare solar, so none of the charge is from the grid.
+    # Second minute: 500 W solar, 1000 W house, 1000 W charge: all grid.
+    for offset, metric, value in [
+        (0, EnergyMetric.PRODUCTION_W, 3000.0),
+        (0, EnergyMetric.CONSUMPTION_W, 1000.0),
+        (0, EnergyMetric.BATTERY_CHARGE_W, 1500.0),
+        (1, EnergyMetric.PRODUCTION_W, 500.0),
+        (1, EnergyMetric.CONSUMPTION_W, 1000.0),
+        (1, EnergyMetric.BATTERY_CHARGE_W, 1000.0),
+    ]:
+        session.add(
+            EnergyReading(
+                source_id=source.id, ts=minute + datetime.timedelta(minutes=offset), metric=metric, value=value
+            )
+        )
+    session.add(
+        DemandInterval(
+            site_id=site.id,
+            interval_start=minute,
+            interval_end=minute + datetime.timedelta(minutes=5),
+            rolling_sum_w=0.0,
+            is_demand_window=True,
+        )
+    )
+    session.commit()
+    session.add(
+        DemandCharge(
+            site_id=site.id,
+            billing_period_start=day1,
+            billing_period_end=day1 + datetime.timedelta(days=2),
+            peak_interval_start=minute,
+            peak_avg_import_w=1000.0,
+            rate_applied=decimal.Decimal("10"),
+            charge_amount=decimal.Decimal("200"),
+            is_estimated=True,
+        )
+    )
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+
+    response = client.get(
+        f"/api/v1/sites/{site_id}/totals",
+        params={"start": day1.isoformat(), "end": (day1 + datetime.timedelta(days=3)).isoformat(), "method": "net"},
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+    assert response.status_code == 200, response.text
+    rows = response.json()
+    assert [r["date"] for r in rows] == ["2026-01-01", "2026-01-02", "2026-01-03"]
+    first = rows[0]
+    assert float(first["production_kwh"]) == pytest.approx(3500 / 60000)
+    assert float(first["consumption_kwh"]) == pytest.approx(2000 / 60000)
+    assert float(first["solar_to_battery_kwh"]) == pytest.approx(1500 / 60000)
+    assert float(first["grid_to_battery_kwh"]) == pytest.approx(1000 / 60000)
+    assert float(first["demand_charge_c"]) == pytest.approx(100)
+    assert first["demand_charge_estimated"] is True
+    assert float(rows[1]["demand_charge_c"]) == pytest.approx(100)
+    assert rows[2]["demand_charge_c"] is None
+    assert rows[2]["demand_charge_estimated"] is False
+
+
+def test_get_totals_by_hour_and_minute_average_prices_and_report_soc(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    owner = User(email="hourly-owner@example.com", password_hash="x")
+    session.add(owner)
+    session.commit()
+    site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
+    session.add(site)
+    session.commit()
+    effective = datetime.datetime(2020, 1, 1, tzinfo=UTC)
+    energy = Source(site_id=site.id, kind=SourceKind.ENERGY, provider="envoy", config={}, effective_from=effective)
+    pricing = Source(site_id=site.id, kind=SourceKind.PRICING, provider="amber", config={}, effective_from=effective)
+    session.add_all([energy, pricing])
+    session.commit()
+    hour = datetime.datetime(2026, 1, 1, 12, tzinfo=UTC)
+    for offset, buy, sell, soc in [(0, "20", "-8", 50.0), (1, "40", "-12", 55.0)]:
+        ts = hour + datetime.timedelta(minutes=offset)
+        session.add(PriceReading(pricing_source_id=pricing.id, ts=ts, channel=PriceChannel.BUY, value=decimal.Decimal(buy)))
+        session.add(PriceReading(pricing_source_id=pricing.id, ts=ts, channel=PriceChannel.SELL, value=decimal.Decimal(sell)))
+        session.add(EnergyReading(source_id=energy.id, ts=ts, metric=EnergyMetric.BATTERY_SOC_PCT, value=soc))
+        session.add(EnergyReading(source_id=energy.id, ts=ts, metric=EnergyMetric.GRID_IMPORT_W, value=6000.0))
+    session.commit()
+    owner_id, site_id = owner.id, site.id
+    session.close()
+    headers = {"Authorization": f"Bearer {create_access_token(owner_id)}"}
+
+    by_hour = client.get(
+        f"/api/v1/sites/{site_id}/totals",
+        params={
+            "start": hour.isoformat(),
+            "end": (hour + datetime.timedelta(hours=2)).isoformat(),
+            "method": "net",
+            "bucket": "hour",
+        },
+        headers=headers,
+    )
+    assert by_hour.status_code == 200, by_hour.text
+    first, second = by_hour.json()
+    assert float(first["avg_import_price_c"]) == pytest.approx(30)
+    assert float(first["avg_export_price_c"]) == pytest.approx(-10)
+    assert float(first["grid_import_kwh"]) == pytest.approx(12000 / 60000)
+    assert float(first["battery_soc_pct"]) == pytest.approx(55)  # the last reading in the hour
+    assert float(first["cost_c"]) == pytest.approx(0.1 * 20 + 0.1 * 40)
+    assert first["hours"] == 1
+    assert second["avg_import_price_c"] is None
+    assert second["battery_soc_pct"] is None
+
+    by_minute = client.get(
+        f"/api/v1/sites/{site_id}/totals",
+        params={
+            "start": hour.isoformat(),
+            "end": (hour + datetime.timedelta(hours=1)).isoformat(),
+            "method": "net",
+            "bucket": "minute",
+        },
+        headers=headers,
+    )
+    rows = by_minute.json()
+    assert len(rows) == 60
+    assert float(rows[0]["avg_import_price_c"]) == pytest.approx(20)
+    assert float(rows[1]["avg_import_price_c"]) == pytest.approx(40)
+    assert float(rows[0]["cost_c"]) == pytest.approx(0.1 * 20)
+    assert rows[0]["demand_charge_c"] is None

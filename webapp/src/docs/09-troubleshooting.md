@@ -86,7 +86,7 @@ The web app and Core API are separate addresses, and your browser calls both. Se
 
 ## Times or days look wrong
 
-Check the [site's time zone](04-sites.md#creating-a-site). The dashboard's date ranges use your device's clock for midnight, while tariffs, demand windows and billing cycles use the site's time zone. If you view a site from a different time zone, the two can differ by hours.
+Check the [site's time zone](04-sites.md#creating-a-site). The Reporting page and dashboard days use your device's clock for midnight, while tariffs, demand windows and billing cycles use the site's time zone. If you view a site from a different time zone, the two can differ by hours.
 
 ## Still stuck
 

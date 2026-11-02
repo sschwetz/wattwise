@@ -13,7 +13,7 @@ This guide covers every screen in the web app. Use the contents below, or the **
 | [3. Signing in and account security](03-signing-in.md) | Creating an account, two-factor authentication, recovery codes, password reset |
 | [4. Sites](04-sites.md) | Creating sites, switching between them, time zones |
 | [5. Sources](05-sources.md) | Connecting your Envoy, Amber, a fixed tariff and WeatherLink |
-| [6. The dashboard](06-dashboard.md) | Live tiles, weather, the pricing, grid and battery charts, the Reporting page, net and gross cost |
+| [6. The dashboard](06-dashboard.md) | Live tiles, weather, the pricing, grid and battery charts, the Reporting page's totals by day, hour and minute, net and gross cost |
 | [7. Billing](07-billing.md) | Tariffs, billing cycles, demand windows, export adjustments, fee discounts |
 | [8. Account settings](08-account-settings.md) | Name, photo, password, email, authenticator, Amber API key |
 | [9. Troubleshooting](09-troubleshooting.md) | Fixes for missing tiles, wrong costs, sign-in problems and access from outside your home |

@@ -30,7 +30,7 @@ WattWise builds each cost figure minute by minute:
 5. **Demand charge**: the [demand charge](#demand-charges) for the billing period, spread across the minutes inside the demand window.
 6. **Conditional credits**: a [conditional credit](#conditional-credits) subtracts a fixed amount for each day your average grid import in its time window stays below its limit.
 
-The **Cost** total and the billing period tiles include all six parts. The cost line on the history chart shows only the energy parts (1 and 2) plus the demand charge, so fixed fees and conditional credits do not show up as a spike at one instant. The one exception is a [daily allowance](#daily-allowance), whose refunds appear on the history line at each midnight. Prices and energy come from your sources. Everything on this page comes from you. Whenever a minute has energy but no price, that minute is left out, except that its export still counts toward a daily allowance. See [Net and gross cost](06-dashboard.md#net-and-gross-cost) for the two ways the energy side can be counted.
+The **Cost** total and the billing period tiles include all six parts. The cost line on the dashboard's grid and cost chart shows only the energy parts (1 and 2) plus the demand charge, so fixed fees and conditional credits do not show up as a spike at one instant. The one exception is a [daily allowance](#daily-allowance), whose refunds appear on that line at each midnight. Prices and energy come from your sources. Everything on this page comes from you. Whenever a minute has energy but no price, that minute is left out, except that its export still counts toward a daily allowance. See [Net and gross cost](06-dashboard.md#net-and-gross-cost) for the two ways the energy side can be counted.
 
 ## Tariffs
 
@@ -142,7 +142,7 @@ Click **Add conditional credit**. It has the same **Start date**, **End date (op
 - A day earns nothing until its end time has passed.
 - A minute while you are exporting counts as 0 W of import. If any minute in the window has no grid reading at all, for example because a collector was offline, that day earns nothing.
 - If several credits qualify on the same day, they add together.
-- Credits lower the **Cost** total and the billing period tiles. They do not appear on the history chart.
+- Credits lower the **Cost** total and the billing period tiles. They do not appear on the grid and cost chart's cost line.
 
 ### Monthly fee discounts
 
