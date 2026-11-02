@@ -64,7 +64,7 @@ function mockDailyTotals(rows: Record<string, unknown>[], bounds: typeof BILLING
 
 function dateColumn(): string[] {
   const table = within(screen.getByTestId("totals-table"));
-  return table.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
+  return table.getAllByRole("row").slice(1, -1).map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
 }
 
 function totalsPaths(): string[] {
@@ -77,6 +77,26 @@ function totalsPaths(): string[] {
 describe("ReportingPage totals", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
+  });
+
+  it("ends with a total row that sums the columns", async () => {
+    mockDailyTotals([
+      day("2026-10-01", { cost_c: "150", production_kwh: "12.345" }),
+      day("2026-10-02", { cost_c: "-250" }),
+    ]);
+    renderPage();
+
+    await screen.findByTestId("totals-table");
+    const rows = within(screen.getByTestId("totals-table")).getAllByRole("row");
+    expect(within(rows[rows.length - 1]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "Total",
+      "$-1.00",
+      "22.34 kWh",
+      "16.00 kWh",
+      "4.00 kWh",
+      "2.00 kWh",
+      "–",
+    ]);
   });
 
   it("lists each day newest first with every column formatted", async () => {
@@ -108,7 +128,7 @@ describe("ReportingPage totals", () => {
     renderPage();
 
     await screen.findByTestId("totals-table");
-    const [newest, oldest] = within(screen.getByTestId("totals-table")).getAllByRole("row").slice(1);
+    const [newest, oldest] = within(screen.getByTestId("totals-table")).getAllByRole("row").slice(1, -1);
     expect(within(newest).getByRole("img", { name: "Estimated" })).toBeInTheDocument();
     expect(within(newest).getAllByRole("cell")[6]).toHaveTextContent("$5.00");
     expect(within(oldest).queryByRole("img", { name: "Estimated" })).not.toBeInTheDocument();
@@ -264,7 +284,7 @@ describe("ReportingPage drill-down", () => {
     expect(params.get("bucket")).toBe("hour");
     expect(params.get("start")).toBe(new Date(2026, 9, 2).toISOString());
     expect(params.get("end")).toBe(new Date(2026, 9, 3).toISOString());
-    expect(screen.getAllByText("25.5 c/kWh")).toHaveLength(2);
+    expect(screen.getAllByText("25.5 c/kWh")).toHaveLength(3);
     expect(screen.getByTestId("totals-chart")).toBeInTheDocument();
     expect(dateColumn()).toEqual(["13:00", "12:00"]);
   });

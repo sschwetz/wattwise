@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { useParams, useSearchParams } from "react-router-dom";
-import { ErrorAlert } from "../dashboard/chartParts";
+import { ChartFrame, ErrorAlert } from "../dashboard/chartParts";
 import { type TotalsRow, useBillingPeriodBounds, useTotals } from "../dashboard/useHistoricalData";
+import { Spinner } from "../components/Spinner";
 import { BackLink } from "../layout/BackLink";
 import {
   bucketOf,
@@ -90,7 +91,7 @@ function HistoryAndCost({ siteId }: { siteId: number }) {
     () => (waitingForBilling ? undefined : rangeForView({ month, day, hour }, billingRange ?? null, new Date())),
     [waitingForBilling, month, day, hour, billingRange],
   );
-  const { data: rows, isError } = useTotals(siteId, range, method, bucket);
+  const { data: rows, isError, isPlaceholderData } = useTotals(siteId, range, method, bucket);
 
   const show = (next: ReportingView) => setParams(viewSearch(next));
   const drillInto = (row: TotalsRow) =>
@@ -105,12 +106,19 @@ function HistoryAndCost({ siteId }: { siteId: number }) {
       </div>
       <div className="mt-4 space-y-4" data-testid="history-cost">
         {isError && <ErrorAlert message="Failed to load totals." />}
-        {!rows && !isError && <p className="text-sm text-ink-muted">Loading&hellip;</p>}
+        {!rows && !isError && (
+          <div role="status" className="flex items-center justify-center gap-2 py-16 text-sm text-ink-muted">
+            <Spinner className="h-5 w-5" />
+            Loading report&hellip;
+          </div>
+        )}
         {rows && (
-          <>
-            <TotalsChart rows={rows} bucket={bucket} />
-            <TotalsTable view={{ bucket, rows }} sorting={{ sort, onSort: setSort }} onSelectRow={drillInto} />
-          </>
+          <ChartFrame loading={isPlaceholderData} label="Loading report…">
+            <div className="space-y-4">
+              <TotalsChart rows={rows} bucket={bucket} />
+              <TotalsTable view={{ bucket, rows }} sorting={{ sort, onSort: setSort }} onSelectRow={drillInto} />
+            </div>
+          </ChartFrame>
         )}
       </div>
     </div>

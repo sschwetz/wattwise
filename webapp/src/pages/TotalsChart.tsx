@@ -99,12 +99,12 @@ export function TotalsChart({ rows, bucket }: { rows: TotalsRow[]; bucket: Total
   return (
     <div data-testid="totals-chart">
       <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart data={data}>
+        <ComposedChart data={data} barCategoryGap={0}>
           <XAxis dataKey="label" minTickGap={24} {...axisProps(colors)} />
           <YAxis yAxisId="pct" domain={[0, 100]} {...yAxisProps(colors, "%")} />
           <YAxis yAxisId="kw" {...yAxisProps(colors, "kW", "right")} />
           <Tooltip content={(props) => <ChartTooltip {...props} />} />
-          <Bar yAxisId="pct" dataKey="socPct" name="Battery charge" fill={colors.batterySoc} radius={2} isAnimationActive={false} />
+          <Bar yAxisId="pct" dataKey="socPct" name="Battery charge" fill={colors.batterySoc} stroke={colors.batterySoc} isAnimationActive={false} />
           {LINES.map((line) => (
             <Line
               key={line.key}
