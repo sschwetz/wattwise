@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../api/client";
 import { LIVE_POLL_MS, type EnergyMetric, type PriceChannel, type Reading } from "./useLiveReadings";
 import type { PriceReading } from "./priceChart";
@@ -190,5 +190,83 @@ export function useCostSeries(siteId: number, range: DateRange, method: "net" | 
   return useQuery({
     queryKey: ["cost-series", siteId, range.from.toISOString(), range.to.toISOString(), method, bucket],
     queryFn: () => apiFetch<CostSeriesPoint[]>(`/api/v1/sites/${siteId}/cost/series?${params}`),
+  });
+}
+
+export type TotalsBucket = "day" | "hour" | "minute";
+
+/** One day, hour or minute. Average prices are null on days and the demand
+ * charge is null on hours and minutes. */
+export interface TotalsRow {
+  start: string;
+  date: string;
+  hours: number;
+  cost_c: number;
+  avg_import_price_c: number | null;
+  avg_export_price_c: number | null;
+  production_kwh: number;
+  consumption_kwh: number;
+  solar_to_battery_kwh: number;
+  grid_to_battery_kwh: number;
+  grid_import_kwh: number;
+  grid_export_kwh: number;
+  battery_charge_kwh: number;
+  battery_discharge_kwh: number;
+  battery_soc_pct: number | null;
+  demand_charge_c: number | null;
+  demand_charge_estimated: boolean;
+}
+
+type RawTotalsRow = Record<keyof TotalsRow, string | number | boolean | null>;
+
+const nullableNumber = (value: string | number | boolean | null) => (value === null ? null : Number(value));
+
+/** The API serializes decimals as strings, so every numeric field is converted here. */
+function parseTotalsRow(row: RawTotalsRow): TotalsRow {
+  return {
+    start: String(row.start),
+    date: String(row.date),
+    hours: Number(row.hours),
+    cost_c: Number(row.cost_c),
+    avg_import_price_c: nullableNumber(row.avg_import_price_c),
+    avg_export_price_c: nullableNumber(row.avg_export_price_c),
+    production_kwh: Number(row.production_kwh),
+    consumption_kwh: Number(row.consumption_kwh),
+    solar_to_battery_kwh: Number(row.solar_to_battery_kwh),
+    grid_to_battery_kwh: Number(row.grid_to_battery_kwh),
+    grid_import_kwh: Number(row.grid_import_kwh),
+    grid_export_kwh: Number(row.grid_export_kwh),
+    battery_charge_kwh: Number(row.battery_charge_kwh),
+    battery_discharge_kwh: Number(row.battery_discharge_kwh),
+    battery_soc_pct: nullableNumber(row.battery_soc_pct),
+    demand_charge_c: nullableNumber(row.demand_charge_c),
+    demand_charge_estimated: Boolean(row.demand_charge_estimated),
+  };
+}
+
+async function fetchTotals(
+  siteId: number,
+  range: DateRange,
+  method: "net" | "gross",
+  bucket: TotalsBucket,
+): Promise<TotalsRow[]> {
+  const params = new URLSearchParams({
+    start: range.from.toISOString(),
+    end: range.to.toISOString(),
+    method,
+    bucket,
+  });
+  const rows = await apiFetch<RawTotalsRow[]>(`/api/v1/sites/${siteId}/totals?${params}`);
+  return rows.map(parseTotalsRow);
+}
+
+/** One row per day, hour or minute in `range`. Stays idle until `range` is known. */
+export function useTotals(siteId: number, range: DateRange | undefined, method: "net" | "gross", bucket: TotalsBucket) {
+  return useQuery({
+    queryKey: ["totals", siteId, range?.from.toISOString(), range?.to.toISOString(), method, bucket],
+    queryFn: range ? () => fetchTotals(siteId, range, method, bucket) : skipToken,
+    // Keeps the table mounted while another month, day or hour loads at the
+    // same level. Moving to another level shows nothing until its rows arrive.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[5] === bucket ? previous : undefined),
   });
 }

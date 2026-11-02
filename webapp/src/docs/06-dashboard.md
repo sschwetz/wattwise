@@ -2,7 +2,7 @@
 
 [Contents](index.md) · Previous: [Sources](05-sources.md) · Next: [Billing](07-billing.md)
 
-The dashboard is the first page of every site. It has five parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing), [today's grid and cost chart](#todays-grid-and-cost-chart) and the [battery chart](#battery-chart). The history chart is on the [Reporting page](#reporting-page).
+The dashboard is the first page of every site. It has five parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing), [today's grid and cost chart](#todays-grid-and-cost-chart) and the [battery chart](#battery-chart). The [Reporting page](#reporting-page) shows the cost for a period you choose.
 
 ![The full dashboard: live tiles, weather, today's pricing chart and today's grid and cost chart](images/dashboard-overview.png)
 
@@ -53,7 +53,7 @@ The **Battery** tile changes its background from red through amber to green as t
 
 ### Cost and credit
 
-**Today's cost**, **Billing Period** and the history chart all use one sign rule:
+**Today's cost** and **Billing Period** use one sign rule:
 
 - A positive amount is money you owe. It shows in red and the tile says **cost**.
 - A negative amount is money you earn. It shows in green and the tile says **credit**. The minus sign is dropped because the color and word already say it.
@@ -96,7 +96,7 @@ With Amber, each predicted import price comes with a range: Amber's low and high
 
 The chart also tints stretches of the day where Amber has flagged a possible price spike (amber) or an actual spike (red). The legend then gets a "Price spike possible" or "Price spike" entry. A wide forecast range alone is not tinted. When there are any, a line above the chart says when, for example `Price instability expected 16:30 to 19:00`. On a normal day there is no tint and no line. This covers import prices only. It does not appear with a fixed tariff.
 
-Drag across the chart to zoom into a stretch of the day, and press **Reset zoom** to go back. Hover over a point for the exact price. The chart always shows today and does not change with the date range on the Reporting page. It needs a pricing source, either [Amber](05-sources.md#connecting-amber-electric) or a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
+Drag across the chart to zoom into a stretch of the day, and press **Reset zoom** to go back. Hover over a point for the exact price. The chart always shows today and does not change with the Reporting page. It needs a pricing source, either [Amber](05-sources.md#connecting-amber-electric) or a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff).
 
 Prices are shown as plain positive rates. WattWise stores the sell price as a negative number when you are being paid, as Amber publishes it, and the chart shows its size instead.
 
@@ -104,7 +104,7 @@ Prices are shown as plain positive rates. WattWise stores the sell price as a ne
 
 ![Bars of grid import and export for today with a cost line](images/dashboard-grid-cost.png)
 
-A chart of grid energy and cost for today, with no controls or totals. It always shows today in 5-minute bars, whatever the Reporting page is set to, and uses the Net cost method. Red bars are import, green bars are export, and the amber line is cost.
+A chart of grid energy and cost for today, with no controls or totals. It always shows today in 5-minute bars, and uses the Net cost method. Red bars are import, green bars are export, and the amber line is cost.
 
 This chart and Today's Pricing above it share one zoom. Drag across either to zoom both to that time span, then press **Reset zoom** on either to clear it.
 
@@ -122,63 +122,56 @@ The collectors report total battery charge and discharge, not where the energy c
 
 ## Reporting page
 
-Open **Reporting** in the sidebar for charts that look back over longer periods.
+Open **Reporting** in the sidebar to see a chart and a table of totals for a month or a billing period. You can drill from days into hours and from hours into minutes.
 
-### History and cost
+### Daily totals
 
-![The history card with a range selector, Net and Gross options, a cost total and a chart](images/dashboard-history.png)
-
-The history card shows grid energy and cost over a period you choose.
+The page has a month picker and **Net** and **Gross** options. Below them is a chart, then a table with one row for each day, ending at today.
 
 #### Choosing a period
 
-Use the **Date range** list:
+The month picker is empty by default and shows **Current billing period**. Pick a month to list that calendar month. Clear the picker to return to the billing period. If the site has no [billing cycle](07-billing.md), the empty picker lists the current calendar month. Days start at midnight on the device you are using. The month picker shows only on the day list.
 
-| Option | Period |
-|--------|--------|
-| **Today** | From midnight to midnight, today |
-| **Yesterday** | The previous full day |
-| **7 days** | The last 6 days plus today |
-| **30 days** | The last 29 days plus today |
-| **Billing period** | The current [billing period](07-billing.md), from its start to its end date. Only listed when a billing cycle is active. |
-| **Custom range** | Two date and time pickers appear. Pick a start and an end (15-minute steps). |
+#### Reading the table
 
-Days start at midnight on the device you are using.
+| Column | Meaning |
+|--------|---------|
+| **Date** | The local day |
+| **Cost** | The day's cost, calculated the same way as the [billing cost](07-billing.md#how-the-cost-is-calculated), including the daily service charge, the monthly fee and the demand charge spread over the demand window |
+| **Total production** | Solar energy produced, in kWh |
+| **Total consumption** | Energy your home used, in kWh |
+| **Solar to battery** | Battery charging estimated to come from solar, in kWh |
+| **Grid to battery** | Battery charging estimated to come from the grid, in kWh |
+| **Total demand charge** | The day's share of the billing period's [demand charge](07-billing.md#demand-charges) |
 
-![The history card set to Billing period](images/reporting-billing-period.png)
+Rows start sorted by date, newest first. Click a column header to sort by it, and click again to reverse the order. The sort stays when you change the month and when you drill in.
 
-Choose **Custom range** and two date pickers appear:
+The solar and grid split of battery charging is an estimate. For each minute, solar feeds the house first, then the battery. The rest of the charge counts as grid.
 
-![The history card with Custom range selected and two date and time pickers](images/reporting-custom-range.png)
+A billing period's demand charge is the peak 30-minute average import, times the daily rate, times the number of days. Each day shows the same share: the period's charge divided by its days. A yellow warning triangle next to the figure means the period is still open, so the charge is an estimate. A dash means no demand tariff applies.
 
-The bars get wider as the period grows, so the chart stays readable:
+### Hours and minutes
 
-| Period length | Each bar covers |
-|---------------|-----------------|
-| Up to 1 day | 5 minutes |
-| Over 1 day, under 7 days | 15 minutes |
-| 7 to under 30 days | 1 hour |
-| 30 days or more | 6 hours |
+Click a day row. The table clears and lists that day by hour. Click an hour row to list it by minute. Minute rows do not click through. Hours and minutes after the current hour or minute are not listed.
 
-#### Reading the chart
+On the hour and minute views, a back arrow (the same `<` as on the settings pages) goes up one level and keeps the month. A heading with the date, and the hour on the minute view, replaces the month picker. The level is in the page address (`?month=&day=&hour=`), so the browser's back button also goes up a level.
 
-- **Bars** show grid energy in kWh (left axis). Red bars are import, green bars are export.
-- **The amber line** shows cost in dollars (right axis). It covers energy and demand charges only, so daily and monthly fees do not appear as spikes.
-- **The Cost tile** above the chart is the total for the chosen period, including daily and monthly fees.
-- Hover over a bar for the time, the grid energy and the cost for that bar.
-- Click and drag across the chart to zoom into that stretch of time. The chart reloads for the selected span, and any span of a day or less shows 5-minute bars. Press **Reset zoom** to go back. Changing the date range also clears the zoom. This zoom is separate from the dashboard's charts.
+The hour and minute tables have these columns: **Hour** or **Time**, **Cost**, **Avg import price**, **Avg export price**, **Total production**, **Total consumption**, **Solar to battery** and **Grid to battery**. There is no demand charge column.
 
-Dragging across the chart draws the selection, and the chart redraws for that span when you let go:
+- The average prices are the Amber buy and sell prices averaged over the hour, or over the single minute. They show in c/kWh. The sell price is shown as stored, so a negative number means you are paid.
+- **Cost** here is the energy cost only: buy cost minus export revenue. The daily service charge, the monthly fee and the demand charge are only in the day rows' **Cost**, so the hours of a day do not add up to that day's **Cost**.
+- The sort carries across levels. If the sorted column does not exist at the next level, the table falls back to time, newest first. That happens for **Total demand charge** on the hour and minute views, and for the average prices on the day list.
 
-![Dragging across the chart to select a span](images/reporting-zoom-select.png)
+### The chart
 
-![The chart after zooming, with a Reset zoom button](images/reporting-zoomed.png)
+Above the table on all three levels, a chart covers the same span as the table, in days, hours or minutes. Hover over it to see the values.
 
-#### Net and gross cost
+- **Lines** show average power in kW over each row: Production, Consumption, Grid import, Grid export, Battery import (charge power) and Battery export (discharge power, dashed).
+- **Bars** show the battery charge as a percentage on a 0 to 100% left axis. Each bar is the last reading in its row.
 
-![The same chart set to Gross](images/reporting-gross.png)
+### Net and gross cost
 
-The **Net** and **Gross** options change how the **Cost** total and cost line are calculated. The bars always show real grid flow.
+The **Net** and **Gross** options change how the **Cost** column is calculated.
 
 | Method | Import is priced from | Export is priced from | Use it to see |
 |--------|----------------------|----------------------|---------------|
@@ -187,7 +180,7 @@ The **Net** and **Gross** options change how the **Cost** total and cost line ar
 
 Net is the default and matches your retailer's bill. Gross is useful for comparing, for example, how much your solar saves.
 
-#### Missing prices
+### Missing prices
 
 If a minute has energy but no price (for example, before the pricing source was added), WattWise leaves that minute out of the cost instead of guessing. Totals for such periods will be lower than your real bill. See [Troubleshooting](09-troubleshooting.md#costs-look-too-low-or-are-missing).
 

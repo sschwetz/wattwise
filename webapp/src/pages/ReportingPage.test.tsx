@@ -3,14 +3,8 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch } from "../api/client";
-import {
-  energyCallPaths,
-  LIVE_WINDOW_SPAN_THRESHOLD_MS,
-  mockApi,
-  queryParams,
-  requestSpanMs,
-} from "./dashboardTestUtils";
+import { ApiError, apiFetch } from "../api/client";
+import { queryParams } from "./dashboardTestUtils";
 import { ReportingPage } from "./ReportingPage";
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -31,103 +25,316 @@ function renderPage() {
   );
 }
 
-describe("ReportingPage historical chart and cost", () => {
+function day(date: string, overrides: Record<string, unknown> = {}) {
+  return {
+    start: `${date}T00:00:00Z`,
+    date,
+    hours: 24,
+    avg_import_price_c: null,
+    avg_export_price_c: null,
+    grid_import_kwh: "3",
+    grid_export_kwh: "1",
+    battery_charge_kwh: "2",
+    battery_discharge_kwh: "1",
+    battery_soc_pct: "60",
+    cost_c: "100",
+    production_kwh: "10",
+    consumption_kwh: "8",
+    solar_to_battery_kwh: "2",
+    grid_to_battery_kwh: "1",
+    demand_charge_c: null,
+    demand_charge_estimated: false,
+    ...overrides,
+  };
+}
+
+const BILLING_BOUNDS = { start: "2026-10-01T00:00:00Z", end: "2026-11-01T00:00:00Z" };
+
+function mockDailyTotals(rows: Record<string, unknown>[], bounds: typeof BILLING_BOUNDS | null = BILLING_BOUNDS) {
+  vi.mocked(apiFetch).mockImplementation((path: string) => {
+    if (path.endsWith("/billing-period")) {
+      return bounds ? Promise.resolve(bounds) : Promise.reject(new ApiError(404, "no_active_billing_cycle", "none", null));
+    }
+    if (path.includes("/totals")) {
+      return Promise.resolve(rows);
+    }
+    return Promise.resolve([]);
+  });
+}
+
+function dateColumn(): string[] {
+  const table = within(screen.getByTestId("totals-table"));
+  return table.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
+}
+
+function totalsPaths(): string[] {
+  return vi
+    .mocked(apiFetch)
+    .mock.calls.map(([path]) => path as string)
+    .filter((path) => path.includes("/totals"));
+}
+
+describe("ReportingPage totals", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
   });
 
-  it("shows the computed cost for the selected net/gross method and re-fetches when toggled", async () => {
-    vi.mocked(apiFetch).mockImplementation((path: string) => {
-      if (path.includes("/cost/series")) {
-        return Promise.resolve([]);
-      }
-      if (path.includes("/cost")) {
-        const method = queryParams(path).get("method");
-        return Promise.resolve({
-          total_cost_c: method === "net" ? 150 : 300,
-          total_import_kwh: 10,
-          total_export_kwh: 4,
-          minutes_missing_price: 0,
-        });
-      }
-      return Promise.resolve([]);
-    });
+  it("lists each day newest first with every column formatted", async () => {
+    mockDailyTotals([
+      day("2026-10-01", { cost_c: "150", production_kwh: "12.345" }),
+      day("2026-10-02", { cost_c: "-250" }),
+    ]);
     renderPage();
-    // Scoped to the history card: the new "Today's cost" live tile (always
-    // net) coincidentally shows the same "$1.50" when the selected range/
-    // method happens to match today's net total.
-    const historyCost = within(screen.getByTestId("history-cost"));
-    expect(await historyCost.findByText("$1.50")).toBeInTheDocument();
+
+    await screen.findByTestId("totals-table");
+    expect(dateColumn()).toEqual(["2026-10-02", "2026-10-01"]);
+    const oldest = within(screen.getByTestId("totals-table")).getAllByRole("row")[2];
+    expect(within(oldest).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "2026-10-01",
+      "$1.50",
+      "12.35 kWh",
+      "8.00 kWh",
+      "2.00 kWh",
+      "1.00 kWh",
+      "–",
+    ]);
+  });
+
+  it("marks an estimated demand charge with a warning triangle and leaves a final one bare", async () => {
+    mockDailyTotals([
+      day("2026-10-01", { demand_charge_c: "500", demand_charge_estimated: false }),
+      day("2026-10-02", { demand_charge_c: "500", demand_charge_estimated: true }),
+    ]);
+    renderPage();
+
+    await screen.findByTestId("totals-table");
+    const [newest, oldest] = within(screen.getByTestId("totals-table")).getAllByRole("row").slice(1);
+    expect(within(newest).getByRole("img", { name: "Estimated" })).toBeInTheDocument();
+    expect(within(newest).getAllByRole("cell")[6]).toHaveTextContent("$5.00");
+    expect(within(oldest).queryByRole("img", { name: "Estimated" })).not.toBeInTheDocument();
+  });
+
+  it("re-sorts when a column header is clicked and flips direction on a second click", async () => {
+    mockDailyTotals([
+      day("2026-10-01", { cost_c: "300" }),
+      day("2026-10-02", { cost_c: "100" }),
+      day("2026-10-03", { cost_c: "200" }),
+    ]);
+    renderPage();
+    await screen.findByTestId("totals-table");
+
+    await userEvent.click(screen.getByRole("button", { name: "Cost" }));
+    expect(dateColumn()).toEqual(["2026-10-01", "2026-10-03", "2026-10-02"]);
+    expect(screen.getByRole("columnheader", { name: /Cost/ })).toHaveAttribute("aria-sort", "descending");
+
+    await userEvent.click(screen.getByRole("button", { name: /Cost/ }));
+    expect(dateColumn()).toEqual(["2026-10-02", "2026-10-03", "2026-10-01"]);
+    expect(screen.getByRole("columnheader", { name: /Cost/ })).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  it("asks for the billing period by default", async () => {
+    mockDailyTotals([day("2026-10-01")]);
+    renderPage();
+    await screen.findByTestId("totals-table");
+
+    const params = queryParams(totalsPaths()[0]);
+    expect(params.get("start")).toBe("2026-10-01T00:00:00.000Z");
+    // The billing period ends on 1 Nov 2026, before "today" is capped in.
+    expect(new Date(params.get("end")!).getTime()).toBeLessThanOrEqual(new Date("2026-11-01T00:00:00Z").getTime());
+    expect(params.get("method")).toBe("net");
+  });
+
+  it("shows the picked month and keeps the chosen sort", async () => {
+    mockDailyTotals([day("2026-03-01", { cost_c: "100" }), day("2026-03-02", { cost_c: "300" })]);
+    renderPage();
+    await screen.findByTestId("totals-table");
+    await userEvent.click(screen.getByRole("button", { name: "Cost" }));
+    expect(dateColumn()).toEqual(["2026-03-02", "2026-03-01"]);
+
+    await userEvent.click(screen.getByLabelText("Month"));
+    await userEvent.click(await screen.findByText("Mar"));
+
+    await waitFor(() => {
+      const params = queryParams(totalsPaths().at(-1)!);
+      expect(params.get("start")).toBe(new Date(new Date().getFullYear(), 2, 1).toISOString());
+      expect(params.get("end")).toBe(new Date(new Date().getFullYear(), 3, 1).toISOString());
+    });
+    expect(screen.getByRole("columnheader", { name: /Cost/ })).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("falls back to the current month when the site has no billing cycle", async () => {
+    mockDailyTotals([day("2026-11-01")], null);
+    renderPage();
+    await screen.findByTestId("totals-table");
+
+    const now = new Date();
+    const params = queryParams(totalsPaths()[0]);
+    expect(params.get("start")).toBe(new Date(now.getFullYear(), now.getMonth(), 1).toISOString());
+  });
+
+  it("requests gross totals when Gross is selected", async () => {
+    mockDailyTotals([day("2026-10-01")]);
+    renderPage();
+    await screen.findByTestId("totals-table");
 
     await userEvent.click(screen.getByLabelText("Gross"));
-    expect(await historyCost.findByText("$3.00")).toBeInTheDocument();
+
+    await waitFor(() => expect(queryParams(totalsPaths().at(-1)!).get("method")).toBe("gross"));
   });
 
-  it("shows a positive (net cost) total in red with a danger glow", async () => {
-    mockApi({}, { total_cost_c: 150, total_import_kwh: 10, total_export_kwh: 4, minutes_missing_price: 0 });
-    renderPage();
-    const value = await within(screen.getByTestId("history-cost")).findByText("$1.50");
-    expect(value.className).toContain("text-danger");
-    expect(value.parentElement?.className).toContain("danger-glow");
-  });
-
-  it("shows a negative (net credit) total in green with a flow glow", async () => {
-    mockApi({}, { total_cost_c: -150, total_import_kwh: 4, total_export_kwh: 10, minutes_missing_price: 0 });
-    renderPage();
-    const value = await screen.findByText("$-1.50");
-    expect(value.className).toContain("text-flow");
-    expect(value.parentElement?.className).toContain("flow-glow");
-  });
-
-  it("requests the cost with start/end bounds, not from/to", async () => {
-    mockApi({}, { total_cost_c: 150, total_import_kwh: 10, total_export_kwh: 4, minutes_missing_price: 0 });
-    renderPage();
-    await within(screen.getByTestId("history-cost")).findByText("$1.50");
-
-    // Excludes /cost/billing-period: that endpoint computes its own start
-    // from the active billing cycle and takes no start/end of its own.
-    const costPaths = vi
-      .mocked(apiFetch)
-      .mock.calls.map(([path]) => path as string)
-      .filter((path) => path.includes("/cost") && !path.includes("/cost/billing-period"));
-    expect(costPaths.length).toBeGreaterThan(0);
-    for (const path of costPaths) {
-      const params = queryParams(path);
-      expect(params.get("start")).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-      expect(params.get("end")).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-      expect(params.get("method")).toBe("net");
-      expect(params.has("from")).toBe(false);
-      expect(params.has("to")).toBe(false);
-    }
-  });
-
-  it("requests both grid import and export for the history query", async () => {
-    mockApi({
-      grid_export_w: [{ ts: "2026-10-01T00:00:00Z", metric: "grid_export_w", value: 1000 }],
-      grid_import_w: [{ ts: "2026-10-01T00:00:00Z", metric: "grid_import_w", value: 500 }],
-    });
-    renderPage();
-    await waitFor(() => expect(energyCallPaths().length).toBeGreaterThanOrEqual(2));
-
-    // The history query spans a day; the live queries span only five minutes.
-    const historyPaths = energyCallPaths().filter((path) => {
-      const span = requestSpanMs(path);
-      return span !== null && span > LIVE_WINDOW_SPAN_THRESHOLD_MS;
-    });
-    const requestedMetrics = new Set(historyPaths.map((path) => queryParams(path).get("metric")));
-    expect(requestedMetrics).toEqual(new Set(["grid_import_w", "grid_export_w"]));
-  });
-
-  it("shows errors when the history and cost queries fail", async () => {
+  it("shows an error when the totals query fails", async () => {
     vi.mocked(apiFetch).mockRejectedValue(new Error("boom"));
     renderPage();
-    expect(await screen.findByText("Failed to load cost.")).toBeInTheDocument();
-    expect(await screen.findByText("Failed to load historical readings.")).toBeInTheDocument();
-    const alerts = screen.getAllByRole("alert").map((node) => node.textContent);
-    expect(alerts).toContain("Failed to load cost.");
-    expect(alerts).toContain("Failed to load historical readings.");
+    expect(await screen.findByText("Failed to load totals.")).toBeInTheDocument();
+  });
+});
+
+function slot(start: Date, overrides: Record<string, unknown> = {}) {
+  return day("2026-10-02", {
+    start: start.toISOString(),
+    hours: 1,
+    avg_import_price_c: "25.5",
+    avg_export_price_c: "-8",
+    ...overrides,
+  });
+}
+
+/** Days for the month list, hours for a day and minutes for an hour, keyed by the bucket asked for. */
+function mockDrillDown() {
+  vi.mocked(apiFetch).mockImplementation((path: string) => {
+    if (path.endsWith("/billing-period")) {
+      return Promise.resolve(BILLING_BOUNDS);
+    }
+    const bucket = queryParams(path).get("bucket");
+    if (bucket === "hour") {
+      return Promise.resolve([
+        slot(new Date(2026, 9, 2, 12), { cost_c: "500" }),
+        slot(new Date(2026, 9, 2, 13), { cost_c: "100" }),
+      ]);
+    }
+    if (bucket === "minute") {
+      return Promise.resolve([slot(new Date(2026, 9, 2, 13, 0)), slot(new Date(2026, 9, 2, 13, 1))]);
+    }
+    return Promise.resolve([day("2026-10-01", { cost_c: "300" }), day("2026-10-02", { cost_c: "200" })]);
+  });
+}
+
+function renderDrilledInto(search = "") {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[`/sites/7/reporting${search}`]}>
+        <Routes>
+          <Route path="/sites/:siteId/reporting" element={<ReportingPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("ReportingPage drill-down", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
   });
 
+  it("shows a chart above the table on the day list", async () => {
+    mockDrillDown();
+    renderPage();
+    await screen.findByTestId("totals-table");
+    const chart = screen.getByTestId("totals-chart");
+    expect(chart.compareDocumentPosition(screen.getByTestId("totals-table"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    for (const label of ["Production", "Consumption", "Grid import", "Grid export", "Battery import", "Battery export"]) {
+      expect(within(chart).getByText(`${label} (kW)`)).toBeInTheDocument();
+    }
+    expect(within(chart).getByText("Battery charge (%)")).toBeInTheDocument();
+  });
+
+  it("opens a day by the hour, with average prices after the cost", async () => {
+    mockDrillDown();
+    renderPage();
+    await screen.findByTestId("totals-table");
+
+    await userEvent.click(screen.getByText("2026-10-02"));
+
+    await screen.findByRole("button", { name: "Avg import price" });
+    const headers = within(screen.getByTestId("totals-table")).getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers.slice(0, 4)).toEqual(["Hour \u25BC", "Cost", "Avg import price", "Avg export price"]);
+    expect(headers).not.toContain("Total demand charge");
+    const params = queryParams(totalsPaths().at(-1)!);
+    expect(params.get("bucket")).toBe("hour");
+    expect(params.get("start")).toBe(new Date(2026, 9, 2).toISOString());
+    expect(params.get("end")).toBe(new Date(2026, 9, 3).toISOString());
+    expect(screen.getAllByText("25.5 c/kWh")).toHaveLength(2);
+    expect(screen.getByTestId("totals-chart")).toBeInTheDocument();
+    expect(dateColumn()).toEqual(["13:00", "12:00"]);
+  });
+
+  it("opens an hour by the minute, and minute rows do not drill further", async () => {
+    mockDrillDown();
+    renderPage();
+    await screen.findByTestId("totals-table");
+    await userEvent.click(screen.getByText("2026-10-02"));
+    await userEvent.click(await screen.findByText("13:00"));
+
+    await waitFor(() => expect(queryParams(totalsPaths().at(-1)!).get("bucket")).toBe("minute"));
+    const params = queryParams(totalsPaths().at(-1)!);
+    expect(params.get("start")).toBe(new Date(2026, 9, 2, 13).toISOString());
+    expect(params.get("end")).toBe(new Date(2026, 9, 2, 14).toISOString());
+    await waitFor(() => expect(dateColumn()).toEqual(["13:01", "13:00"]));
+    const calls = totalsPaths().length;
+    await userEvent.click(screen.getByText("13:01"));
+    expect(totalsPaths().length).toBe(calls);
+    expect(screen.getByTestId("totals-chart")).toBeInTheDocument();
+  });
+
+  it("goes back one level at a time with the back arrow", async () => {
+    mockDrillDown();
+    renderPage();
+    await screen.findByTestId("totals-table");
+    await userEvent.click(screen.getByText("2026-10-02"));
+    await userEvent.click(await screen.findByText("13:00"));
+    await waitFor(() => expect(dateColumn()).toEqual(["13:01", "13:00"]));
+
+    await userEvent.click(screen.getByRole("link", { name: "Back" }));
+    await waitFor(() => expect(dateColumn()).toEqual(["13:00", "12:00"]));
+
+    await userEvent.click(screen.getByRole("link", { name: "Back" }));
+    await waitFor(() => expect(dateColumn()).toEqual(["2026-10-02", "2026-10-01"]));
+    expect(screen.queryByRole("link", { name: "Back" })).not.toBeInTheDocument();
+  });
+
+  it("carries the chosen sort into the next level", async () => {
+    mockDrillDown();
+    renderPage();
+    await screen.findByTestId("totals-table");
+    await userEvent.click(screen.getByRole("button", { name: "Cost" }));
+    expect(dateColumn()).toEqual(["2026-10-01", "2026-10-02"]);
+
+    await userEvent.click(screen.getByText("2026-10-01"));
+
+    await waitFor(() => expect(dateColumn()).toEqual(["12:00", "13:00"]));
+    expect(screen.getByRole("columnheader", { name: /Cost/ })).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("falls back to time order when the sorted column does not exist at the next level", async () => {
+    mockDrillDown();
+    renderPage();
+    await screen.findByTestId("totals-table");
+    await userEvent.click(screen.getByRole("button", { name: "Total demand charge" }));
+
+    await userEvent.click(screen.getByText("2026-10-01"));
+
+    await waitFor(() => expect(dateColumn()).toEqual(["13:00", "12:00"]));
+    expect(screen.getByRole("columnheader", { name: /Hour/ })).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("opens straight onto a day from its link", async () => {
+    mockDrillDown();
+    renderDrilledInto("?month=2026-10&day=2026-10-02");
+    await screen.findByRole("button", { name: "Avg export price" });
+    expect(queryParams(totalsPaths()[0]).get("bucket")).toBe("hour");
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sites/7/reporting?month=2026-10");
+  });
 });
 
 
@@ -137,42 +344,25 @@ describe("ReportingPage refetch loop regression", () => {
   });
 
   it("does not keep issuing new fetches across render cycles when nothing user-controlled changes", async () => {
-    // Resolve via a real timer tick (rather than an already-resolved Promise) so
-    // actual wall-clock milliseconds elapse between renders, the same as a real
-    // network request would take. This matters for reproducing the regression:
-    // if every resolution landed in the same millisecond, `rangeForDays`'s
-    // `new Date()` could coincidentally produce the same ISO string each time
-    // and mask the bug.
+    // Resolve on a real timer tick so wall-clock time passes between renders,
+    // as it would for a network request. A range recomputed from `new Date()`
+    // on every render would then build a new query key each time.
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       return new Promise((resolve) => {
         setTimeout(() => {
-          if (path.includes("/cost/series")) {
-            resolve([]);
-          } else if (path.includes("/cost")) {
-            resolve({
-              total_cost_c: 150,
-              total_import_kwh: 10,
-              total_export_kwh: 4,
-              minutes_missing_price: 0,
-            });
+          if (path.endsWith("/billing-period")) {
+            resolve(BILLING_BOUNDS);
           } else {
-            resolve([]);
+            resolve([day("2026-10-01")]);
           }
         }, 2);
       });
     });
 
     renderPage();
-
-    // Let the initial queries resolve and the page settle.
-    await within(screen.getByTestId("history-cost")).findByText("$1.50");
-    await waitFor(() => expect(energyCallPaths().length).toBeGreaterThanOrEqual(2));
+    await screen.findByTestId("totals-table");
     const callCountAfterSettle = vi.mocked(apiFetch).mock.calls.length;
 
-    // Give the component many more render cycles with real time elapsing between
-    // them. If the date range were recomputed on every render (via `new Date()`
-    // in `rangeForDays`), each cycle would build a brand-new, never-before-seen
-    // query key and trigger another fetch, growing this count without bound.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
     });
@@ -180,124 +370,3 @@ describe("ReportingPage refetch loop regression", () => {
     expect(vi.mocked(apiFetch).mock.calls.length).toBe(callCountAfterSettle);
   });
 });
-
-
-describe("ReportingPage date range selector", () => {
-  beforeEach(() => {
-    vi.mocked(apiFetch).mockReset();
-  });
-
-  it("shows custom start/end pickers only once Custom range is selected", async () => {
-    mockApi({});
-    renderPage();
-    await screen.findByLabelText("Date range");
-    expect(screen.queryByLabelText("Custom range start")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Custom range end")).not.toBeInTheDocument();
-
-    await userEvent.selectOptions(screen.getByLabelText("Date range"), "Custom range");
-
-    expect(screen.getByLabelText("Custom range start")).toBeInTheDocument();
-    expect(screen.getByLabelText("Custom range end")).toBeInTheDocument();
-  });
-
-  function costSeriesBucket(): string | null {
-    const path = vi
-      .mocked(apiFetch)
-      .mock.calls.map(([p]) => p as string)
-      .findLast((p) => p.includes("/cost/series"));
-    return path ? queryParams(path).get("bucket") : null;
-  }
-
-  it("uses progressively coarser buckets as the preset range grows", async () => {
-    mockApi({});
-    renderPage();
-    await waitFor(() => expect(costSeriesBucket()).toBe("5min")); // Today: <= 1 day
-
-    await userEvent.selectOptions(screen.getByLabelText("Date range"), "Yesterday");
-    await waitFor(() => expect(costSeriesBucket()).toBe("5min")); // any 1-day period
-
-    await userEvent.selectOptions(screen.getByLabelText("Date range"), "7 days");
-    await waitFor(() => expect(costSeriesBucket()).toBe("hour")); // exactly 7 days: >= 7, < 30
-
-    await userEvent.selectOptions(screen.getByLabelText("Date range"), "30 days");
-    await waitFor(() => expect(costSeriesBucket()).toBe("6hour")); // exactly 30 days: >= 30
-  });
-
-  it("offers a Billing period range only when a billing cycle is active", async () => {
-    mockApi({});
-    renderPage();
-    await screen.findByLabelText("Date range");
-    await waitFor(() =>
-      expect(vi.mocked(apiFetch).mock.calls.some(([p]) => (p as string).endsWith("/billing-period"))).toBe(true),
-    );
-    expect(screen.queryByRole("option", { name: "Billing period" })).not.toBeInTheDocument();
-  });
-
-  it("charts the whole billing period when Billing period is selected", async () => {
-    const bounds = { start: "2026-10-01T00:00:00Z", end: "2026-11-01T00:00:00Z" };
-    mockApi({}, undefined, undefined, undefined, undefined, null, null, bounds);
-    renderPage();
-    await screen.findByRole("option", { name: "Billing period" });
-
-    await userEvent.selectOptions(screen.getByLabelText("Date range"), "Billing period");
-
-    await waitFor(() => {
-      const path = vi
-        .mocked(apiFetch)
-        .mock.calls.map(([p]) => p as string)
-        .findLast((p) => p.includes("/cost/series"));
-      const params = queryParams(path!);
-      expect(params.get("start")).toBe("2026-10-01T00:00:00.000Z");
-      expect(params.get("end")).toBe("2026-11-01T00:00:00.000Z");
-      expect(params.get("bucket")).toBe("6hour"); // 31 days
-    });
-  });
-
-  it("requests a 'Today' range that extends through the end of the day, not just up to now", async () => {
-    mockApi({});
-    const beforeRender = Date.now();
-    renderPage();
-    await waitFor(() => expect(energyCallPaths().length).toBeGreaterThanOrEqual(2));
-
-    const historyPaths = energyCallPaths().filter((path) => {
-      const span = requestSpanMs(path);
-      return span !== null && span > LIVE_WINDOW_SPAN_THRESHOLD_MS;
-    });
-    expect(historyPaths.length).toBeGreaterThan(0);
-    for (const path of historyPaths) {
-      const end = Date.parse(queryParams(path).get("end")!);
-      // The old behavior ended exactly at "now"; the new behavior runs through
-      // the end of the local calendar day, which is always later than "now".
-      expect(end).toBeGreaterThan(beforeRender);
-    }
-  });
-
-  it("offers a 'Yesterday' option requesting exactly yesterday's full calendar day", async () => {
-    mockApi({});
-    renderPage();
-    await waitFor(() => expect(energyCallPaths().length).toBeGreaterThanOrEqual(2));
-    // Only the requests triggered by selecting "Yesterday" matter here -- the
-    // initial "Today" mount also issues 24h-span requests (deliberately
-    // extending into the future), which would otherwise pollute this check.
-    vi.mocked(apiFetch).mockClear();
-
-    const beforeNow = Date.now();
-    await userEvent.selectOptions(screen.getByLabelText("Date range"), "Yesterday");
-    await waitFor(() => expect(energyCallPaths().length).toBeGreaterThan(0));
-
-    const historyPaths = energyCallPaths().filter((path) => {
-      const span = requestSpanMs(path);
-      return span !== null && span > LIVE_WINDOW_SPAN_THRESHOLD_MS;
-    });
-    expect(historyPaths.length).toBeGreaterThan(0);
-    for (const path of historyPaths) {
-      const params = queryParams(path);
-      const start = Date.parse(params.get("start")!);
-      const end = Date.parse(params.get("end")!);
-      expect(end - start).toBe(24 * 60 * 60_000);
-      // Unlike "Today", "Yesterday" is fully elapsed -- it must not run past now.
-      expect(end).toBeLessThanOrEqual(beforeNow);
-    }
-  });
-});
-
