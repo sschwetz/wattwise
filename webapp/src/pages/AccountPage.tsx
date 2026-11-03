@@ -15,6 +15,7 @@ import {
 } from "../account/useAccount";
 import { useAvatarImage } from "../account/useAvatarImage";
 import { errorMessage } from "../api/client";
+import { QueryError } from "../components/QueryError";
 
 const cardClass = "space-y-4 rounded-xl border border-line bg-surface p-5";
 const errorClass = "rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger";
@@ -521,12 +522,17 @@ function ManageTotpSection() {
 }
 
 export function AccountPage() {
+  const { data: me, error, isError, refetch } = useMe();
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
       <div className="flex items-center gap-2">
         <BackLink to="/sites" />
         <h1 className="font-display text-2xl font-semibold text-ink">Account</h1>
       </div>
+      {isError && !me && (
+        <QueryError error={error} fallback="Could not load your account details." onRetry={() => void refetch()} />
+      )}
       <ProfileSection />
       <ChangePasswordSection />
       <ChangeEmailSection />

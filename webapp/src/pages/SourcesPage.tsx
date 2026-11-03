@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useCallback, useMemo, useState } from "react";
+import { QueryError } from "../components/QueryError";
 import { ReadOnlyFieldset } from "../components/ReadOnlyFieldset";
 import { SaveStatus, type SaveState, SubmitButton } from "../components/SubmitButton";
 import { RateWindowsPanel } from "../sources/RateWindowsPanel";
@@ -497,7 +498,7 @@ function SourceRow({
 }
 
 export function CollectorsTab({ siteId, readOnly }: { siteId: number; readOnly: boolean }) {
-  const { data: sources } = useSources(siteId);
+  const { data: sources, error, isError, refetch } = useSources(siteId);
   const updateSource = useUpdateSource(siteId);
   const deleteSource = useDeleteSource(siteId);
 
@@ -545,6 +546,9 @@ export function CollectorsTab({ siteId, readOnly }: { siteId: number; readOnly: 
         <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
           {deleteSource.error instanceof Error ? deleteSource.error.message : "Failed to delete source. Please try again."}
         </p>
+      )}
+      {isError && !sources && (
+        <QueryError error={error} fallback="Could not load sources." onRetry={() => void refetch()} />
       )}
       {sources && sources.length === 0 && <p className="text-ink-muted">No sources yet.</p>}
       <ReadOnlyFieldset readOnly={readOnly}>

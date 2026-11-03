@@ -74,13 +74,38 @@ function LoadingSites() {
   );
 }
 
+function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <AuthCard title="Could not load your sites" fill>
+      <p role="alert" className="text-sm text-danger">
+        {errorMessage(error, "Something went wrong. Please try again.")}
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-4 rounded-md border border-line px-3 py-1 text-sm text-ink hover:bg-surface-2"
+      >
+        Retry
+      </button>
+    </AuthCard>
+  );
+}
+
 export function SitePickerPage() {
-  const { data: allSites, isLoading: sitesLoading } = useSites();
+  const sitesQuery = useSites();
+  const { data: allSites, isLoading: sitesLoading } = sitesQuery;
   const { data: sites = [] } = useEnabledSites();
-  const { data: pending, isLoading: pendingLoading } = usePendingInvites();
+  const pendingQuery = usePendingInvites();
+  const { data: pending, isLoading: pendingLoading } = pendingQuery;
   const invites = pending ?? [];
 
   if (sitesLoading || pendingLoading) return <LoadingSites />;
+  // Without a successful response we cannot tell "no sites" from "API down", so never fall through to onboarding.
+  const failed = !allSites ? sitesQuery : !pending && allSites.length === 0 ? pendingQuery : undefined;
+  if (failed) {
+    const retry = () => void Promise.all([sitesQuery.refetch(), pendingQuery.refetch()]);
+    return <LoadFailed error={failed.error} onRetry={retry} />;
+  }
   const hasInvites = invites.length > 0;
   if (!hasInvites && sites.length === 1) {
     return <Navigate to={`/sites/${sites[0].id}`} replace />;

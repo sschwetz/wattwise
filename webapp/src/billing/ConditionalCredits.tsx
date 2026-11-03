@@ -1,3 +1,4 @@
+import { QueryError } from "../components/QueryError";
 import { SubmitButton } from "../components/SubmitButton";
 import { type FormEvent, useState } from "react";
 import {
@@ -24,10 +25,13 @@ interface TariffProps {
 }
 
 export function ConditionalCreditList({ siteId, tariffId }: TariffProps) {
-  const { data: windows } = useConditionalCreditWindows(siteId, tariffId);
+  const { data: windows, error, isError, refetch } = useConditionalCreditWindows(siteId, tariffId);
   const endWindow = useEndConditionalCreditWindow(siteId, tariffId);
   const timeZone = useSiteTimeZone(siteId);
 
+  if (isError && !windows) {
+    return <QueryError error={error} fallback="Could not load conditional credits." onRetry={() => void refetch()} />;
+  }
   return (
     <ul className="space-y-2">
       {byLabel(windows).map((w) => (

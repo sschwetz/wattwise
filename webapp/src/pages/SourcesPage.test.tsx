@@ -39,6 +39,14 @@ describe("CollectorsTab", () => {
     expect(await within(screen.getByRole("list")).findByText("envoy")).toBeInTheDocument();
   });
 
+  it("shows an error instead of the empty state when sources fail to load", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error("Sources unavailable"));
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sources unavailable");
+    expect(screen.queryByText("No sources yet.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
   it("has no back link or page heading of its own", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce([]);
     renderPage();

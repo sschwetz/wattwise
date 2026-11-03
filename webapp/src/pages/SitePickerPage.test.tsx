@@ -129,6 +129,27 @@ describe("SitePickerPage", () => {
     expect(screen.queryByText("Pending invitations")).not.toBeInTheDocument();
   });
 
+  it("shows an error with a retry instead of the create form when the sites request fails", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error("Network down"));
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Network down");
+    expect(screen.queryByText("Create your first site")).not.toBeInTheDocument();
+
+    mockApi({ sites: [home] });
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Dashboard for site")).toBeInTheDocument();
+  });
+
+  it("shows an error when the user has no sites and the invitations request fails", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path === "/api/v1/sites") return [];
+      throw new Error("Invites unavailable");
+    });
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invites unavailable");
+    expect(screen.queryByText("Create your first site")).not.toBeInTheDocument();
+  });
+
   it("shows pending invitations when the user has no sites", async () => {
     mockApi({ pending: [pendingInvite] });
     renderPage();
