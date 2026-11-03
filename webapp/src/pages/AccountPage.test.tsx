@@ -37,6 +37,13 @@ describe("AccountPage", () => {
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/sites");
   });
 
+  it("shows an error with a retry when the account fails to load", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error("Account unavailable"));
+    renderPage();
+    expect(await screen.findByText("Account unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
   it("shows no key set yet when none is configured", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false });
     renderPage();

@@ -1,5 +1,6 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { ReadOnlyFieldset } from "../components/ReadOnlyFieldset";
+import { QueryError } from "../components/QueryError";
 import { SubmitButton } from "../components/SubmitButton";
 import { ConditionalCreditForm, ConditionalCreditList } from "../billing/ConditionalCredits";
 import { CheckboxGroup } from "../billing/CheckboxGroup";
@@ -63,10 +64,13 @@ function dollarsToCents(value: string): number {
 }
 
 function DemandWindowsList({ siteId, tariffId }: { siteId: number; tariffId: number }) {
-  const { data: windows } = useDemandWindows(siteId, tariffId);
+  const { data: windows, error, isError, refetch } = useDemandWindows(siteId, tariffId);
   const endWindow = useEndDemandWindow(siteId, tariffId);
   const timeZone = useSiteTimeZone(siteId);
 
+  if (isError && !windows) {
+    return <QueryError error={error} fallback="Could not load demand windows." onRetry={() => void refetch()} />;
+  }
   return (
     <ul className="space-y-2">
       {byLabel(windows).map((w) => (
@@ -175,12 +179,15 @@ function DemandWindowForm({ siteId, tariffId }: { siteId: number; tariffId: numb
 }
 
 function ExportAdjustmentWindowsList({ siteId, tariffId }: { siteId: number; tariffId: number }) {
-  const { data: windows } = useExportAdjustmentWindows(siteId, tariffId);
+  const { data: windows, error, isError, refetch } = useExportAdjustmentWindows(siteId, tariffId);
   const { data: cycles } = useBillingCycles(siteId);
   const endWindow = useEndExportAdjustmentWindow(siteId, tariffId);
   const timeZone = useSiteTimeZone(siteId);
   const noBillingCycle = cycles !== undefined && cycles.length === 0;
 
+  if (isError && !windows) {
+    return <QueryError error={error} fallback="Could not load export adjustments." onRetry={() => void refetch()} />;
+  }
   return (
     <ul className="space-y-2">
       {byLabel(windows).map((w) => {
@@ -308,8 +315,11 @@ function ExportAdjustmentWindowForm({ siteId, tariffId }: { siteId: number; tari
 }
 
 function MonthlyFeeDiscountWindowsList({ siteId, tariffId }: { siteId: number; tariffId: number }) {
-  const { data: windows } = useMonthlyFeeDiscountWindows(siteId, tariffId);
+  const { data: windows, error, isError, refetch } = useMonthlyFeeDiscountWindows(siteId, tariffId);
 
+  if (isError && !windows) {
+    return <QueryError error={error} fallback="Could not load fee discounts." onRetry={() => void refetch()} />;
+  }
   return (
     <ul className="space-y-2">
       {byLabel(windows).map((w) => (
@@ -407,7 +417,7 @@ function MonthlyFeeDiscountWindowForm({ siteId, tariffId }: { siteId: number; ta
 }
 
 function TariffSection({ siteId }: { siteId: number }) {
-  const { data: tariffs } = useTariffs(siteId);
+  const { data: tariffs, error: tariffsError, isError: tariffsFailed, refetch: refetchTariffs } = useTariffs(siteId);
   const { data: sources } = useSources(siteId);
   const [serviceAvailability, setServiceAvailability] = useState("");
   const [monthlyFee, setMonthlyFee] = useState("");
@@ -442,6 +452,9 @@ function TariffSection({ siteId }: { siteId: number }) {
         <p role="alert" className={errorClass}>
           {endTariff.error instanceof Error ? endTariff.error.message : "Failed to end the tariff. Please try again."}
         </p>
+      )}
+      {tariffsFailed && !tariffs && (
+        <QueryError error={tariffsError} fallback="Could not load tariffs." onRetry={() => void refetchTariffs()} />
       )}
       {tariffs && tariffs.length === 0 && (
         <>
@@ -547,7 +560,7 @@ function TariffSection({ siteId }: { siteId: number }) {
 }
 
 function BillingCycleSection({ siteId }: { siteId: number }) {
-  const { data: cycles } = useBillingCycles(siteId);
+  const { data: cycles, error: cyclesError, isError: cyclesFailed, refetch: refetchCycles } = useBillingCycles(siteId);
   const [cycleMonths, setCycleMonths] = useState("");
   const [anchorDay, setAnchorDay] = useState("");
   const createCycle = useCreateBillingCycle(siteId);
@@ -571,6 +584,9 @@ function BillingCycleSection({ siteId }: { siteId: number }) {
         <p role="alert" className={errorClass}>
           {endCycle.error instanceof Error ? endCycle.error.message : "Failed to end the billing cycle. Please try again."}
         </p>
+      )}
+      {cyclesFailed && !cycles && (
+        <QueryError error={cyclesError} fallback="Could not load billing cycles." onRetry={() => void refetchCycles()} />
       )}
       {cycles && cycles.length === 0 && <p className="text-ink">No billing cycles yet.</p>}
       <ul className="space-y-2">
@@ -628,11 +644,14 @@ function BillingCycleSection({ siteId }: { siteId: number }) {
 }
 
 function DemandChargesSection({ siteId }: { siteId: number }) {
-  const { data: demandCharges } = useDemandCharges(siteId);
+  const { data: demandCharges, error, isError, refetch } = useDemandCharges(siteId);
 
   return (
     <section className="space-y-4 rounded-xl border border-line bg-surface p-5">
       <h2 className="font-display text-lg font-semibold text-ink">Demand charges</h2>
+      {isError && !demandCharges && (
+        <QueryError error={error} fallback="Could not load demand charges." onRetry={() => void refetch()} />
+      )}
       {demandCharges && demandCharges.length === 0 && (
         <p className="text-sm text-ink-muted">
           No demand charges yet — these are calculated once enough billing-period data has been collected.

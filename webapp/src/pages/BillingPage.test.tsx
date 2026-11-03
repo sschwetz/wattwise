@@ -51,6 +51,34 @@ describe("Billing tabs chrome", () => {
   });
 });
 
+describe("Billing tabs load failures", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  it.each([
+    ["/api/v1/sites/7/tariffs", "Tariffs unavailable", "No tariffs yet."],
+    ["/api/v1/sites/7/billing-cycle", "Cycles unavailable", "No billing cycles yet."],
+  ])("shows an error instead of an empty state when %s fails", async (failingPath, message, emptyText) => {
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      path === failingPath ? Promise.reject(new Error(message)) : Promise.resolve([]),
+    );
+    renderPage();
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByText(emptyText)).not.toBeInTheDocument();
+  });
+
+  it("shows an error in a tariff's window list when it fails to load", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/api/v1/sites/7/tariffs") return Promise.resolve([ACTIVE_TARIFF]);
+      if (path.includes("demand-windows")) return Promise.reject(new Error("Windows unavailable"));
+      return Promise.resolve([]);
+    });
+    renderPage();
+    expect(await screen.findByText("Windows unavailable")).toBeInTheDocument();
+  });
+});
+
 const ACTIVE_TARIFF = {
   id: 1,
   site_id: 7,
