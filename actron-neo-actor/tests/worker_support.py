@@ -181,3 +181,20 @@ def with_sleep(h: Harness, sleep: Callable[[float], Any]) -> Harness:
     """The same harness with a worker that sleeps through `sleep`."""
     worker = InstanceWorker(h.instance, h.factory, AsyncCore(h.core), SETTINGS, h.clock.now, sleep)  # type: ignore[arg-type]
     return dataclasses.replace(h, worker=worker)
+
+
+class GatedApi(FakeActronApi):
+    """Holds the first power command that sets isOn to `gate_on` until `release` is set; `reached` marks it."""
+
+    def __init__(self, gate_on: bool, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.gate_on: bool | None = gate_on
+        self.reached = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def send_command(self, serial_number: str, command: dict[str, Any]) -> None:
+        if self.gate_on is not None and command["command"].get("UserAirconSettings.isOn") is self.gate_on:
+            self.gate_on = None
+            self.reached.set()
+            await self.release.wait()
+        await super().send_command(serial_number, command)

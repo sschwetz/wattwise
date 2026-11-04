@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 
 from actron_neo_actor.device import DeviceError
-from actron_neo_actor.executor import Attempt, Env, apply_with_retries, create, record, update
+from actron_neo_actor.executor import Attempt, Cutoff, Env, apply_with_retries, create, record, update
 from actron_neo_actor.models import ActionSpec, Context, RetrySpec, Run, Schedule
 from actron_neo_actor.schedule_eval import due_triggers, evaluate_conditions, missed_triggers
 from actron_neo_actor.view import TickView, sensed
@@ -61,9 +62,16 @@ async def _apply(env: Env, run: Run, schedule: Schedule) -> Run | None:
     return await finish(env, claimed, attempt)
 
 
-async def claim_and_apply(env: Env, run: Run, action: ActionSpec, retry: RetrySpec) -> tuple[Run, Attempt] | None:
+async def claim_and_apply(
+    env: Env,
+    run: Run,
+    action: ActionSpec,
+    retry: RetrySpec,
+    before_apply: Callable[[], None] | None = None,
+    latest_start: Cutoff | None = None,
+) -> tuple[Run, Attempt] | None:
     """Save the snapshot with the claim, so it is in Core API before the unit changes, then apply with retries.
-    None when another process claimed the run first."""
+    `before_apply` runs just before the first command. None when another process claimed the run first."""
     try:
         snapshot = env.device.snapshot_for(action.id, action.params)
     except DeviceError as err:
@@ -71,7 +79,9 @@ async def claim_and_apply(env: Env, run: Run, action: ActionSpec, retry: RetrySp
     claimed = await update(env, run, "running", snapshot=snapshot)
     if claimed is None:
         return None
-    return claimed, await apply_with_retries(env, action, retry)
+    if before_apply is not None:
+        before_apply()
+    return claimed, await apply_with_retries(env, action, retry, latest_start=latest_start)
 
 
 async def finish(env: Env, run: Run, attempt: Attempt, ok_message: str | None = None) -> Run | None:

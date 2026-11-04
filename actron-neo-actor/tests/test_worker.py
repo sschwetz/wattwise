@@ -14,6 +14,7 @@ from tests.worker_support import (
     SETTINGS,
     WINDOW_END,
     WINDOW_START,
+    GatedApi,
     Harness,
     harness,
     power_commands,
@@ -489,29 +490,52 @@ def test_test_run_waits_while_an_action_holds_the_unit():
     run(scenario())
 
 
-async def _stop_during_hold(h: Harness) -> tuple[Harness, Any]:
-    """Start a test run, stop the worker while it holds the action, and return the finished test run."""
-    h.core.contexts[1] = dataclasses.replace(h.core.contexts[1], windows=[])
-    holding = asyncio.Event()
+STOP_WAIT = 65  # how long stop waits for a test run before it cancels it
 
-    async def held_sleep(seconds: float) -> None:
-        if seconds == SETTINGS.test_hold_seconds:
-            holding.set()
+
+def stop_sleep(h: Harness, *, block_hold: bool, holding: asyncio.Event | None = None,
+               stop_wait: asyncio.Event | None = None) -> Any:
+    """A worker sleep for stop tests. The hold blocks when `block_hold` (setting `holding`); stop's
+    last-resort wait blocks forever, or ends once `stop_wait` is set."""
+
+    async def sleep(seconds: float) -> None:
+        if seconds == SETTINGS.test_hold_seconds and block_hold:
+            if holding is not None:
+                holding.set()
             await asyncio.Event().wait()
+        if seconds == STOP_WAIT:
+            await (stop_wait or asyncio.Event()).wait()
+            return
         await h.clock.sleep(seconds)
 
-    h = with_sleep(h, held_sleep)
+    return sleep
+
+
+async def start_test(h: Harness) -> int:
+    h.core.contexts[1] = dataclasses.replace(h.core.contexts[1], windows=[])
     test = h.core.add_run(schedule_id=1, kind="test", trigger_at=START)
     await h.worker.tick(h.instance)
-    await asyncio.wait_for(holding.wait(), timeout=5)
-    assert power_commands(h.api) == ["OFF"]
-    await h.worker.stop()
-    return h, h.core.runs[test.id]
+    return test.id
+
+
+async def stop_soon(h: Harness) -> asyncio.Task[None]:
+    """Start stopping the worker and let stop signal the test run before the test goes on."""
+    stopper = asyncio.create_task(h.worker.stop())
+    for _ in range(3):
+        await asyncio.sleep(0)
+    return stopper
 
 
 def test_stop_during_a_test_hold_restores_first():
     async def scenario() -> None:
-        h, done = await _stop_during_hold(harness())
+        holding = asyncio.Event()
+        h = harness()
+        h = with_sleep(h, stop_sleep(h, block_hold=True, holding=holding))
+        test_id = await start_test(h)
+        await asyncio.wait_for(holding.wait(), timeout=5)
+        assert power_commands(h.api) == ["OFF"]
+        await asyncio.wait_for(h.worker.stop(), timeout=5)
+        done = h.core.runs[test_id]
         assert (done.outcome, done.message) == ("ok", "applied, then restored power early because the actor stopped")
         assert power_commands(h.api) == ["OFF", "COOL"]
         assert h.factory.closed
@@ -521,32 +545,74 @@ def test_stop_during_a_test_hold_restores_first():
 
 def test_stop_during_a_test_hold_gives_the_restore_60_seconds():
     async def scenario() -> None:
+        holding = asyncio.Event()
         h = harness([schedule(retry=RetrySpec(10, 5, 30))])
-        h.api.push_on_command = True
-        h, done = await _stop_during_hold_unresponsive(h)
+        h = with_sleep(h, stop_sleep(h, block_hold=True, holding=holding))
+        test_id = await start_test(h)
+        await asyncio.wait_for(holding.wait(), timeout=5)
+        h.api.respond_to_commands = False
+        await asyncio.wait_for(h.worker.stop(), timeout=5)
+        done = h.core.runs[test_id]
         assert done.outcome == "failed"
         assert done.message == ("applied, but the restore failed after 1 attempt: not confirmed"
-                                " (the actor stopped during the hold)")
+                                " (the actor stopped during the test)")
         assert h.clock.elapsed() <= 60
         assert h.factory.closed
 
-    async def _stop_during_hold_unresponsive(h: Harness) -> tuple[Harness, Any]:
-        h.core.contexts[1] = dataclasses.replace(h.core.contexts[1], windows=[])
-        holding = asyncio.Event()
+    run(scenario())
 
-        async def held_sleep(seconds: float) -> None:
-            if seconds == SETTINGS.test_hold_seconds:
-                h.api.respond_to_commands = False
-                holding.set()
-                await asyncio.Event().wait()
-            await h.clock.sleep(seconds)
 
-        h = with_sleep(h, held_sleep)
-        test = h.core.add_run(schedule_id=1, kind="test", trigger_at=START)
-        await h.worker.tick(h.instance)
-        await asyncio.wait_for(holding.wait(), timeout=5)
-        await h.worker.stop()
-        return h, h.core.runs[test.id]
+def test_stop_during_the_restore_after_the_hold_lets_it_finish():
+    async def scenario() -> None:
+        h = harness(api=GatedApi(gate_on=True))
+        api: GatedApi = h.api  # type: ignore[assignment]
+        h = with_sleep(h, stop_sleep(h, block_hold=False))
+        test_id = await start_test(h)
+        await asyncio.wait_for(api.reached.wait(), timeout=5)  # the restore's COOL is being sent
+        stopper = await stop_soon(h)
+        api.release.set()
+        await asyncio.wait_for(stopper, timeout=5)
+        done = h.core.runs[test_id]
+        assert (done.outcome, done.message) == ("ok", "applied, then restored power")
+        assert power_commands(h.api) == ["OFF", "COOL"]
+
+    run(scenario())
+
+
+def test_stop_while_the_test_applies_confirms_then_restores():
+    async def scenario() -> None:
+        h = harness(api=GatedApi(gate_on=False))
+        api: GatedApi = h.api  # type: ignore[assignment]
+        h = with_sleep(h, stop_sleep(h, block_hold=True))
+        test_id = await start_test(h)
+        await asyncio.wait_for(api.reached.wait(), timeout=5)  # the test's OFF is being sent
+        stopper = await stop_soon(h)
+        api.release.set()
+        await asyncio.wait_for(stopper, timeout=5)
+        done = h.core.runs[test_id]
+        assert (done.outcome, done.message) == ("ok", "applied, then restored power early because the actor stopped")
+        assert power_commands(h.api) == ["OFF", "COOL"]
+
+    run(scenario())
+
+
+def test_stop_cancels_a_restore_that_hangs_past_the_cap():
+    async def scenario() -> None:
+        h = harness(api=GatedApi(gate_on=True))
+        api: GatedApi = h.api  # type: ignore[assignment]
+        h = with_sleep(h, stop_sleep(h, block_hold=True, stop_wait=api.reached))
+        test_id = await start_test(h)
+        for _ in range(50):  # until the test is in its hold
+            if power_commands(h.api) == ["OFF"]:
+                break
+            await asyncio.sleep(0.01)
+        stopper = asyncio.create_task(h.worker.stop())  # the COOL never gets through
+        done, _ = await asyncio.wait({stopper}, timeout=5)
+        if stopper not in done:
+            stopper.cancel()
+        assert stopper in done, "stop waited on the hung restore instead of cancelling it"
+        assert h.core.runs[test_id].outcome == "running"  # left for resume: the known limitation
+        assert h.factory.closed
 
     run(scenario())
 

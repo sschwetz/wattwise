@@ -29,12 +29,15 @@ from actron_neo_actor.models import Instance
 from actron_neo_actor.restores import record_override_skips, run_restores, watch_for_override
 from actron_neo_actor.resume import resume
 from actron_neo_actor.schedule_eval import LOOKBACK
-from actron_neo_actor.test_runs import Hold, run_test, triage
+from actron_neo_actor.test_runs import TestControl, run_test, triage
 from actron_neo_actor.view import TickView
 
 _LOG = logging.getLogger(__name__)
 
 CHANGE_GAP_SECONDS = 2
+# How long stop waits for a test run to restore and finish before it cancels it: the 60 second
+# restore allowance plus a margin.
+STOP_WAIT_SECONDS = 65
 
 
 class DeviceFactory(Protocol):
@@ -105,7 +108,7 @@ class InstanceWorker:
         self._readings_sent_at: datetime.datetime | None = None
         self._readings = Coalesced(self._send_readings, self._log_error("readings"))
         self._override_watch = Coalesced(self._watch, self._log_error("override check"))
-        self._test: tuple[int, asyncio.Task[None], Hold] | None = None
+        self._test: tuple[int, asyncio.Task[None], TestControl] | None = None
 
     @property
     def instance_id(self) -> int:
@@ -190,9 +193,9 @@ class InstanceWorker:
         for run in await self._core.list_pending_test_runs(self.instance_id):
             schedule = await triage(env, view, run)
             if schedule is not None:
-                hold = Hold()
-                job = run_test(env, run, schedule, self._settings.test_hold_seconds, hold)
-                self._test = (run.id, asyncio.create_task(self._guarded("test run", job)), hold)
+                control = TestControl(self._clock)
+                job = run_test(env, run, schedule, self._settings.test_hold_seconds, control)
+                self._test = (run.id, asyncio.create_task(self._guarded("test run", job)), control)
                 return
 
     async def _guarded(self, what: str, job: Coroutine[Any, Any, None]) -> None:
@@ -241,19 +244,29 @@ class InstanceWorker:
     async def stop(self) -> None:
         """Stop background work and sync, and cancel a pending sign-in. Call it when the instance is dropped.
 
-        A test run in its hold restores the unit first (within test_runs.STOP_RESTORE_SECONDS); a test
-        run in any other step is cancelled."""
+        A test run whose apply has started is asked to finish (see test_runs.TestControl) and gets
+        STOP_WAIT_SECONDS before it is cancelled; one that has not sent a command yet is cancelled."""
         if self._test is not None:
-            _, task, hold = self._test
-            if not hold.cut():
-                task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+            await self._stop_test(*self._test[1:])
             self._test = None
         await self._readings.cancel()
         await self._override_watch.cancel()
         await self._drop_device()
         await self._factory.close()
+
+    async def _stop_test(self, task: asyncio.Task[None], control: TestControl) -> None:
+        if control.request_stop():
+            timer = asyncio.ensure_future(self._sleep(STOP_WAIT_SECONDS))
+            try:
+                await asyncio.wait({task, timer}, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                timer.cancel()
+                await asyncio.gather(timer, return_exceptions=True)
+            if not task.done():
+                _LOG.warning("Test run did not finish before the stop (instance %s)", self.instance_id)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
     async def _sign_out(self) -> None:
         self._factory.signed_out()

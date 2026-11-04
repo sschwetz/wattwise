@@ -21,6 +21,7 @@ from actron_neo_actor.models import ActionSpec, RetrySpec, Run
 SETTLE_SECONDS = 15
 
 Clock = Callable[[], datetime.datetime]
+Cutoff = Callable[[], datetime.datetime | None]  # the latest a try may start, or None for no limit
 Sleep = Callable[[float], Awaitable[None]]
 
 
@@ -90,13 +91,12 @@ async def with_retries[T](
     op: Callable[[], Awaitable[T]],
     *,
     started: datetime.datetime | None = None,
-    latest_start: datetime.datetime | None = None,
+    latest_start: Cutoff | None = None,
 ) -> Attempt[T]:
     """Try `op` up to `retry.max_attempts` times, `interval_seconds` apart, giving up once the next
-    try would start more than `give_up_minutes` after `started` (default: now) or after `latest_start`.
-    A rejected sign-in ends at once."""
+    try would start more than `give_up_minutes` after `started` (default: now) or after the cut-off
+    `latest_start` returns, read before each retry. A rejected sign-in ends at once."""
     give_up = (started or env.clock()) + datetime.timedelta(minutes=retry.give_up_minutes)
-    deadline = give_up if latest_start is None else min(give_up, latest_start)
     attempts = 0
     while True:
         attempts += 1
@@ -110,9 +110,14 @@ async def with_retries[T](
         except Exception as err:  # a bug or library surprise; its text may quote raw values
             error = type(err).__name__
         next_try = env.clock() + datetime.timedelta(seconds=retry.interval_seconds)
-        if attempts >= max(retry.max_attempts, 1) or next_try > deadline:
+        if attempts >= max(retry.max_attempts, 1) or next_try > _deadline(give_up, latest_start):
             return Attempt(attempts, error=error)
         await env.sleep(retry.interval_seconds)
+
+
+def _deadline(give_up: datetime.datetime, latest_start: Cutoff | None) -> datetime.datetime:
+    cutoff = latest_start() if latest_start is not None else None
+    return give_up if cutoff is None else min(give_up, cutoff)
 
 
 async def shows_action(env: Env, action: ActionSpec) -> bool:
@@ -139,13 +144,23 @@ async def settled(env: Env, action: ActionSpec) -> bool:
 
 
 async def apply_with_retries(
-    env: Env, action: ActionSpec, retry: RetrySpec, started: datetime.datetime | None = None
+    env: Env,
+    action: ActionSpec,
+    retry: RetrySpec,
+    started: datetime.datetime | None = None,
+    latest_start: Cutoff | None = None,
 ) -> Attempt[None]:
-    """Apply with retries; when every try fails, an ok after the settle check still counts."""
-    attempt: Attempt[None] = await with_retries(
-        env, retry, lambda: env.device.apply(action.id, action.params), started=started
-    )
-    if not attempt.ok and not env.auth_lost and await settled(env, action):
+    """Apply with retries; when every try fails, an ok after the settle check still counts.
+    The settle check is skipped when it would run past the cut-off."""
+
+    async def op() -> None:
+        await env.device.apply(action.id, action.params)
+
+    attempt: Attempt[None] = await with_retries(env, retry, op, started=started, latest_start=latest_start)
+    if attempt.ok or env.auth_lost:
+        return attempt
+    settle_end = env.clock() + datetime.timedelta(seconds=SETTLE_SECONDS)
+    if settle_end <= _deadline(settle_end, latest_start) and await settled(env, action):
         return Attempt(attempt.attempts)
     return attempt
 
