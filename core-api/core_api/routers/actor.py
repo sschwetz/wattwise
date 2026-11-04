@@ -259,17 +259,10 @@ def update_actor_run(
     run = _instance_run(db, instance, run_id)
     if run.outcome in _TERMINAL:
         raise AppError(409, "run_finished", "This run has already finished")
-    now = datetime.datetime.now(datetime.UTC)
-    if payload.outcome == RunOutcome.RUNNING:
-        _claim_run(db, run, now)
-    elif payload.outcome == RunOutcome.PENDING:
+    if payload.outcome == RunOutcome.PENDING:
         raise AppError(422, "invalid_outcome", "A run cannot return to pending")
-    else:
-        run.outcome = payload.outcome
-        run.finished_at = now
-    _apply_details(run, payload)
-    db.commit()
-    if run.outcome == RunOutcome.FAILED:
+    _transition_run(db, run, payload, datetime.datetime.now(datetime.UTC))
+    if payload.outcome == RunOutcome.FAILED:
         _email_failure(db, run, email_sender)
     return run
 
@@ -293,24 +286,31 @@ def _instance_run(db: Session, instance: ActorInstance, run_id: int) -> ActorRun
     return run
 
 
-def _claim_run(db: Session, run: ActorRun, now: datetime.datetime) -> None:
-    """Move pending to running in one conditional UPDATE so two callers cannot both win."""
+def _transition_run(db: Session, run: ActorRun, payload: RunUpdate, now: datetime.datetime) -> None:
+    """Apply the update in one conditional UPDATE so a concurrent caller cannot
+    claim twice or rewrite a finished run. Zero matched rows means it lost."""
+    values: dict = {"outcome": payload.outcome}
+    for field in ("message", "attempts", "snapshot"):
+        if field in payload.model_fields_set:
+            values[field] = getattr(payload, field)
+    if payload.outcome == RunOutcome.RUNNING:
+        values["started_at"] = now
+        allowed, lost = (RunOutcome.PENDING,), AppError(409, "run_not_pending", "This run is no longer pending")
+    else:
+        values["finished_at"] = now
+        allowed = (RunOutcome.PENDING, RunOutcome.RUNNING)
+        lost = AppError(409, "run_finished", "This run has already finished")
     result = db.execute(
         update(ActorRun)
-        .where(ActorRun.id == run.id, ActorRun.outcome == RunOutcome.PENDING)
-        .values(outcome=RunOutcome.RUNNING, started_at=now)
+        .where(ActorRun.id == run.id, ActorRun.outcome.in_(allowed))
+        .values(**values)
         .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
         db.rollback()
-        raise AppError(409, "run_not_pending", "This run is no longer pending")
+        raise lost
+    db.commit()
     db.refresh(run)
-
-
-def _apply_details(run: ActorRun, payload: RunUpdate) -> None:
-    for field in ("message", "attempts", "snapshot"):
-        if field in payload.model_fields_set:
-            setattr(run, field, getattr(payload, field))
 
 
 def _email_failure(db: Session, run: ActorRun, email_sender: EmailSender) -> None:

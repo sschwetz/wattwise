@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from core_api.deps import get_db_session, get_email_sender
 from core_api.errors import install_error_handlers
-from core_api.models import ActorInstance, ActorSchedule
+from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunOutcome
 from core_api.routers.actor import router
 from tests.conftest import ACTOR_KEY, UTC
 
@@ -177,3 +177,44 @@ def test_since_listing_returns_all_kinds_ordered(http, db, inst):
 def test_listing_needs_exactly_one_filter(http, inst, params):
     r = http.get(_url(inst), params=params, headers=HEADERS)
     assert r.status_code == 422
+
+
+def test_duplicate_detected_across_utc_offsets(http, db, inst):
+    s = _schedule(db, inst)
+    assert _create(http, inst, s).status_code == 201
+    same_instant = datetime.datetime(2026, 11, 5, 11, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=10)))
+    dup = _create(http, inst, s, trigger_at=same_instant)
+    assert (dup.status_code, dup.json()["code"]) == (409, "duplicate_run")
+
+
+def test_lost_terminal_race_changes_nothing_and_sends_no_email(http, db, inst, fake_email_sender, monkeypatch):
+    from sqlalchemy import update
+    from sqlalchemy.orm.attributes import set_committed_value
+
+    from core_api.routers import actor as actor_module
+
+    s = _schedule(db, inst, notify=True)
+    run = _create(http, inst, s).json()
+    finished = datetime.datetime(2026, 11, 5, 2, 0, tzinfo=UTC)
+    real = actor_module._instance_run
+
+    def racing(db_, instance, run_id):
+        found = real(db_, instance, run_id)
+        # Another request finishes the run after this handler has read it.
+        db_.execute(update(ActorRun).where(ActorRun.id == run_id).values(
+            outcome=RunOutcome.FAILED, message="winner", snapshot={"w": 1}, finished_at=finished,
+        ).execution_options(synchronize_session=False))
+        db_.commit()
+        # The handler still holds the state it read before the other request won.
+        set_committed_value(found, "outcome", RunOutcome.PENDING)
+        return found
+
+    monkeypatch.setattr(actor_module, "_instance_run", racing)
+    r = http.patch(_url(inst, f"/runs/{run['id']}"),
+                   json={"outcome": "failed", "message": "loser", "snapshot": {"l": 1}}, headers=HEADERS)
+    assert (r.status_code, r.json()["code"]) == (409, "run_finished")
+    assert fake_email_sender.sent == []
+    db.expire_all()
+    row = db.get(ActorRun, run["id"])
+    assert (row.message, row.snapshot) == ("winner", {"w": 1})
+    assert row.finished_at.replace(tzinfo=UTC) == finished
