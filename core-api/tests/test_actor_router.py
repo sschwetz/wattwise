@@ -169,3 +169,35 @@ def test_provider_mismatch_401_on_every_route(http, db, site, method, suffix, bo
     headers = {**HEADERS, "X-Actor-Provider": "other"}
     r = http.request(method, f"/api/v1/actor/instances/{i.id}/{suffix}", headers=headers, json=body)
     assert (r.status_code, r.json()["code"]) == (401, "invalid_actor_key")
+
+
+def test_discovered_config_without_auth_state_keeps_it(http, db, site):
+    i = _instance(db, site, config={"a": 1}, auth_state={"keep": "me"})
+    r = http.patch(f"/api/v1/actor/instances/{i.id}/discovered-config", headers=HEADERS, json={"config": {"b": 2}})
+    assert r.status_code == 204
+    db.refresh(i)
+    assert i.auth_state == {"keep": "me"}
+    assert i.config == {"a": 1, "b": 2}
+
+
+_INSTANCE_ROUTES = [
+    ("put", "readings", {"state": {"t": 1}}),
+    ("put", "capabilities", CAPS),
+    ("get", "schedules", None),
+    ("get", "context", None),
+]
+
+
+@pytest.mark.parametrize("method,suffix,body", _INSTANCE_ROUTES)
+def test_disabled_instance_with_unfinished_run_still_served(http, db, site, method, suffix, body):
+    i = _instance(db, site, enabled=False)
+    _open_run(db, _schedule(db, i))
+    r = http.request(method, f"/api/v1/actor/instances/{i.id}/{suffix}", headers=HEADERS, json=body)
+    assert r.status_code in (200, 204)
+
+
+@pytest.mark.parametrize("method,suffix,body", _INSTANCE_ROUTES)
+def test_disabled_instance_without_run_403(http, db, site, method, suffix, body):
+    i = _instance(db, site, enabled=False)
+    r = http.request(method, f"/api/v1/actor/instances/{i.id}/{suffix}", headers=HEADERS, json=body)
+    assert (r.status_code, r.json()["code"]) == (403, "instance_disabled")
