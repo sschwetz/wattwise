@@ -111,6 +111,20 @@ def delete_instance(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/instances/{instance_id}/sign-in/reset", response_model=ActorInstanceView)
+def reset_sign_in(
+    instance_id: int, site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
+):
+    """Drop the stored refresh token so the actor starts a new device-code sign-in."""
+    instance = _instance_of_site(db, site, instance_id)
+    _refuse_if_held_off(db, instance.id)
+    instance.config = {k: v for k, v in instance.config.items() if k != "refresh_token"}
+    instance.auth_state = None
+    db.commit()
+    db.refresh(instance)
+    return instance
+
+
 # Schedules
 
 

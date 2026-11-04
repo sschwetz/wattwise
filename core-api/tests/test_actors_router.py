@@ -290,3 +290,61 @@ def test_schedule_delete_ignores_sibling_unfinished_run(http, db, site):
     assert http.delete(f"{_base(site)}/schedules/{idle.id}").status_code == 204
     r = http.delete(f"{_base(site)}/schedules/{busy.id}")
     assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
+
+
+def _reset_url(site, inst) -> str:
+    return f"{_base(site)}/instances/{inst.id}/sign-in/reset"
+
+
+def _stored_config(db, inst) -> dict:
+    db.expire_all()
+    return db.get(ActorInstance, inst.id).config
+
+
+def test_sign_in_reset_viewer_forbidden(http, db, site, viewer):
+    inst = _instance(db, site)
+    assert http.post(_reset_url(site, inst)).status_code == 403
+    assert _stored_config(db, inst)["refresh_token"] == "secret-token"
+
+
+def test_sign_in_reset_other_site_is_404(http, db, site, user):
+    other = Site(owner_user_id=user.id, name="Other", timezone="Australia/Sydney")
+    db.add(other)
+    db.commit()
+    inst = _instance(db, other)
+    assert http.post(_reset_url(site, inst)).status_code == 404
+    assert _stored_config(db, inst)["refresh_token"] == "secret-token"
+
+
+def test_sign_in_reset_refused_while_held_off(http, db, site):
+    inst = _instance(db, site, auth_state={"needs_sign_in": True})
+    _open_run(db, _db_schedule(db, inst))
+    r = http.post(_reset_url(site, inst))
+    assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
+    db.expire_all()
+    stored = db.get(ActorInstance, inst.id)
+    assert stored.config["refresh_token"] == "secret-token"
+    assert stored.auth_state == {"needs_sign_in": True}
+
+
+def test_sign_in_reset_removes_only_the_token(http, db, site):
+    inst = _instance(db, site, auth_state={"needs_sign_in": True})
+    inst.config = {"refresh_token": "secret-token", "device_id": "unit-1"}
+    db.commit()
+    r = http.post(_reset_url(site, inst))
+    assert r.status_code == 200
+    assert "config" not in r.json() and r.json()["auth_state"] is None
+    db.expire_all()
+    stored = db.get(ActorInstance, inst.id)
+    assert stored.config == {"device_id": "unit-1"}
+    assert stored.auth_state is None
+    raw = str(db.connection().exec_driver_sql("select config from actor_instances").scalar())
+    assert "secret-token" not in raw and "device_id" not in raw
+
+
+def test_sign_in_reset_is_idempotent(http, db, site):
+    inst = _instance(db, site, auth_state={"needs_sign_in": True})
+    assert http.post(_reset_url(site, inst)).status_code == 200
+    again = http.post(_reset_url(site, inst))
+    assert again.status_code == 200 and again.json()["auth_state"] is None
+    assert "refresh_token" not in _stored_config(db, inst)
