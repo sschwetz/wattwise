@@ -35,6 +35,7 @@ export function SiteLayout() {
           items={[
             { to: `/sites/${siteId}`, label: "Dashboard", end: true },
             { to: `/sites/${siteId}/reporting`, label: "Reporting" },
+            { to: `/sites/${siteId}/schedule`, label: "Schedule" },
           ]}
         />
         <main className="min-w-0 flex-1">
