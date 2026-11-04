@@ -2,14 +2,14 @@
 
 An actor sends commands to a device. A [collector](collectors.md) brings data in; an actor reads site data from Core API and acts on it. The first actor, [`actron-neo-actor`](../actron-neo-actor), turns a ducted Actron Neo air conditioner off at the start of a tariff demand window and puts it back afterwards.
 
-Actors follow the collector design: one small Python container per kind of device, one shared key, instances discovered from Core API, and no state that a restart cannot recover. They differ in three ways.
+Actors follow the collector design: one small Python container per kind of device, one shared key, instances discovered from Core API, and no state that a restart cannot recover. They differ as follows.
 
 | | Collector | Actor |
 |---|---|---|
 | Direction | Device to Core API | Core API to device |
 | Configured by | A source in Settings | A schedule on the **Schedule** page |
 | Key | One per kind (`ENVOY_COLLECTOR_KEY`, and so on) | `ACTOR_KEY`, shared by all actors |
-| Provider header | `X-Collector-Provider` (optional on most routes) | `X-Actor-Provider` (required on per-instance routes) |
+| Provider header | `X-Collector-Provider` (optional on most routes) | `X-Actor-Provider` (required on every route) |
 | Endpoints | `/collector/...` and `/sources/{id}/...` | `/actor/...` |
 | Records its work | No | Every run is a row in `actor_runs` |
 
@@ -23,7 +23,7 @@ All paths are under `/api/v1/actor`.
 
 | Step | Endpoint | What it does |
 |---|---|---|
-| Discover | `GET /instances?provider=` | Lists the provider's instances on enabled sites, with the site `timezone` and the stored `config`. An instance with an unfinished action run stays in the list when it or its site is disabled, with `restore_only: true`, so the actor can still put the unit back. |
+| Discover | `GET /instances?provider=` | The `X-Actor-Provider` header must name the same provider. Lists the provider's instances on enabled sites, with the site `timezone` and the stored `config`. An instance with an unfinished action run stays in the list when it or its site is disabled, with `restore_only: true`, so the actor can still put the unit back. |
 | Report sign-in | `PATCH /instances/{id}/discovered-config` | Merges `config` (the refresh token) into the stored config and sets `auth_state` (the sign-in code and link, or `needs_sign_in`). |
 | Declare | `PUT /instances/{id}/capabilities` | Sends the actions and readings the device supports. See [Capabilities](#capabilities). |
 | Fetch schedules | `GET /instances/{id}/schedules` | Enabled schedules, plus any disabled schedule that still has an unfinished action run. |
@@ -33,7 +33,7 @@ All paths are under `/api/v1/actor`.
 | Create a run | `POST /instances/{id}/runs` | Creates a run in outcome `pending`. |
 | Update a run | `PATCH /instances/{id}/runs/{run_id}` | Moves a run to `running`, `ok`, `skipped`, `failed` or `overridden`, and can set `message`, `attempts` and `snapshot`. |
 
-Every per-instance route returns 401 `invalid_actor_key` for a wrong key, a wrong provider or an unknown instance (the same code, so ids cannot be probed). A disabled instance or site gets 403 `instance_disabled` or `site_disabled`, unless an action run still needs its restore.
+Every per-instance route returns 401 `invalid_actor_key` for a wrong key, a wrong provider or an unknown instance (the same code, so ids cannot be probed). Discovery returns the same 401 when the provider header is missing or differs from `?provider=`. A disabled instance or site gets 403 `instance_disabled` or `site_disabled`, unless an action run still needs its restore.
 
 ### Capabilities
 
@@ -57,10 +57,10 @@ A schedule has one trigger, optional conditions, one action, a restore rule and 
 | Trigger | Fires |
 |---|---|
 | `window_start`, `window_end` | At the start or end of each occurrence of a demand window of the site's tariff |
-| `time` | At a set `HH:MM` in the site time zone on chosen days (0 is Monday) |
-| `price_above` | When the buy price rises above a level, at most once per 5-minute step. After an actor restart the previous price is unknown, so a price already above the level counts as a crossing. |
+| `time` | At a set `HH:MM` in the site time zone on chosen days (0 is Monday). At least one day is required. |
+| `price_above` | When the buy price rises above a level, at most once per 5-minute step. After an actor restart the previous price is unknown, so a price already above the level counts as a crossing. After an owner override and an actor restart, a price trigger that fires again acts again. |
 
-Conditions ("only if") all have to pass or the run is skipped. A reading that is missing or older than 5 minutes fails a condition. A condition row can be switched off with its tick box: it is kept but ignored.
+Conditions ("only if") all have to pass or the run is skipped. A reading that is missing or stale fails a condition. A device reading is stale after 5 minutes. The site readings (`outdoor_temp_c`, `battery_soc_pct`, `price_c_per_kwh`) come from the [context](#context), where outdoor temperature and battery charge older than 15 minutes are `null`. A condition row can be switched off with its tick box: it is kept but ignored.
 
 ### Restore
 
@@ -68,10 +68,10 @@ An action that is `restorable` saves the fields it changes (the snapshot) before
 
 | `restore.when` | Restore time |
 |---|---|
-| `window_end` | The end of the window occurrence that started the run. Offered only for a `window_start` trigger. |
+| `window_end` | The end of the window occurrence that started the run. Allowed only with a `window_start` trigger; Core API refuses it for any other trigger with 422 `invalid_schedule`. |
 | `after_minutes` | `minutes` after the trigger |
 | `at_time` | The next `HH:MM` in the site time zone at or after the trigger |
-| `conditions_only` | No time. The unit is put back when a "restore early" condition holds. |
+| `conditions_only` | 24 hours after the trigger. The unit is put back earlier when a "restore early" condition holds, and at the 24-hour cap when it never does or its reading is missing. |
 
 - **Only restore if** (`only_if`) is a gate. Until every ticked condition passes, the actor does not restore and the unit stays off. A missing or stale reading passes the gate, so a dead sensor never keeps the unit off.
 - **Restore early when** (`early_if`) brings the restore forward when every ticked condition is evaluable and true. The gate still applies.
@@ -120,11 +120,11 @@ Rules Core API enforces:
 
 - The unique key on (`schedule_id`, `kind`, `trigger_at`) makes a second create fail with 409 `duplicate_run`, so one process runs a trigger.
 - Claiming (`pending` to `running`) succeeds only while the row is still `pending`, otherwise 409 `run_not_pending`. Finishing succeeds only from `pending` or `running`, otherwise 409 `run_finished`. A run cannot go back to `pending` (422 `invalid_outcome`).
-- The one change allowed on a finished run is `ok` to `overridden`.
-- A restore run needs a `parent_run_id` that is an action run of the same schedule, otherwise 422 `invalid_parent`.
+- The one change allowed on a finished run is an `action` run going from `ok` to `overridden`. That change keeps the run's `snapshot` and `attempts`; only `message` can be set with it.
+- A restore run needs a `parent_run_id` that is an action run of the same schedule, otherwise 422 `invalid_parent`. Any other kind of run with a `parent_run_id` gets the same 422.
 - When an actor marks a run `failed` and the schedule has **Email me if it still fails** on, Core API emails the site owner at once through the mail relay. The actor cannot reach the relay.
 
-An action run is **unfinished** while its outcome is `pending`, `running` or `ok` and it has no restore row that ended `ok`, `skipped` or `failed`. A failed restore closes the action run. The actor does not retry it later, and the unit stays as it was. The failure shows on the Dashboard until a later run succeeds.
+An action run is **unfinished** while its outcome is `pending`, `running` or `ok` and it has no restore row that ended `ok`, `skipped` or `failed`. A failed restore closes the action run. The actor does not retry it later, and the unit stays as it was. The failure shows on the Dashboard until a later run of the schedule ends `ok` or `overridden`.
 
 Skip and failure messages the actor writes include `missed` (the actor was down for more than 10 minutes after the trigger), `another schedule is active` (schedules on one instance are not checked for overlap when saved, so the second one is skipped), `reading unavailable: <reading>`, a failed comparison such as `indoor_temp_c 24.0 is not above 27.0`, and `owner override`.
 
@@ -132,7 +132,7 @@ A trigger that is no more than 10 minutes old still runs. An older one that has 
 
 ### Test now
 
-**Test now** calls `POST /sites/{site_id}/actors/schedules/{schedule_id}/test`, which inserts a `test` run in outcome `pending`. Core API refuses with 409 `instance_disabled` or `no_capabilities` when the actor could not pick it up. The actor claims it on its next tick (within about 30 seconds) and applies the action immediately, ignoring the trigger and the conditions. If the schedule restores, it puts the unit back after `TEST_HOLD_SECONDS` (default 30). If another action holds the unit, the test is skipped with `another schedule is active`, because it would save the actor's own change as the state to restore.
+**Test now** calls `POST /sites/{site_id}/actors/schedules/{schedule_id}/test`, which inserts a `test` run in outcome `pending`. Core API refuses with 409 when the actor would not run it: `site_disabled`, `instance_disabled`, `schedule_disabled`, `no_capabilities`, or `test_in_progress` while a test of that schedule is still pending or running. The actor claims it on its next tick (within about 30 seconds) and applies the action immediately, ignoring the trigger and the conditions. If the schedule restores, it puts the unit back after `TEST_HOLD_SECONDS` (default 30). If another action holds the unit, the test is skipped with `another schedule is active`, because it would save the actor's own change as the state to restore. A test run that waited more than 10 minutes, for example while the actor was down, is skipped with `expired` instead of being run.
 
 ## The owner API
 
@@ -145,7 +145,7 @@ The web app uses these routes under `/api/v1/sites/{site_id}/actors`. Reads need
 | `DELETE /instances/{id}` | Delete the instance, its schedules and their run history |
 | `POST /instances/{id}/sign-in/reset` | Drop the stored refresh token so the actor starts a new sign-in |
 | `GET /schedules`, `POST /schedules` | List and create |
-| `PATCH /schedules/{id}` | Merges the fields sent into the stored schedule, then validates the whole |
+| `PATCH /schedules/{id}` | Merges the fields sent into the stored schedule, then validates the whole. While this schedule holds the unit off, a change to `trigger`, `action` or `restore` is refused with 409 `unit_held_off`. |
 | `DELETE /schedules/{id}` | Delete the schedule and its run history |
 | `POST /schedules/{id}/test` | Queue a test run |
 | `GET /runs?limit=` | The site's newest runs with `schedule_name` (1 to 200, default 50) |
@@ -154,7 +154,11 @@ The web app uses these routes under `/api/v1/sites/{site_id}/actors`. Reads need
 
 Instances never include `config`, which holds the refresh token. A schedule that fails the capability check returns 422 `invalid_schedule`.
 
-Deleting a schedule or an instance deletes its run history, restore rows first because they point at their action run. Disabling keeps history. Delete and sign-in reset return 409 `unit_held_off` while an action run still owes a restore: for an instance, any of its runs, for a schedule, that schedule's runs.
+Deleting a schedule or an instance deletes its run history, restore rows first because they point at their action run. Disabling keeps history. Delete returns 409 `unit_held_off` while an action run still owes a restore: for an instance, any of its runs, for a schedule, that schedule's runs.
+
+Sign-in reset returns the same 409 while the instance holds the unit off, except when its `auth_state` says `needs_sign_in`. Then the stored token no longer works, the actor cannot run the restore, and a new sign-in is the only way out. Once the new code is approved the actor restores from the snapshot stored on the action run.
+
+While a schedule holds the unit off, its name, `enabled`, conditions, retry and email setting can still be changed. Disabling it brings the restore forward. A full-body `PATCH` that sends the stored `trigger`, `action` and `restore` unchanged is accepted.
 
 ## Failures
 
@@ -162,14 +166,14 @@ Deleting a schedule or an instance deletes its run history, restore rows first b
 
 | Kind | Raised when | Cleared when |
 |---|---|---|
-| `run_failed` | The latest action or restore run of a schedule is `failed` | A later run of that schedule ends `ok`, `skipped` or `overridden` (a successful test run counts) |
-| `still_off` | An action run is unfinished and now is past its restore time plus the schedule's give-up minutes. Never raised for `conditions_only`. | The restore finishes |
-| `actor_silent` | An action run is unfinished and the actor has not reported for more than 5 minutes (or never has, dated from the trigger) | The actor reports again |
+| `run_failed` | The latest action or restore run of a schedule is `failed` | For a failed action, a later run of that schedule ends `ok`, `skipped` or `overridden` (a successful test run counts). For a failed restore, a later run ends `ok` or `overridden`; a skip does not clear it. |
+| `still_off` | An action run is unfinished and now is past its restore time plus the schedule's give-up minutes. For `conditions_only` the restore time is the 24-hour cap. | The restore finishes |
+| `actor_silent` | An action run is unfinished and the actor has not reported for more than 5 minutes (or never has, dated from the trigger). The actor stops its heartbeat when it loses sight of the unit, so a lost sign-in or a cloud outage raises this too. | The actor reports again |
 | `needs_sign_in` | The instance's `auth_state` says `needs_sign_in` | The stored token works again, or the owner starts a new sign-in. It has no start time. |
 
 Each row has `kind`, `instance_id`, `schedule_id`, `schedule_name`, `message` and `since`, oldest first.
 
-The watchdog job (`actor_watchdog` in [`scheduler.py`](../core-api/core_api/scheduler.py)) runs every minute. For each `still_off` or `actor_silent` case on a schedule with email on, it sets `watchdog_notified_at` on the run and emails the site owner once. A conditional update claims the run first, so two job runs never both send. A run gets one watchdog email in total, whichever case came first.
+The watchdog job (`actor_watchdog` in [`scheduler.py`](../core-api/core_api/scheduler.py)) runs every minute. For each `still_off` or `actor_silent` case on a schedule with email on, it sets `watchdog_notified_at` on the run and emails the site owner once. A conditional update claims the run first, so two job runs never both send. A run gets one watchdog email in total, whichever case came first. A send that fails is not retried.
 
 ## What fails and what you see
 
@@ -178,16 +182,19 @@ The watchdog job (`actor_watchdog` in [`scheduler.py`](../core-api/core_api/sche
 | Actor container stopped while the unit is off | `actor_silent` after 5 minutes. The watchdog email goes out if the schedule has email on. | Start the container. It resumes the open runs from Core API and restores. |
 | Actor restarted mid-run | A run left `running` is finished from the unit's state: `ok` (`confirmed after a restart`), applied again within the give-up time, or `failed`. A `pending` run is `skipped: the actor restarted before the run`. | Automatic on the next tick |
 | Unit does not confirm a command | The run retries, then `failed: failed after N attempts: not confirmed`. A last look 15 seconds later counts a late command as `ok`. | Check the unit. Use **Test now** after fixing. |
-| Restore fails | `run_failed` on the Dashboard. The unit stays as it is. | Turn the unit on by hand |
+| Restore fails | `run_failed` on the Dashboard until a later run of the schedule ends `ok` or `overridden`. The unit stays as it is. | Turn the unit on by hand |
 | Owner turns the unit on during an off window | The action run becomes `overridden` ("You took over"). The restore is recorded as `skipped: owner override`. No email and no Dashboard entry. | None needed |
 | Condition gate never passes | The unit stays off. `still_off` appears after the restore time plus the give-up minutes. | Fix the condition, or turn the unit on |
-| Actron rejects the stored token | After three failed refreshes at least a minute apart, **needs sign-in** and a **Sign in again** button. The actor retries the old token every 10 minutes. | Press **Sign in again** and approve the code. If the unit is held off, Core API refuses until it is restored (409 `unit_held_off`). |
+| A `conditions_only` restore whose condition never holds | The unit is put back 24 hours after the trigger | None needed |
+| Actron rejects the stored token | After three failed refreshes at least a minute apart, **needs sign-in** and a **Sign in again** button. The actor retries the old token every 10 minutes. It stops sending its heartbeat, so a held-off unit also shows `actor_silent`. | Press **Sign in again** and approve the code. This works while the unit is held off; the actor restores it after the new sign-in. |
 | Sign-in code expires | The actor requests a new code after 30 seconds and posts it | Open the new link |
 | Core API unreachable | The actor logs `Discovery failed: <error type>` or `Tick failed (instance N): <error type>` every 30 seconds. Nothing new is scheduled or recorded. | Automatic on the next tick after Core API returns |
-| A reading is missing or older than 5 minutes | An "only if" condition fails: `skipped: reading unavailable`. A restore gate passes. | Check the actor and the unit |
+| A reading is missing or stale (device readings after 5 minutes, site readings after 15) | An "only if" condition fails: `skipped: reading unavailable`. A restore gate passes. | Check the actor and the unit |
 | Push updates (MQTT) fail | The actor polls every 30 seconds and retries push after 30, 60, 120, 240, then every 300 seconds | Automatic |
 
 ## The Actron Neo actor
+
+Known limits are in [Operations](operations.md#known-limits).
 
 The container runs [`actron_neo_actor.main`](../actron-neo-actor/actron_neo_actor/main.py). `runner.py` lists instances every `TICK_SECONDS` and gives each its own `InstanceWorker` (`worker.py`), so one failing unit never stops another. The worker uses the first air conditioner on the Actron account.
 
@@ -217,10 +224,10 @@ flowchart LR
 | Turn on (`system_on`) | `mode` | The same |
 | Set mode (`set_mode`) | `mode` | The same |
 | Set temperature (`set_temperature`) | `temperature_c`, within the unit's limits | Puts the saved setpoint back |
-| Set fan speed (`set_fan_mode`) | `fan_mode`: `AUTO`, `LOW`, `MED`, `HIGH` | Puts the saved speed back |
+| Set fan speed (`set_fan_mode`) | `fan_mode`: `AUTO`, `LOW`, `MED`, `HIGH` (not yet confirmed on a real unit) | Puts the saved speed back |
 | Switch zones (`set_zones`) | `zones` (by name), `enabled` | Puts back only the zones the action changed |
 
-Readings for conditions: `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `is_on` (1 or 0) and `zone_temp_c` (one target per zone). The actor does not expose the library's continuous, quiet, turbo or away modes.
+Readings for conditions: `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `is_on` (1 or 0) and `zone_temp_c` (one target per zone). A zone whose sensor reports no temperature has no `zone_temp_c` reading, so a condition on it fails as unavailable. The actor does not expose the library's continuous, quiet, turbo or away modes.
 
 The restore rule applies per field. Before it puts a field back, the actor compares it with what the action set. If they differ, the owner changed it, and the actor leaves that field alone and says so in the message, for example `left alone because the owner changed them: zone Study`. After a `system_off`, which sets no mode, a mode the owner picked while the unit was off is kept, and the power restore turns the unit on in that mode.
 
@@ -228,7 +235,7 @@ The restore rule applies per field. Before it puts a field back, the actor compa
 
 These were observed on the owner's unit.
 
-- **On and off go through the system mode.** `set_system_mode("OFF")` turns the unit off, and any real mode turns it on. `is_on` and `mode` are separate: after OFF the mode still reads `COOL`. A command takes about 6 seconds to show, so the actor waits for the state to confirm it, for up to 45 seconds.
+- **On and off go through the system mode.** `set_system_mode("OFF")` turns the unit off, and any real mode turns it on. `is_on` and `mode` are separate: after OFF the mode still reads `COOL`. A command takes about 6 seconds to show, so the actor waits for the state to confirm it, for up to 45 seconds. Only a state received after the command was sent counts; the copy held from before never confirms it. A command with nothing to send, such as switching off zones that are already off, confirms at once.
 - **Zones** switch with `remote_zone_info[i].enable(bool)`, which takes about 6 seconds. Zone names come from each zone's `title`. Zones with an empty or repeated title are left out.
 - **Indoor and outdoor readings come from `master_info`** (`live_temp_c`, `live_outdoor_temp_c`, `live_humidity_pc`). `ac_system.outdoor_unit.amb_temp` read 0.0 when the real value was 18.6, so the actor does not use it. When the unit omits a value, the actor reports `null`, not the library's 0.0 default.
 - **The raw status holds the wall controller PIN and the installer's contact details.** The actor builds its state from named, typed fields and never logs or stores the raw status. `main.py` sets the `actron_neo_api` logger to ERROR because the library's warnings can quote raw values.
@@ -236,7 +243,7 @@ These were observed on the owner's unit.
 
 ### Keeping in step with the unit
 
-The actor asks the library for push updates and keeps a copy of the unit's state. It polls `update_status()` every `RECONCILE_SECONDS` (default 120) as a safety net while push works, and every `POLL_FALLBACK_SECONDS` (default 30) while push is down. A reading is stale after 5 minutes, which is why the safety poll runs more often than that. The actor sends the state to Core API when it changes (no more than once every 2 seconds) and at least every `HEARTBEAT_SECONDS` (default 60). The Schedule page shows **Not updating** when `last_seen_at` is more than 2 minutes old.
+The actor asks the library for push updates and keeps a copy of the unit's state. It polls `update_status()` every `RECONCILE_SECONDS` (default 120) as a safety net while push works, and every `POLL_FALLBACK_SECONDS` (default 30) while push is down. A reading is stale after 5 minutes, which is why the safety poll runs more often than that. The actor sends the state to Core API when it changes (no more than once every 2 seconds) and at least every `HEARTBEAT_SECONDS` (default 60) while its copy is less than 5 minutes old. It stops the heartbeat once the copy is older than that or the sign-in is lost, so `last_seen_at` goes stale when the actor cannot see the unit. The Schedule page shows **Not updating** when `last_seen_at` is more than 2 minutes old.
 
 ### Settings
 
@@ -254,7 +261,7 @@ Each must be a whole number of at least 1.
 
 ### Stopping
 
-When the container stops, a test run that has sent its command is asked to finish: it restores within about 60 seconds, and the worker waits at most 65 seconds before it cancels. The Compose service sets `stop_grace_period: 90s` so Docker does not kill the process first. An action run that holds the unit off is not touched. It stays in Core API, and the next start carries on to the restore.
+The actor handles SIGTERM and SIGINT, so `docker stop` runs its stop path. A test run that has sent its command is asked to finish: it restores within about 60 seconds, and the worker waits at most 65 seconds before it cancels. The Compose service sets `stop_grace_period: 90s` so Docker does not kill the process first. An action run that holds the unit off is not touched. It stays in Core API, and the next start carries on to the restore.
 
 ## Adding another actor
 

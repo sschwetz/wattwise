@@ -108,7 +108,7 @@ flowchart LR
 
 The `X-Collector-Provider` header narrows a collector further, so the Amber collector cannot reach a `local` source. The README is explicit that this is a guard against mistakes, not a security boundary: any process holding the pricing key can claim to be either provider.
 
-The actor key works differently. `X-Actor-Provider` is required on every per-instance route, and Core API refuses an instance whose provider differs (401 `invalid_actor_key`, the same answer as an unknown id). The key is still one secret for every actor, so the header protects against mistakes, not against a process that holds the key. An actor never sees user data, but it can set `latest_readings`, write runs and read the stored refresh token for its provider's instances.
+The actor key works differently. `X-Actor-Provider` is required on every route. Core API refuses an instance whose provider differs, and a discovery call whose header does not match its `?provider=` (401 `invalid_actor_key`, the same answer as an unknown id). The key is still one secret for every actor, so the header protects against mistakes, not against a process that holds the key. An actor never sees user data, but it can set `latest_readings`, write runs and read the stored refresh token for its provider's instances.
 
 ## Design decisions and the reasons
 

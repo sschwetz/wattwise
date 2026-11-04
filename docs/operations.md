@@ -163,10 +163,10 @@ The tile **Needs attention** appears at the top of the site Dashboard while a sc
 
 | Entry | Meaning | What to do |
 |---|---|---|
-| Run failed | An action or restore did not succeed after its tries. The message says why. | Check the unit and turn it on if a restore failed. A later good run clears the entry. |
-| Still off | The unit is still off after its restore time and the schedule's give-up minutes. | Turn the unit on. Then check the restore settings. A "only restore if" condition that never passes causes this. |
-| Actor not reporting | The unit is held off and the actor has not reported for 5 minutes. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. |
-| Needs sign-in | Actron rejected the stored token. | Open **Schedule**, press **Sign in again** and approve the code. |
+| Run failed | An action or restore did not succeed after its tries. The message says why. | Check the unit and turn it on if a restore failed. A later good run clears the entry; a skipped run clears a failed action but not a failed restore. |
+| Still off | The unit is still off after its restore time and the schedule's give-up minutes. A restore set to happen only on a condition counts its restore time as 24 hours after the trigger. | Turn the unit on. Then check the restore settings. A "only restore if" condition that never passes causes this. |
+| Actor not reporting | The unit is held off and the actor has not reported for 5 minutes. The actor also stops reporting when it cannot reach the unit through the Actron cloud or its sign-in is lost. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. If it needs signing in, press **Sign in again**. |
+| Needs sign-in | Actron rejected the stored token. | Open **Schedule**, press **Sign in again** and approve the code. This works while the unit is held off: the actor puts it back after the new sign-in. |
 
 A needs-sign-in entry shows no time, because Core API does not record when it began. With **Email me if it still fails** on, a failed run emails the owner at once, and a still-off or silent actor emails once from the watchdog.
 
@@ -177,12 +177,13 @@ A needs-sign-in entry shows no time, because Core API does not record when it be
 - The actor image has not been built yet. The first build is CI's publish workflow, or `docker compose build actron-neo-actor`.
 - Fan speeds `AUTO`, `LOW`, `MED` and `HIGH` are not confirmed on the owner's unit.
 - If the process is killed during a test run's pause, the unit stays as the test set it until the actor restarts. The next start finds the run and puts the unit back.
-- Run one actor container. More than one is not supported.
+- Run one actor container. Two would race on the same trigger. The unique key on a run stops a second create, but both could still act on the unit around it.
 - The actor uses the first air conditioner on the Actron account.
+- A `price_above` trigger acts again after the owner overrides it and the actor restarts in the same high-price spell, because the restarted actor counts a price already above the level as a crossing.
 
 ### Stopping the actor
 
-`docker compose stop actron-neo-actor` can take up to about 65 seconds if a test run is mid-way, because the actor puts the unit back first. The service sets `stop_grace_period: 90s` so Docker waits that long. An unfinished window action is not touched on a stop. The next start carries on to the restore.
+`docker compose stop actron-neo-actor` sends SIGTERM, which the actor handles. It can take up to about 65 seconds if a test run is mid-way, because the actor puts the unit back first. The service sets `stop_grace_period: 90s` so Docker waits that long. An unfinished window action is not touched on a stop. The next start carries on to the restore.
 
 ## Backups
 

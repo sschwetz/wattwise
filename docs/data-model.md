@@ -236,7 +236,7 @@ Three tables hold the [actors](actors.md) feature. The migration is `895863e431c
 | `actor_schedules` | One action on one instance: `instance_id`, `name`, `enabled`, `trigger`, `conditions`, `action`, `restore`, `retry`, `notify_email` (default false), `created_at`. |
 | `actor_runs` | One row per attempt: `schedule_id`, `kind`, `trigger_at`, `started_at`, `finished_at`, `outcome`, `message`, `attempts`, `parent_run_id`, `snapshot`, `watchdog_notified_at`. |
 
-`kind` is `action`, `restore` or `test`. `outcome` is `pending`, `running`, `ok`, `skipped`, `failed` or `overridden`. Both are text with a `CHECK` constraint. A unique constraint on (`schedule_id`, `kind`, `trigger_at`) stops a restart or a second actor process from running the same trigger twice. `parent_run_id` is set on restore rows only and points at the action run that holds the snapshot. Deleting a schedule or instance deletes its runs; the API does this because the foreign keys have no cascade.
+`kind` is `action`, `restore` or `test`. `outcome` is `pending`, `running`, `ok`, `skipped`, `failed` or `overridden`. Both are text with a `CHECK` constraint. A unique constraint on (`schedule_id`, `kind`, `trigger_at`) stops a restart or a second actor process from running the same trigger twice. `parent_run_id` is set on restore rows only, is indexed, and points at the action run that holds the snapshot. Deleting a schedule or instance deletes its runs; the API does this because the foreign keys have no cascade.
 
 Only `config` is encrypted. `auth_state`, `capabilities` and `latest_readings` are plain JSON and hold no secret: `auth_state` is a sign-in code and link that expires, and `latest_readings` is the unit's state without the raw status. The owner API never returns `config`.
 
@@ -253,7 +253,7 @@ Core API validates these on write with the models in [`actor_schemas.py`](../cor
 { "type": "price_above", "c_per_kwh": 60.0 }
 ```
 
-`days_of_week` defaults to all seven days (0 is Monday). `window_id` must be a demand window of the site's tariffs.
+`days_of_week` defaults to all seven days (0 is Monday) and needs at least one. `window_id` must be a demand window of the site's tariffs.
 
 `conditions` is a list. `restore.only_if` and `restore.early_if` use the same item shape:
 
@@ -275,7 +275,7 @@ Core API validates these on write with the models in [`actor_schemas.py`](../cor
 { "enabled": true, "when": "window_end", "minutes": null, "time": null, "only_if": [], "early_if": [] }
 ```
 
-`when` is `window_end`, `after_minutes`, `at_time` or `conditions_only`. `minutes` (at least 1) is required for `after_minutes`, and `time` for `at_time`.
+`when` is `window_end`, `after_minutes`, `at_time` or `conditions_only`. `minutes` (at least 1) is required for `after_minutes`, and `time` for `at_time`. `window_end` needs a `window_start` trigger when restore is on.
 
 `retry`:
 
