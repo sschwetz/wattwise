@@ -1,0 +1,13 @@
+{
+  "id": 13,
+  "schedule_id": 1,
+  "kind": "restore",
+  "trigger_at": "2026-11-05T07:00:00+00:00",
+  "started_at": "2026-11-05T07:00:02+00:00",
+  "finished_at": "2026-11-05T07:00:20+00:00",
+  "outcome": "ok",
+  "message": "restored power",
+  "attempts": 1,
+  "parent_run_id": 12,
+  "snapshot": null
+}

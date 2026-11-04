@@ -1,0 +1,10 @@
+{
+  "now": "2026-11-05T04:00:00Z",
+  "timezone": "Australia/Sydney",
+  "outdoor_temp_c": 31.5,
+  "battery_soc_pct": 64.0,
+  "price_c_per_kwh": 42.1,
+  "windows": [
+    {"window_id": 7, "label": "Peak", "start": "2026-11-05T05:00:00Z", "end": "2026-11-05T09:00:00Z"}
+  ]
+}

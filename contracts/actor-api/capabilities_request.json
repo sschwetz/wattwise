@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "actions": [
+    {
+      "id": "system_off",
+      "label": "Turn off",
+      "restorable": true,
+      "params": []
+    },
+    {
+      "id": "system_on",
+      "label": "Turn on",
+      "restorable": true,
+      "params": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "choice",
+          "options": [
+            {
+              "value": "COOL",
+              "label": "Cool"
+            },
+            {
+              "value": "HEAT",
+              "label": "Heat"
+            },
+            {
+              "value": "FAN",
+              "label": "Fan"
+            },
+            {
+              "value": "AUTO",
+              "label": "Auto"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "set_mode",
+      "label": "Set mode",
+      "restorable": true,
+      "params": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "choice",
+          "options": [
+            {
+              "value": "COOL",
+              "label": "Cool"
+            },
+            {
+              "value": "HEAT",
+              "label": "Heat"
+            },
+            {
+              "value": "FAN",
+              "label": "Fan"
+            },
+            {
+              "value": "AUTO",
+              "label": "Auto"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "set_temperature",
+      "label": "Set temperature",
+      "restorable": true,
+      "params": [
+        {
+          "name": "temperature_c",
+          "label": "Temperature",
+          "type": "number",
+          "min": 16.0,
+          "max": 30.0,
+          "unit": "C"
+        }
+      ]
+    },
+    {
+      "id": "set_fan_mode",
+      "label": "Set fan speed",
+      "restorable": true,
+      "params": [
+        {
+          "name": "fan_mode",
+          "label": "Fan speed",
+          "type": "choice",
+          "options": [
+            {
+              "value": "AUTO",
+              "label": "Auto"
+            },
+            {
+              "value": "LOW",
+              "label": "Low"
+            },
+            {
+              "value": "MED",
+              "label": "Medium"
+            },
+            {
+              "value": "HIGH",
+              "label": "High"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "set_zones",
+      "label": "Switch zones",
+      "restorable": true,
+      "params": [
+        {
+          "name": "zones",
+          "label": "Zones",
+          "type": "multi_choice",
+          "options": [
+            {
+              "value": "Family",
+              "label": "Family"
+            },
+            {
+              "value": "Master",
+              "label": "Master"
+            },
+            {
+              "value": "Kids",
+              "label": "Kids"
+            }
+          ]
+        },
+        {
+          "name": "enabled",
+          "label": "Zones on",
+          "type": "bool"
+        }
+      ]
+    }
+  ],
+  "readings": [
+    {
+      "id": "indoor_temp_c",
+      "label": "Indoor temperature",
+      "unit": "C"
+    },
+    {
+      "id": "outdoor_temp_c",
+      "label": "Outdoor temperature",
+      "unit": "C"
+    },
+    {
+      "id": "humidity_pct",
+      "label": "Indoor humidity",
+      "unit": "%"
+    },
+    {
+      "id": "is_on",
+      "label": "Unit on (1) or off (0)"
+    },
+    {
+      "id": "zone_temp_c",
+      "label": "Zone temperature",
+      "unit": "C",
+      "target_options": [
+        {
+          "value": "Family",
+          "label": "Family"
+        },
+        {
+          "value": "Master",
+          "label": "Master"
+        },
+        {
+          "value": "Kids",
+          "label": "Kids"
+        }
+      ]
+    }
+  ]
+}
