@@ -166,3 +166,81 @@ class RunOut(BaseModel):
     @field_serializer("trigger_at", "started_at", "finished_at")
     def _as_aware_utc(self, value: datetime.datetime | None) -> str | None:
         return None if value is None else as_utc(value).isoformat()
+
+
+# Owner-facing API (web app)
+
+
+class ActorInstanceCreate(_Strict):
+    provider: str = Field(pattern=r"^[a-z0-9_]{1,64}$")
+    name: str = Field(min_length=1, max_length=200)
+
+
+class ActorInstancePatch(_Strict):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    enabled: bool | None = None
+
+
+class ActorInstanceView(BaseModel):
+    """Owner-facing instance. Never carries `config`, which holds the provider refresh token."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    site_id: int
+    provider: str
+    name: str | None
+    enabled: bool
+    capabilities: dict | None
+    capabilities_updated_at: datetime.datetime | None
+    latest_readings: dict | None
+    last_seen_at: datetime.datetime | None
+    auth_state: dict | None
+
+    @field_serializer("capabilities_updated_at", "last_seen_at")
+    def _as_aware_utc(self, value: datetime.datetime | None) -> str | None:
+        return None if value is None else as_utc(value).isoformat()
+
+
+class ScheduleCreate(_Strict):
+    instance_id: int
+    name: str = Field(min_length=1, max_length=200)
+    enabled: bool = True
+    trigger: TriggerSpec
+    conditions: list[ConditionSpec] = Field(default_factory=list)
+    action: ActionSpec
+    restore: RestoreSpec = Field(default_factory=RestoreSpec)
+    retry: RetrySpec = Field(default_factory=RetrySpec)
+    notify_email: bool = False
+
+
+class SchedulePatch(_Strict):
+    """Any field left out keeps its stored value. The merged result is validated as a whole."""
+
+    name: str | None = None
+    enabled: bool | None = None
+    trigger: dict | None = None
+    conditions: list | None = None
+    action: dict | None = None
+    restore: dict | None = None
+    retry: dict | None = None
+    notify_email: bool | None = None
+
+
+class ScheduleView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    instance_id: int
+    name: str
+    enabled: bool
+    trigger: dict
+    conditions: list
+    action: dict
+    restore: dict
+    retry: dict
+    notify_email: bool
+
+
+class RunListItem(RunOut):
+    schedule_name: str
