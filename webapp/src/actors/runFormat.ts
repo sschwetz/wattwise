@@ -52,6 +52,17 @@ export const OUTCOME_LABEL: Record<RunOutcome, string> = {
   running: "Running",
 };
 
+const NEUTRAL_TONE = "bg-surface-2 text-ink-muted";
+
+/** The pill text for an outcome; an outcome this app does not know shows as sent. */
+export function outcomeLabel(outcome: string): string {
+  return (OUTCOME_LABEL as Record<string, string | undefined>)[outcome] ?? outcome;
+}
+
+export function outcomeTone(outcome: string): string {
+  return (OUTCOME_TONE as Record<string, string | undefined>)[outcome] ?? NEUTRAL_TONE;
+}
+
 export const OUTCOME_TONE: Record<RunOutcome, string> = {
   ok: "bg-flow-soft text-flow",
   skipped: "bg-solar-soft text-solar",
@@ -67,12 +78,12 @@ const DEFAULT_MESSAGE: Partial<Record<RunOutcome, string>> = {
   overridden: "Changed by you",
 };
 
-const KIND_LABEL = { restore: "Restored", test: "Test run" } as const;
+const KIND_LABEL: Record<string, string | undefined> = { restore: "Restored", test: "Test run" };
 
 /** What happened in a run, in one line. */
 export function runDescription(run: ActorRun, actionLabel: string): string {
-  const base = run.kind === "action" ? actionLabel : KIND_LABEL[run.kind];
-  const detail = run.message || DEFAULT_MESSAGE[run.outcome];
+  const base = run.kind === "action" ? actionLabel : KIND_LABEL[run.kind] ?? "Run";
+  const detail = run.message || (DEFAULT_MESSAGE as Record<string, string | undefined>)[run.outcome];
   const tries = run.outcome === "failed" && run.attempts > 1 ? ` (after ${run.attempts} tries)` : "";
   return `${detail ? `${base}: ${detail}` : base}${tries}`;
 }

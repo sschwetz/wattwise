@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRunTime, isStale, OUTCOME_LABEL, runDescription } from "./runFormat";
+import { formatRunTime, isStale, OUTCOME_LABEL, outcomeLabel, outcomeTone, runDescription } from "./runFormat";
 import type { ActorRun } from "./types";
 
 const SYDNEY = "Australia/Sydney";
@@ -62,5 +62,18 @@ describe("runDescription", () => {
 it("names every outcome", () => {
   expect(OUTCOME_LABEL).toEqual({
     ok: "OK", skipped: "Skipped", failed: "Failed", overridden: "You took over", pending: "Queued", running: "Running",
+  });
+});
+
+describe("unknown values from a newer server", () => {
+  const odd = (o: Partial<Record<"kind" | "outcome" | "message", string>>) => run(o as unknown as Partial<ActorRun>);
+  it("reads Run for an unknown kind, with the message", () => {
+    expect(runDescription(odd({ kind: "migrate" }), "Turn off")).toBe("Run");
+    expect(runDescription(odd({ kind: "migrate", message: "x" }), "Turn off")).toBe("Run: x");
+  });
+  it("shows the raw outcome with the neutral tone", () => {
+    expect(outcomeLabel("cancelled")).toBe("cancelled");
+    expect(outcomeTone("cancelled")).toBe(outcomeTone("pending"));
+    expect(outcomeLabel("ok")).toBe("OK");
   });
 });

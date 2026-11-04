@@ -10,6 +10,7 @@ function run(id: number, overrides: Partial<ActorRun> = {}): ActorRun {
   };
 }
 
+const odd = (o: object) => o as Partial<ActorRun>;
 const props = { timezone: "Australia/Sydney", actionLabel: "Turn the system off" };
 
 beforeEach(() => vi.useFakeTimers({ now: new Date("2026-11-05T03:00:00Z") }));
@@ -42,6 +43,14 @@ describe("RunHistory", () => {
     const times = screen.getAllByText(/Today|Yesterday/);
     expect(times.map((t) => t.textContent)).toEqual(["Today 10:30", "Yesterday 16:00"]);
     expect(times[0]).toHaveAttribute("datetime", "2026-11-04T23:30:00Z");
+  });
+
+  it("never renders undefined for an unknown kind or outcome", () => {
+    const runs = [run(1, odd({ kind: "migrate", outcome: "cancelled", message: "m" }))];
+    render(<RunHistory {...props} runs={runs} />);
+    expect(screen.getByText("Run: m")).toBeInTheDocument();
+    expect(screen.getByTestId("outcome")).toHaveTextContent("cancelled");
+    expect(document.body.textContent).not.toContain("undefined");
   });
 
   it("shows an empty state", () => {

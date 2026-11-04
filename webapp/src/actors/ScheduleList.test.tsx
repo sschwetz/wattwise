@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "../api/client";
 import { ScheduleList } from "./ScheduleList";
 import type { ActorInstance, ActorRunListItem, ActorSchedule } from "./types";
@@ -45,8 +45,9 @@ function renderList() {
   render(
     <QueryClientProvider client={queryClient}>
       <ScheduleList
-        siteId={7} timezone="UTC" instances={[instance]} schedules={[schedule(1, "Peak off"), schedule(2, "Old"), schedule(3, "Never")]}
-        selected={null} onSelect={vi.fn()} canEdit
+        site={{ id: 7, timezone: "UTC" }}
+        data={{ instances: [instance], schedules: [schedule(1, "Peak off"), schedule(2, "Old"), schedule(3, "Never")] }}
+        view={{ selected: null, onSelect: vi.fn(), canEdit: true }}
       />
     </QueryClientProvider>,
   );
@@ -67,5 +68,26 @@ describe("ScheduleList last run", () => {
     const runCalls = vi.mocked(apiFetch).mock.calls.filter(([p]) => String(p).includes("/runs"));
     expect(runCalls).toHaveLength(1);
     expect(String(runCalls[0][0])).toContain("limit=50");
+  });
+});
+
+describe("ScheduleList polling", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("moves the line from Queued to OK as the poll returns a finished run", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const queued = [runItem(5, 1, "pending", "2026-11-05T03:00:00Z")];
+    const done = [runItem(5, 1, "ok", "2026-11-05T03:00:00Z")];
+    vi.mocked(apiFetch).mockResolvedValueOnce(queued).mockResolvedValue(done);
+    renderList();
+    expect(await screen.findByText(/Last run .* · Queued/)).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(await screen.findByText(/Last run .* · OK/)).toBeInTheDocument();
+  });
+
+  it("shows the raw outcome of an unknown one, never undefined", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([runItem(5, 1, "cancelled" as ActorRunListItem["outcome"], "2026-11-05T03:00:00Z")]);
+    renderList();
+    expect(await screen.findByText(/Last run .* · cancelled/)).toBeInTheDocument();
   });
 });

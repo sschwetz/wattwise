@@ -40,10 +40,12 @@ function mockApi(next: Api) {
     if (init?.method === "POST" && path.endsWith("/test")) return api.testResult?.() ?? Promise.resolve(run(99, "pending"));
     if (path.endsWith("/runs")) return Promise.resolve(api.runs);
     if (path.endsWith("/tariffs")) return Promise.resolve([]);
-    if (path.endsWith("/api/v1/sites")) return Promise.resolve([{ id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]);
+    if (path.endsWith("/api/v1/sites")) return sitesResult();
     return Promise.resolve([]);
   });
 }
+
+let sitesResult: () => Promise<unknown> = () => Promise.resolve([{ id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]);
 
 function renderDetail(sched: ActorSchedule | null, canEdit = true) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -59,6 +61,7 @@ const testButton = () => screen.findByRole("button", { name: "Test now" });
 
 beforeEach(() => {
   vi.mocked(apiFetch).mockReset();
+  sitesResult = () => Promise.resolve([{ id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]);
   mockApi({ runs: [] });
 });
 afterEach(() => vi.useRealTimers());
@@ -119,6 +122,31 @@ describe("ScheduleDetail run history and Test now", () => {
     await screen.findByRole("combobox", { name: "Trigger" });
     expect(screen.queryByRole("heading", { name: "Run history" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Test now" })).not.toBeInTheDocument();
+  });
+
+  it("shows the state panel for an actor that has never reported", async () => {
+    const blank = { ...instance, capabilities: null, latest_readings: null };
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ScheduleDetail siteId={7} schedule={schedule} instance={blank} canEdit />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("No device state yet.")).toBeInTheDocument();
+  });
+
+  it("formats no times until the site time zone is known, and never falls back to UTC", async () => {
+    let resolve: (v: unknown) => void = () => {};
+    sitesResult = () => new Promise((r) => { resolve = r; });
+    mockApi({ runs: [{ ...run(1, "ok"), trigger_at: "2026-11-04T23:30:00Z" }] });
+    renderDetail(schedule);
+    await screen.findByRole("button", { name: "Test now" });
+    expect(screen.queryByRole("heading", { name: "Run history" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Air conditioner" })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("UTC");
+    await act(async () => { resolve([{ id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]); });
+    expect(await screen.findByRole("heading", { name: "Run history" })).toBeInTheDocument();
+    expect(await screen.findByText(/10:30$/)).toBeInTheDocument();
   });
 
   it("history polls while a run is pending", async () => {

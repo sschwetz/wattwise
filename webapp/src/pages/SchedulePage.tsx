@@ -60,7 +60,7 @@ function Workspace({ site, instances, schedules, canEdit }: {
     <div className="space-y-4">
       {blocked}
       <div className="grid gap-4 md:grid-cols-[18rem_1fr]">
-        <ScheduleList siteId={site.id} timezone={site.timezone} instances={instances} schedules={schedules} selected={selected} onSelect={setPicked} canEdit={canEdit} />
+        <ScheduleList site={site} data={{ instances, schedules }} view={{ selected, onSelect: setPicked, canEdit }} />
         {selected && <ScheduleDetail siteId={site.id} schedule={current} instance={instance} canEdit={canEdit} onSelect={setPicked} />}
       </div>
     </div>

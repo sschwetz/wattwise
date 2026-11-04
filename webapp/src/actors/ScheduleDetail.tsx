@@ -73,19 +73,22 @@ function DetailBody(props: ScheduleDetailProps & { title: string }) {
   );
 }
 
+function Placeholder() {
+  return <section className={cardClass}><Spinner /><span className="sr-only">Loading</span></section>;
+}
+
 export function ScheduleDetail(props: ScheduleDetailProps) {
   const { siteId, schedule, instance, canEdit } = props;
   const sites = useSites();
-  const timezone = sites.data?.find((s) => s.id === siteId)?.timezone ?? "UTC";
-  const hasState = instance.latest_readings !== null || instance.capabilities !== null;
+  const site = sites.data?.find((s) => s.id === siteId);
   return (
     <div className="space-y-4">
       <section className={`${cardClass} space-y-6`}>
         <DetailBody {...props} title={schedule ? schedule.name : "New schedule"} />
         {schedule && canEdit && <TestNow key={schedule.id} siteId={siteId} scheduleId={schedule.id} />}
       </section>
-      {hasState && <UnitStatePanel instance={instance} timezone={timezone} />}
-      {schedule && <ScheduleRunHistory siteId={siteId} schedule={schedule} instance={instance} timezone={timezone} />}
+      {site ? <UnitStatePanel instance={instance} timezone={site.timezone} /> : <Placeholder />}
+      {schedule && (site ? <ScheduleRunHistory site={site} schedule={schedule} instance={instance} /> : <Placeholder />)}
     </div>
   );
 }
