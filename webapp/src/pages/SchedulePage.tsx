@@ -61,7 +61,7 @@ function Workspace({ site, instances, schedules, canEdit }: {
       {blocked}
       <div className="grid gap-4 md:grid-cols-[18rem_1fr]">
         <ScheduleList instances={instances} schedules={schedules} selected={selected} onSelect={setPicked} canEdit={canEdit} />
-        {selected && <ScheduleDetail siteId={site.id} schedule={current} instance={instance} canEdit={canEdit} />}
+        {selected && <ScheduleDetail siteId={site.id} schedule={current} instance={instance} canEdit={canEdit} onSelect={setPicked} />}
       </div>
     </div>
   );
