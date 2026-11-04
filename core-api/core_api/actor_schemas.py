@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import math
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 HHMM = Annotated[str, Field(pattern=_TIME_PATTERN.pattern)]
@@ -34,7 +35,7 @@ class TimeTrigger(_Strict):
 
 class PriceAboveTrigger(_Strict):
     type: Literal["price_above"]
-    c_per_kwh: float
+    c_per_kwh: float = Field(allow_inf_nan=False)
 
 
 TriggerSpec = Annotated[
@@ -46,13 +47,21 @@ TriggerSpec = Annotated[
 class ConditionSpec(_Strict):
     reading: str
     op: Literal["gt", "lt"]
-    value: float
+    value: float = Field(allow_inf_nan=False)
     target: str | None = None
 
 
 class ActionSpec(_Strict):
     id: str
     params: dict[str, float | str | bool | list[str]] = Field(default_factory=dict)
+
+    @field_validator("params")
+    @classmethod
+    def _params_finite(cls, params: dict[str, float | str | bool | list[str]]) -> dict[str, float | str | bool | list[str]]:
+        for name, value in params.items():
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError(f"parameter '{name}' must be a finite number")
+        return params
 
 
 class RestoreSpec(_Strict):

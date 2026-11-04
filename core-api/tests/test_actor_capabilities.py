@@ -9,6 +9,7 @@ from core_api.actor_schemas import (
     ActionSpec,
     Capabilities,
     ConditionSpec,
+    PriceAboveTrigger,
     RetrySpec,
 )
 from core_api.errors import AppError
@@ -128,3 +129,31 @@ def test_retry_floors() -> None:
     with pytest.raises(ValidationError):
         RetrySpec(give_up_minutes=0)
     RetrySpec(max_attempts=1, interval_seconds=5, give_up_minutes=1)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_number_param_rejected(bad: float) -> None:
+    # model_construct skips model validation so the validator's own check is exercised
+    spec = ActionSpec.model_construct(id="set_power", params={"setpoint": bad, "mode": "cool", "zones": ["z1"]})
+    with pytest.raises(AppError, match="setpoint"):
+        validate_action_against(make_capabilities(), spec)
+    unbounded = Capabilities.model_validate(
+        {
+            "version": 1,
+            "actions": [
+                {"id": "a", "label": "A", "params": [{"name": "level", "label": "Level", "type": "number"}]}
+            ],
+        }
+    )
+    with pytest.raises(AppError, match="level"):
+        validate_action_against(unbounded, ActionSpec.model_construct(id="a", params={"level": bad}))
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_non_finite_floats_rejected_by_models(bad: float) -> None:
+    with pytest.raises(ValidationError):
+        ConditionSpec(reading="indoor_temp_c", op="gt", value=bad)
+    with pytest.raises(ValidationError):
+        PriceAboveTrigger(type="price_above", c_per_kwh=bad)
+    with pytest.raises(ValidationError):
+        ActionSpec(id="a", params={"x": bad})

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 
 from core_api.actor_schemas import (
@@ -18,8 +19,8 @@ def _invalid(message: str) -> AppError:
 
 
 def _check_number(param: ParamDecl, value: object) -> None:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise _invalid(f"Parameter '{param.name}' must be a number, got {value!r}")
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+        raise _invalid(f"Parameter '{param.name}' must be a finite number, got {value!r}")
     if param.min is not None and value < param.min:
         raise _invalid(f"Parameter '{param.name}' is {value}, below the minimum of {param.min}")
     if param.max is not None and value > param.max:
