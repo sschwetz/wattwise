@@ -117,6 +117,18 @@ export function useUpdateInstance(siteId: number) {
   );
 }
 
+const signInResetKeys = (s: number): Key[] => [actorKeys.instances(s), actorKeys.failures(s)];
+
+/** Clears the stored Actron token so the actor starts a new sign-in. */
+export function useResetSignIn(siteId: number) {
+  return useActorMutation(
+    siteId,
+    ({ instanceId }: { instanceId: number }) =>
+      apiFetch<ActorInstance>(`${base(siteId)}/instances/${instanceId}/sign-in/reset`, { method: "POST" }),
+    signInResetKeys,
+  );
+}
+
 export function useDeleteInstance(siteId: number) {
   return useActorMutation(
     siteId,

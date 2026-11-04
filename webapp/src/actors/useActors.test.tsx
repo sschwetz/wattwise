@@ -12,6 +12,7 @@ import {
   useActorInstances,
   useCreateSchedule,
   useDeleteInstance,
+  useResetSignIn,
   useRuns,
   useTestSchedule,
 } from "./useActors";
@@ -134,6 +135,20 @@ describe("actor hooks", () => {
     });
     expect(urlOf(0)).toContain("/sites/7/actors/instances/4");
     expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
+  });
+
+  it("useResetSignIn posts to the reset URL and invalidates instances and failures", async () => {
+    const client = makeClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    fetchMock.mockResolvedValue(json(instance(null)));
+    const { result } = renderHook(() => useResetSignIn(7), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      await result.current.mutateAsync({ instanceId: 4 });
+    });
+    expect(urlOf(0)).toContain("/sites/7/actors/instances/4/sign-in/reset");
+    expect(fetchMock.mock.calls[0][1].method).toBe("POST");
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: actorKeys.instances(7) });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: actorKeys.failures(7) });
   });
 
   it("useTestSchedule returns the run", async () => {
