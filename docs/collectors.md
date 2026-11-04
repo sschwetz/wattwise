@@ -1,6 +1,6 @@
 # Collectors
 
-A collector is a small Python program that reads one kind of thing and pushes it to Core API. There are four. They share a contract, so a fifth is mostly a copy of an existing one (see [Adding a provider](adding-a-provider.md)).
+A collector is a small Python program that reads one kind of thing and pushes it to Core API. There are four. They share a contract, so a fifth is mostly a copy of an existing one (see [Adding a provider](adding-a-provider.md)). Programs that send commands to a device instead of reading from one are [actors](actors.md).
 
 | Collector | Source kind and provider | Reads | Cadence | Key |
 |---|---|---|---|---|

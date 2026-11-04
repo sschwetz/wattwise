@@ -4,7 +4,7 @@ This page is a dense orientation for an automated agent (or a human in a hurry) 
 
 ## What this is
 
-Home-energy monitor. Collectors poll devices and push time series to one API. The API stores them in SQLite and computes electricity cost on request. A React app displays it. Single household scale, single process, no queue.
+Home-energy monitor. Collectors poll devices and push time series to one API. The API stores them in SQLite and computes electricity cost on request. A React app displays it. An actor does the reverse of a collector: it runs owner-defined schedules that command a device (today an Actron Neo air conditioner). Single household scale, single process, no queue.
 
 ## Services and entry points
 
@@ -15,9 +15,10 @@ Home-energy monitor. Collectors poll devices and push time series to one API. Th
 | `amber-pricing-collector/` | `amber_pricing_collector.main` | `uv run python -m amber_pricing_collector.main` | `uv run pytest` |
 | `local-pricing-collector/` | `local_pricing_collector.main` | `uv run python -m local_pricing_collector.main` | `uv run pytest` |
 | `weatherlink-local-collector/` | `weatherlink_local_collector.main` | `uv run python -m weatherlink_local_collector.main` | `uv run pytest` |
+| `actron-neo-actor/` | `actron_neo_actor.main` | `uv run python -m actron_neo_actor.main` | `uv run pytest -q`, `uv run ruff check .`, `uv run mypy` |
 | `webapp/` | `src/main.tsx`, routes in `src/App.tsx` | `npm run dev` | `npm test`, `npm run lint`, `npm run build` |
 
-Run Python commands from the project directory. Collectors need `CORE_API_URL` and `COLLECTOR_KEY`. Core API needs `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (a Fernet key), `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY` and `PRICING_COLLECTOR_KEY`.
+Run Python commands from the project directory. Collectors need `CORE_API_URL` and `COLLECTOR_KEY`. The actor needs `CORE_API_URL` and `ACTOR_KEY`. Core API needs `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (a Fernet key), `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` and `ACTOR_KEY`.
 
 ## Invariants (do not break)
 
@@ -29,7 +30,7 @@ Run Python commands from the project directory. Collectors need `CORE_API_URL` a
 6. **Price lookups join on exact minute.** `POST /prices` floors derived minutes. Do not store price readings with seconds.
 7. **`grid_import_w` and `grid_export_w` are written one at a time, as positive watts.**
 8. **Authorization lives in FastAPI dependencies** (`deps.py`). Choose `require_site_access`, `require_site_owner`, `get_current_user` or the collector dependencies before writing the function body.
-9. **Collectors authenticate with one shared key per kind**, and optionally name their provider in `X-Collector-Provider`. Provider filtering is not a security boundary.
+9. **Collectors authenticate with one shared key per kind**, and optionally name their provider in `X-Collector-Provider`. Provider filtering is not a security boundary. Actors use one shared `ACTOR_KEY` and a required `X-Actor-Provider`, on the same terms.
 10. **One Uvicorn worker.** Jobs and lockouts are in-process.
 11. **Specs and plans in `docs/superpowers/` are history.** Do not rewrite them to match code.
 12. **Never put real credentials in files.** `.env` is ignored; use `.env.example` placeholders.
@@ -49,6 +50,9 @@ Run Python commands from the project directory. Collectors need `CORE_API_URL` a
 | What can the web app call? | `webapp/src/api/client.ts` and the `use*.ts` hooks next to each page |
 | Which providers does the UI offer? | `PROVIDERS_BY_KIND` in `webapp/src/pages/SourcesPage.tsx` |
 | What does the user see described? | `webapp/src/docs/*.md` (also shown in-app) |
+| How do actors, schedules and runs work? | `docs/actors.md`; `core_api/routers/actor.py` (actor side), `routers/actors.py` (owner side), `actor_failures.py`, `jobs/actor_watchdog_job.py` |
+| How does the Actron actor decide and act? | `actron-neo-actor/actron_neo_actor/worker.py` (tick), `schedule_eval.py`, `actions.py`, `restores.py`, `device.py` |
+| How does the Schedule page work? | `webapp/src/pages/SchedulePage.tsx`, `webapp/src/actors/` |
 | How does the Envoy collector handle expiry and certificates? | `envoy-collector/envoy_collector/main.py` |
 | When does the local pricing collector act? | `local-pricing-collector/local_pricing_collector/triggers.py`, `plan.py`, `poll.py` |
 | Why was it built this way? | `docs/superpowers/specs/` (date-ordered; the Core API spec is `2026-09-25-core-api-design.md`) |
@@ -74,6 +78,20 @@ GET   /health                                       (no /api/v1 prefix)
 
 The generated reference is at `/docs` on a running instance.
 
+Actors use a separate credential and path prefix:
+
+```text
+Actors:      X-Actor-Key: <ACTOR_KEY>
+             X-Actor-Provider: <provider>          (required on per-instance routes)
+
+GET   /actor/instances?provider=...
+PUT   /actor/instances/{id}/capabilities | /readings
+GET   /actor/instances/{id}/schedules | /context | /runs
+POST  /actor/instances/{id}/runs
+PATCH /actor/instances/{id}/runs/{run_id}           a finished run changes only from ok to overridden
+GET   /sites/{id}/actors/failures                   (people, JWT)
+```
+
 ## Enumerations
 
 - Source kind: `energy`, `pricing`, `weather`.
@@ -81,6 +99,7 @@ The generated reference is at `/docs` on a running instance.
 - Energy metrics: `production_w`, `consumption_w`, `grid_import_w`, `grid_export_w`, `battery_charge_w`, `battery_discharge_w`, `battery_soc_pct`.
 - Weather metrics: `temp_c`, `humidity_pct`, `wind_speed_kph`, `wind_direction_deg`, `rain_mm`, `solar_radiation_wm2`, `barometric_pressure_hpa`.
 - Price channels: `buy`, `sell`, `controlled_load` (`demand` exists but nothing uses it).
+- Actor providers: `actron_neo`. Run kinds: `action`, `restore`, `test`. Run outcomes: `pending`, `running`, `ok`, `skipped`, `failed`, `overridden`. Failure kinds: `run_failed`, `still_off`, `actor_silent`, `needs_sign_in`.
 
 ## Working in this repository
 
@@ -103,7 +122,10 @@ The generated reference is at `/docs` on a running instance.
 - `sources.config`, `users.amber_api_key` and the TOTP secrets are Fernet-encrypted with `SECRETS_ENCRYPTION_KEY`. Losing or changing the key makes them unreadable and invalidates every recovery code. No tool re-keys existing rows.
 - When inspecting a table that holds secrets, select only the non-secret columns.
 - Login lockouts are in memory and reset on restart.
+- Actor runs are unique on (`schedule_id`, `kind`, `trigger_at`). For a window trigger the actor sets an action run's `trigger_at` to the window's start instant, and `actor_failures.py` finds the restore time by matching on it.
+- `actor_instances.config` holds the Actron refresh token and is `EncryptedJSON`. The owner API (`ActorInstanceView`) must never return it. The actor must never log the unit's raw status, which holds the wall controller PIN.
+- Deleting a schedule or instance deletes its run history, and returns 409 `unit_held_off` while an action run owes a restore.
 
 ## Pages
 
-[Architecture](architecture.md) · [How it works](how-it-works.md) · [Data model](data-model.md) · [Core API](core-api.md) · [Collectors](collectors.md) · [Web app](webapp.md) · [Adding a provider](adding-a-provider.md) · [Operations](operations.md) · [Development](development.md)
+[Architecture](architecture.md) · [How it works](how-it-works.md) · [Data model](data-model.md) · [Core API](core-api.md) · [Collectors](collectors.md) · [Actors](actors.md) · [Web app](webapp.md) · [Adding a provider](adding-a-provider.md) · [Operations](operations.md) · [Development](development.md)

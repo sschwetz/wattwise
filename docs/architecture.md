@@ -2,17 +2,18 @@
 
 ## Services
 
-WattWise is seven containers started by one [`docker-compose.yml`](../docker-compose.yml). Compose project name: `wattwise`.
+WattWise is eight containers started by one [`docker-compose.yml`](../docker-compose.yml). Compose project name: `wattwise`.
 
 | Service | Directory | Language | Role | Talks to |
 |---|---|---|---|---|
-| `core-api` | [`core-api/`](../core-api) | Python 3.12, FastAPI, SQLAlchemy 2, Alembic | Owns the SQLite database. REST API under `/api/v1`. Runs the background jobs. | SQLite file, `mail-relay` |
+| `core-api` | [`core-api/`](../core-api) | Python 3.12, FastAPI, SQLAlchemy 2, Alembic | Owns the SQLite database. REST API under `/api/v1`. Runs the background jobs, including the actor watchdog. | SQLite file, `mail-relay` |
 | `webapp` | [`webapp/`](../webapp) | TypeScript, React 19, Vite, Tailwind, TanStack Query, Recharts | Single-page app served by nginx. | `core-api` (from the browser) |
 | `envoy-collector` | [`envoy-collector/`](../envoy-collector) | Python | Polls the Enphase Envoy every 60 s. | Envoy (LAN), Enlighten (internet), `core-api` |
 | `weatherlink-local-collector` | [`weatherlink-local-collector/`](../weatherlink-local-collector) | Python | Polls the WeatherLink Live every 60 s. | WeatherLink Live (LAN), `core-api` |
 | `amber-pricing-collector` | [`amber-pricing-collector/`](../amber-pricing-collector) | Python | Fetches Amber prices: live, recent revisions, history. | Amber API (internet), `core-api` |
 | `local-pricing-collector` | [`local-pricing-collector/`](../local-pricing-collector) | Python | Turns typed-in rate windows into price intervals. | `core-api` |
-| `mail-relay` | [`mail-relay/`](../mail-relay) | Postfix | Sends password-reset and confirmation email. | Your SMTP provider |
+| `actron-neo-actor` | [`actron-neo-actor/`](../actron-neo-actor) | Python | Turns an Actron Neo air conditioner off and on from schedules. See [Actors](actors.md). | Actron cloud (internet), `core-api` |
+| `mail-relay` | [`mail-relay/`](../mail-relay) | Postfix | Sends password-reset, confirmation and schedule-failure email. | Your SMTP provider |
 
 ## How the services connect
 
@@ -26,6 +27,7 @@ flowchart TB
     subgraph NET["Internet"]
         ENL["Enphase Enlighten<br/>token renewal"]
         AMB["Amber API"]
+        ACL["Actron cloud"]
         SMTP["SMTP provider"]
         BROWSER["Your browser"]
     end
@@ -36,6 +38,7 @@ flowchart TB
             WC["weatherlink-local-collector"]
             AC["amber-pricing-collector"]
             LC["local-pricing-collector"]
+            AA["actron-neo-actor"]
             WEB["webapp (nginx :80)"]
             API["core-api (:8000)"]
         end
@@ -49,7 +52,9 @@ flowchart TB
     EC -- "fetch token" --> ENL
     WC -- "poll /v1/current_conditions" --> WL
     AC -- "prices" --> AMB
+    AA -- "sign-in, status, commands" --> ACL
     EC & WC & AC & LC -- "X-Collector-Key" --> API
+    AA -- "X-Actor-Key, X-Actor-Provider" --> API
     BROWSER -- "static files" --> WEB
     BROWSER -- "JWT bearer" --> API
     API --- DB
@@ -64,7 +69,7 @@ Two details here are deliberate:
 
 ### Reaching the stack from the internet
 
-For use away from home, a reverse proxy terminates HTTPS and sends `/api/*` to `core-api` and everything else to `webapp`. The collectors keep using the internal network and never pass through the proxy. Machines holding a collector key could reach the same `/api/*` paths from the internet, so keep the keys private (see [Operations](operations.md#putting-wattwise-on-the-internet)).
+For use away from home, a reverse proxy terminates HTTPS and sends `/api/*` to `core-api` and everything else to `webapp`. The collectors and the actor keep using the internal network and never pass through the proxy. Machines holding a collector or actor key could reach the same `/api/*` paths from the internet, so keep the keys private (see [Operations](operations.md#putting-wattwise-on-the-internet)).
 
 ```mermaid
 flowchart LR
@@ -76,7 +81,7 @@ flowchart LR
 
 ## Who is allowed to do what
 
-Two separate authentication schemes exist. They never mix.
+Three separate authentication schemes exist. They never mix.
 
 ```mermaid
 flowchart LR
@@ -86,8 +91,12 @@ flowchart LR
     subgraph Machines["Collectors"]
         M1["Shared secret per kind:<br/>ENVOY / WEATHER / PRICING"] --> M2["X-Collector-Key header<br/>+ optional X-Collector-Provider"]
     end
+    subgraph Actors["Actors"]
+        A1["One shared secret:<br/>ACTOR_KEY"] --> A2["X-Actor-Key header<br/>+ X-Actor-Provider"]
+    end
     P3 --> U["/sites/..., /users/me, /auth/..."]
     M2 --> C["/collector/sources<br/>/sources/{id}/config<br/>/sources/{id}/readings, /prices"]
+    A2 --> D["/actor/instances<br/>/actor/instances/{id}/..."]
 ```
 
 | Caller | Credential | Sees | Cannot |
@@ -95,8 +104,11 @@ flowchart LR
 | Site owner | JWT after password and TOTP | Everything on their sites, including device credentials | Touch other users' sites |
 | Viewer (accepted an owner's emailed invitation) | JWT | Site data, with device credentials hidden | Change anything |
 | Collector | One shared key per kind (`energy`, `weather`, `pricing`) | Sources of its own kind; pushes readings or prices | Read user data. Push readings to a source of another kind. |
+| Actor | One shared key for all actors (`ACTOR_KEY`) plus the provider header | Instances, schedules and site context for its own provider; creates and updates runs; reports readings | Read user data. Touch an instance of another provider. |
 
 The `X-Collector-Provider` header narrows a collector further, so the Amber collector cannot reach a `local` source. The README is explicit that this is a guard against mistakes, not a security boundary: any process holding the pricing key can claim to be either provider.
+
+The actor key works differently. `X-Actor-Provider` is required on every per-instance route, and Core API refuses an instance whose provider differs (401 `invalid_actor_key`, the same answer as an unknown id). The key is still one secret for every actor, so the header protects against mistakes, not against a process that holds the key. An actor never sees user data, but it can set `latest_readings`, write runs and read the stored refresh token for its provider's instances.
 
 ## Design decisions and the reasons
 
@@ -109,8 +121,9 @@ The `X-Collector-Provider` header narrows a collector further, so the Amber coll
 | Prices are stored twice: `price_intervals` as published, `price_readings` per minute. | Cost is a join on exact minute timestamps. The interval table keeps what the provider said. | Roughly 5 rows per 5-minute interval. |
 | Cost is computed on request, not stored. | A corrected rate or a late-arriving reading fixes history automatically. | Each cost query reads minute-level rows. Fine for one home, not for thousands. |
 | `provider` is free text on a source, not a database enum. | A new provider needs new collector code anyway. It should not also need a schema migration. | A typo in a provider name is not caught by the database. |
-| Background jobs run inside Core API (APScheduler). | Three light jobs do not justify another service. | Core API must run as a single worker, or each job runs once per worker. |
+| Background jobs run inside Core API (APScheduler). | A few light jobs do not justify another service. The actor watchdog runs here so it still works when an actor has stopped. | Core API must run as a single worker, or each job runs once per worker. |
 | SQLite. | One home, one writer, one file to back up. | No concurrent writers. The upsert code uses SQLite's `ON CONFLICT` syntax, so moving to Postgres needs those statements ported. |
+| Actors are separate containers that read from Core API, and Core API sends the failure email. | The actor needs a network path to the device's cloud, not to the mail relay. It cannot email when it is the thing that has stopped. | A schedule failure needs Core API to be up to be reported. |
 | Login lockouts are held in process memory. | No extra store for a single-instance service. | A restart clears lockouts. Does not work across several workers. |
 
 ## Constraints that shape the code

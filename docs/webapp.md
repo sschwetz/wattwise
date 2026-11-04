@@ -28,7 +28,8 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 | `/sites/new` | `AddSitePage` | Create a site and pick its time zone |
 | `/account` | `AccountPage` | Name, photo, password, email, authenticator, Amber key |
 | `/help/:slug?` | `HelpPage` | The user guide |
-| `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts |
+| `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts, and the **Needs attention** tile (`FailuresTile`) when the site has an air conditioner set up |
+| `/sites/:siteId/schedule` | `SchedulePage` | Add an air conditioner, build schedules, test them and read the run history. See [The Schedule page](#the-schedule-page). |
 | `/sites/:siteId/reporting` | `ReportingPage` | Month picker, Net/Gross option, a chart (`TotalsChart`) and a sortable totals table (`TotalsTable`) with a total row (`totalsSummary.ts`) at the bottom. Clicking a day, on the chart or in the table, lists its hours, and clicking an hour lists its minutes. While totals load, a spinner shows, over the dimmed previous rows when the level stays the same. The level is in the URL as `?month=&day=&hour=` (see `reportingView.ts`), so the browser back button works. |
 | `/settings`, `/settings/sites/:siteId`, `/settings/sites/:siteId/:tab` | `SettingsPage` | Site chips and a tab rail. `:tab` is `general`, `collectors`, `tariffs`, `billing` or `sharing`. `/settings` goes to the first enabled site's `general` tab. An unknown site goes to the first enabled site and keeps a valid tab. An unknown or missing tab keeps the site and goes to `general`. Viewers see every tab read-only. If a background refresh of the sites fails, the page stays and shows a **Retry** alert. |
 | `/sites/:siteId/sources`, `/sites/:siteId/billing` | Redirects | Go to the `collectors` and `billing` settings tabs |
@@ -55,6 +56,7 @@ More screenshots, with the explanation of every tile and field, are in the [user
 | `src/layout/` | Header, site chips and side rail, avatar |
 | `src/pages/` | One component per route, with its test beside it |
 | `src/dashboard/` | Hooks for live readings and history, and pure helpers for charts (`historyChart.ts`, `priceChart.ts`, `compass.ts`) |
+| `src/actors/` | The Schedule page's parts and hooks. `useActors.ts` has the TanStack Query hooks. `scheduleForm.ts` turns a schedule into form state and back (and holds the client-side checks that mirror Core API). `runFormat.ts` formats run times and outcomes. `types.ts` mirrors the API shapes. |
 | `src/billing/` | `useBilling.ts` (all tariff and cycle calls), `ConditionalCredits.tsx`, `tariffHeading.ts` |
 | `src/sources/` | `useSources.ts`, `useRateWindows.ts`, the rate window panel and form, `rateCoverage.ts` (finds uncovered times) |
 | `src/settings/` | The Settings page: `SettingsPage` (route and redirects), `SettingsShell`, `GeneralTab`, `SharingTab`, `tabs.ts`. The Collectors, Tariffs and Billing tabs reuse `CollectorsTab` in `pages/SourcesPage.tsx` and `TariffsTab` and `BillingTab` in `pages/BillingPage.tsx`. |
@@ -83,6 +85,36 @@ Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadin
 - **Auth close.** On close code 1008 the hook does not reconnect. The page tries again only when the dashboard remounts, for example after a reload or a site change.
 - **Expired token.** Core API checks the token once, at connect, so a socket stays open after its token expires.
 
+## The Schedule page
+
+[`SchedulePage`](../webapp/src/pages/SchedulePage.tsx) is the `Schedule` item in the site side rail ([`SiteLayout.tsx`](../webapp/src/layout/SiteLayout.tsx)). It draws everything from the instance's declared capabilities, so a new actor needs no change here. [Actors](actors.md) describes the feature.
+
+| Component | Shows |
+|---|---|
+| `AddInstanceForm` | The empty state. The owner names the air conditioner (provider `actron_neo`). A viewer sees "No device is set up for this site yet." |
+| `SignInPanel` | The Actron code, its link and the expiry while the actor waits for approval. The page polls every 10 seconds (`INSTANCES_SIGN_IN_POLL_MS`). |
+| `NeedsSignInNotice` | "The Actron account needs to sign in again." with **Sign in again**, which calls `POST .../instances/{id}/sign-in/reset`. A 409 `unit_held_off` shows as the error. |
+| `DisabledNotice` | Shown when the instance is disabled, with **Turn on** |
+| `ScheduleList` | The schedules per instance with an On or Off pill and the last run. **New schedule**. |
+| `ScheduleDetail` | The editor, **Test now**, the unit state and the run history for the selected schedule |
+| `ScheduleEditor` | The numbered form: `ActorStep`, `WhenStep`, the "Only if" step with `ConditionsEditor`, `ActionStep`, `RestoreStep` ("When it ends") and `RetryStep` ("If it fails", with **Email me if it still fails**). `DeleteSchedule` confirms a delete. |
+| `UnitStatePanel` | Read-only power, mode, setpoints, readings and each zone, with the update time. Shows **Not updating** when `last_seen_at` is more than 2 minutes old (`STALE_MS`). |
+| `TestNow` | **Test now**. Shows "Test queued" after the request. |
+| `ScheduleRunHistory` (`RunHistory.tsx`) | The newest 50 runs with a pill: OK, Skipped, Failed, "You took over" (`overridden`), Queued, Running |
+
+Only the site owner can change anything on the page. A viewer sees the same panels with the form read-only and no buttons. The run lists poll every 5 seconds while a run is queued or running.
+
+`scheduleForm.ts` shows only restore times that fit the trigger: "When the window ends" appears for a window-start trigger, and the others are "After a set number of minutes", "At a set time" and "Only when a condition below is met". A condition row has a tick box; unticked rows are kept but ignored.
+
+### The Dashboard tile
+
+[`FailuresTile`](../webapp/src/actors/FailuresTile.tsx) sits above the other tiles in `DashboardPage.tsx`. It reads `GET .../actors/failures` every 15 seconds (`FAILURES_POLL_MS`).
+
+- No air conditioner set up: nothing is shown.
+- No failures: "All schedules OK" and a link to the Schedule page.
+- Failures: **Needs attention (N)** in the `danger-glow` style. Each row has a label (Run failed, Still off, Actor not reporting, Needs sign-in), the schedule name, the message and the time. It lists the five oldest and links "and N more". A `needs_sign_in` row shows no time, because Core API has none to give.
+- If the request fails, "Schedule status unavailable".
+
 ## Runtime configuration
 
 The API address is not compiled in. `public/config.js` sets `window.__APP_CONFIG__.apiBaseUrl`, and `src/api/config.ts` reads it (falling back to `http://localhost:8000`). In the container, [`docker-entrypoint.sh`](../webapp/docker-entrypoint.sh) rewrites `config.js` from the `API_BASE_URL` environment variable each time it starts. So one image works for any deployment, and changing the address needs a restart, not a rebuild.
@@ -104,6 +136,7 @@ Tests protect the guide: `docs.test.ts` and `links.test.ts` fail when a chapter 
 | The providers offered when adding a source | `PROVIDERS_BY_KIND` in `src/pages/SourcesPage.tsx` |
 | The settings form for a provider | `CONFIG_FORMS` in the same file. A provider without a form gets a raw JSON editor. |
 | A dashboard tile | `src/pages/DashboardPage.tsx` and `src/dashboard/` |
+| The Schedule page | `src/pages/SchedulePage.tsx` and `src/actors/` |
 | How a chart is shaped | `historyChart.ts` or `priceChart.ts`, which have unit tests |
 | Tariff and billing forms | `src/pages/BillingPage.tsx` and `src/billing/` |
 | Help text | `src/docs/*.md` |
