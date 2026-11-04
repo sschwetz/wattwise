@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { errorMessage } from "../api/client";
 import { TimezoneSelect } from "../sites/TimezoneSelect";
 import { type Site, useUpdateSite } from "../sites/useSites";
+import { SaveStatus, SubmitButton } from "../components/SubmitButton";
 import { AccessNote } from "./AccessNote";
 import { useSiteAccess } from "./useSiteAccess";
 
@@ -86,6 +87,7 @@ function EnabledToggle({ site, disabled }: { site: Site; disabled: boolean }) {
         </button>
         <span className="text-sm text-ink">Enabled</span>
         <span className="text-sm text-ink-muted">{site.enabled ? "Collecting" : "Collection is off"}</span>
+        <SaveStatus mutation={update} />
       </div>
       {update.isError && (
         <p role="alert" data-testid="toggle-error" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -133,10 +135,9 @@ export function GeneralTab({ site }: { site: Site }) {
             {errorMessage(update.error, "Failed to save. Please try again.")}
           </p>
         )}
-        {update.isSuccess && <p role="status" className="text-sm text-ink-muted">Saved</p>}
-        <button type="submit" disabled={readOnly || update.isPending} className={`${buttonClass} bg-solar text-[#1a1203]`}>
+        <SubmitButton mutation={update} disabled={readOnly} buttonClass={`${buttonClass} bg-solar text-[#1a1203]`}>
           Save
-        </button>
+        </SubmitButton>
       </form>
       <EnabledToggle site={site} disabled={readOnly} />
       <Link to={`/sites/${site.id}`} className="inline-block text-sm text-solar underline">

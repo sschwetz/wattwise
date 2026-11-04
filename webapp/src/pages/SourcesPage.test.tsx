@@ -184,6 +184,7 @@ describe("CollectorsTab", () => {
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ enabled: false }) }),
     );
     expect(await screen.findByText("Enable")).toBeInTheDocument();
+    expect(await screen.findByText("✓ Saved")).toBeInTheDocument();
   });
 
   it("shows an error when toggling a source fails, and leaves its state unchanged", async () => {

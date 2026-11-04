@@ -317,6 +317,7 @@ describe("RateWindowsPanel", () => {
       });
       await expectRefetch();
       await waitFor(() => expect(screen.queryByLabelText("New rate (c/kWh)")).not.toBeInTheDocument());
+      expect(await screen.findByText("✓ Saved")).toBeInTheDocument();
     });
 
     it("cannot save an unchanged, negative or empty rate", async () => {
@@ -386,5 +387,6 @@ describe("RateWindowsPanel", () => {
     expect(vi.mocked(apiFetch).mock.calls[1][0]).toBe("/api/v1/sites/7/sources/3/rate-windows/1");
     expect((vi.mocked(apiFetch).mock.calls[1][1] as RequestInit).method).toBe("DELETE");
     await expectRefetch();
+    expect(await screen.findByText("✓ Saved")).toBeInTheDocument();
   });
 });

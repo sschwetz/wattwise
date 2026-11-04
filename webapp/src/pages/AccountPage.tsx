@@ -16,6 +16,7 @@ import {
 import { useAvatarImage } from "../account/useAvatarImage";
 import { errorMessage } from "../api/client";
 import { QueryError } from "../components/QueryError";
+import { SaveStatus, latestSave } from "../components/SubmitButton";
 
 const cardClass = "space-y-4 rounded-xl border border-line bg-surface p-5";
 const errorClass = "rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger";
@@ -133,6 +134,7 @@ function ProfileSection() {
           )}
         </div>
       </div>
+      <SaveStatus mutation={latestSave(uploadAvatar, removeAvatar)} />
       {avatarError && (
         <p role="alert" className={errorClass}>
           {avatarError}
