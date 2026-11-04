@@ -1,5 +1,5 @@
-import { NavLink } from "react-router-dom";
 import { BackLink } from "../layout/BackLink";
+import { SideRail } from "../layout/SideRail";
 import type { Site } from "../sites/useSites";
 import { BillingTab, TariffsTab } from "../pages/BillingPage";
 import { CollectorsTab } from "../pages/SourcesPage";
@@ -9,11 +9,6 @@ import { SharingTab } from "./SharingTab";
 import { SiteChips } from "./SiteChips";
 import { TABS } from "./tabs";
 import { type SiteAccess, useSiteAccess } from "./useSiteAccess";
-
-const tabLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-    isActive ? "bg-surface-2 text-ink" : "text-ink-muted hover:bg-surface-2 hover:text-ink"
-  }`;
 
 /** Tab content for the selected site. GeneralTab and SharingTab work out their own access. */
 function TabContent({ tab, site, access }: { tab: string; site: Site; access: SiteAccess }) {
@@ -36,21 +31,6 @@ function TabContent({ tab, site, access }: { tab: string; site: Site; access: Si
 /** The general tab shows its own note; sharing has rules of its own for viewers. */
 const TABS_WITH_SHELL_NOTE = new Set(["collectors", "tariffs", "billing"]);
 
-function TabRail({ siteId }: { siteId: number }) {
-  return (
-    <nav
-      aria-label="Site settings"
-      className="flex shrink-0 flex-row gap-1 overflow-x-auto sm:w-44 sm:flex-col sm:overflow-visible"
-    >
-      {TABS.map(({ id, label }) => (
-        <NavLink key={id} to={`/settings/sites/${siteId}/${id}`} className={tabLinkClass}>
-          {label}
-        </NavLink>
-      ))}
-    </nav>
-  );
-}
-
 export function SettingsShell({ sites, site, tab }: { sites: Site[]; site: Site; tab: string }) {
   const access = useSiteAccess(site);
   return (
@@ -59,9 +39,12 @@ export function SettingsShell({ sites, site, tab }: { sites: Site[]; site: Site;
         <BackLink to={`/sites/${site.id}`} />
         <h1 className="font-display text-2xl font-semibold text-ink">Site settings</h1>
       </div>
-      <SiteChips sites={sites} selectedId={site.id} tab={tab} />
+      <SiteChips sites={sites} selectedId={site.id} hrefFor={(id) => `/settings/sites/${id}/${tab}`} />
       <div className="flex flex-col gap-4 sm:flex-row">
-        <TabRail siteId={site.id} />
+        <SideRail
+          label="Site settings"
+          items={TABS.map(({ id, label }) => ({ to: `/settings/sites/${site.id}/${id}`, label }))}
+        />
         <div data-testid="settings-tab" className="min-w-0 flex-1 space-y-4">
           {TABS_WITH_SHELL_NOTE.has(tab) && <AccessNote note={access.note} />}
           <TabContent tab={tab} site={site} access={access} />

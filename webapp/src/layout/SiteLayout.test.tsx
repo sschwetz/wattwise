@@ -49,9 +49,9 @@ describe("SiteLayout", () => {
     expect(screen.getByRole("link", { name: "Reporting" })).toHaveAttribute("href", "/sites/7/reporting");
   });
 
-  it("shows only Dashboard and Reporting in the nav", () => {
+  it("shows only Dashboard and Reporting in the side rail", () => {
     renderLayout();
-    const nav = screen.getByRole("navigation");
+    const nav = screen.getByRole("navigation", { name: "Site" });
     expect(Array.from(nav.querySelectorAll("a")).map((a) => a.textContent)).toEqual(["Dashboard", "Reporting"]);
   });
 
@@ -62,61 +62,48 @@ describe("SiteLayout", () => {
     expect(await screen.findByText("Dashboard content")).toBeInTheDocument();
   });
 
-  it("lists every site plus an option to add a new one in the switcher", async () => {
+  async function chipLabels() {
+    const nav = await screen.findByRole("navigation", { name: "Sites" });
+    return Array.from(nav.querySelectorAll("a")).map((a) => a.textContent);
+  }
+
+  it("lists every site plus an Add chip", async () => {
     renderLayout();
-    const select = await screen.findByRole("combobox", { name: "Switch site" });
-    await screen.findByText("Home");
-    const options = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["Home", "Cabin", "Add new site"]);
-    expect(select).toHaveValue("7");
+    expect(await chipLabels()).toEqual(["Home", "Cabin", "Add"]);
   });
 
-  it("omits disabled sites from the switcher", async () => {
+  it("hides disabled sites in the chips until Show disabled is clicked", async () => {
     vi.mocked(apiFetch).mockResolvedValue([
       { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },
       { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: false },
     ]);
     renderLayout();
-    await screen.findByText("Home");
-    const options = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["Home", "Add new site"]);
+    expect(await chipLabels()).toEqual(["Home", "Add"]);
+    await userEvent.click(screen.getByRole("button", { name: "Show disabled" }));
+    expect(await chipLabels()).toEqual(["Home", "Cabin", "Add"]);
+    expect(screen.getByRole("link", { name: "Cabin (disabled)" })).toBeInTheDocument();
   });
 
-  it("shows the current site in the switcher when it is disabled", async () => {
-    vi.mocked(apiFetch).mockResolvedValue([
-      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: false },
-      { id: 9, owner_user_id: 1, name: "Cabin", timezone: "Australia/Hobart", enabled: true },
-      { id: 11, owner_user_id: 1, name: "Shed", timezone: "Australia/Hobart", enabled: false },
-    ]);
+  it("shows no toggle when every site is enabled", async () => {
     renderLayout();
-    const select = await screen.findByRole("combobox", { name: "Switch site" });
-    await screen.findByText("Home (disabled)");
-    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Home (disabled)", "Cabin", "Add new site"]);
-    expect(select).toHaveValue("7");
+    await chipLabels();
+    expect(screen.queryByRole("button", { name: /disabled/i })).not.toBeInTheDocument();
   });
 
-  it("does not show Add new site as the current choice when no site is enabled", async () => {
-    vi.mocked(apiFetch).mockResolvedValue([
-      { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: false },
-    ]);
+  it("switches to another site when its chip is clicked", async () => {
     renderLayout();
-    const select = await screen.findByRole("combobox", { name: "Switch site" });
-    await screen.findByText("Home (disabled)");
-    expect(select).toHaveValue("7");
-    expect(select).not.toHaveValue("new");
+    await userEvent.click(await screen.findByRole("link", { name: "Cabin" }));
+    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/sites/9");
   });
 
-  it("switches to another site when it's picked from the dropdown", async () => {
-    renderLayout();
-    await screen.findByText("Home");
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Switch site" }), "Cabin");
-    expect(await screen.findByText("Dashboard content")).toBeInTheDocument();
+  it("keeps the reporting page when switching site from it", async () => {
+    renderLayout("/sites/7/reporting");
+    expect(await screen.findByRole("link", { name: "Cabin" })).toHaveAttribute("href", "/sites/9/reporting");
   });
 
-  it("navigates to the add-site page when 'Add new site' is picked", async () => {
+  it("navigates to the add-site page from the Add chip", async () => {
     renderLayout();
-    await screen.findByText("Home");
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Switch site" }), "Add new site");
+    await userEvent.click(await screen.findByRole("link", { name: "Add" }));
     expect(await screen.findByText("Add site page")).toBeInTheDocument();
   });
 
@@ -147,7 +134,7 @@ describe("SiteLayout", () => {
   it("shows no banner for an enabled site", async () => {
     renderLayout();
     // The site names only render once the sites response has been processed.
-    expect(await screen.findByRole("option", { name: "Home" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Home" })).toBeInTheDocument();
     expect(screen.queryByText(/disabled/i)).not.toBeInTheDocument();
   });
 });
