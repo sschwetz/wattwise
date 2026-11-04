@@ -37,10 +37,14 @@ def raw_state(
     indoor_c: float = 24.1,
     outdoor_c: float = 18.6,
     humidity_pct: float = 55.0,
+    limits: dict[str, float] | None = None,
 ) -> dict[str, Any]:
-    """A `lastKnownState` dict shaped like the Actron cloud's. Zones are (title, enabled, temperature)."""
+    """A `lastKnownState` dict shaped like the Actron cloud's. Zones are (title, enabled, temperature).
+
+    `limits` becomes NV_Limits.UserSetpoint_oC, for example {"setCool_Min": 18, "setCool_Max": 26}.
+    """
     zone_list = DEFAULT_ZONES if zones is None else zones
-    return {
+    raw: dict[str, Any] = {
         "AirconSystem": {"MasterSerial": SERIAL, "OutdoorUnit": {"AmbTemp": 0.0}},
         "UserAirconSettings": {
             "isOn": is_on,
@@ -65,6 +69,9 @@ def raw_state(
             for title, _, temp in zone_list
         ],
     }
+    if limits is not None:
+        raw["NV_Limits"] = {"UserSetpoint_oC": limits}
+    return raw
 
 
 def _set_path(state: dict[str, Any], dotted: str, value: Any) -> None:

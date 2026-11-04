@@ -14,11 +14,16 @@ from actron_neo_api import ActronAirStatus
 from pydantic import BaseModel
 
 HEAT = "HEAT"
+COOL = "COOL"
 
 
 @dataclass(frozen=True)
 class DeviceState:
-    """Equality ignores `updated_at`, so two refreshes of an unchanged unit compare equal."""
+    """Equality ignores `updated_at`, so two refreshes of an unchanged unit compare equal.
+
+    `setpoint_min_c` and `setpoint_max_c` are the unit's setpoint limits for the
+    current mode (the library's `min_temp` and `max_temp`).
+    """
 
     is_on: bool
     mode: str
@@ -31,6 +36,8 @@ class DeviceState:
     humidity_pct: float | None
     zone_temps_c: dict[str, float]
     updated_at: datetime.datetime = field(compare=False)
+    setpoint_min_c: float = 10.0
+    setpoint_max_c: float = 30.0
 
     def to_payload(self) -> dict:
         return {
@@ -45,6 +52,8 @@ class DeviceState:
             "humidity_pct": self.humidity_pct,
             "zone_temps_c": dict(self.zone_temps_c),
             "updated_at": self.updated_at.astimezone(datetime.UTC).isoformat(),
+            "setpoint_min_c": self.setpoint_min_c,
+            "setpoint_max_c": self.setpoint_max_c,
         }
 
     def readings(self) -> dict[str, float]:
@@ -71,6 +80,14 @@ def base_fan_mode(fan_mode: str) -> str:
 def active_setpoint(state: DeviceState) -> float:
     """The setpoint the library's `set_temperature` writes in the current mode."""
     return state.heat_setpoint_c if state.mode.upper() == HEAT else state.cool_setpoint_c
+
+
+def clamp_setpoint(state: DeviceState, temperature_c: float) -> float:
+    """The setpoint the unit ends up at, as `set_temperature` in actron_neo_api 0.5.16 computes it:
+    clamped to the limits in COOL and HEAT, sent unchanged in AUTO."""
+    if state.mode.upper() in (COOL, HEAT):
+        return max(state.setpoint_min_c, min(state.setpoint_max_c, temperature_c))
+    return temperature_c
 
 
 def zone_titles(status: ActronAirStatus) -> list[str]:
@@ -112,4 +129,6 @@ def state_from_status(status: ActronAirStatus, now: datetime.datetime) -> Device
         humidity_pct=_reported(master, "live_humidity_pc"),
         zone_temps_c={title: float(status.remote_zone_info[i].live_temp_c) for i, title in zones},
         updated_at=now.astimezone(datetime.UTC),
+        setpoint_min_c=float(status.min_temp),
+        setpoint_max_c=float(status.max_temp),
     )

@@ -16,9 +16,6 @@ from actron_neo_actor.device_state import zone_titles
 # without the "+CONT" suffix, which set_fan_mode keeps as it was.
 FAN_MODES = ("AUTO", "LOW", "MED", "HIGH")
 
-TEMPERATURE_MIN_C = 10
-TEMPERATURE_MAX_C = 30
-
 
 def _options(values: Iterable[str], label: Callable[[str], str] = str.title) -> list[dict]:
     return [{"value": v, "label": label(v)} for v in values]
@@ -36,13 +33,14 @@ def _mode_param(modes: list[str]) -> dict:
     return {"name": "mode", "label": "Mode", "type": "choice", "options": _options(modes)}
 
 
-def _actions(modes: list[str], zones: list[str]) -> list[dict]:
+def _actions(modes: list[str], zones: list[str], limits: tuple[float, float]) -> list[dict]:
+    low, high = limits
     temperature = {
         "name": "temperature_c",
         "label": "Temperature",
         "type": "number",
-        "min": TEMPERATURE_MIN_C,
-        "max": TEMPERATURE_MAX_C,
+        "min": low,
+        "max": high,
         "unit": "C",
     }
     fan = {"name": "fan_mode", "label": "Fan speed", "type": "choice", "options": _options(FAN_MODES, _fan_label)}
@@ -69,7 +67,9 @@ def _readings(zones: list[str]) -> list[dict]:
 
 
 def build_capabilities(status: ActronAirStatus) -> dict:
-    """Modes come from the unit's mode support flags and zones from its zone titles."""
+    """Modes come from the unit's mode support flags, zones from its zone titles, and the
+    temperature range from its setpoint limits for the current mode (`min_temp`, `max_temp`)."""
     modes = status.user_aircon_settings.supported_modes
     zones = zone_titles(status)
-    return {"version": 1, "actions": _actions(modes, zones), "readings": _readings(zones)}
+    limits = (float(status.min_temp), float(status.max_temp))
+    return {"version": 1, "actions": _actions(modes, zones, limits), "readings": _readings(zones)}

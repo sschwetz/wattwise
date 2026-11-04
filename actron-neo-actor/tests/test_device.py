@@ -83,6 +83,7 @@ def test_payload_has_only_whitelisted_fields(caplog):
     assert set(payload) == {
         "is_on", "mode", "fan_mode", "cool_setpoint_c", "heat_setpoint_c", "enabled_zones",
         "indoor_temp_c", "outdoor_temp_c", "humidity_pct", "zone_temps_c", "updated_at",
+        "setpoint_min_c", "setpoint_max_c",
     }  # fmt: skip
     for text in (json.dumps(payload), repr(state), caplog.text, json.dumps(state.readings())):
         assert pin not in text
@@ -151,8 +152,8 @@ def test_capabilities_declare_the_agreed_actions_and_readings():
     assert (temp["name"], temp["type"], temp["min"], temp["max"], temp["unit"]) == (
         "temperature_c",
         "number",
-        10,
-        30,
+        16.0,  # the library's default limits when the unit sends no NV_Limits
+        30.0,
         "C",
     )
     assert [p["name"] for p in actions["set_zones"]["params"]] == ["zones", "enabled"]
@@ -578,3 +579,80 @@ def test_apply_polls_when_push_is_up_but_silent():
 
     run(scenario())
     assert 10 <= clock.elapsed() < 15
+
+
+# Setpoint limits (fix round 1)
+
+LIMITS = {"setCool_Min": 18, "setCool_Max": 26, "setHeat_Min": 12, "setHeat_Max": 24}
+
+
+def test_state_carries_setpoint_limits_for_the_current_mode():
+    device, _, _ = make(FakeActronApi(raw_state(limits=LIMITS)))
+    state = run(device.refresh())
+    assert (state.setpoint_min_c, state.setpoint_max_c) == (18.0, 26.0)
+    assert (state.to_payload()["setpoint_min_c"], state.to_payload()["setpoint_max_c"]) == (18.0, 26.0)
+    heat = run(make(FakeActronApi(raw_state(mode="HEAT", limits=LIMITS)))[0].refresh())
+    assert (heat.setpoint_min_c, heat.setpoint_max_c) == (12.0, 24.0)
+
+
+def test_out_of_range_temperature_is_clamped_sent_and_confirmed():
+    device, api, clock = make(FakeActronApi(raw_state(limits=LIMITS)))
+    run(device.refresh())
+    snapshot = device.snapshot_for("set_temperature", {"temperature_c": 30})
+    assert snapshot["applied"] == {"setpoint_c": 26.0}
+    run(device.apply("set_temperature", {"temperature_c": 30}))
+    assert api.commands[-1]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] == 26.0
+    assert device.state().cool_setpoint_c == 26.0
+    assert device.matches_action("set_temperature", {"temperature_c": 30}, device.state())
+    assert clock.elapsed() < 45
+
+
+def test_heat_mode_clamps_to_heat_limits():
+    device, api, _ = make(FakeActronApi(raw_state(mode="HEAT", limits=LIMITS)))
+    run(device.refresh())
+    run(device.apply("set_temperature", {"temperature_c": 10}))
+    assert api.commands[-1]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] == 12.0
+
+
+def test_auto_mode_is_not_clamped_like_the_library():
+    device, api, _ = make(FakeActronApi(raw_state(mode="AUTO", cool_c=23.0, heat_c=21.0, limits=LIMITS)))
+    run(device.refresh())
+    assert device.snapshot_for("set_temperature", {"temperature_c": 28})["applied"] == {"setpoint_c": 28.0}
+    run(device.apply("set_temperature", {"temperature_c": 28}))
+    assert api.commands[-1]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] == 28.0
+    assert api.commands[-1]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] == 26.0
+
+
+def test_capability_temperature_range_comes_from_limits():
+    caps = build_capabilities(status_from(raw_state(limits=LIMITS)))
+    temp = next(a for a in caps["actions"] if a["id"] == "set_temperature")["params"][0]
+    assert (temp["min"], temp["max"]) == (18.0, 26.0)
+
+
+# Owner changes the mode while the actor holds the unit off (ruling 20)
+
+
+def test_restore_after_system_off_keeps_the_mode_the_owner_chose():
+    device, api, _ = make(FakeActronApi(raw_state(is_on=True, mode="COOL")))
+    run(device.refresh())
+    snapshot = _act(device, "system_off", {})
+    api.owner_sets("UserAirconSettings.Mode", "HEAT")
+    current = run(device.refresh())
+    result = run(device.restore(snapshot, current))
+    assert result == RestoreResult(restored=["power"], skipped=["mode"])
+    assert api.commands[-1]["UserAirconSettings.isOn"] is True
+    assert api.commands[-1]["UserAirconSettings.Mode"] == "HEAT"
+    assert (device.state().is_on, device.state().mode) == (True, "HEAT")
+
+
+def test_restore_after_system_off_skips_mode_and_power_when_owner_changed_both():
+    device, api, _ = make()
+    run(device.refresh())
+    snapshot = _act(device, "system_off", {})
+    api.owner_sets("UserAirconSettings.Mode", "FAN")
+    api.owner_sets("UserAirconSettings.isOn", True)
+    current = run(device.refresh())
+    sent = len(api.commands)
+    result = run(device.restore(snapshot, current))
+    assert result == RestoreResult(restored=[], skipped=["mode", "power"])
+    assert len(api.commands) == sent

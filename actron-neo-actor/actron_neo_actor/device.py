@@ -36,7 +36,7 @@ from actron_neo_actor.device_snapshot import (
 )
 from actron_neo_actor.device_snapshot import matches_action as _matches_action
 from actron_neo_actor.device_snapshot import snapshot_for as _snapshot_for
-from actron_neo_actor.device_state import DeviceState, state_from_status, titled_zones
+from actron_neo_actor.device_state import DeviceState, clamp_setpoint, state_from_status, titled_zones
 
 __all__ = ["ActronDevice", "Device", "DeviceAuthError", "DeviceError", "DeviceState", "RestoreResult"]
 
@@ -96,7 +96,7 @@ async def _dispatch(status: ActronAirStatus, action_id: str, params: dict, state
     elif action_id in ("system_on", "set_mode"):
         await settings.set_system_mode(str(params["mode"]))
     elif action_id == "set_temperature":
-        await settings.set_temperature(float(params["temperature_c"]))
+        await settings.set_temperature(clamp_setpoint(state, float(params["temperature_c"])))
     elif action_id == "set_fan_mode":
         await settings.set_fan_mode(str(params["fan_mode"]))
     else:
