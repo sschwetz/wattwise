@@ -131,11 +131,21 @@ def test_still_off_window_end_without_occurrence_falls_back_to_a_day(db, site):
     assert kinds(db, site, now=trigger_at + datetime.timedelta(hours=24, minutes=16)) == ["still_off"]
 
 
-@pytest.mark.parametrize("restore", [{"when": "conditions_only"}, {"enabled": False}])
-def test_no_time_based_restore_is_never_still_off(db, site, restore):
-    schedule = make_schedule(db, make_instance(db, site), restore=restore)
+def test_restore_disabled_is_never_still_off(db, site):
+    schedule = make_schedule(db, make_instance(db, site), restore={"enabled": False})
     make_run(db, schedule, NOW - datetime.timedelta(days=3), RunOutcome.OK)
     assert kinds(db, site) == []
+
+
+def test_conditions_only_restore_is_still_off_after_the_day_cap(db, site):
+    restore = {"when": "conditions_only", "early_if": [{"reading": "indoor_temp_c", "op": "lt", "value": 22}]}
+    schedule = make_schedule(db, make_instance(db, site), restore=restore, give_up=15)
+    trigger_at = NOW - datetime.timedelta(hours=30)
+    make_run(db, schedule, trigger_at, RunOutcome.OK)
+    cap = trigger_at + datetime.timedelta(hours=24)
+    assert kinds(db, site, now=cap + datetime.timedelta(minutes=14)) == []
+    [failure] = current_failures(db, site.id, cap + datetime.timedelta(minutes=16))
+    assert (failure.kind, failure.since) == ("still_off", cap)
 
 
 def test_actor_silent_with_unfinished_run(db, site):

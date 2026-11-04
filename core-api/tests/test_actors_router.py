@@ -75,14 +75,15 @@ def _window(db, site) -> DemandWindow:
 
 def _body(instance, **kw) -> dict:
     body = {"instance_id": instance.id, "name": "Peak off", "trigger": {"type": "time", "time": "10:00"},
-            "action": ACTION}
+            "action": ACTION, "restore": {"when": "after_minutes", "minutes": 60}}
     body.update(kw)
     return body
 
 
 def _db_schedule(db, instance, name="s", enabled=True) -> ActorSchedule:
     s = ActorSchedule(instance_id=instance.id, name=name, enabled=enabled, trigger={"type": "time", "time": "10:00"},
-                      conditions=[], action=ACTION, restore={"enabled": True}, retry={})
+                      conditions=[], action=ACTION, restore={"enabled": True, "when": "after_minutes", "minutes": 60},
+                      retry={})
     db.add(s)
     db.commit()
     return s
@@ -139,11 +140,12 @@ def test_schedule_validated_against_capabilities(http, db, site):
     ok = http.post(f"{_base(site)}/schedules", json=_body(inst))
     assert ok.status_code == 201
     stored = db.get(ActorSchedule, ok.json()["id"])
-    assert stored.action == ACTION and stored.restore["when"] == "window_end"
+    assert stored.action == ACTION and stored.restore["when"] == "after_minutes"
     bad = http.post(f"{_base(site)}/schedules", json=_body(inst, action={"id": "nope", "params": {}}))
     assert (bad.status_code, bad.json()["code"]) == (422, "invalid_schedule")
     bad_cond = http.post(f"{_base(site)}/schedules", json=_body(
-        inst, restore={"only_if": [{"reading": "mystery", "op": "gt", "value": 1}]}))
+        inst, restore={"when": "after_minutes", "minutes": 60,
+                       "only_if": [{"reading": "mystery", "op": "gt", "value": 1}]}))
     assert (bad_cond.status_code, bad_cond.json()["code"]) == (422, "invalid_schedule")
     site_cond = http.post(f"{_base(site)}/schedules", json=_body(
         inst, conditions=[{"reading": "outdoor_temp_c", "op": "gt", "value": 30}]))
@@ -168,6 +170,9 @@ def test_schedule_rejects_foreign_window_id(http, db, site, user):
     assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
     trigger = {"type": "window_end", "window_id": own.id}
     assert http.post(f"{_base(site)}/schedules", json=_body(inst, trigger=trigger)).status_code == 201
+    trigger = {"type": "window_start", "window_id": own.id}
+    body = _body(inst, trigger=trigger, restore={"when": "window_end"})
+    assert http.post(f"{_base(site)}/schedules", json=body).status_code == 201
 
 
 def test_patch_schedule_revalidates(http, db, site):
@@ -185,7 +190,8 @@ ON = {"reading": "outdoor_temp_c", "op": "gt", "value": 30}
 
 def test_condition_enabled_flag_round_trips(http, db, site):
     inst = _instance(db, site)
-    body = _body(inst, conditions=[OFF, ON], restore={"only_if": [OFF], "early_if": [OFF, ON]})
+    body = _body(inst, conditions=[OFF, ON], restore={"when": "after_minutes", "minutes": 60, "only_if": [OFF],
+                                                      "early_if": [OFF, ON]})
     created = http.post(f"{_base(site)}/schedules", json=body)
     assert created.status_code == 201
     assert [c["enabled"] for c in created.json()["conditions"]] == [False, True]
@@ -210,7 +216,7 @@ def test_legacy_condition_without_flag_is_returned_enabled(http, db, site):
     inst = _instance(db, site)
     s = _db_schedule(db, inst)
     s.conditions = [ON]
-    s.restore = {"enabled": True, "only_if": [ON], "early_if": [ON]}
+    s.restore = {"enabled": True, "when": "after_minutes", "minutes": 60, "only_if": [ON], "early_if": [ON]}
     db.commit()
     [listed] = http.get(f"{_base(site)}/schedules").json()
     assert listed["conditions"] == [{**ON, "enabled": True}]
@@ -355,17 +361,6 @@ def test_sign_in_reset_other_site_is_404(http, db, site, user):
     assert _stored_config(db, inst)["refresh_token"] == "secret-token"
 
 
-def test_sign_in_reset_refused_while_held_off(http, db, site):
-    inst = _instance(db, site, auth_state={"needs_sign_in": True})
-    _open_run(db, _db_schedule(db, inst))
-    r = http.post(_reset_url(site, inst))
-    assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
-    db.expire_all()
-    stored = db.get(ActorInstance, inst.id)
-    assert stored.config["refresh_token"] == "secret-token"
-    assert stored.auth_state == {"needs_sign_in": True}
-
-
 def test_sign_in_reset_removes_only_the_token(http, db, site):
     inst = _instance(db, site, auth_state={"needs_sign_in": True})
     inst.config = {"refresh_token": "secret-token", "device_id": "unit-1"}
@@ -387,3 +382,132 @@ def test_sign_in_reset_is_idempotent(http, db, site):
     again = http.post(_reset_url(site, inst))
     assert again.status_code == 200 and again.json()["auth_state"] is None
     assert "refresh_token" not in _stored_config(db, inst)
+
+
+# Editing a schedule that holds the unit off
+
+
+CAPS_TWO = {**CAPS, "actions": [*CAPS["actions"], {"id": "fan_only", "label": "Fan only", "params": []}]}
+
+
+def _held_schedule(http, db, site):
+    inst = _instance(db, site, caps=CAPS_TWO)
+    created = http.post(f"{_base(site)}/schedules", json=_body(inst, restore={"when": "after_minutes", "minutes": 60}))
+    sched = db.get(ActorSchedule, created.json()["id"])
+    _open_run(db, sched)
+    return sched, created.json()
+
+
+HELD_CHANGES = [
+    {"trigger": {"type": "time", "time": "11:00"}},
+    {"action": {"id": "fan_only", "params": {}}},
+    {"restore": {"when": "after_minutes", "minutes": 30}},
+]
+
+
+@pytest.mark.parametrize("change", HELD_CHANGES)
+def test_patch_refused_while_held_off(http, db, site, change):
+    sched, _ = _held_schedule(http, db, site)
+    r = http.patch(f"{_base(site)}/schedules/{sched.id}", json=change)
+    assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
+    assert r.json()["message"]
+
+
+@pytest.mark.parametrize("change", HELD_CHANGES)
+def test_patch_accepted_when_nothing_held_off(http, db, site, change):
+    inst = _instance(db, site, caps=CAPS_TWO)
+    sid = http.post(f"{_base(site)}/schedules", json=_body(inst)).json()["id"]
+    assert http.patch(f"{_base(site)}/schedules/{sid}", json=change).status_code == 200
+
+
+@pytest.mark.parametrize("change", [
+    {"name": "Renamed"},
+    {"enabled": False},
+    {"retry": {"max_attempts": 5}},
+    {"conditions": [ON]},
+    {"notify_email": True},
+])
+def test_patch_other_fields_accepted_while_held_off(http, db, site, change):
+    sched, _ = _held_schedule(http, db, site)
+    assert http.patch(f"{_base(site)}/schedules/{sched.id}", json=change).status_code == 200
+
+
+def test_full_body_patch_with_unchanged_spec_accepted_while_held_off(http, db, site):
+    sched, body = _held_schedule(http, db, site)
+    full = {k: v for k, v in body.items() if k not in ("id", "instance_id")}
+    full["name"] = "Renamed"
+    r = http.patch(f"{_base(site)}/schedules/{sched.id}", json=full)
+    assert r.status_code == 200 and r.json()["name"] == "Renamed"
+
+
+def test_patch_held_off_by_a_sibling_schedule_is_allowed(http, db, site):
+    inst = _instance(db, site, caps=CAPS_TWO)
+    _open_run(db, _db_schedule(db, inst, name="busy"))
+    sid = http.post(f"{_base(site)}/schedules", json=_body(inst)).json()["id"]
+    assert http.patch(f"{_base(site)}/schedules/{sid}", json=HELD_CHANGES[1]).status_code == 200
+
+
+# Restore at the window end
+
+
+@pytest.mark.parametrize("trigger", [
+    {"type": "time", "time": "10:00"},
+    {"type": "price_above", "c_per_kwh": 40},
+    "window_end",
+])
+def test_window_end_restore_needs_a_window_start_trigger(http, db, site, trigger):
+    inst = _instance(db, site)
+    if trigger == "window_end":
+        trigger = {"type": "window_end", "window_id": _window(db, site).id}
+    r = http.post(f"{_base(site)}/schedules", json=_body(inst, trigger=trigger, restore={"when": "window_end"}))
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
+    sid = http.post(f"{_base(site)}/schedules", json=_body(inst, trigger=trigger)).json()["id"]
+    r = http.patch(f"{_base(site)}/schedules/{sid}", json={"restore": {"when": "window_end"}})
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
+    assert "window" in r.json()["message"]
+
+
+def test_window_end_restore_with_window_start_trigger_accepted(http, db, site):
+    inst = _instance(db, site)
+    trigger = {"type": "window_start", "window_id": _window(db, site).id}
+    r = http.post(f"{_base(site)}/schedules", json=_body(inst, trigger=trigger, restore={"when": "window_end"}))
+    assert r.status_code == 201
+
+
+def test_window_end_restore_ignored_when_restore_is_off(http, db, site):
+    inst = _instance(db, site)
+    r = http.post(f"{_base(site)}/schedules", json=_body(inst, restore={"enabled": False, "when": "window_end"}))
+    assert r.status_code == 201
+
+
+# Sign-in reset while the unit is held off
+
+
+def test_sign_in_reset_allowed_when_sign_in_lost_while_held_off(http, db, site):
+    inst = _instance(db, site, auth_state={"needs_sign_in": True})
+    inst.config = {"refresh_token": "secret-token", "device_id": "unit-1"}
+    db.commit()
+    _open_run(db, _db_schedule(db, inst))
+    r = http.post(_reset_url(site, inst))
+    assert r.status_code == 200 and r.json()["auth_state"] is None
+    db.expire_all()
+    stored = db.get(ActorInstance, inst.id)
+    assert stored.config == {"device_id": "unit-1"}
+    assert stored.auth_state is None
+
+
+@pytest.mark.parametrize("auth_state", [None, {"user_code": "ABCD", "verification_uri": "https://example.com"},
+                                        {"needs_sign_in": False}])
+def test_sign_in_reset_refused_while_held_off_unless_sign_in_lost(http, db, site, auth_state):
+    inst = _instance(db, site, auth_state=auth_state)
+    _open_run(db, _db_schedule(db, inst))
+    r = http.post(_reset_url(site, inst))
+    assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
+    assert _stored_config(db, inst)["refresh_token"] == "secret-token"
+
+
+def test_delete_still_refused_when_sign_in_lost_while_held_off(http, db, site):
+    inst = _instance(db, site, auth_state={"needs_sign_in": True})
+    _open_run(db, _db_schedule(db, inst))
+    r = http.delete(f"{_base(site)}/instances/{inst.id}")
+    assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")

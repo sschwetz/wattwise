@@ -26,7 +26,9 @@ from core_api.time_utils import as_utc, site_tz
 FailureKind = Literal["run_failed", "still_off", "actor_silent", "needs_sign_in"]
 
 SILENT_AFTER = datetime.timedelta(minutes=5)
-WINDOW_END_FALLBACK = datetime.timedelta(hours=24)
+# The latest a restore can fall: a window end with no matching occurrence, and a
+# conditions-only restore whose condition never holds, both restore a day after the trigger.
+RESTORE_CAP = datetime.timedelta(hours=24)
 _CLEARING_OUTCOMES = (RunOutcome.OK, RunOutcome.SKIPPED, RunOutcome.OVERRIDDEN)
 
 
@@ -152,15 +154,17 @@ def _give_up(schedule: ActorSchedule) -> datetime.timedelta:
 
 
 def restore_time(db: Session, site: Site, schedule: ActorSchedule, run: ActorRun) -> datetime.datetime | None:
-    """When the action run should have been restored, or None when the schedule
-    has no time-based restore (restore disabled, conditions only, or an invalid spec)."""
+    """When the action run should have been restored, or None when restore is
+    disabled or the spec is invalid. A conditions-only restore falls due at the day cap."""
     try:
         restore = RestoreSpec.model_validate(schedule.restore or {})
     except ValidationError:
         return None
     trigger_at = as_utc(run.trigger_at)
-    if not restore.enabled or restore.when == "conditions_only":
+    if not restore.enabled:
         return None
+    if restore.when == "conditions_only":
+        return trigger_at + RESTORE_CAP
     if restore.when == "after_minutes":
         return trigger_at + datetime.timedelta(minutes=restore.minutes)
     if restore.when == "at_time":
@@ -174,7 +178,7 @@ def _window_end(db: Session, site: Site, trigger: dict, trigger_at: datetime.dat
     for occurrence in window_occurrences(db, site, trigger_at, horizon=datetime.timedelta(minutes=1)):
         if occurrence.window_id == window_id and occurrence.start == trigger_at:
             return occurrence.end
-    return trigger_at + WINDOW_END_FALLBACK
+    return trigger_at + RESTORE_CAP
 
 
 def next_local_time(after: datetime.datetime, hhmm: str, tz: zoneinfo.ZoneInfo) -> datetime.datetime:

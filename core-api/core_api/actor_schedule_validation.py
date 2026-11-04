@@ -38,6 +38,17 @@ def _check_window_belongs_to_site(db: Session, site_id: int, schedule: ScheduleC
         raise AppError(422, "invalid_schedule", f"Window {window_id} is not a demand window of this site")
 
 
+def _check_window_end_restore(schedule: ScheduleCreate) -> None:
+    """Only a window start trigger has a window end still to come."""
+    restore = schedule.restore
+    if restore.enabled and restore.when == "window_end" and schedule.trigger.type != "window_start":
+        raise AppError(
+            422,
+            "invalid_schedule",
+            "Restore at the window end needs a trigger at a window start. Pick another restore time.",
+        )
+
+
 def validate_schedule(db: Session, site_id: int, instance: ActorInstance, schedule: ScheduleCreate) -> None:
     """Check the action, every condition and the trigger window against the instance and site."""
     if not instance.capabilities:
@@ -47,3 +58,4 @@ def validate_schedule(db: Session, site_id: int, instance: ActorInstance, schedu
     conditions = [*schedule.conditions, *schedule.restore.only_if, *schedule.restore.early_if]
     validate_conditions_against(capabilities, set(SITE_READING_IDS), conditions)
     _check_window_belongs_to_site(db, site_id, schedule)
+    _check_window_end_restore(schedule)

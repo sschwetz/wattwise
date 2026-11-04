@@ -4,6 +4,7 @@ import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -28,6 +29,9 @@ from core_api.models.identity import Site
 router = APIRouter(prefix="/sites/{site_id}/actors", tags=["actors"])
 
 _SCHEDULE_FIELDS = ("name", "enabled", "trigger", "conditions", "action", "restore", "retry", "notify_email")
+# Changing one of these while the schedule holds the unit off would change how
+# or when the unit is put back, so it is refused until the restore finishes.
+_HELD_FIELDS = ("trigger", "action", "restore")
 
 
 def _instance_of_site(db: Session, site: Site, instance_id: int) -> ActorInstance:
@@ -52,6 +56,29 @@ def _refuse_if_held_off(db: Session, instance_id: int, schedule_id: int | None =
         runs = [r for r in runs if r.schedule_id == schedule_id]
     if runs:
         raise AppError(409, "unit_held_off", "The unit is held off by a run that has not been restored yet")
+
+
+def _stored_spec(schedule: ActorSchedule) -> dict:
+    """The stored trigger, action and restore as the schema dumps them, so defaults compare equal.
+    A stored spec the schema no longer accepts is compared as stored."""
+    stored = {f: getattr(schedule, f) for f in _SCHEDULE_FIELDS}
+    try:
+        parsed = ScheduleCreate.model_validate({**stored, "instance_id": schedule.instance_id})
+    except ValidationError:
+        return {f: stored[f] for f in _HELD_FIELDS}
+    return parsed.model_dump(mode="json", include=set(_HELD_FIELDS))
+
+
+def _refuse_held_spec_change(db: Session, schedule: ActorSchedule, parsed: ScheduleCreate) -> None:
+    new = parsed.model_dump(mode="json", include=set(_HELD_FIELDS))
+    if new == _stored_spec(schedule):
+        return
+    if any(r.schedule_id == schedule.id for r in unfinished_action_runs(db, schedule.instance_id)):
+        raise AppError(
+            409,
+            "unit_held_off",
+            "This schedule is holding the unit off. Change its trigger, action or restore after the unit is put back.",
+        )
 
 
 def _delete_run_history(db: Session, schedule_ids: list[int]) -> None:
@@ -117,7 +144,10 @@ def reset_sign_in(
 ):
     """Drop the stored refresh token so the actor starts a new device-code sign-in."""
     instance = _instance_of_site(db, site, instance_id)
-    _refuse_if_held_off(db, instance.id)
+    # With the sign-in lost the actor can neither restore nor finish the run, so a
+    # new sign-in is the only way out. It restores from the stored snapshot once approved.
+    if (instance.auth_state or {}).get("needs_sign_in") is not True:
+        _refuse_if_held_off(db, instance.id)
     instance.config = {k: v for k, v in instance.config.items() if k != "refresh_token"}
     instance.auth_state = None
     db.commit()
@@ -167,6 +197,7 @@ def patch_schedule(
     merged.update(payload.model_dump(exclude_unset=True))
     parsed = parse_schedule({**merged, "instance_id": schedule.instance_id})
     validate_schedule(db, site.id, db.get(ActorInstance, schedule.instance_id), parsed)
+    _refuse_held_spec_change(db, schedule, parsed)
     for field, value in parsed.model_dump(mode="json", include=set(_SCHEDULE_FIELDS)).items():
         setattr(schedule, field, value)
     db.commit()
