@@ -20,6 +20,10 @@ function needsSignIn(i: ActorInstance): boolean {
   return i.auth_state !== null && "needs_sign_in" in i.auth_state;
 }
 
+function isBlocked(i: ActorInstance): boolean {
+  return hasCode(i) || needsSignIn(i) || !i.enabled || i.capabilities === null;
+}
+
 /** The notice or panel for an instance that cannot run schedules yet, or null when it can. */
 function BlockedInstance({ site, instance, canEdit }: { site: Site; instance: ActorInstance; canEdit: boolean }) {
   const common = { siteId: site.id, instance, canEdit };
@@ -32,6 +36,14 @@ function BlockedInstance({ site, instance, canEdit }: { site: Site; instance: Ac
   return null;
 }
 
+/** A picked schedule that no longer exists falls back to the first one. */
+function effectiveSelection(picked: Selection, schedules: ActorSchedule[]): Selection {
+  if (picked?.kind === "new") return picked;
+  const first: Selection = schedules[0] ? { kind: "schedule", id: schedules[0].id } : null;
+  if (picked?.kind === "schedule" && schedules.some((s) => s.id === picked.id)) return picked;
+  return first;
+}
+
 function Workspace({ site, instances, schedules, canEdit }: {
   site: Site;
   instances: ActorInstance[];
@@ -39,10 +51,11 @@ function Workspace({ site, instances, schedules, canEdit }: {
   canEdit: boolean;
 }) {
   const [picked, setPicked] = useState<Selection>(null);
-  const selected: Selection = picked ?? (schedules[0] ? { kind: "schedule", id: schedules[0].id } : null);
+  const selected = effectiveSelection(picked, schedules);
   const current = selected?.kind === "schedule" ? schedules.find((s) => s.id === selected.id) ?? null : null;
   const instance = instances.find((i) => i.id === current?.instance_id) ?? instances[0];
   const blocked = instances.map((i) => <BlockedInstance key={i.id} site={site} instance={i} canEdit={canEdit} />);
+  if (schedules.length === 0 && instances.some(isBlocked)) return <div className="space-y-4">{blocked}</div>;
   return (
     <div className="space-y-4">
       {blocked}
@@ -63,7 +76,7 @@ function SchedulePageBody({ site }: { site: Site }) {
   if (failed) body = <QueryError error={failed.error} fallback="Could not load the schedule." onRetry={() => void failed.refetch()} />;
   else if (!instances.data || !schedules.data) body = <Spinner />;
   else if (instances.data.length === 0) body = <AddInstanceForm siteId={site.id} canEdit={!readOnly} />;
-  else body = <Workspace site={site} instances={instances.data} schedules={schedules.data} canEdit={!readOnly} />;
+  else body = <Workspace key={site.id} site={site} instances={instances.data} schedules={schedules.data} canEdit={!readOnly} />;
   return (
     <div className="space-y-4">
       <h1 className="sr-only">Schedule</h1>

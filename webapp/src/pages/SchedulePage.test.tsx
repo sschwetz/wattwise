@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import type { ActorInstance, ActorSchedule, AuthState, Capabilities } from "../actors/types";
@@ -39,31 +39,39 @@ interface Data {
   schedules?: ActorSchedule[];
   userId?: number;
   createError?: Error;
+  /** Schedules served for site 8, when a test switches sites. */
+  schedules8?: ActorSchedule[];
 }
 
-function mockApi({ instances = [], schedules = [], userId = 1, createError }: Data) {
+let current: Data = {};
+
+function mockApi(data: Data) {
+  current = data;
   vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
-    if (path.endsWith("/api/v1/sites")) return Promise.resolve([site]);
+    const { instances = [], schedules = [], userId = 1, createError, schedules8 = [] } = current;
+    if (path.endsWith("/api/v1/sites")) return Promise.resolve([site, { ...site, id: 8 }]);
     if (path.endsWith("/users/me")) return Promise.resolve({ id: userId });
     if (init?.method === "POST" && createError) return Promise.reject(createError);
     if (init?.method) return Promise.resolve(instance());
     if (path.endsWith("/instances")) return Promise.resolve(instances);
-    if (path.endsWith("/schedules")) return Promise.resolve(schedules);
+    if (path.endsWith("/schedules")) return Promise.resolve(path.includes("/sites/8/") ? schedules8 : schedules);
     return Promise.resolve([]);
   });
 }
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/sites/7/schedule"]}>
+        <Link to="/sites/8/schedule">Other site</Link>
         <Routes>
           <Route path="/sites/:siteId/schedule" element={<SchedulePage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...result, queryClient };
 }
 
 const code: AuthState = { user_code: "ABCD-1234", verification_uri: "https://example.test/device", expires_at: "2026-11-05T03:00:00Z" };
@@ -162,5 +170,77 @@ describe("SchedulePage", () => {
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "New schedule" }));
     expect(screen.getByRole("heading", { name: "New schedule" , level: 2})).toBeInTheDocument();
+  });
+
+  it("resets the selection when switching sites", async () => {
+    mockApi({ instances: [instance()], schedules: [schedule(1, "Evening peak"), schedule(2, "Morning")], schedules8: [schedule(5, "Other site job")] });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Morning/ }));
+    await userEvent.click(screen.getByRole("button", { name: "New schedule" }));
+    await userEvent.click(screen.getByRole("link", { name: "Other site" }));
+    const row = await screen.findByRole("button", { name: /Other site job/ });
+    expect(row).toHaveAttribute("aria-current", "true");
+    expect(screen.queryByRole("heading", { name: "Morning" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Other site job" })).toBeInTheDocument();
+  });
+
+  it("falls back to the first schedule when the picked one disappears", async () => {
+    mockApi({ instances: [instance()], schedules: [schedule(1, "Evening peak"), schedule(2, "Morning")] });
+    const { queryClient } = renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Morning/ }));
+    mockApi({ instances: [instance()], schedules: [schedule(1, "Evening peak")] });
+    await queryClient.invalidateQueries();
+    expect(await screen.findByRole("heading", { name: "Evening peak" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "New schedule" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Evening peak/ })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("shows no detail when the picked schedule disappears and none are left", async () => {
+    mockApi({ instances: [instance()], schedules: [schedule(1, "Evening peak")] });
+    const { queryClient } = renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Evening peak/ }));
+    mockApi({ instances: [instance()], schedules: [] });
+    await queryClient.invalidateQueries();
+    expect(await screen.findByText("No schedules yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "New schedule" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Evening peak" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the new schedule view across a refetch", async () => {
+    mockApi({ instances: [instance()], schedules: [schedule(1, "Evening peak")] });
+    const { queryClient } = renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "New schedule" }));
+    await queryClient.invalidateQueries();
+    await waitFor(() => expect(vi.mocked(apiFetch).mock.calls.length).toBeGreaterThan(6));
+    expect(screen.getByRole("heading", { name: "New schedule", level: 2 })).toBeInTheDocument();
+  });
+
+  it("shows the sign-in panel alone while there are no schedules", async () => {
+    mockApi({ instances: [instance({ auth_state: code, capabilities: null })] });
+    renderPage();
+    await screen.findByText("ABCD-1234");
+    expect(screen.queryByRole("heading", { name: "Schedules" })).not.toBeInTheDocument();
+  });
+
+  it("shows the needs-sign-in notice alone while there are no schedules", async () => {
+    mockApi({ instances: [instance({ auth_state: { needs_sign_in: true } })] });
+    renderPage();
+    await screen.findByText(/needs to sign in again/);
+    expect(screen.queryByRole("heading", { name: "Schedules" })).not.toBeInTheDocument();
+  });
+
+  it("shows the waiting line alone while there are no schedules", async () => {
+    mockApi({ instances: [instance({ capabilities: null })] });
+    renderPage();
+    await screen.findByText(/Waiting for the actor/);
+    expect(screen.queryByRole("heading", { name: "Schedules" })).not.toBeInTheDocument();
+  });
+
+  it("keeps existing schedules visible below a sign-in notice", async () => {
+    mockApi({ instances: [instance({ auth_state: { needs_sign_in: true } })], schedules: [schedule(1, "Evening peak")] });
+    renderPage();
+    expect(await screen.findByText(/needs to sign in again/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Schedules" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Evening peak/ })).toBeInTheDocument();
   });
 });
