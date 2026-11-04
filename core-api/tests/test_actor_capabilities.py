@@ -120,6 +120,24 @@ def test_zone_target_must_be_a_declared_target_option() -> None:
         validate_conditions_against(caps, SITE_READINGS, [no_target])
 
 
+def test_condition_enabled_defaults_true() -> None:
+    assert ConditionSpec(reading="indoor_temp_c", op="gt", value=27).enabled is True
+    assert ConditionSpec(reading="indoor_temp_c", op="gt", value=27, enabled=False).enabled is False
+
+
+def test_disabled_condition_is_not_checked() -> None:
+    caps = make_capabilities()
+    unknown = ConditionSpec(reading="humidity", op="lt", value=50, enabled=False)
+    bad_target = ConditionSpec(reading="zone_temp_c", op="gt", value=25, target="z9", enabled=False)
+    validate_conditions_against(caps, SITE_READINGS, [unknown, bad_target])
+
+
+def test_enabled_condition_with_unknown_reading_still_rejected() -> None:
+    cond = ConditionSpec(reading="humidity", op="lt", value=50, enabled=True)
+    with pytest.raises(AppError, match="humidity"):
+        validate_conditions_against(make_capabilities(), SITE_READINGS, [cond])
+
+
 def test_retry_floors() -> None:
     assert RetrySpec().max_attempts == 3
     with pytest.raises(ValidationError):

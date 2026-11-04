@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from core_api.actor_capabilities import Capabilities
 from core_api.actor_context import ActorContext, build_context
 from core_api.actor_runs import has_unfinished_action_run, unfinished_action_runs
-from core_api.actor_schemas import RunCreate, RunOut, RunUpdate
+from core_api.actor_schemas import RunCreate, RunOut, RunUpdate, StoredConditions, StoredRestore
 from core_api.deps import get_actor_instance, get_db_session, get_email_sender, require_actor_key
 from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
@@ -49,9 +49,9 @@ class ActorScheduleOut(BaseModel):
     name: str
     enabled: bool
     trigger: dict
-    conditions: list
+    conditions: StoredConditions
     action: dict
-    restore: dict
+    restore: StoredRestore
     retry: dict
     notify_email: bool
     created_at: datetime.datetime

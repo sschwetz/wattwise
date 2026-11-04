@@ -224,3 +224,17 @@ def test_schedule_response_shape_is_pinned(http, db, site):
     created = datetime.datetime.fromisoformat(body["created_at"])
     assert created.utcoffset() == datetime.timedelta(0)
     assert created == s.created_at.replace(tzinfo=datetime.UTC)
+
+
+def test_schedule_conditions_carry_enabled_flag(http, db, site):
+    i = _instance(db, site)
+    s = _schedule(db, i)
+    legacy = {"reading": "outdoor_temp_c", "op": "gt", "value": 30}
+    off = {**legacy, "enabled": False}
+    s.conditions = [legacy, off]
+    s.restore = {"enabled": True, "only_if": [legacy], "early_if": [off]}
+    db.commit()
+    [body] = http.get(f"/api/v1/actor/instances/{i.id}/schedules", headers=HEADERS).json()
+    assert [c["enabled"] for c in body["conditions"]] == [True, False]
+    assert body["restore"]["only_if"][0]["enabled"] is True
+    assert body["restore"]["early_if"][0]["enabled"] is False

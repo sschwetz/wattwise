@@ -5,7 +5,16 @@ import math
 import re
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from core_api.models.actors import RunKind, RunOutcome
 from core_api.time_utils import as_utc
@@ -53,6 +62,21 @@ class ConditionSpec(_Strict):
     op: Literal["gt", "lt"]
     value: float = Field(allow_inf_nan=False)
     target: str | None = None
+    enabled: bool = True
+
+
+def _conditions_with_flag(conditions: list) -> list:
+    """Stored conditions saved before the enabled flag existed count as enabled."""
+    return [{**c, "enabled": c.get("enabled", True)} if isinstance(c, dict) else c for c in conditions]
+
+
+def _restore_with_flag(restore: dict) -> dict:
+    lists = {k: _conditions_with_flag(v) for k in ("only_if", "early_if") if isinstance(v := restore.get(k), list)}
+    return {**restore, **lists}
+
+
+StoredConditions = Annotated[list, AfterValidator(_conditions_with_flag)]
+StoredRestore = Annotated[dict, AfterValidator(_restore_with_flag)]
 
 
 class ActionSpec(_Strict):
@@ -235,9 +259,9 @@ class ScheduleView(BaseModel):
     name: str
     enabled: bool
     trigger: dict
-    conditions: list
+    conditions: StoredConditions
     action: dict
-    restore: dict
+    restore: StoredRestore
     retry: dict
     notify_email: bool
 

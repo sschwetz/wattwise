@@ -88,6 +88,8 @@ def _check_condition(capabilities: Capabilities, site_reading_ids: set[str], con
 def validate_conditions_against(
     capabilities: Capabilities, site_reading_ids: set[str], conditions: Iterable[ConditionSpec]
 ) -> None:
-    """Each condition reads a device reading first, then a site reading."""
+    """Each enabled condition reads a device reading first, then a site reading.
+    A switched-off condition is not checked, so it may name a reading the device no longer declares."""
     for cond in conditions:
-        _check_condition(capabilities, site_reading_ids, cond)
+        if cond.enabled:
+            _check_condition(capabilities, site_reading_ids, cond)

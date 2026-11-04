@@ -179,6 +179,45 @@ def test_patch_schedule_revalidates(http, db, site):
     assert r.status_code == 200 and r.json()["name"] == "Renamed" and r.json()["action"] == ACTION
 
 
+OFF = {"reading": "mystery", "op": "gt", "value": 1, "enabled": False}
+ON = {"reading": "outdoor_temp_c", "op": "gt", "value": 30}
+
+
+def test_condition_enabled_flag_round_trips(http, db, site):
+    inst = _instance(db, site)
+    body = _body(inst, conditions=[OFF, ON], restore={"only_if": [OFF], "early_if": [OFF, ON]})
+    created = http.post(f"{_base(site)}/schedules", json=body)
+    assert created.status_code == 201
+    assert [c["enabled"] for c in created.json()["conditions"]] == [False, True]
+    assert [c["enabled"] for c in created.json()["restore"]["early_if"]] == [False, True]
+    [listed] = http.get(f"{_base(site)}/schedules").json()
+    assert listed["conditions"] == created.json()["conditions"]
+    assert listed["restore"] == created.json()["restore"]
+    assert listed["restore"]["only_if"][0]["enabled"] is False
+    flipped = {**ON, "enabled": False}
+    r = http.patch(f"{_base(site)}/schedules/{listed['id']}", json={"conditions": [flipped]})
+    assert r.status_code == 200 and r.json()["conditions"][0]["enabled"] is False
+    assert db.get(ActorSchedule, listed["id"]).conditions[0]["enabled"] is False
+
+
+def test_enabled_condition_with_undeclared_reading_is_422(http, db, site):
+    inst = _instance(db, site)
+    r = http.post(f"{_base(site)}/schedules", json=_body(inst, conditions=[{**OFF, "enabled": True}]))
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
+
+
+def test_legacy_condition_without_flag_is_returned_enabled(http, db, site):
+    inst = _instance(db, site)
+    s = _db_schedule(db, inst)
+    s.conditions = [ON]
+    s.restore = {"enabled": True, "only_if": [ON], "early_if": [ON]}
+    db.commit()
+    [listed] = http.get(f"{_base(site)}/schedules").json()
+    assert listed["conditions"] == [{**ON, "enabled": True}]
+    assert listed["restore"]["only_if"] == listed["restore"]["early_if"] == [{**ON, "enabled": True}]
+    assert db.get(ActorSchedule, s.id).conditions == [ON]
+
+
 def test_delete_refused_while_unfinished_run(http, db, site):
     inst = _instance(db, site)
     sched = _db_schedule(db, inst)
