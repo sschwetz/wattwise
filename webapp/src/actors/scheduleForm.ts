@@ -16,7 +16,8 @@ export type RestoreWhen = RestoreSpec["when"];
 /** A full schedule body as the editor sends it. */
 export type SchedulePayload = Omit<ActorSchedule, "id">;
 
-export type FormParam = { kind: "number"; text: string } | { kind: "value"; value: string | boolean | string[] };
+export type FormParamValue = string | boolean | string[];
+export type FormParam = { kind: "number"; text: string } | { kind: "value"; value: FormParamValue };
 
 export interface ConditionRow {
   key: number;
@@ -131,6 +132,28 @@ export function resetActionParams(form: ScheduleFormState, action: ActionDecl): 
     params: defaultParams(action),
     restore: { ...form.restore, enabled: form.restore.enabled && action.restorable },
   };
+}
+
+/** A stored value kept only when it has the shape the declared type needs. Multi-choice
+ * values the device no longer offers (a removed zone) are dropped. A choice value that is no
+ * longer offered is kept so the editor can show it and validateForm can flag it. */
+function alignParam(decl: ParamDecl, stored: FormParam | undefined): FormParam {
+  const fallback = defaultParam(decl);
+  if (stored === undefined) return fallback;
+  if (decl.type === "number") return stored.kind === "number" ? stored : fallback;
+  if (stored.kind !== "value") return fallback;
+  const { value } = stored;
+  if (decl.type === "choice") return typeof value === "string" ? stored : fallback;
+  if (decl.type === "bool") return typeof value === "boolean" ? stored : fallback;
+  if (!Array.isArray(value)) return fallback;
+  return { kind: "value", value: value.filter((v) => decl.options.some((o) => o.value === v)) };
+}
+
+/** Rebuild the params from the declaration: declared names only, stored values where they fit, defaults for the rest. */
+export function alignParams(form: ScheduleFormState, capabilities: Capabilities): ScheduleFormState {
+  const action = findAction(capabilities, form.actionId);
+  if (!action) return form;
+  return { ...form, params: Object.fromEntries(action.params.map((p) => [p.name, alignParam(p, form.params[p.name])])) };
 }
 
 /** Turn restore off when the chosen action declares it cannot be restored. */
@@ -255,17 +278,43 @@ function paramValue(param: FormParam): ActionParamValue {
   return param.kind === "number" ? Number(param.text) : param.value;
 }
 
-function restorePayload(r: RestoreForm): RestoreSpec {
-  const minutes = r.when === "after_minutes" ? parseWhole(r.minutes) : null;
-  const time = r.when === "at_time" && HHMM.test(r.time) ? r.time : null;
-  // While restore is off its fields are hidden and not checked; a missing
-  // minutes or time would fail the server's check, so fall back to conditions.
-  const missing = (r.when === "after_minutes" && minutes === null) || (r.when === "at_time" && time === null);
-  const when = !r.enabled && missing ? "conditions_only" : r.when;
-  return { enabled: r.enabled, when, minutes, time, only_if: conditionsPayload(r.onlyIf), early_if: conditionsPayload(r.earlyIf) };
+/** Would the server's capability check accept this condition? Mirrors actor_capabilities._check_condition. */
+export function conditionAccepted(c: ConditionSpec, capabilities: Capabilities): boolean {
+  const device = capabilities.readings.find((r) => r.id === c.reading);
+  if (!device) return SITE_READINGS.some((r) => r.id === c.reading) && c.target === null;
+  return c.target === null || (device.target_options ?? []).some((o) => o.value === c.target);
 }
 
-export function toPayload(form: ScheduleFormState): SchedulePayload {
+function restorePayload(r: RestoreForm, capabilities: Capabilities): RestoreSpec {
+  const whole = parseWhole(r.minutes);
+  const minutes = r.when === "after_minutes" && whole !== null && whole >= 1 ? whole : null;
+  const time = r.when === "at_time" && HHMM.test(r.time) ? r.time : null;
+  const onlyIf = conditionsPayload(r.onlyIf);
+  const earlyIf = conditionsPayload(r.earlyIf);
+  if (r.enabled) return { enabled: true, when: r.when, minutes, time, only_if: onlyIf, early_if: earlyIf };
+  // Restore is off, so its fields are hidden and validateForm does not check
+  // them. Send only what the server accepts: "conditions_only" when the
+  // minutes or time is missing, and only conditions that pass its checks.
+  const missing = (r.when === "after_minutes" && minutes === null) || (r.when === "at_time" && time === null);
+  const accepted = (c: ConditionSpec) => conditionAccepted(c, capabilities);
+  return {
+    enabled: false,
+    when: missing ? "conditions_only" : r.when,
+    minutes,
+    time,
+    only_if: onlyIf.filter(accepted),
+    early_if: earlyIf.filter(accepted),
+  };
+}
+
+/** Only the params the action declares; an undeclared action keeps what it has (validateForm blocks it). */
+function paramsPayload(form: ScheduleFormState, capabilities: Capabilities): Record<string, ActionParamValue> {
+  const declared = findAction(capabilities, form.actionId)?.params.map((p) => p.name);
+  const names = declared ?? Object.keys(form.params);
+  return Object.fromEntries(names.flatMap((name) => (form.params[name] ? [[name, paramValue(form.params[name])]] : [])));
+}
+
+export function toPayload(form: ScheduleFormState, capabilities: Capabilities): SchedulePayload {
   const { retry } = form;
   return {
     instance_id: form.instanceId,
@@ -273,8 +322,8 @@ export function toPayload(form: ScheduleFormState): SchedulePayload {
     enabled: form.enabled,
     trigger: triggerPayload(form.trigger),
     conditions: conditionsPayload(form.conditions),
-    action: { id: form.actionId, params: Object.fromEntries(Object.entries(form.params).map(([k, p]) => [k, paramValue(p)])) },
-    restore: restorePayload(form.restore),
+    action: { id: form.actionId, params: paramsPayload(form, capabilities) },
+    restore: restorePayload(form.restore, capabilities),
     retry: { max_attempts: Number(retry.maxAttempts), interval_seconds: Number(retry.intervalSeconds), give_up_minutes: Number(retry.giveUpMinutes) },
     notify_email: form.notifyEmail,
   };
@@ -302,12 +351,17 @@ function numberParamError(decl: ParamDecl, text: string): string | null {
   return null;
 }
 
+function choiceError(decl: ParamDecl, value: FormParamValue, allowed: Set<string>): string | null {
+  if (typeof value !== "string" || value === "") return `Pick an option for ${decl.label}.`;
+  return allowed.has(value) ? null : `${decl.label} "${value}" is no longer offered by the device. Pick another option.`;
+}
+
 function paramError(decl: ParamDecl, param: FormParam | undefined): string | null {
   if (param === undefined) return `Set a value for ${decl.label}.`;
   if (decl.type === "number") return param.kind === "number" ? numberParamError(decl, param.text) : `Enter a number for ${decl.label}.`;
   if (param.kind !== "value") return `Set a value for ${decl.label}.`;
   const allowed = new Set(decl.options.map((o) => o.value));
-  if (decl.type === "choice") return typeof param.value === "string" && allowed.has(param.value) ? null : `Pick an option for ${decl.label}.`;
+  if (decl.type === "choice") return choiceError(decl, param.value, allowed);
   if (decl.type === "bool") return typeof param.value === "boolean" ? null : `Set a value for ${decl.label}.`;
   const picked = Array.isArray(param.value) ? param.value : [];
   return picked.length > 0 && picked.every((v) => allowed.has(v)) ? null : `Tick at least one option for ${decl.label}.`;

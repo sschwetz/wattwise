@@ -10,7 +10,7 @@ import { type DeleteControls, DeleteSchedule } from "./DeleteSchedule";
 import type { EditorModel } from "./editorModel";
 import { RestoreStep } from "./RestoreStep";
 import { RetryStep } from "./RetryStep";
-import { applyRestorable, conditionReadings, emptyForm, fromSchedule, type SchedulePayload, toPayload, validateForm } from "./scheduleForm";
+import { alignParams, applyRestorable, conditionReadings, emptyForm, fromSchedule, type SchedulePayload, toPayload, validateForm } from "./scheduleForm";
 import { Step } from "./Step";
 import { noticeClass, primaryButtonClass } from "./styles";
 import type { ActorInstance, ActorSchedule, Capabilities } from "./types";
@@ -35,7 +35,7 @@ export interface EditorActions {
 
 function initialForm({ schedule, instance, capabilities, windows }: EditorSetup) {
   const form = schedule ? fromSchedule(schedule) : emptyForm(capabilities, { instanceId: instance.id, firstWindowId: windows[0]?.id ?? null });
-  return applyRestorable(form, capabilities);
+  return applyRestorable(alignParams(form, capabilities), capabilities);
 }
 
 function EnabledSwitch({ checked, onChange, disabled }: { checked: boolean; onChange: (on: boolean) => void; disabled: boolean }) {
@@ -93,7 +93,7 @@ export function ScheduleEditor({ setup, actions }: { setup: EditorSetup; actions
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (Object.keys(validateForm(form, capabilities)).length === 0) actions.save(toPayload(form));
+    if (Object.keys(validateForm(form, capabilities)).length === 0) actions.save(toPayload(form, capabilities));
   }
 
   return (

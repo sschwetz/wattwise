@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import { ScheduleDetail } from "./ScheduleDetail";
+import { serverProblems } from "./serverRules.testHelper";
 import type { ActorInstance, ActorSchedule, Capabilities } from "./types";
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -328,5 +329,69 @@ describe("ScheduleEditor", () => {
     expect(within(onlyIf).getByRole("combobox", { name: "Reading 1" })).toHaveValue("outdoor_temp_c");
     await user.click(within(onlyIf).getByRole("button", { name: "Remove condition 1" }));
     expect(within(onlyIf).queryByRole("combobox", { name: "Reading 1" })).not.toBeInTheDocument();
+  });
+
+  it("restore off with bad hidden fields still saves a body the server accepts", async () => {
+    const user = userEvent.setup();
+    const stale: ActorSchedule = {
+      ...saved,
+      restore: {
+        enabled: true, when: "after_minutes", minutes: 30, time: null,
+        only_if: [{ reading: "gone_reading", op: "gt", value: 1, target: null }],
+        early_if: [{ reading: "zone_temp_c", op: "gt", value: 26, target: "Garage" }],
+      },
+    };
+    renderDetail(stale);
+    await ready();
+    const minutes = screen.getByRole("spinbutton", { name: "Minutes after it runs" });
+    await user.clear(minutes);
+    await user.type(minutes, "0");
+    await user.click(screen.getByRole("checkbox", { name: "Put it back how it was before" }));
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    const sent = { ...body("PATCH"), instance_id: 3 };
+    expect(sent.restore.enabled).toBe(false);
+    expect(serverProblems(caps, sent)).toEqual([]);
+  });
+
+  it("a schedule with a removed param saves without the stale key", async () => {
+    const user = userEvent.setup();
+    renderDetail({ ...saved, action: { id: "set_temperature", params: { temperature_c: 26, fan_mode: "HIGH" } } });
+    await ready();
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("PATCH").action).toEqual({ id: "set_temperature", params: { temperature_c: 26 } });
+  });
+
+  it("a schedule with an added param shows the default and saves it", async () => {
+    const user = userEvent.setup();
+    renderDetail({ ...saved, action: { id: "system_on", params: {} } });
+    await ready();
+    expect(screen.getByRole("combobox", { name: "Mode" })).toHaveValue("COOL");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("PATCH").action).toEqual({ id: "system_on", params: { mode: "COOL" } });
+  });
+
+  it("a stored choice that is no longer offered is shown as such and blocks saving", async () => {
+    const user = userEvent.setup();
+    renderDetail({ ...saved, action: { id: "system_on", params: { mode: "DRY" } } });
+    await ready();
+    const mode = screen.getByRole("combobox", { name: "Mode" });
+    expect(mode).toHaveValue("DRY");
+    expect(mode).toHaveDisplayValue("DRY (no longer offered)");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(screen.getByRole("alert")).toHaveTextContent('Mode "DRY" is no longer offered by the device. Pick another option.');
+    expect(writes("PATCH")).toHaveLength(0);
+  });
+
+  it("an undeclared action still renders and blocks saving", async () => {
+    const user = userEvent.setup();
+    renderDetail({ ...saved, action: { id: "gone", params: { level: 3 } } });
+    await ready();
+    expect(screen.getByRole("combobox", { name: "Action" })).toHaveDisplayValue("gone (not offered by this device)");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Pick an action this device supports.");
+    expect(writes("PATCH")).toHaveLength(0);
   });
 });

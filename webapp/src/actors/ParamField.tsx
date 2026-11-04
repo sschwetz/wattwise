@@ -43,10 +43,14 @@ function NumberField({ param, input, errorId }: FieldProps) {
 
 function ChoiceField({ param, input, errorId }: FieldProps) {
   const value = input.value?.kind === "value" && typeof input.value.value === "string" ? input.value.value : "";
+  // Show the value the form holds, even when the device no longer offers it, so the select never looks set when it is not.
+  const offered = param.options.some((o) => o.value === value);
   return (
     <label className={labelClass}>
       {param.label}
       <select value={value} onChange={(e) => input.onChange({ kind: "value", value: e.target.value })} className={inputClass} {...invalidProps(errorId, input.error)}>
+        {value === "" && <option value="">Pick an option</option>}
+        {value !== "" && !offered && <option value={value}>{value} (no longer offered)</option>}
         {param.options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}

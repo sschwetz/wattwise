@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addCondition,
+  alignParams,
   conditionReadings,
   emptyForm,
   fromSchedule,
@@ -12,6 +13,7 @@ import {
   type SchedulePayload,
   type ScheduleFormState,
 } from "./scheduleForm";
+import { serverProblems } from "./serverRules.testHelper";
 import type { Capabilities, TriggerSpec } from "./types";
 
 const zones = [{ value: "Lounge", label: "Lounge" }, { value: "Bed 1", label: "Bed 1" }];
@@ -77,14 +79,14 @@ const context = { instanceId: 3, firstWindowId: 11 };
 describe("toPayload and fromSchedule round-trip", () => {
   it.each(triggers)("for a $type trigger", (trigger) => {
     const p = payload(trigger);
-    expect(toPayload(fromSchedule(p))).toEqual(p);
+    expect(toPayload(fromSchedule(p), caps)).toEqual(p);
     const form = fromSchedule(p);
-    expect(fromSchedule(toPayload(form))).toEqual(form);
+    expect(fromSchedule(toPayload(form, caps))).toEqual(form);
   });
 
   it("for a new form", () => {
     const form = { ...emptyForm(caps, context), name: "New" };
-    expect(fromSchedule(toPayload(form))).toEqual(form);
+    expect(fromSchedule(toPayload(form, caps))).toEqual(form);
   });
 
   it("keeps a restore at a set time and a number param", () => {
@@ -93,13 +95,13 @@ describe("toPayload and fromSchedule round-trip", () => {
       action: { id: "set_temperature", params: { temperature_c: 24 } },
       restore: { enabled: false, when: "at_time", minutes: null, time: "21:00", only_if: [], early_if: [] },
     };
-    expect(toPayload(fromSchedule(p))).toEqual(p);
+    expect(toPayload(fromSchedule(p), caps)).toEqual(p);
   });
 
   it("leaves out unticked condition rows", () => {
     const form = fromSchedule(payload(triggers[0]));
     form.conditions[0].use = false;
-    expect(toPayload(form).conditions).toEqual([{ reading: "zone_temp_c", op: "lt", value: 18.5, target: "Bed 1" }]);
+    expect(toPayload(form, caps).conditions).toEqual([{ reading: "zone_temp_c", op: "lt", value: 18.5, target: "Bed 1" }]);
   });
 });
 
@@ -128,7 +130,7 @@ describe("emptyForm picks defaults from capabilities", () => {
   it("starts with the first action's default params", () => {
     const form = emptyForm({ ...caps, actions: caps.actions.slice(1) }, context);
     expect(form.actionId).toBe("system_on");
-    expect(toPayload({ ...form, name: "x" }).action).toEqual({ id: "system_on", params: { mode: "COOL" } });
+    expect(toPayload({ ...form, name: "x" }, caps).action).toEqual({ id: "system_on", params: { mode: "COOL" } });
   });
 });
 
@@ -137,12 +139,12 @@ describe("changing action resets params", () => {
     const form = fromSchedule(payload(triggers[0]));
     const next = resetActionParams(form, caps.actions[2]);
     expect(next.actionId).toBe("set_temperature");
-    expect(toPayload(next).action).toEqual({ id: "set_temperature", params: { temperature_c: 20 } });
+    expect(toPayload(next, caps).action).toEqual({ id: "set_temperature", params: { temperature_c: 20 } });
   });
 
   it("gives multi_choice no ticks and bool false", () => {
     const next = resetActionParams(emptyForm(caps, context), caps.actions[3]);
-    expect(toPayload(next).action.params).toEqual({ zones: [], enabled: false });
+    expect(toPayload(next, caps).action.params).toEqual({ zones: [], enabled: false });
   });
 
   it("turns restore off for an action that cannot be restored", () => {
@@ -264,5 +266,78 @@ describe("validateForm", () => {
     const form = valid();
     form.actionId = "gone";
     expect(validateForm(form, caps).action).toBe("Pick an action this device supports.");
+  });
+});
+
+describe("with restore off, hidden fields never make the payload rejectable", () => {
+  const garbage: [string, (f: ScheduleFormState) => void][] = [
+    ["minutes 0", (f) => { f.restore.when = "after_minutes"; f.restore.minutes = "0"; }],
+    ["minutes -5", (f) => { f.restore.when = "after_minutes"; f.restore.minutes = "-5"; }],
+    ["minutes empty", (f) => { f.restore.when = "after_minutes"; f.restore.minutes = ""; }],
+    ["minutes 2.5", (f) => { f.restore.when = "after_minutes"; f.restore.minutes = "2.5"; }],
+    ["bad time", (f) => { f.restore.when = "at_time"; f.restore.time = "25:99"; }],
+    ["empty time", (f) => { f.restore.when = "at_time"; f.restore.time = ""; }],
+    ["undeclared reading", (f) => { f.restore.onlyIf[0].reading = "gone_reading"; }],
+    ["stale target", (f) => { f.restore.earlyIf = [{ key: 0, use: true, reading: "zone_temp_c", op: "gt", value: "20", target: "Garage" }]; }],
+    ["target on a reading without targets", (f) => { f.restore.earlyIf[0].target = "Lounge"; }],
+    ["target on a site reading", (f) => { f.restore.onlyIf[0].target = "Lounge"; }],
+    ["no value", (f) => { f.restore.earlyIf[0].value = "abc"; }],
+  ];
+
+  it.each(garbage)("%s", (_name, spoil) => {
+    const form = valid();
+    spoil(form);
+    form.restore.enabled = false;
+    expect(validateForm(form, caps)).toEqual({});
+    const body = toPayload(form, caps);
+    expect(body.restore.enabled).toBe(false);
+    expect(serverProblems(caps, body)).toEqual([]);
+  });
+
+  it("keeps the valid hidden values", () => {
+    const form = valid();
+    form.restore.enabled = false;
+    expect(toPayload(form, caps).restore).toEqual({ ...payload(triggers[2]).restore, enabled: false });
+  });
+});
+
+describe("alignParams matches the stored params to the declaration", () => {
+  const stored = (params: Record<string, string | number | boolean | string[]>, id = "set_zones") =>
+    fromSchedule({ ...payload(triggers[2]), action: { id, params } });
+
+  it("drops a param the actor no longer declares", () => {
+    const form = alignParams(stored({ zones: ["Lounge"], enabled: true, speed: "HIGH" }), caps);
+    expect(toPayload(form, caps).action.params).toEqual({ zones: ["Lounge"], enabled: true });
+  });
+
+  it("fills in the default for a newly declared param", () => {
+    const form = alignParams(stored({ zones: ["Lounge"] }), caps);
+    expect(toPayload(form, caps).action.params).toEqual({ zones: ["Lounge"], enabled: false });
+  });
+
+  it("uses the default when a stored value has the wrong type", () => {
+    const form = alignParams(stored({ temperature_c: "warm" }, "set_temperature"), caps);
+    expect(toPayload(form, caps).action.params).toEqual({ temperature_c: 20 });
+  });
+
+  it("keeps a choice that is no longer offered so validateForm can flag it", () => {
+    const form = alignParams(stored({ mode: "DRY" }, "system_on"), caps);
+    expect(form.params.mode).toEqual({ kind: "value", value: "DRY" });
+    expect(validateForm(form, caps)["param.mode"]).toBe('Mode "DRY" is no longer offered by the device. Pick another option.');
+  });
+
+  it("drops zones the device no longer has", () => {
+    const form = alignParams(stored({ zones: ["Lounge", "Garage"], enabled: true }), caps);
+    expect(toPayload(form, caps).action.params).toEqual({ zones: ["Lounge"], enabled: true });
+  });
+
+  it("leaves an undeclared action as stored", () => {
+    const form = stored({ level: 3 }, "gone");
+    expect(alignParams(form, caps)).toBe(form);
+  });
+
+  it("toPayload sends only declared param names", () => {
+    const form = stored({ zones: ["Lounge"], enabled: true, speed: "HIGH" });
+    expect(Object.keys(toPayload(form, caps).action.params)).toEqual(["zones", "enabled"]);
   });
 });
