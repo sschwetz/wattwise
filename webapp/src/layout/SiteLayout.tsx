@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useParams } from "react-router-dom";
-import { SiteChips } from "../settings/SiteChips";
 import { useSites } from "../sites/useSites";
+import { SiteChips } from "./SiteChips";
 import { SideRail } from "./SideRail";
 
 /**
@@ -13,8 +13,8 @@ export function SiteLayout() {
   const { pathname } = useLocation();
   const { data: sites } = useSites();
   const disabled = sites?.find((s) => String(s.id) === siteId)?.enabled === false;
-  // Picking another site keeps you on Reporting; any other page lands on its dashboard.
-  const section = pathname.endsWith("/reporting") ? "/reporting" : "";
+  // Picking another site stays on the same page (Dashboard, Reporting, Help).
+  const section = pathname.slice(`/sites/${siteId}`.length);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4">
