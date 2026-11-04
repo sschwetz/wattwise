@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { SaveStatus, latestSave } from "../components/SubmitButton";
 import { Spinner } from "../components/Spinner";
 import { EndAction } from "../billing/DateFields";
 import { useSiteTimeZone } from "../billing/dateHooks";
@@ -84,7 +85,8 @@ function useWindowChanges(siteId: number, sourceId: number, timeZone: string) {
     createWindow.mutate(input, { onSuccess: onAdded });
   };
   const error = all.map((m) => m.error).find((e) => e !== null) ?? null;
-  return { actions, onAdd, error };
+  const status = latestSave(...all);
+  return { actions, onAdd, error, status };
 }
 
 function WindowSummary({ window, timeZone }: { window: RateWindow; timeZone: string }) {
@@ -193,7 +195,7 @@ function CoverageWarning({ gaps }: { gaps: CoverageGap[] }) {
 export function RateWindowsPanel({ siteId, sourceId }: { siteId: number; sourceId: number }) {
   const { data: windows, isError: loadFailed } = useRateWindows(siteId, sourceId);
   const timeZone = useSiteTimeZone(siteId);
-  const { actions, onAdd, error } = useWindowChanges(siteId, sourceId, timeZone);
+  const { actions, onAdd, error, status } = useWindowChanges(siteId, sourceId, timeZone);
   const gaps = useMemo(() => findCoverageGaps(windows ?? []), [windows]);
 
   return (
@@ -207,6 +209,7 @@ export function RateWindowsPanel({ siteId, sourceId }: { siteId: number; sourceI
           <ChannelSection key={channel} title={title} windows={windows.filter((w) => w.channel === channel)} actions={actions} />
         ))}
       {error && <p role="alert" className={errorClass}>{error.message}</p>}
+      <SaveStatus mutation={status} />
       <AddWindowForm onAdd={onAdd} isPending={actions.isPending} windows={windows ?? []} timeZone={timeZone} />
     </div>
   );

@@ -126,7 +126,7 @@ const SAVE_CONFIG_BUTTON_CLASS =
 function saveStateFor(
   mutation: ReturnType<typeof useUpdateSource>,
   sourceId: number,
-  field: "config" | "name",
+  field: "config" | "name" | "enabled",
 ): SaveState {
   const variables = mutation.variables;
   const mine = variables?.sourceId === sourceId && variables[field] !== undefined;
@@ -430,7 +430,7 @@ function SourceRow({
   actions: SourceRowActions;
   isPending: boolean;
   /** Progress of this row's own config and label saves. */
-  saves: { config: SaveState; name: SaveState };
+  saves: { config: SaveState; name: SaveState; enabled: SaveState };
 }) {
   const [editingConfig, setEditingConfig] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -456,6 +456,7 @@ function SourceRow({
           >
             {source.enabled ? "Disable" : "Enable"}
           </button>
+          <SaveStatus mutation={saves.enabled} />
           {confirmingDelete ? (
             <>
               <button
@@ -562,6 +563,7 @@ export function CollectorsTab({ siteId, readOnly }: { siteId: number; readOnly: 
               saves={{
                 config: saveStateFor(updateSource, source.id, "config"),
                 name: saveStateFor(updateSource, source.id, "name"),
+                enabled: saveStateFor(updateSource, source.id, "enabled"),
               }}
             />
           ))}

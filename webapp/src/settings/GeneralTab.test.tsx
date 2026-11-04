@@ -62,7 +62,7 @@ describe("GeneralTab", () => {
     await waitFor(() => expect(patchCalls()).toHaveLength(1));
     expect(patchCalls()[0][0]).toBe("/api/v1/sites/7");
     expect(JSON.parse(String(patchCalls()[0][1]?.body))).toEqual({ name: "Cabin", timezone: "Australia/Sydney" });
-    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(await screen.findByText("✓ Saved")).toBeInTheDocument();
   });
 
   it("shows an error when saving fails", async () => {
@@ -110,6 +110,7 @@ describe("GeneralTab", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     await waitFor(() => expect(patchCalls()).toHaveLength(1));
     expect(JSON.parse(String(patchCalls()[0][1]?.body))).toEqual({ enabled: true });
+    expect(await screen.findByText("✓ Saved")).toBeInTheDocument();
   });
 
   it("shows the collection status", async () => {

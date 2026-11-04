@@ -9,6 +9,12 @@ export interface SaveState {
   submittedAt: number;
 }
 
+/** The save state of whichever mutation was submitted last, for a spot that
+ * confirms several related actions with one status. */
+export function latestSave(...mutations: SaveState[]): SaveState {
+  return mutations.reduce((latest, m) => (m.submittedAt > latest.submittedAt ? m : latest));
+}
+
 /** A submit button for a form backed by `mutation`: a spinner while the
  * request is in flight, then a "Saved" note beside it. The label stays the same
  * so the button keeps its width and accessible name. `layoutClass` positions
