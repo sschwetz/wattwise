@@ -1,6 +1,6 @@
 """Pure schedule evaluation: which triggers are due or missed, when a restore
-falls, and whether conditions pass. Every function takes `now`; none read the
-clock or do I/O."""
+falls, and whether conditions pass. None of the functions read the clock or
+do I/O; callers pass `now` where time matters."""
 
 from __future__ import annotations
 
@@ -51,14 +51,21 @@ def _gap_end(naive: datetime, tz: ZoneInfo) -> datetime:
     return hi.replace(microsecond=0)
 
 
-def _local_instant(day: date, clock: time, tz: ZoneInfo) -> datetime:
-    """UTC instant at which the site clock reads `clock` on `day`. A time in a
-    DST gap moves to the end of the gap; an ambiguous time takes the first."""
+def _local_instants(day: date, clock: time, tz: ZoneInfo) -> list[datetime]:
+    """UTC instants, earliest first, at which the site clock reads `clock` on
+    `day`. An ambiguous time gives two; a time in a DST gap gives the end of the gap."""
     naive = datetime.combine(day, clock)
-    utc = naive.replace(tzinfo=tz).astimezone(UTC)
-    if utc.astimezone(tz).replace(tzinfo=None) == naive:
-        return utc
-    return _gap_end(naive, tz)
+    found: list[datetime] = []
+    for fold in (0, 1):
+        utc = naive.replace(tzinfo=tz, fold=fold).astimezone(UTC)
+        if utc.astimezone(tz).replace(tzinfo=None) == naive and utc not in found:
+            found.append(utc)
+    return sorted(found) or [_gap_end(naive, tz)]
+
+
+def _local_instant(day: date, clock: time, tz: ZoneInfo) -> datetime:
+    """The first instant from `_local_instants`, used by the recurring `time` trigger."""
+    return _local_instants(day, clock, tz)[0]
 
 
 def _time_trigger_instants(
@@ -166,9 +173,9 @@ def _window_end_restore(schedule: Schedule, trigger_at: datetime, windows: list[
 def _at_time_restore(trigger_at: datetime, clock: time, tz: ZoneInfo) -> datetime:
     day = trigger_at.astimezone(tz).date()
     for offset in range(3):
-        candidate = _local_instant(day + timedelta(days=offset), clock, tz)
-        if candidate >= trigger_at:
-            return candidate
+        for candidate in _local_instants(day + timedelta(days=offset), clock, tz):
+            if candidate >= trigger_at:
+                return candidate
     raise ValueError("no restore instant found")  # unreachable: one of three days is at or after trigger_at
 
 
@@ -210,12 +217,13 @@ def _lookup(key: str, readings: Mapping[str, float], stale: set[str], context: C
 _WORDS = {"gt": "above", "lt": "below"}
 
 
-def _holds(cond: Condition, value: float) -> bool:
+def _holds(cond: Condition, value: float) -> bool | None:
+    """The comparison result, or None for an op other than gt/lt."""
     if cond.op == "gt":
         return value > cond.value
     if cond.op == "lt":
         return value < cond.value
-    raise ValueError(f"unknown condition op: {cond.op!r}")
+    return None
 
 
 def _failure(cond: Condition, key: str, value: float) -> str:
@@ -231,7 +239,10 @@ def evaluate_conditions(
         value = _lookup(key, readings, stale, context)
         if value is None:
             return ConditionResult(False, f"reading unavailable: {key}")
-        if not _holds(cond, value):
+        holds = _holds(cond, value)
+        if holds is None:
+            return ConditionResult(False, f"unsupported comparison: {cond.op}")
+        if not holds:
             return ConditionResult(False, _failure(cond, key, value))
     return ConditionResult(True)
 
@@ -242,7 +253,7 @@ def restore_gate_passes(
     """Like evaluate_conditions, but a missing or stale reading passes so it never keeps the unit off."""
     for cond in conditions:
         value = _lookup(_key(cond), readings, stale, context)
-        if value is not None and not _holds(cond, value):
+        if value is not None and _holds(cond, value) is False:
             return False
     return True
 

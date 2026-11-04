@@ -289,3 +289,26 @@ def test_early_restore_when_indoor_above():
     assert not early_restore_due(sched, {}, set(), ctx)
     assert not early_restore_due(sched, {"indoor_temp_c": 26.0}, {"indoor_temp_c"}, ctx)
     assert not early_restore_due(make_schedule(START), {"indoor_temp_c": 26.0}, set(), ctx)
+
+
+def test_restore_at_time_ambiguous_later_pass_still_ahead():
+    # Trigger 02:45 AEDT (first pass); 02:30 AEST (second pass) is 16:30Z, still ahead.
+    sched = make_schedule(START, rest=restore("at_time", time="02:30"))
+    trig = utc(2026, 4, 4, 15, 45)
+    assert restore_time(sched, run_at(trig), make_context(NOW)) == utc(2026, 4, 4, 16, 30)
+
+
+def test_restore_at_time_ambiguous_after_second_pass_goes_next_day():
+    sched = make_schedule(START, rest=restore("at_time", time="02:30"))
+    trig = utc(2026, 4, 4, 16, 31)
+    assert restore_time(sched, run_at(trig), make_context(NOW)) == utc(2026, 4, 5, 16, 30)
+
+
+def test_unsupported_op_never_raises():
+    bad = Condition("outdoor_temp_c", "gte", 35.0)
+    ctx = make_context(NOW, outdoor=40.0)
+    res = evaluate_conditions([bad], {}, set(), ctx)
+    assert (res.passed, res.reason) == (False, "unsupported comparison: gte")
+    assert restore_gate_passes([bad], {}, set(), ctx)
+    sched = make_schedule(START, rest=restore(early_if=[bad]))
+    assert not early_restore_due(sched, {}, set(), ctx)
