@@ -16,7 +16,8 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from actron_neo_api import ActronAirStatus
+from actron_neo_api import ActronAirAuthError, ActronAirStatus
+from actron_neo_api.models.auth import ActronAirDeviceCode, ActronAirToken
 from actron_neo_api.rt import RealtimeConnectionEvent, RealtimeConnectionState, RealtimeEventKind, RealtimeTransportType
 from actron_neo_api.state import StateManager
 
@@ -82,6 +83,28 @@ def _set_path(state: dict[str, Any], dotted: str, value: Any) -> None:
     node[leaf] = value
 
 
+class FakeOAuth:
+    """The part of `ActronAirOAuth2DeviceCodeAuth` the sign-in flow uses.
+
+    `refresh_error` is raised from `refresh_access_token`; `rotate_to` replaces the
+    refresh token on a successful refresh, as the library does when the server rotates it.
+    """
+
+    def __init__(self) -> None:
+        self.refresh_token: str | None = None
+        self.refresh_error: Exception | None = None
+        self.rotate_to: str | None = None
+        self.refreshes = 0
+
+    async def refresh_access_token(self) -> tuple[str, float]:
+        self.refreshes += 1
+        if self.refresh_error is not None:
+            raise self.refresh_error
+        if self.rotate_to is not None:
+            self.refresh_token = self.rotate_to
+        return "access-token-fake", 0.0
+
+
 class FakeActronApi:
     """Records commands and serves status from `self.device`, the unit's raw state.
 
@@ -90,6 +113,8 @@ class FakeActronApi:
     - `command_error` / `poll_error`: raised from `send_command` / `update_status`.
     - `push_results`: return values for successive `start_push` calls; when empty, `push_default`.
     - `push_on_command`: deliver the new status to subscribers after each applied command.
+    - Sign-in: `request_device_code` returns codes numbered DEVICE-1, USER-1, ... and
+      `poll_for_token` blocks until the test calls `approve`, `time_out` or `fail_poll`.
     """
 
     def __init__(self, device: dict[str, Any] | None = None, serial: str = SERIAL) -> None:
@@ -107,6 +132,13 @@ class FakeActronApi:
         self.start_push_calls: list[list[str] | None] = []
         self.stop_push_calls = 0
         self.polls = 0
+        self.oauth2_auth = FakeOAuth()
+        self.code_error: Exception | None = None
+        self.codes_issued = 0
+        self.expires_in = 600
+        self.code_interval = 5
+        self.poll_calls: list[tuple[str, int, int]] = []
+        self._polls: list[asyncio.Future[ActronAirToken | None]] = []
         self._update_callbacks: dict[str, list[Callable[[ActronAirStatus], Awaitable[None] | None]]] = {}
         self._connection_callbacks: list[Callable[[RealtimeConnectionEvent], Awaitable[None] | None]] = []
 
@@ -157,7 +189,41 @@ class FakeActronApi:
         self._connection_callbacks.append(callback)
         return lambda: self._connection_callbacks.remove(callback) if callback in self._connection_callbacks else None
 
+    @property
+    def refresh_token_value(self) -> str | None:
+        return self.oauth2_auth.refresh_token
+
+    async def request_device_code(self) -> ActronAirDeviceCode:
+        if self.code_error is not None:
+            raise self.code_error
+        self.codes_issued += 1
+        n = self.codes_issued
+        return ActronAirDeviceCode(
+            device_code=f"DEVICE-{n}",
+            user_code=f"USER-{n}",
+            verification_uri="https://example.test/verify",
+            verification_uri_complete=f"https://example.test/verify?user_code=USER-{n}",
+            expires_in=self.expires_in,
+            interval=self.code_interval,
+        )
+
+    async def poll_for_token(self, device_code: str, interval: int = 5, timeout: int = 600) -> ActronAirToken | None:
+        self.poll_calls.append((device_code, interval, timeout))
+        future: asyncio.Future[ActronAirToken | None] = asyncio.get_running_loop().create_future()
+        self._polls.append(future)
+        return await future
+
     # Test drivers
+
+    def approve(self, refresh_token: str = "REFRESH-NEW", access_token: str = "ACCESS-NEW") -> None:
+        """The owner approves the latest device code."""
+        self._polls[-1].set_result(ActronAirToken(access_token=access_token, refresh_token=refresh_token))
+
+    def time_out(self) -> None:
+        self._polls[-1].set_result(None)
+
+    def fail_poll(self, error: Exception | None = None) -> None:
+        self._polls[-1].set_exception(error or ActronAirAuthError("Device code has expired"))
 
     def owner_sets(self, dotted: str, value: Any) -> None:
         """A change made at the wall controller, for example ("UserAirconSettings.isOn", True)."""
