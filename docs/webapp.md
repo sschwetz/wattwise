@@ -52,12 +52,12 @@ More screenshots, with the explanation of every tile and field, are in the [user
 |---|---|
 | `src/api/` | `client.ts` (fetch wrapper, `ApiError`), `config.ts` (API base URL, `toWebSocketUrl`) |
 | `src/auth/` | `AuthContext` (token in `localStorage` under `access_token`), `ProtectedRoute` |
-| `src/layout/` | Header, site sidebar, site switcher, avatar |
+| `src/layout/` | Header, site chips and side rail, avatar |
 | `src/pages/` | One component per route, with its test beside it |
 | `src/dashboard/` | Hooks for live readings and history, and pure helpers for charts (`historyChart.ts`, `priceChart.ts`, `compass.ts`) |
 | `src/billing/` | `useBilling.ts` (all tariff and cycle calls), `ConditionalCredits.tsx`, `tariffHeading.ts` |
 | `src/sources/` | `useSources.ts`, `useRateWindows.ts`, the rate window panel and form, `rateCoverage.ts` (finds uncovered times) |
-| `src/settings/` | The Settings page: `SettingsPage` (route and redirects), `SettingsShell`, `SiteChips`, `GeneralTab`, `SharingTab`, `tabs.ts`. The Collectors, Tariffs and Billing tabs reuse `CollectorsTab` in `pages/SourcesPage.tsx` and `TariffsTab` and `BillingTab` in `pages/BillingPage.tsx`. |
+| `src/settings/` | The Settings page: `SettingsPage` (route and redirects), `SettingsShell`, `GeneralTab`, `SharingTab`, `tabs.ts`. The Collectors, Tariffs and Billing tabs reuse `CollectorsTab` in `pages/SourcesPage.tsx` and `TariffsTab` and `BillingTab` in `pages/BillingPage.tsx`. |
 | `src/sites/`, `src/account/` | Site, invitation and account hooks and forms. `useEnabledSites` filters `GET /sites` to enabled sites for the picker. The switcher shows enabled sites plus the current site when it is disabled. |
 | `src/help/` | The help viewer |
 | `src/docs/` | The user guide as Markdown, plus `images/` |

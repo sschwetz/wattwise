@@ -6,7 +6,7 @@ import { CollectorsTab } from "../pages/SourcesPage";
 import { AccessNote } from "./AccessNote";
 import { GeneralTab } from "./GeneralTab";
 import { SharingTab } from "./SharingTab";
-import { SiteChips } from "./SiteChips";
+import { SiteChips } from "../layout/SiteChips";
 import { TABS } from "./tabs";
 import { type SiteAccess, useSiteAccess } from "./useSiteAccess";
 
