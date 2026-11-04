@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
 import { LIVE_POLL_MS } from "../dashboard/useLiveReadings";
+import { hasActiveRun } from "./runFormat";
 import type {
   ActorFailure,
   ActorInstance,
@@ -14,6 +15,8 @@ import type {
 } from "./types";
 
 export const FAILURES_POLL_MS = 15_000;
+/** Poll rate for a schedule's run history while a run is queued or running. */
+export const RUNS_ACTIVE_POLL_MS = 5_000;
 /** Poll rate while a sign-in panel waits for the user to approve the code. */
 export const INSTANCES_SIGN_IN_POLL_MS = 10_000;
 
@@ -62,6 +65,7 @@ export function useScheduleRuns(siteId: number, scheduleId: number) {
     queryKey: [...actorKeys.runs(siteId), "schedule", scheduleId] as const,
     queryFn: () => apiFetch<ActorRun[]>(`${base(siteId)}/schedules/${scheduleId}/runs`),
     enabled: validSite(siteId) && Number.isFinite(scheduleId),
+    refetchInterval: (query) => (hasActiveRun(query.state.data) ? RUNS_ACTIVE_POLL_MS : false),
   });
 }
 

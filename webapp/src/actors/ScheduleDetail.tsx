@@ -1,11 +1,15 @@
 import type { SaveState } from "../components/SubmitButton";
 import { QueryError } from "../components/QueryError";
 import { Spinner } from "../components/Spinner";
+import { useSites } from "../sites/useSites";
 import { useCurrentDemandWindows } from "./demandWindows";
 import { type EditorActions, ScheduleEditor } from "./ScheduleEditor";
 import type { Selection } from "./ScheduleList";
 import type { SchedulePayload } from "./scheduleForm";
+import { ScheduleRunHistory } from "./RunHistory";
 import { cardClass } from "./styles";
+import { TestNow } from "./TestNow";
+import { UnitStatePanel } from "./UnitStatePanel";
 import type { ActorInstance, ActorSchedule } from "./types";
 import { useCreateSchedule, useDeleteSchedule, useUpdateSchedule } from "./useActors";
 
@@ -70,10 +74,18 @@ function DetailBody(props: ScheduleDetailProps & { title: string }) {
 }
 
 export function ScheduleDetail(props: ScheduleDetailProps) {
+  const { siteId, schedule, instance, canEdit } = props;
+  const sites = useSites();
+  const timezone = sites.data?.find((s) => s.id === siteId)?.timezone ?? "UTC";
+  const hasState = instance.latest_readings !== null || instance.capabilities !== null;
   return (
-    <section className={`${cardClass} space-y-6`}>
-      <DetailBody {...props} title={props.schedule ? props.schedule.name : "New schedule"} />
-      {/* Task 18: the unit state panel and the run history go here, below the editor. */}
-    </section>
+    <div className="space-y-4">
+      <section className={`${cardClass} space-y-6`}>
+        <DetailBody {...props} title={schedule ? schedule.name : "New schedule"} />
+        {schedule && canEdit && <TestNow key={schedule.id} siteId={siteId} scheduleId={schedule.id} />}
+      </section>
+      {hasState && <UnitStatePanel instance={instance} timezone={timezone} />}
+      {schedule && <ScheduleRunHistory siteId={siteId} schedule={schedule} instance={instance} timezone={timezone} />}
+    </div>
   );
 }
