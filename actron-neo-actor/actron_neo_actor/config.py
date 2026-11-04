@@ -10,7 +10,7 @@ class Settings:
     actor_key: str = field(repr=False)
     tick_seconds: int = 30
     poll_fallback_seconds: int = 30
-    reconcile_seconds: int = 300
+    reconcile_seconds: int = 120
     heartbeat_seconds: int = 60
     # How long a test run holds the action before it restores.
     test_hold_seconds: int = 30
@@ -39,7 +39,7 @@ def get_settings() -> Settings:
         actor_key=actor_key,
         tick_seconds=_seconds("TICK_SECONDS", 30),
         poll_fallback_seconds=_seconds("POLL_FALLBACK_SECONDS", 30),
-        reconcile_seconds=_seconds("RECONCILE_SECONDS", 300),
+        reconcile_seconds=_seconds("RECONCILE_SECONDS", 120),
         heartbeat_seconds=_seconds("HEARTBEAT_SECONDS", 60),
         test_hold_seconds=_seconds("TEST_HOLD_SECONDS", 30),
     )

@@ -7,19 +7,19 @@ from typing import Any
 
 from actron_neo_api import ActronAirAuthError
 
-from actron_neo_actor.async_core import AsyncCore
 from actron_neo_actor.core_api_client import CoreApiConflict
 from actron_neo_actor.models import ActionSpec, Condition, RestoreSpec, RetrySpec, Trigger
-from actron_neo_actor.worker import InstanceWorker
 from tests.fakes import START, FakeActronApi, raw_state
 from tests.worker_support import (
     SETTINGS,
     WINDOW_END,
     WINDOW_START,
+    Harness,
     harness,
     power_commands,
     restore_spec,
     schedule,
+    with_sleep,
 )
 
 MIN = datetime.timedelta(minutes=1)
@@ -109,6 +109,29 @@ def test_retries_then_gives_up_and_marks_failed():
         assert (action.outcome, action.attempts) == ("failed", 3)
         assert action.message == "failed after 3 attempts: not confirmed"
         assert power_commands(h.api) == ["OFF", "OFF", "OFF"]
+
+    run(scenario())
+
+
+def test_command_that_lands_after_the_retries_counts_as_ok():
+    async def scenario() -> None:
+        h = harness([schedule(retry=RetrySpec(1, 10, 5))])
+        h.api.respond_to_commands = False
+        settles: list[float] = []
+
+        async def sleep(seconds: float) -> None:
+            settles.append(seconds)
+            h.api.owner_sets("UserAirconSettings.isOn", False)  # the OFF lands late
+            await h.clock.sleep(seconds)
+
+        h = with_sleep(h, sleep)
+        await h.tick()
+        action = only(h.core.of("action"))
+        assert (action.outcome, action.attempts) == ("ok", 1)
+        assert settles[0] == 15  # the settle wait; a readings push may sleep after it
+        h.api.respond_to_commands = True
+        await h.tick_at(WINDOW_END)
+        assert only(h.core.of("restore")).outcome == "ok"
 
     run(scenario())
 
@@ -290,6 +313,53 @@ def test_restart_finishes_runs_left_open():
     run(scenario())
 
 
+def test_restart_retries_a_claimed_action_the_unit_does_not_show():
+    async def scenario() -> None:
+        h = harness()
+        snapshot = {"action": "system_off", "applied": {"is_on": False}, "saved": {"is_on": True, "mode": "COOL"}}
+        claimed = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START, outcome="running",
+                                 started_at=START, snapshot=snapshot)
+        await h.tick_at(START + 2 * MIN)
+        done = h.core.runs[claimed.id]
+        assert (done.outcome, done.message, done.attempts) == ("ok", "applied after a restart", 1)
+        assert power_commands(h.api) == ["OFF"]
+        await h.tick_at(WINDOW_END)
+        assert only(h.core.of("restore")).outcome == "ok"
+
+    run(scenario())
+
+
+def test_restart_past_give_up_checks_once_then_fails():
+    async def scenario() -> None:
+        h = harness([schedule(retry=RetrySpec(3, 10, 5))])
+        snapshot = {"action": "system_off", "applied": {"is_on": False}, "saved": {"is_on": True, "mode": "COOL"}}
+        claimed = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START, outcome="running",
+                                 started_at=START, snapshot=snapshot)
+        await h.tick_at(START + 6 * MIN)
+        done = h.core.runs[claimed.id]
+        assert (done.outcome, done.message) == ("failed", "the actor restarted before the unit confirmed")
+        assert h.api.commands == []
+
+    run(scenario())
+
+
+def test_restart_finds_an_open_restore_older_than_a_day():
+    async def scenario() -> None:
+        h = harness(api=FakeActronApi(raw_state(is_on=False)))
+        snapshot = {"action": "system_off", "applied": {"is_on": False}, "saved": {"is_on": True, "mode": "COOL"}}
+        old = START - datetime.timedelta(hours=54)
+        action = h.core.add_run(schedule_id=1, kind="action", trigger_at=old, outcome="ok",
+                                started_at=old, finished_at=old + MIN, snapshot=snapshot)
+        # No window occurrence starts at `old`, so the restore falls 24 hours later: 30 hours ago.
+        restore = h.core.add_run(schedule_id=1, kind="restore", trigger_at=old + datetime.timedelta(hours=24),
+                                 outcome="running", parent_run_id=action.id, started_at=old)
+        await h.tick_at(START + 30 * MIN)
+        assert (h.core.runs[restore.id].outcome, h.core.runs[restore.id].message) == ("ok", "restored power")
+        assert power_commands(h.api) == ["COOL"]
+
+    run(scenario())
+
+
 def test_restart_finishes_a_restore_left_open():
     async def scenario() -> None:
         h = harness(api=FakeActronApi(raw_state(is_on=False)))
@@ -419,26 +489,64 @@ def test_test_run_waits_while_an_action_holds_the_unit():
     run(scenario())
 
 
-def test_stop_cancels_a_test_run_in_its_hold():
+async def _stop_during_hold(h: Harness) -> tuple[Harness, Any]:
+    """Start a test run, stop the worker while it holds the action, and return the finished test run."""
+    h.core.contexts[1] = dataclasses.replace(h.core.contexts[1], windows=[])
+    holding = asyncio.Event()
+
+    async def held_sleep(seconds: float) -> None:
+        if seconds == SETTINGS.test_hold_seconds:
+            holding.set()
+            await asyncio.Event().wait()
+        await h.clock.sleep(seconds)
+
+    h = with_sleep(h, held_sleep)
+    test = h.core.add_run(schedule_id=1, kind="test", trigger_at=START)
+    await h.worker.tick(h.instance)
+    await asyncio.wait_for(holding.wait(), timeout=5)
+    assert power_commands(h.api) == ["OFF"]
+    await h.worker.stop()
+    return h, h.core.runs[test.id]
+
+
+def test_stop_during_a_test_hold_restores_first():
     async def scenario() -> None:
-        h = harness()
+        h, done = await _stop_during_hold(harness())
+        assert (done.outcome, done.message) == ("ok", "applied, then restored power early because the actor stopped")
+        assert power_commands(h.api) == ["OFF", "COOL"]
+        assert h.factory.closed
+
+    run(scenario())
+
+
+def test_stop_during_a_test_hold_gives_the_restore_60_seconds():
+    async def scenario() -> None:
+        h = harness([schedule(retry=RetrySpec(10, 5, 30))])
+        h.api.push_on_command = True
+        h, done = await _stop_during_hold_unresponsive(h)
+        assert done.outcome == "failed"
+        assert done.message == ("applied, but the restore failed after 1 attempt: not confirmed"
+                                " (the actor stopped during the hold)")
+        assert h.clock.elapsed() <= 60
+        assert h.factory.closed
+
+    async def _stop_during_hold_unresponsive(h: Harness) -> tuple[Harness, Any]:
         h.core.contexts[1] = dataclasses.replace(h.core.contexts[1], windows=[])
         holding = asyncio.Event()
 
         async def held_sleep(seconds: float) -> None:
             if seconds == SETTINGS.test_hold_seconds:
+                h.api.respond_to_commands = False
                 holding.set()
                 await asyncio.Event().wait()
             await h.clock.sleep(seconds)
 
-        worker = InstanceWorker(h.instance, h.factory, AsyncCore(h.core), SETTINGS, h.clock.now, held_sleep)
+        h = with_sleep(h, held_sleep)
         test = h.core.add_run(schedule_id=1, kind="test", trigger_at=START)
-        await worker.tick(h.instance)
+        await h.worker.tick(h.instance)
         await asyncio.wait_for(holding.wait(), timeout=5)
-        assert power_commands(h.api) == ["OFF"]
-        await worker.stop()
-        assert h.core.runs[test.id].outcome == "running"
-        assert h.factory.closed
+        await h.worker.stop()
+        return h, h.core.runs[test.id]
 
     run(scenario())
 

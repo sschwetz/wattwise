@@ -8,8 +8,9 @@ part way. Test runs run in the background, so the worker passes their ids in
 
 from __future__ import annotations
 
-from actron_neo_actor.device import DeviceError
-from actron_neo_actor.executor import Env, update
+import datetime
+
+from actron_neo_actor.executor import Env, apply_with_retries, settled, shows_action, update
 from actron_neo_actor.models import Run
 from actron_neo_actor.restores import execute_restore, take
 from actron_neo_actor.test_runs import finish_interrupted
@@ -17,6 +18,7 @@ from actron_neo_actor.view import OPEN, TickView
 
 NOT_STARTED = "the actor restarted before the run"
 CONFIRMED = "confirmed after a restart"
+REAPPLIED = "applied after a restart"
 NOT_CONFIRMED = "the actor restarted before the unit confirmed"
 NOTHING_TO_RESTORE = "nothing left to restore"
 
@@ -36,23 +38,28 @@ async def resume(env: Env, view: TickView, in_flight: set[int]) -> None:
 async def _resume_action(env: Env, view: TickView, run: Run) -> None:
     if run.outcome == "pending":
         done = await update(env, run, "skipped", NOT_STARTED)
-    elif _confirmed(env, view, run):
-        done = await update(env, run, "ok", CONFIRMED)
     else:
-        done = await update(env, run, "failed", NOT_CONFIRMED)
+        done = await _carry_on(env, view, run)
     if done is not None:
         view.note(done)
 
 
-def _confirmed(env: Env, view: TickView, run: Run) -> bool:
-    """A claimed action counts as done when its snapshot was saved and the unit shows the action."""
-    schedule, state = view.schedules.get(run.schedule_id), env.device.state()
-    if schedule is None or state is None or run.snapshot is None:
-        return False
-    try:
-        return env.device.matches_action(schedule.action.id, schedule.action.params, state)
-    except DeviceError:
-        return False
+async def _carry_on(env: Env, view: TickView, run: Run) -> Run | None:
+    """A claimed action: done if the unit shows it, else applied again within the give-up time from its claim."""
+    schedule = view.schedules.get(run.schedule_id)
+    if schedule is None or run.snapshot is None:
+        return await update(env, run, "failed", NOT_CONFIRMED)
+    action, retry = schedule.action, schedule.retry
+    if await shows_action(env, action):
+        return await update(env, run, "ok", CONFIRMED)
+    started = run.started_at or env.clock()
+    if env.clock() >= started + datetime.timedelta(minutes=retry.give_up_minutes):
+        confirmed = await settled(env, action)
+        return await update(env, run, "ok" if confirmed else "failed", CONFIRMED if confirmed else NOT_CONFIRMED)
+    attempt = await apply_with_retries(env, action, retry, started)
+    if attempt.ok:
+        return await update(env, run, "ok", REAPPLIED, attempts=attempt.attempts)
+    return await update(env, run, "failed", attempt.failure(), attempts=attempt.attempts)
 
 
 async def _resume_restore(env: Env, view: TickView, run: Run) -> None:

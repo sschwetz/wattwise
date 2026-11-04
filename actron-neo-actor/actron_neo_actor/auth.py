@@ -3,7 +3,8 @@
 `ensure_session` is called once per tick and never waits for the owner. The
 library's `poll_for_token` blocks, so a pending sign-in runs it as one
 background task kept in `SignInState`, and each tick only looks at `task.done()`.
-The state lives in memory only. Tokens, device codes and user codes never go
+The state lives in memory only. Every Core API call runs through
+`asyncio.to_thread`, as the client is synchronous. Tokens, device codes and user codes never go
 into a log line, an exception message or a repr; the user code and verification
 URI go to Core API only.
 """
@@ -129,7 +130,7 @@ async def _restore(
     token = _token_in_use(state, stored)
     if state.session_token != token and not await _refresh(api, instance, client, state, token, now):
         return SessionResult(False, state)
-    _tidy_up(instance, client, state)
+    await _tidy_up(instance, client, state)
     return SessionResult(True, state)
 
 
@@ -155,7 +156,7 @@ async def _refresh(
     try:
         await api.oauth2_auth.refresh_access_token()
     except ActronAirAuthError:
-        _note_failure(instance, client, state, now)
+        await _note_failure(instance, client, state, now)
         return False
     state.failing_token, state.refresh_failures = None, 0
     state.last_failure_at = state.rejected_at = None
@@ -169,14 +170,16 @@ def _waiting_to_retry(state: SignInState, now: datetime.datetime) -> bool:
     return state.last_failure_at is not None and now - state.last_failure_at < REFRESH_GAP
 
 
-def _note_failure(instance: Instance, client: CoreApiClient, state: SignInState, now: datetime.datetime) -> None:
+async def _note_failure(
+    instance: Instance, client: CoreApiClient, state: SignInState, now: datetime.datetime
+) -> None:
     """The library reports network errors and 5xx as auth errors, so only repeated failures count as a rejection."""
     state.refresh_failures += 1
     state.last_failure_at = now
     if state.refresh_failures < REFRESH_FAILURES_TO_REJECT:
         return
     _LOG.warning("Stored sign-in was rejected (instance %s)", instance.instance_id)
-    client.patch_discovered(instance.instance_id, auth_state={"needs_sign_in": True})
+    await asyncio.to_thread(client.patch_discovered, instance.instance_id, auth_state={"needs_sign_in": True})
     state.needs_sign_in_posted = True
     state.rejected_at = now
 
@@ -190,15 +193,15 @@ def _note_session(api: ActronAirAPI, state: SignInState, token: str) -> None:
     state.session_token = token
 
 
-def _tidy_up(instance: Instance, client: CoreApiClient, state: SignInState) -> None:
+async def _tidy_up(instance: Instance, client: CoreApiClient, state: SignInState) -> None:
     """Store a rotated token and clear a posted needs_sign_in. A failed post is retried next tick."""
     rotation = state.pending_rotation
     try:
         if rotation is not None and not rotation.stored:
-            client.patch_discovered(instance.instance_id, config={"refresh_token": rotation.new})
+            await asyncio.to_thread(client.patch_discovered, instance.instance_id, config={"refresh_token": rotation.new})
             rotation.stored = True
         if state.needs_sign_in_posted:
-            client.patch_discovered(instance.instance_id, auth_state=None)
+            await asyncio.to_thread(client.patch_discovered, instance.instance_id, auth_state=None)
             state.needs_sign_in_posted = False
     except CoreApiError as exc:
         _LOG.warning("Could not update Core API (instance %s): %s", instance.instance_id, type(exc).__name__)
@@ -209,14 +212,14 @@ async def _sign_in(
 ) -> SessionResult:
     state = state or SignInState()
     if state.task is not None and state.task.done():
-        signed_in = _finish_poll(instance, client, state, now)
+        signed_in = await _finish_poll(instance, client, state, now)
         if signed_in is not None:
             return signed_in
     if state.task is None:
         if state.failed_at is not None and now - state.failed_at < SIGN_IN_HOLDOFF:
             return SessionResult(False, state)
         await _start_poll(api, state, now)
-    _post_code(instance, client, state)
+    await _post_code(instance, client, state)
     return SessionResult(False, state)
 
 
@@ -231,14 +234,16 @@ def _poll_outcome(task: asyncio.Task[ActronAirToken | None]) -> ActronAirToken |
         return None
 
 
-def _finish_poll(
+async def _finish_poll(
     instance: Instance, client: CoreApiClient, state: SignInState, now: datetime.datetime
 ) -> SessionResult | None:
     """Store an approved token (the done task stays in the state if that fails). None means no token."""
     assert state.task is not None
     token = _poll_outcome(state.task)
     if token is not None and token.refresh_token:
-        client.patch_discovered(instance.instance_id, config={"refresh_token": token.refresh_token}, auth_state=None)
+        await asyncio.to_thread(
+            client.patch_discovered, instance.instance_id, config={"refresh_token": token.refresh_token}, auth_state=None
+        )
         return SessionResult(True, SignInState(session_token=token.refresh_token))
     _LOG.info("Sign-in code ended without a token (instance %s)", instance.instance_id)
     state.task = None
@@ -259,7 +264,7 @@ async def _start_poll(api: ActronAirAPI, state: SignInState, now: datetime.datet
     )
 
 
-def _post_code(instance: Instance, client: CoreApiClient, state: SignInState) -> None:
+async def _post_code(instance: Instance, client: CoreApiClient, state: SignInState) -> None:
     if state.posted or state.expires_at is None:
         return
     auth_state = {
@@ -268,7 +273,7 @@ def _post_code(instance: Instance, client: CoreApiClient, state: SignInState) ->
         "expires_at": state.expires_at.astimezone(datetime.UTC).isoformat(),
     }
     try:
-        client.patch_discovered(instance.instance_id, auth_state=auth_state)
+        await asyncio.to_thread(client.patch_discovered, instance.instance_id, auth_state=auth_state)
     except CoreApiError as exc:
         _LOG.warning("Could not post the sign-in code (instance %s): %s", instance.instance_id, type(exc).__name__)
         return

@@ -4,6 +4,7 @@ a FakeCore, and a real ActronDevice over FakeActronApi sharing one FakeClock."""
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -174,3 +175,9 @@ def power_commands(api: FakeActronApi) -> list[Any]:
         if "UserAirconSettings.isOn" in command:
             out.append(command.get("UserAirconSettings.Mode", "OFF") if command["UserAirconSettings.isOn"] else "OFF")
     return out
+
+
+def with_sleep(h: Harness, sleep: Callable[[float], Any]) -> Harness:
+    """The same harness with a worker that sleeps through `sleep`."""
+    worker = InstanceWorker(h.instance, h.factory, AsyncCore(h.core), SETTINGS, h.clock.now, sleep)  # type: ignore[arg-type]
+    return dataclasses.replace(h, worker=worker)

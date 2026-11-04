@@ -29,7 +29,7 @@ from actron_neo_actor.models import Instance
 from actron_neo_actor.restores import record_override_skips, run_restores, watch_for_override
 from actron_neo_actor.resume import resume
 from actron_neo_actor.schedule_eval import LOOKBACK
-from actron_neo_actor.test_runs import run_test, triage
+from actron_neo_actor.test_runs import Hold, run_test, triage
 from actron_neo_actor.view import TickView
 
 _LOG = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ class InstanceWorker:
         self._readings_sent_at: datetime.datetime | None = None
         self._readings = Coalesced(self._send_readings, self._log_error("readings"))
         self._override_watch = Coalesced(self._watch, self._log_error("override check"))
-        self._test: tuple[int, asyncio.Task[None]] | None = None
+        self._test: tuple[int, asyncio.Task[None], Hold] | None = None
 
     @property
     def instance_id(self) -> int:
@@ -162,11 +162,13 @@ class InstanceWorker:
             self._capabilities_sent = dumped
 
     async def _read(self) -> TickView:
+        """Recent runs reach back to the oldest unfinished action, so its open restore row is always seen."""
         now, instance_id = self._clock(), self.instance_id
         schedules = await self._core.get_schedules(instance_id)
         context = await self._core.get_context(instance_id)
         unfinished = await self._core.list_unfinished_runs(instance_id)
-        recent = await self._core.list_recent_runs(instance_id, now - LOOKBACK)
+        since = min([now - LOOKBACK, *(r.trigger_at for r in unfinished)])
+        recent = await self._core.list_recent_runs(instance_id, since)
         schedules_by_id = {s.id: s for s in schedules}
         return TickView(now, schedules_by_id, context, unfinished, recent, self._instance.restore_only)
 
@@ -188,8 +190,9 @@ class InstanceWorker:
         for run in await self._core.list_pending_test_runs(self.instance_id):
             schedule = await triage(env, view, run)
             if schedule is not None:
-                job = run_test(env, run, schedule, self._settings.test_hold_seconds)
-                self._test = (run.id, asyncio.create_task(self._guarded("test run", job)))
+                hold = Hold()
+                job = run_test(env, run, schedule, self._settings.test_hold_seconds, hold)
+                self._test = (run.id, asyncio.create_task(self._guarded("test run", job)), hold)
                 return
 
     async def _guarded(self, what: str, job: Coroutine[Any, Any, None]) -> None:
@@ -236,11 +239,16 @@ class InstanceWorker:
         await self._readings.wait()  # the test run's commands change the state, which sends readings again
 
     async def stop(self) -> None:
-        """Stop background work and sync, and cancel a pending sign-in. Call it when the instance is dropped."""
+        """Stop background work and sync, and cancel a pending sign-in. Call it when the instance is dropped.
+
+        A test run in its hold restores the unit first (within test_runs.STOP_RESTORE_SECONDS); a test
+        run in any other step is cancelled."""
         if self._test is not None:
-            self._test[1].cancel()
+            _, task, hold = self._test
+            if not hold.cut():
+                task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await self._test[1]
+                await task
             self._test = None
         await self._readings.cancel()
         await self._override_watch.cancel()

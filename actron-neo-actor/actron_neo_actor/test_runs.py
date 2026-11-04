@@ -3,14 +3,50 @@ and conditions say, hold it for `test_hold_seconds`, then restore."""
 
 from __future__ import annotations
 
+import asyncio
+import datetime
+from collections.abc import Awaitable, Callable
+
 from actron_neo_actor.actions import OTHER_ACTIVE, claim_and_apply, finish
-from actron_neo_actor.device import RestoreResult
+from actron_neo_actor.device import CONFIRM_SECONDS, RestoreResult
 from actron_neo_actor.executor import Attempt, Env, current_state_restore, update, with_retries
 from actron_neo_actor.models import Run, Schedule
 from actron_neo_actor.unit_checks import restore_message
 from actron_neo_actor.view import TickView
 
 INTERRUPTED = "the actor restarted during the test"
+# When the worker stops during the hold, the restore gets this long in all: a try starts only if
+# its confirm window can end inside it.
+STOP_RESTORE_SECONDS = 60
+
+
+class Hold:
+    """The wait between a test run's action and its restore. `cut` ends it early when the worker stops."""
+
+    def __init__(self) -> None:
+        self._cut = asyncio.Event()
+        self.active = False
+
+    async def wait(self, sleep: Callable[[float], Awaitable[None]], seconds: float) -> bool:
+        """True when the hold was cut short."""
+        self.active = True
+        sleeper = asyncio.ensure_future(sleep(seconds))
+        cutter = asyncio.ensure_future(self._cut.wait())
+        try:
+            await asyncio.wait({sleeper, cutter}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            self.active = False
+            for task in (sleeper, cutter):
+                task.cancel()
+            await asyncio.gather(sleeper, cutter, return_exceptions=True)
+        return self._cut.is_set()
+
+    def cut(self) -> bool:
+        """End the hold now. False when the test is not in its hold."""
+        if not self.active:
+            return False
+        self._cut.set()
+        return True
 
 
 async def triage(env: Env, view: TickView, run: Run) -> Schedule | None:
@@ -28,7 +64,7 @@ async def triage(env: Env, view: TickView, run: Run) -> Schedule | None:
     return None
 
 
-async def run_test(env: Env, run: Run, schedule: Schedule, hold_seconds: int) -> None:
+async def run_test(env: Env, run: Run, schedule: Schedule, hold_seconds: int, hold: Hold) -> None:
     applied = await claim_and_apply(env, run, schedule.action, schedule.retry)
     if applied is None:
         return
@@ -39,10 +75,13 @@ async def run_test(env: Env, run: Run, schedule: Schedule, hold_seconds: int) ->
     if not schedule.restore.enabled:
         await finish(env, claimed, attempt, "applied; restore is off for this schedule")
         return
-    await env.sleep(hold_seconds)
-    restored = await _restore(env, schedule, claimed.snapshot)
-    outcome = "ok" if restored.ok else "failed"
+    stopped = await hold.wait(env.sleep, hold_seconds)
+    latest = env.clock() + datetime.timedelta(seconds=STOP_RESTORE_SECONDS - CONFIRM_SECONDS) if stopped else None
+    restored = await _restore(env, schedule, claimed.snapshot, latest)
     message = _outcome_message("applied, then", "applied, but the restore", restored)
+    if stopped:
+        message += " early because the actor stopped" if restored.ok else " (the actor stopped during the hold)"
+    outcome = "ok" if restored.ok else "failed"
     await update(env, claimed, outcome, message, attempts=attempt.attempts + restored.attempts)
 
 
@@ -57,8 +96,11 @@ async def finish_interrupted(env: Env, view: TickView, run: Run) -> None:
     await update(env, run, "failed", message, attempts=restored.attempts)
 
 
-async def _restore(env: Env, schedule: Schedule, snapshot: dict | None) -> Attempt[RestoreResult]:
-    return await with_retries(env, schedule.retry, current_state_restore(env, snapshot))
+async def _restore(
+    env: Env, schedule: Schedule, snapshot: dict | None, latest_start: datetime.datetime | None = None
+) -> Attempt[RestoreResult]:
+    op = current_state_restore(env, snapshot)
+    return await with_retries(env, schedule.retry, op, latest_start=latest_start)
 
 
 def _outcome_message(done: str, failed: str, restored: Attempt[RestoreResult]) -> str:

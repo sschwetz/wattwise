@@ -24,9 +24,7 @@ def _utcnow() -> datetime.datetime:
 class ActronConnector:
     """Signs in with auth.ensure_session and builds the device for the account's first system.
 
-    ensure_session calls the synchronous CoreApiClient itself, so its few
-    discovered-config posts (a sign-in code, a rotated token, needs_sign_in) run
-    on the event loop thread.
+    ensure_session takes the synchronous CoreApiClient and runs its calls in a thread.
     """
 
     def __init__(

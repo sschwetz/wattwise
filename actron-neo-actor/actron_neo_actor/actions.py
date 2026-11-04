@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 
 from actron_neo_actor.device import DeviceError
-from actron_neo_actor.executor import Attempt, Env, create, record, update, with_retries
+from actron_neo_actor.executor import Attempt, Env, apply_with_retries, create, record, update
 from actron_neo_actor.models import ActionSpec, Context, RetrySpec, Run, Schedule
 from actron_neo_actor.schedule_eval import due_triggers, evaluate_conditions, missed_triggers
 from actron_neo_actor.view import TickView, sensed
@@ -71,8 +71,7 @@ async def claim_and_apply(env: Env, run: Run, action: ActionSpec, retry: RetrySp
     claimed = await update(env, run, "running", snapshot=snapshot)
     if claimed is None:
         return None
-    attempt: Attempt = await with_retries(env, retry, lambda: env.device.apply(action.id, action.params))
-    return claimed, attempt
+    return claimed, await apply_with_retries(env, action, retry)
 
 
 async def finish(env: Env, run: Run, attempt: Attempt, ok_message: str | None = None) -> Run | None:

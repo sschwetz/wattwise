@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import functools
 import logging
+import threading
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -31,8 +32,10 @@ class FakeCore:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
         self.fail_posts = 0
+        self.threads: set[int] = set()
 
     def patch_discovered(self, instance_id: int, config: dict | None = None, auth_state: Any = UNSET) -> None:
+        self.threads.add(threading.get_ident())
         if self.fail_posts:
             self.fail_posts -= 1
             raise CoreApiError("Failed to report discovered config: 500")
@@ -448,3 +451,20 @@ async def test_state_and_result_reprs_hide_secrets():
     h.api.fail_poll(RuntimeError("DEVICE-1"))
     await settle()
     assert "DEVICE-1" not in repr(h.state)
+
+
+@async_test
+async def test_core_api_calls_run_off_the_event_loop_thread() -> None:
+    h = Harness()
+    await h.tick()  # posts the sign-in code
+    h.api.approve()
+    await settle()
+    assert (await h.tick()).signed_in  # stores the approved token
+    h.token = STORED
+    h.state = None
+    h.api.oauth2_auth.refresh_error = ActronAirAuthError("rejected")
+    for _ in range(3):
+        await h.tick()  # the third failure posts needs_sign_in
+        h.advance(61)
+    assert len(h.core.calls) == 3
+    assert h.core.threads and threading.get_ident() not in h.core.threads

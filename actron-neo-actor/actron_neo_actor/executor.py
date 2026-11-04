@@ -15,8 +15,10 @@ from dataclasses import dataclass, field
 
 from actron_neo_actor.async_core import AsyncCore
 from actron_neo_actor.core_api_client import CoreApiConflict
-from actron_neo_actor.device import Device, DeviceAuthError, DeviceError, RestoreResult
-from actron_neo_actor.models import RetrySpec, Run
+from actron_neo_actor.device import Device, DeviceAuthError, DeviceError, DeviceState, RestoreResult
+from actron_neo_actor.models import ActionSpec, RetrySpec, Run
+
+SETTLE_SECONDS = 15
 
 Clock = Callable[[], datetime.datetime]
 Sleep = Callable[[float], Awaitable[None]]
@@ -82,10 +84,19 @@ async def record(
     return None if run is None else await update(env, run, "skipped", message)
 
 
-async def with_retries[T](env: Env, retry: RetrySpec, op: Callable[[], Awaitable[T]]) -> Attempt[T]:
+async def with_retries[T](
+    env: Env,
+    retry: RetrySpec,
+    op: Callable[[], Awaitable[T]],
+    *,
+    started: datetime.datetime | None = None,
+    latest_start: datetime.datetime | None = None,
+) -> Attempt[T]:
     """Try `op` up to `retry.max_attempts` times, `interval_seconds` apart, giving up once the next
-    try would start more than `give_up_minutes` after the first. A rejected sign-in ends at once."""
-    deadline = env.clock() + datetime.timedelta(minutes=retry.give_up_minutes)
+    try would start more than `give_up_minutes` after `started` (default: now) or after `latest_start`.
+    A rejected sign-in ends at once."""
+    give_up = (started or env.clock()) + datetime.timedelta(minutes=retry.give_up_minutes)
+    deadline = give_up if latest_start is None else min(give_up, latest_start)
     attempts = 0
     while True:
         attempts += 1
@@ -102,6 +113,41 @@ async def with_retries[T](env: Env, retry: RetrySpec, op: Callable[[], Awaitable
         if attempts >= max(retry.max_attempts, 1) or next_try > deadline:
             return Attempt(attempts, error=error)
         await env.sleep(retry.interval_seconds)
+
+
+async def shows_action(env: Env, action: ActionSpec) -> bool:
+    """Poll the unit and check whether it shows the action. A failed poll falls back to the synced state."""
+    try:
+        state: DeviceState | None = await env.device.refresh()
+    except DeviceAuthError:
+        env.auth_lost = True
+        return False
+    except DeviceError:
+        state = env.device.state()
+    try:
+        return state is not None and env.device.matches_action(action.id, action.params, state)
+    except DeviceError:
+        return False
+
+
+async def settled(env: Env, action: ActionSpec) -> bool:
+    """The last look before an action counts as failed: a command can land after the confirm window."""
+    if await shows_action(env, action):
+        return True
+    await env.sleep(SETTLE_SECONDS)
+    return await shows_action(env, action)
+
+
+async def apply_with_retries(
+    env: Env, action: ActionSpec, retry: RetrySpec, started: datetime.datetime | None = None
+) -> Attempt[None]:
+    """Apply with retries; when every try fails, an ok after the settle check still counts."""
+    attempt: Attempt[None] = await with_retries(
+        env, retry, lambda: env.device.apply(action.id, action.params), started=started
+    )
+    if not attempt.ok and not env.auth_lost and await settled(env, action):
+        return Attempt(attempt.attempts)
+    return attempt
 
 
 def current_state_restore(env: Env, snapshot: dict | None) -> Callable[[], Awaitable[RestoreResult]]:

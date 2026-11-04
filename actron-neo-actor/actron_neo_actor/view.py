@@ -31,7 +31,7 @@ class TickView:
     schedules: dict[int, Schedule]
     context: Context
     unfinished: list[Run]  # action runs that still owe a restore, as Core API counts them
-    recent: list[Run]  # every run with trigger_at in the last 24 hours
+    recent: list[Run]  # runs with trigger_at in the last 24 hours, or since the oldest unfinished action
     restore_only: bool = False  # the instance or its site is disabled; only restores remain
 
     def action_trigger_ats(self, schedule_id: int) -> set[datetime.datetime]:

@@ -9,7 +9,7 @@ def test_defaults_and_trailing_slash(monkeypatch):
     settings = get_settings()
     assert settings.core_api_url == "http://core"
     assert (settings.tick_seconds, settings.poll_fallback_seconds) == (30, 30)
-    assert (settings.reconcile_seconds, settings.heartbeat_seconds) == (300, 60)
+    assert (settings.reconcile_seconds, settings.heartbeat_seconds) == (120, 60)
     assert settings.test_hold_seconds == 30
 
 
