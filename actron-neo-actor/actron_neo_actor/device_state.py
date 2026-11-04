@@ -1,0 +1,115 @@
+"""The actor's copy of the unit's state, built from the library's typed status.
+
+The raw status (`last_known_state`) holds the wall controller PIN and the
+installer's contact details. Nothing here reads it: every value comes from a
+named, typed attribute, so the PIN cannot reach a payload, a repr or a log.
+"""
+
+from __future__ import annotations
+
+import datetime
+from dataclasses import dataclass, field
+
+from actron_neo_api import ActronAirStatus
+from pydantic import BaseModel
+
+HEAT = "HEAT"
+
+
+@dataclass(frozen=True)
+class DeviceState:
+    """Equality ignores `updated_at`, so two refreshes of an unchanged unit compare equal."""
+
+    is_on: bool
+    mode: str
+    fan_mode: str
+    cool_setpoint_c: float
+    heat_setpoint_c: float
+    enabled_zones: dict[str, bool]
+    indoor_temp_c: float | None
+    outdoor_temp_c: float | None
+    humidity_pct: float | None
+    zone_temps_c: dict[str, float]
+    updated_at: datetime.datetime = field(compare=False)
+
+    def to_payload(self) -> dict:
+        return {
+            "is_on": self.is_on,
+            "mode": self.mode,
+            "fan_mode": self.fan_mode,
+            "cool_setpoint_c": self.cool_setpoint_c,
+            "heat_setpoint_c": self.heat_setpoint_c,
+            "enabled_zones": dict(self.enabled_zones),
+            "indoor_temp_c": self.indoor_temp_c,
+            "outdoor_temp_c": self.outdoor_temp_c,
+            "humidity_pct": self.humidity_pct,
+            "zone_temps_c": dict(self.zone_temps_c),
+            "updated_at": self.updated_at.astimezone(datetime.UTC).isoformat(),
+        }
+
+    def readings(self) -> dict[str, float]:
+        """Values for schedule conditions. A per-zone reading is keyed `zone_temp_c@<title>`."""
+        values: dict[str, float] = {}
+        for key, value in (
+            ("indoor_temp_c", self.indoor_temp_c),
+            ("outdoor_temp_c", self.outdoor_temp_c),
+            ("humidity_pct", self.humidity_pct),
+        ):
+            if value is not None:
+                values[key] = value
+        values["is_on"] = 1.0 if self.is_on else 0.0
+        for title, temp in self.zone_temps_c.items():
+            values[f"zone_temp_c@{title}"] = temp
+        return values
+
+
+def base_fan_mode(fan_mode: str) -> str:
+    """The fan speed without the continuous suffix: 'AUTO+CONT' -> 'AUTO'."""
+    return fan_mode.split("+CONT")[0].split("-CONT")[0]
+
+
+def active_setpoint(state: DeviceState) -> float:
+    """The setpoint the library's `set_temperature` writes in the current mode."""
+    return state.heat_setpoint_c if state.mode.upper() == HEAT else state.cool_setpoint_c
+
+
+def zone_titles(status: ActronAirStatus) -> list[str]:
+    """Stripped zone titles in zone order. Zones with an empty title are left out."""
+    return [title for _, title in titled_zones(status)]
+
+
+def titled_zones(status: ActronAirStatus) -> list[tuple[int, str]]:
+    """(index into remote_zone_info, stripped title). The first zone wins a repeated title."""
+    seen: set[str] = set()
+    zones: list[tuple[int, str]] = []
+    for index, zone in enumerate(status.remote_zone_info):
+        title = zone.title.strip()
+        if title and title not in seen:
+            seen.add(title)
+            zones.append((index, title))
+    return zones
+
+
+def _reported(model: BaseModel, name: str) -> float | None:
+    """The value when the unit sent it; None when the library filled in its 0.0 default."""
+    return float(getattr(model, name)) if name in model.model_fields_set else None
+
+
+def state_from_status(status: ActronAirStatus, now: datetime.datetime) -> DeviceState:
+    settings = status.user_aircon_settings
+    master = status.master_info
+    enabled = settings.enabled_zones
+    zones = titled_zones(status)
+    return DeviceState(
+        is_on=bool(settings.is_on),
+        mode=settings.mode,
+        fan_mode=settings.fan_mode,
+        cool_setpoint_c=float(settings.temperature_setpoint_cool_c),
+        heat_setpoint_c=float(settings.temperature_setpoint_heat_c),
+        enabled_zones={title: bool(enabled[i]) for i, title in zones if i < len(enabled)},
+        indoor_temp_c=_reported(master, "live_temp_c"),
+        outdoor_temp_c=_reported(master, "live_outdoor_temp_c"),
+        humidity_pct=_reported(master, "live_humidity_pc"),
+        zone_temps_c={title: float(status.remote_zone_info[i].live_temp_c) for i, title in zones},
+        updated_at=now.astimezone(datetime.UTC),
+    )
