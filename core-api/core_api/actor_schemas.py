@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import datetime
 import math
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
+from core_api.models.actors import RunKind, RunOutcome
+from core_api.time_utils import as_utc
 
 _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 HHMM = Annotated[str, Field(pattern=_TIME_PATTERN.pattern)]
@@ -124,3 +128,41 @@ class Capabilities(_Strict):
     version: Literal[1]
     actions: list[ActionDecl] = Field(default_factory=list)
     readings: list[ReadingDecl] = Field(default_factory=list)
+
+
+# Run lifecycle (actor-facing)
+
+
+class RunCreate(_Strict):
+    schedule_id: int
+    kind: RunKind
+    trigger_at: AwareDatetime
+    parent_run_id: int | None = None
+    snapshot: dict | None = None
+
+
+class RunUpdate(_Strict):
+    outcome: RunOutcome
+    message: str | None = None
+    attempts: int | None = Field(default=None, ge=0)
+    snapshot: dict | None = None
+
+
+class RunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    schedule_id: int
+    kind: RunKind
+    trigger_at: datetime.datetime
+    started_at: datetime.datetime | None
+    finished_at: datetime.datetime | None
+    outcome: RunOutcome
+    message: str | None
+    attempts: int
+    parent_run_id: int | None
+    snapshot: dict | None
+
+    @field_serializer("trigger_at", "started_at", "finished_at")
+    def _as_aware_utc(self, value: datetime.datetime | None) -> str | None:
+        return None if value is None else as_utc(value).isoformat()

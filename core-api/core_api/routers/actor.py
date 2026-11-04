@@ -4,17 +4,20 @@ import datetime
 
 from fastapi import APIRouter, Depends, Header, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core_api.actor_capabilities import Capabilities
 from core_api.actor_context import ActorContext, build_context
 from core_api.actor_runs import has_unfinished_action_run, unfinished_action_runs
-from core_api.deps import get_actor_instance, get_db_session, require_actor_key
+from core_api.actor_schemas import RunCreate, RunOut, RunUpdate
+from core_api.deps import get_actor_instance, get_db_session, get_email_sender, require_actor_key
+from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
-from core_api.models.actors import ActorInstance, ActorSchedule
-from core_api.models.identity import Site
-from core_api.time_utils import as_utc
+from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
+from core_api.models.identity import Site, User
+from core_api.time_utils import as_utc, site_tz
 
 router = APIRouter(prefix="/actor", tags=["actor"])
 
@@ -190,3 +193,138 @@ def _context_out(context: ActorContext) -> ActorContextOut:
             for w in context.windows
         ],
     )
+
+
+_TERMINAL = {RunOutcome.OK, RunOutcome.SKIPPED, RunOutcome.FAILED, RunOutcome.OVERRIDDEN}
+
+
+@router.get("/instances/{instance_id}/runs", response_model=list[RunOut])
+def list_actor_runs(
+    unfinished: bool = False,
+    pending_test: bool = False,
+    since: AwareDatetime | None = None,
+    instance: ActorInstance = Depends(get_actor_instance),
+    db: Session = Depends(get_db_session),
+) -> list[ActorRun]:
+    """Exactly one of unfinished, pending_test or since must be given."""
+    if int(unfinished) + int(pending_test) + int(since is not None) != 1:
+        raise AppError(422, "invalid_filter", "Give exactly one of unfinished, pending_test or since")
+    if unfinished:
+        return unfinished_action_runs(db, instance.id)
+    stmt = select(ActorRun).join(ActorSchedule, ActorSchedule.id == ActorRun.schedule_id)
+    stmt = stmt.where(ActorSchedule.instance_id == instance.id)
+    if pending_test:
+        stmt = stmt.where(ActorRun.kind == RunKind.TEST, ActorRun.outcome == RunOutcome.PENDING)
+    else:
+        stmt = stmt.where(ActorRun.trigger_at >= as_utc(since))
+    return list(db.scalars(stmt.order_by(ActorRun.trigger_at, ActorRun.id)))
+
+
+@router.post("/instances/{instance_id}/runs", response_model=RunOut, status_code=status.HTTP_201_CREATED)
+def create_actor_run(
+    payload: RunCreate,
+    instance: ActorInstance = Depends(get_actor_instance),
+    db: Session = Depends(get_db_session),
+) -> ActorRun:
+    """The schedule must belong to this instance, else 404."""
+    schedule = db.get(ActorSchedule, payload.schedule_id)
+    if schedule is None or schedule.instance_id != instance.id:
+        raise AppError(404, "not_found", "Schedule not found")
+    _check_restore_parent(db, payload)
+    run = ActorRun(
+        schedule_id=schedule.id,
+        kind=payload.kind,
+        trigger_at=as_utc(payload.trigger_at),
+        outcome=RunOutcome.PENDING,
+        parent_run_id=payload.parent_run_id,
+        snapshot=payload.snapshot,
+    )
+    db.add(run)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise AppError(409, "duplicate_run", "A run for this schedule, kind and trigger time already exists") from None
+    return run
+
+
+@router.patch("/instances/{instance_id}/runs/{run_id}", response_model=RunOut)
+def update_actor_run(
+    run_id: int,
+    payload: RunUpdate,
+    instance: ActorInstance = Depends(get_actor_instance),
+    db: Session = Depends(get_db_session),
+    email_sender: EmailSender = Depends(get_email_sender),
+) -> ActorRun:
+    run = _instance_run(db, instance, run_id)
+    if run.outcome in _TERMINAL:
+        raise AppError(409, "run_finished", "This run has already finished")
+    now = datetime.datetime.now(datetime.UTC)
+    if payload.outcome == RunOutcome.RUNNING:
+        _claim_run(db, run, now)
+    elif payload.outcome == RunOutcome.PENDING:
+        raise AppError(422, "invalid_outcome", "A run cannot return to pending")
+    else:
+        run.outcome = payload.outcome
+        run.finished_at = now
+    _apply_details(run, payload)
+    db.commit()
+    if run.outcome == RunOutcome.FAILED:
+        _email_failure(db, run, email_sender)
+    return run
+
+
+def _check_restore_parent(db: Session, payload: RunCreate) -> None:
+    if payload.kind != RunKind.RESTORE:
+        return
+    parent = db.get(ActorRun, payload.parent_run_id) if payload.parent_run_id is not None else None
+    if parent is None or parent.kind != RunKind.ACTION or parent.schedule_id != payload.schedule_id:
+        raise AppError(422, "invalid_parent", "A restore run needs parent_run_id of an action run on the same schedule")
+
+
+def _instance_run(db: Session, instance: ActorInstance, run_id: int) -> ActorRun:
+    run = db.scalars(
+        select(ActorRun)
+        .join(ActorSchedule, ActorSchedule.id == ActorRun.schedule_id)
+        .where(ActorRun.id == run_id, ActorSchedule.instance_id == instance.id)
+    ).one_or_none()
+    if run is None:
+        raise AppError(404, "not_found", "Run not found")
+    return run
+
+
+def _claim_run(db: Session, run: ActorRun, now: datetime.datetime) -> None:
+    """Move pending to running in one conditional UPDATE so two callers cannot both win."""
+    result = db.execute(
+        update(ActorRun)
+        .where(ActorRun.id == run.id, ActorRun.outcome == RunOutcome.PENDING)
+        .values(outcome=RunOutcome.RUNNING, started_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise AppError(409, "run_not_pending", "This run is no longer pending")
+    db.refresh(run)
+
+
+def _apply_details(run: ActorRun, payload: RunUpdate) -> None:
+    for field in ("message", "attempts", "snapshot"):
+        if field in payload.model_fields_set:
+            setattr(run, field, getattr(payload, field))
+
+
+def _email_failure(db: Session, run: ActorRun, email_sender: EmailSender) -> None:
+    schedule = db.get(ActorSchedule, run.schedule_id)
+    if schedule is None or not schedule.notify_email:
+        return
+    instance = db.get(ActorInstance, schedule.instance_id)
+    site = db.get(Site, instance.site_id) if instance else None
+    owner = db.get(User, site.owner_user_id) if site else None
+    if owner is None:
+        return
+    when = as_utc(run.finished_at).astimezone(site_tz(site.timezone)).strftime("%Y-%m-%d %H:%M %Z")
+    body = (
+        f'The schedule "{schedule.name}" failed at {when} for the site "{site.name}".\n\n'
+        f"What went wrong: {run.message or 'no details were reported'}\n"
+    )
+    try_send_email(email_sender, owner.email, f'Schedule failed: {schedule.name}', body, "actor run failure")
