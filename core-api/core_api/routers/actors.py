@@ -4,10 +4,10 @@ import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from core_api.actor_runs import has_unfinished_action_run
+from core_api.actor_runs import unfinished_action_runs
 from core_api.actor_schedule_validation import parse_schedule, validate_schedule
 from core_api.actor_schemas import (
     ActorInstanceCreate,
@@ -44,9 +44,21 @@ def _schedule_of_site(db: Session, site: Site, schedule_id: int) -> ActorSchedul
     return schedule
 
 
-def _refuse_if_held_off(db: Session, instance_id: int) -> None:
-    if has_unfinished_action_run(db, instance_id):
+def _refuse_if_held_off(db: Session, instance_id: int, schedule_id: int | None = None) -> None:
+    """Refuse while an action run owes a restore: any of the instance's runs, or only the given schedule's."""
+    runs = unfinished_action_runs(db, instance_id)
+    if schedule_id is not None:
+        runs = [r for r in runs if r.schedule_id == schedule_id]
+    if runs:
         raise AppError(409, "unit_held_off", "The unit is held off by a run that has not been restored yet")
+
+
+def _delete_run_history(db: Session, schedule_ids: list[int]) -> None:
+    """Deleting a schedule or instance deletes its run history, restore rows (which point at their
+    action run through parent_run_id) before the action rows. Disabling keeps history."""
+    runs = ActorRun.schedule_id.in_(schedule_ids)
+    db.execute(delete(ActorRun).where(runs, ActorRun.parent_run_id.is_not(None)))
+    db.execute(delete(ActorRun).where(runs))
 
 
 # Instances
@@ -91,10 +103,8 @@ def delete_instance(
     instance = _instance_of_site(db, site, instance_id)
     _refuse_if_held_off(db, instance.id)
     schedule_ids = list(db.scalars(select(ActorSchedule.id).where(ActorSchedule.instance_id == instance.id)))
-    for run in db.scalars(select(ActorRun).where(ActorRun.schedule_id.in_(schedule_ids))):
-        db.delete(run)
-    for schedule in db.scalars(select(ActorSchedule).where(ActorSchedule.instance_id == instance.id)):
-        db.delete(schedule)
+    _delete_run_history(db, schedule_ids)
+    db.execute(delete(ActorSchedule).where(ActorSchedule.instance_id == instance.id))
     db.delete(instance)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -154,9 +164,8 @@ def delete_schedule(
     schedule_id: int, site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
 ) -> Response:
     schedule = _schedule_of_site(db, site, schedule_id)
-    _refuse_if_held_off(db, schedule.instance_id)
-    for run in db.scalars(select(ActorRun).where(ActorRun.schedule_id == schedule.id)):
-        db.delete(run)
+    _refuse_if_held_off(db, schedule.instance_id, schedule.id)
+    _delete_run_history(db, [schedule.id])
     db.delete(schedule)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -203,7 +212,9 @@ def list_site_runs(
         .order_by(ActorRun.trigger_at.desc(), ActorRun.id.desc())
         .limit(limit)
     )
-    return [RunListItem(**RunOut.model_validate(run).model_dump(), schedule_name=name) for run, name in db.execute(stmt)]
+    return [
+        RunListItem(**RunOut.model_validate(run).model_dump(), schedule_name=name) for run, name in db.execute(stmt)
+    ]
 
 
 @router.get("/schedules/{schedule_id}/runs", response_model=list[RunOut])

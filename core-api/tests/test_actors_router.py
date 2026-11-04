@@ -255,3 +255,38 @@ def test_cross_site_ids_are_404(http, db, site, user):
     assert http.get(f"{base}/schedules/{sched.id}/runs").status_code == 404
     assert http.post(f"{base}/schedules/{sched.id}/test").status_code == 404
     assert http.post(f"{base}/schedules", json=_body(inst)).status_code == 404
+
+
+def _finished_pair(db, schedule) -> None:
+    """An action run closed by a restore child, so the unit is not held off."""
+    now = datetime.datetime.now(UTC)
+    action = ActorRun(schedule_id=schedule.id, kind=RunKind.ACTION, trigger_at=now, outcome=RunOutcome.OK)
+    db.add(action)
+    db.commit()
+    db.add(ActorRun(schedule_id=schedule.id, kind=RunKind.RESTORE, trigger_at=now, outcome=RunOutcome.OK,
+                    parent_run_id=action.id))
+    db.commit()
+
+
+def test_delete_schedule_with_restore_child_run(http, db, site):
+    sched = _db_schedule(db, _instance(db, site))
+    _finished_pair(db, sched)
+    assert http.delete(f"{_base(site)}/schedules/{sched.id}").status_code == 204
+    assert db.query(ActorRun).count() == 0
+
+
+def test_delete_instance_with_restore_child_run(http, db, site):
+    inst = _instance(db, site)
+    _finished_pair(db, _db_schedule(db, inst))
+    assert http.delete(f"{_base(site)}/instances/{inst.id}").status_code == 204
+    assert db.query(ActorRun).count() == 0
+
+
+def test_schedule_delete_ignores_sibling_unfinished_run(http, db, site):
+    inst = _instance(db, site)
+    idle = _db_schedule(db, inst, name="idle")
+    busy = _db_schedule(db, inst, name="busy")
+    _open_run(db, busy)
+    assert http.delete(f"{_base(site)}/schedules/{idle.id}").status_code == 204
+    r = http.delete(f"{_base(site)}/schedules/{busy.id}")
+    assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
