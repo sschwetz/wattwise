@@ -34,7 +34,11 @@ SCHEDULE_JSON = {
     "trigger": {"type": "time", "time": "14:00", "days_of_week": [0, 1]},
     "conditions": [{"reading": "outdoor_temp_c", "op": "gt", "value": 30.0, "target": None}],
     "action": {"id": "set_mode", "params": {"mode": "COOL", "zones": ["a"]}},
-    "restore": {"enabled": True, "when": "after_minutes", "minutes": 30, "time": None, "only_if": [], "early_if": []},
+    "restore": {
+        "enabled": True, "when": "after_minutes", "minutes": 30, "time": None,
+        "only_if": [{"reading": "indoor_temp_c", "op": "lt", "value": 20.0, "target": None, "enabled": False}],
+        "early_if": [],
+    },
     "retry": {"max_attempts": 3, "interval_seconds": 30, "give_up_minutes": 15},
     "notify_email": True,
     "created_at": "2026-11-01T00:00:00Z",
@@ -120,10 +124,20 @@ def test_get_schedules_parses_nested_specs(client):
     assert schedule.instance_id == 1
     assert schedule.trigger.type == "time" and schedule.trigger.days_of_week == [0, 1]
     assert schedule.conditions[0].op == "gt"
+    assert schedule.conditions[0].enabled is True
+    assert schedule.restore.only_if[0].enabled is False
     assert schedule.action.params["zones"] == ["a"]
     assert schedule.restore.when == "after_minutes" and schedule.restore.minutes == 30
     assert schedule.retry.give_up_minutes == 15
     assert schedule.created_at == datetime.datetime(2026, 11, 1, tzinfo=UTC)
+
+
+@respx.mock
+def test_non_bool_condition_flag_is_a_malformed_body(client):
+    bad = {**SCHEDULE_JSON, "conditions": [{**SCHEDULE_JSON["conditions"][0], "enabled": "no"}]}
+    respx.get(f"{BASE}/api/v1/actor/instances/1/schedules").respond(json=[bad])
+    with pytest.raises(CoreApiError, match="Unexpected"):
+        client.get_schedules(1)
 
 
 @respx.mock

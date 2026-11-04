@@ -14,6 +14,7 @@ from actron_neo_actor.models import (
     WindowOccurrence,
 )
 from actron_neo_actor.schedule_eval import (
+    ConditionResult,
     DueTrigger,
     due_triggers,
     early_restore_due,
@@ -312,3 +313,36 @@ def test_unsupported_op_never_raises():
     assert restore_gate_passes([bad], {}, set(), ctx)
     sched = make_schedule(START, rest=restore(early_if=[bad]))
     assert not early_restore_due(sched, {}, set(), ctx)
+
+
+HOT_OFF = Condition("outdoor_temp_c", "gt", 35.0, enabled=False)
+
+
+def test_disabled_failing_condition_does_not_fail_the_action():
+    ctx = make_context(NOW, outdoor=22.0)
+    assert evaluate_conditions([HOT_OFF], {}, set(), ctx).passed
+    res = evaluate_conditions([HOT_OFF, HOT], {}, set(), ctx)
+    assert res.reason == "outdoor_temp_c 22.0 is not above 35.0"
+
+
+def test_disabled_missing_reading_does_not_block():
+    gone = Condition("zone_temp_c", "gt", 26.0, target="Study", enabled=False)
+    ctx = make_context(NOW)
+    assert evaluate_conditions([gone], {}, set(), ctx) == ConditionResult(True)
+    assert restore_gate_passes([HOT_OFF], {"outdoor_temp_c": 20.0}, set(), ctx)
+
+
+def test_disabled_rows_do_not_count_toward_early_restore():
+    warm = Condition("indoor_temp_c", "gt", 25.0)
+    warm_off = Condition("indoor_temp_c", "gt", 25.0, enabled=False)
+    cold_off = Condition("indoor_temp_c", "lt", 10.0, enabled=False)
+    ctx = make_context(NOW)
+    readings = {"indoor_temp_c": 26.0}
+    assert early_restore_due(make_schedule(START, rest=restore(early_if=[warm, cold_off])), readings, set(), ctx)
+    assert not early_restore_due(make_schedule(START, rest=restore(early_if=[warm_off])), readings, set(), ctx)
+
+
+def test_legacy_condition_without_flag_is_enabled():
+    legacy = Condition.from_json({"reading": "outdoor_temp_c", "op": "gt", "value": 35.0})
+    assert legacy.enabled is True
+    assert not evaluate_conditions([legacy], {}, set(), make_context(NOW, outdoor=22.0)).passed

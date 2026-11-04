@@ -230,11 +230,15 @@ def _failure(cond: Condition, key: str, value: float) -> str:
     return f"{key} {value:.1f} is not {_WORDS[cond.op]} {cond.value:.1f}"
 
 
+def _switched_on(conditions: list[Condition]) -> list[Condition]:
+    return [c for c in conditions if c.enabled]
+
+
 def evaluate_conditions(
     conditions: list[Condition], readings: Mapping[str, float], stale: set[str], context: Context
 ) -> ConditionResult:
-    """All conditions must pass. A missing or stale reading fails."""
-    for cond in conditions:
+    """All switched-on conditions must pass. A missing or stale reading fails."""
+    for cond in _switched_on(conditions):
         key = _key(cond)
         value = _lookup(key, readings, stale, context)
         if value is None:
@@ -251,7 +255,7 @@ def restore_gate_passes(
     conditions: list[Condition], readings: Mapping[str, float], stale: set[str], context: Context
 ) -> bool:
     """Like evaluate_conditions, but a missing or stale reading passes so it never keeps the unit off."""
-    for cond in conditions:
+    for cond in _switched_on(conditions):
         value = _lookup(_key(cond), readings, stale, context)
         if value is not None and _holds(cond, value) is False:
             return False
@@ -259,8 +263,8 @@ def restore_gate_passes(
 
 
 def early_restore_due(schedule: Schedule, readings: Mapping[str, float], stale: set[str], context: Context) -> bool:
-    """True only when early_if is set and every condition is evaluable and passes."""
-    conditions = schedule.restore.early_if
+    """True only when early_if has a switched-on condition and every switched-on one is evaluable and passes."""
+    conditions = _switched_on(schedule.restore.early_if)
     if not conditions:
         return False
     return evaluate_conditions(conditions, readings, stale, context).passed

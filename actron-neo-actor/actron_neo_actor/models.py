@@ -70,10 +70,17 @@ class Condition:
     op: str
     value: float
     target: str | None = None
+    enabled: bool = True
 
     @classmethod
     def from_json(cls, data: dict) -> Condition:
-        return cls(reading=data["reading"], op=data["op"], value=data["value"], target=data.get("target"))
+        """A condition stored before the enabled flag existed has no key and counts as enabled."""
+        enabled = data.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise TypeError("condition enabled must be a bool")
+        return cls(
+            reading=data["reading"], op=data["op"], value=data["value"], target=data.get("target"), enabled=enabled
+        )
 
 
 @dataclass(frozen=True)
