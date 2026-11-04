@@ -61,7 +61,7 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
         expire_password_file(password_file)
         scheduler = None
         if get_settings().scheduler_enabled:
-            scheduler = build_scheduler(session_factory, password_file)
+            scheduler = build_scheduler(session_factory, password_file, app.state.email_sender)
             scheduler.start()
         app.state.scheduler = scheduler
         yield
