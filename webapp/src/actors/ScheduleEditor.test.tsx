@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
@@ -66,6 +66,8 @@ const saved: ActorSchedule = {
 interface Api {
   windows?: unknown[];
   failWith?: Error;
+  /** Answer a PATCH with the schedule as the body leaves it, as the server does. */
+  echo?: boolean;
 }
 
 let api: Api = {};
@@ -73,10 +75,10 @@ let api: Api = {};
 function mockApi(next: Api = {}) {
   api = next;
   vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
-    const { windows = [window11], failWith } = api;
+    const { windows = [window11], failWith, echo } = api;
     if (init?.method && failWith) return Promise.reject(failWith);
     if (init?.method === "POST") return Promise.resolve({ ...saved, id: 99 });
-    if (init?.method === "PATCH") return Promise.resolve(saved);
+    if (init?.method === "PATCH") return Promise.resolve(echo ? { ...saved, ...JSON.parse(String(init.body)) } : saved);
     if (init?.method === "DELETE") return Promise.resolve(undefined);
     if (path.endsWith("/tariffs")) return Promise.resolve([tariff]);
     if (path.endsWith("/demand-windows")) return Promise.resolve(windows);
@@ -211,7 +213,7 @@ describe("ScheduleEditor", () => {
       name: "Peak off",
       enabled: true,
       trigger: { type: "window_start", window_id: 11 },
-      conditions: [{ reading: "outdoor_temp_c", op: "gt", value: 30, target: null }],
+      conditions: [{ reading: "outdoor_temp_c", op: "gt", value: 30, enabled: true }],
       action: { id: "set_zones", params: { zones: ["Bed 1"], enabled: false } },
       restore: { enabled: true, when: "window_end", minutes: null, time: null, only_if: [], early_if: [] },
       retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 },
@@ -241,7 +243,12 @@ describe("ScheduleEditor", () => {
     const [path] = writes("PATCH")[0];
     expect(path).toBe("/api/v1/sites/7/actors/schedules/21");
     const { id: _id, instance_id: _instance, ...rest } = saved;
-    expect(body("PATCH")).toEqual({ ...rest, enabled: false, action: { id: "set_temperature", params: { temperature_c: 24 } } });
+    expect(body("PATCH")).toEqual({
+      ...rest,
+      enabled: false,
+      conditions: [{ reading: "outdoor_temp_c", op: "gt", value: 30, enabled: true }],
+      action: { id: "set_temperature", params: { temperature_c: 24 } },
+    });
   });
 
   it("server 422 message is shown", async () => {
@@ -393,5 +400,61 @@ describe("ScheduleEditor", () => {
     await user.click(screen.getByRole("button", { name: "Save schedule" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Pick an action this device supports.");
     expect(writes("PATCH")).toHaveLength(0);
+  });
+
+  it("a stale target on a ticked row is shown as no longer offered and blocks saving, and clears after picking a valid one", async () => {
+    const user = userEvent.setup();
+    renderDetail({ ...saved, conditions: [{ reading: "zone_temp_c", op: "gt", value: 26, target: "Garage", enabled: true }] });
+    await ready();
+    const onlyIf = screen.getByRole("group", { name: "Only if" });
+    const target = within(onlyIf).getByRole("combobox", { name: "Target 1" });
+    expect(target).toHaveValue("Garage");
+    expect(target).toHaveDisplayValue("Garage (no longer offered)");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    const message = 'Target "Garage" is no longer offered for Zone temperature. Pick another.';
+    expect(within(onlyIf).getByText(message)).toBeInTheDocument();
+    expect(writes("PATCH")).toHaveLength(0);
+    await user.selectOptions(target, "Study");
+    expect(within(onlyIf).queryByText(message)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("PATCH").conditions).toEqual([{ reading: "zone_temp_c", op: "gt", value: 26, target: "Study", enabled: true }]);
+  });
+
+  it("a target on a reading that no longer takes one is shown and can be cleared", async () => {
+    const user = userEvent.setup();
+    renderDetail({ ...saved, conditions: [{ reading: "indoor_temp_c", op: "gt", value: 26, target: "Lounge", enabled: true }] });
+    await ready();
+    const onlyIf = screen.getByRole("group", { name: "Only if" });
+    const target = within(onlyIf).getByRole("combobox", { name: "Target 1" });
+    expect(target).toHaveDisplayValue("Lounge (no longer offered)");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(within(onlyIf).getByText('Target "Lounge" is no longer offered for Indoor temperature. Pick another.')).toBeInTheDocument();
+    await user.selectOptions(target, "");
+    expect(within(onlyIf).queryByRole("combobox", { name: "Target 1" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("PATCH").conditions).toEqual([{ reading: "indoor_temp_c", op: "gt", value: 26, enabled: true }]);
+  });
+
+  it("the editor shows an unticked row after Save and after re-opening the schedule", async () => {
+    mockApi({ echo: true });
+    const user = userEvent.setup();
+    renderDetail(saved);
+    await ready();
+    const onlyIf = () => screen.getByRole("group", { name: "Only if" });
+    const tick = () => within(onlyIf()).getByRole("checkbox", { name: "Use condition 1" });
+    expect(tick()).toBeChecked();
+    await user.click(tick());
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(tick()).not.toBeChecked();
+    const stored: ActorSchedule = { ...saved, ...body("PATCH") };
+    cleanup();
+    renderDetail(stored);
+    await ready();
+    expect(tick()).not.toBeChecked();
+    expect(within(onlyIf()).getByRole("combobox", { name: "Reading 1" })).toHaveValue("outdoor_temp_c");
+    expect(within(onlyIf()).getByRole("spinbutton", { name: "Value 1" })).toHaveValue(30);
   });
 });

@@ -9,20 +9,36 @@ const SITE_READING_IDS = new Set(["outdoor_temp_c", "battery_soc_pct", "price_c_
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isWhole = (v: unknown, floor: number) => isFiniteNumber(v) && Number.isInteger(v) && v >= floor;
 
-function conditionProblems(caps: Capabilities, c: ConditionSpec, where: string): string[] {
-  const problems: string[] = [];
+const CONDITION_KEYS = new Set(["reading", "op", "value", "target", "enabled"]);
+
+/** ConditionSpec field rules, with extra="forbid". */
+function conditionShapeProblems(c: ConditionSpec, where: string): string[] {
+  const problems = Object.keys(c).filter((k) => !CONDITION_KEYS.has(k)).map((k) => `${where}: extra key ${k}`);
+  if (typeof c.reading !== "string") problems.push(`${where}: reading`);
   if (c.op !== "gt" && c.op !== "lt") problems.push(`${where}: op`);
   if (!isFiniteNumber(c.value)) problems.push(`${where}: value`);
+  if (c.target !== undefined && c.target !== null && typeof c.target !== "string") problems.push(`${where}: target`);
+  if (c.enabled !== undefined && typeof c.enabled !== "boolean") problems.push(`${where}: enabled`);
+  return problems;
+}
+
+/** actor_capabilities._check_condition, which validate_conditions_against skips for a switched-off condition. */
+function capabilityProblems(caps: Capabilities, c: ConditionSpec, where: string): string[] {
+  if (c.enabled === false) return [];
+  const target = c.target ?? null;
   const device = caps.readings.find((r) => r.id === c.reading);
   if (!device) {
-    if (!SITE_READING_IDS.has(c.reading)) problems.push(`${where}: reading ${c.reading} not available`);
-    else if (c.target !== null) problems.push(`${where}: site reading takes no target`);
-  } else if (c.target !== null) {
-    const options = device.target_options;
-    if (options === null) problems.push(`${where}: reading takes no target`);
-    else if (!options.some((o) => o.value === c.target)) problems.push(`${where}: target ${c.target} not declared`);
+    if (!SITE_READING_IDS.has(c.reading)) return [`${where}: reading ${c.reading} not available`];
+    return target !== null ? [`${where}: site reading takes no target`] : [];
   }
-  return problems;
+  if (target === null) return [];
+  const options = device.target_options;
+  if (options === null) return [`${where}: reading takes no target`];
+  return options.some((o) => o.value === target) ? [] : [`${where}: target ${target} not declared`];
+}
+
+function conditionProblems(caps: Capabilities, c: ConditionSpec, where: string): string[] {
+  return [...conditionShapeProblems(c, where), ...capabilityProblems(caps, c, where)];
 }
 
 function paramProblem(p: ParamDecl, v: ActionParamValue): string | null {

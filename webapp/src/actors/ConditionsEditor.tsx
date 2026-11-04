@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { formatUnit, invalidProps } from "./editorModel";
-import { addCondition, type ConditionRow, type FormErrors, type ReadingChoice } from "./scheduleForm";
+import { addCondition, targetOffered, type ConditionRow, type FormErrors, type ReadingChoice } from "./scheduleForm";
 import { FieldError } from "./Step";
 import { compactInputClass, hintClass, secondaryButtonClass } from "./styles";
 
@@ -33,12 +33,23 @@ function changeReading(row: ConditionRow, id: string, readings: ReadingChoice[])
   return { ...row, reading: id, target: reading?.targets?.[0]?.value ?? null };
 }
 
+const NO_TARGET = [{ value: "", label: "No target" }];
+
+/** The reading's targets, with a stored target it no longer offers listed first so the select shows what is held.
+ * A reading without targets offers "No target" next to such a stale one. Null when there is nothing to pick. */
+function targetChoices(row: ConditionRow, reading: ReadingChoice | undefined): { value: string; label: string }[] | null {
+  const stale = targetOffered(row, reading) ? [] : [{ value: row.target ?? "", label: `${row.target} (no longer offered)` }];
+  if (!reading?.targets && stale.length === 0) return null;
+  return [...stale, ...(reading?.targets ?? NO_TARGET)];
+}
+
 function TargetSelect({ model, reading }: { model: RowModel; reading: ReadingChoice | undefined }) {
   const { row, number, onChange } = model;
-  if (!reading?.targets) return null;
+  const choices = targetChoices(row, reading);
+  if (!choices) return null;
   return (
-    <select aria-label={`Target ${number}`} value={row.target ?? ""} onChange={(e) => onChange({ ...row, target: e.target.value })} className={compactInputClass}>
-      {reading.targets.map((t) => (
+    <select aria-label={`Target ${number}`} value={row.target ?? ""} onChange={(e) => onChange({ ...row, target: e.target.value || null })} className={compactInputClass}>
+      {choices.map((t) => (
         <option key={t.value} value={t.value}>{t.label}</option>
       ))}
     </select>
@@ -85,7 +96,8 @@ function ConditionLine({ model }: { model: RowModel }) {
   );
 }
 
-/** A list of "reading is above/below value" rows. Each row has a tick box; unticked rows are not saved. */
+/** A list of "reading is above/below value" rows. Each row has a tick box; an unticked row is kept
+ * and saved switched off, and only ticked rows count. */
 export function ConditionsEditor({ model }: { model: ConditionsModel }) {
   const { legend, legendHidden, hint, rows, onChange, readings, errors, errorPrefix, canEdit } = model;
   const replace = (key: number, next: ConditionRow) => onChange(rows.map((r) => (r.key === key ? next : r)));

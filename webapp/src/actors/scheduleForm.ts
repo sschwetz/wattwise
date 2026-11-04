@@ -21,7 +21,7 @@ export type FormParam = { kind: "number"; text: string } | { kind: "value"; valu
 
 export interface ConditionRow {
   key: number;
-  /** Unticked rows stay in the form but are left out of the payload. */
+  /** The tick box. Unticked rows are saved with enabled false and ignored by the server and the actor. */
   use: boolean;
   reading: string;
   op: "gt" | "lt";
@@ -215,7 +215,9 @@ function triggerForm(trigger: TriggerSpec): TriggerForm {
 }
 
 function conditionRows(conditions: ConditionSpec[]): ConditionRow[] {
-  return conditions.map((c, key) => ({ key, use: true, reading: c.reading, op: c.op, value: String(c.value), target: c.target }));
+  return conditions.map((c, key) => ({
+    key, use: c.enabled !== false, reading: c.reading, op: c.op, value: String(c.value), target: c.target ?? null,
+  }));
 }
 
 function formParam(value: ActionParamValue): FormParam {
@@ -266,11 +268,14 @@ function triggerPayload(t: TriggerForm): TriggerSpec {
   return { type: t.type, window_id: Number(t.windowId) };
 }
 
-/** Ticked rows with a number; anything else cannot be sent. validateForm flags the visible ones. */
+/** Every unticked row, sent as typed with 0 for a missing number (the server does not check
+ * switched-off rows), and ticked rows with a number. A ticked row without one cannot be sent;
+ * validateForm flags the visible ones. */
 function conditionsPayload(rows: ConditionRow[]): ConditionSpec[] {
   return rows.flatMap((r) => {
     const value = parseNumber(r.value);
-    return r.use && value !== null ? [{ reading: r.reading, op: r.op, value, target: r.target }] : [];
+    if (r.use && value === null) return [];
+    return [{ reading: r.reading, op: r.op, value: value ?? 0, ...(r.target ? { target: r.target } : {}), enabled: r.use }];
   });
 }
 
@@ -278,11 +283,14 @@ function paramValue(param: FormParam): ActionParamValue {
   return param.kind === "number" ? Number(param.text) : param.value;
 }
 
-/** Would the server's capability check accept this condition? Mirrors actor_capabilities._check_condition. */
+/** Would the server's capability check accept this condition? Mirrors actor_capabilities.validate_conditions_against,
+ * which skips switched-off conditions. */
 export function conditionAccepted(c: ConditionSpec, capabilities: Capabilities): boolean {
+  if (c.enabled === false) return true;
+  const target = c.target ?? null;
   const device = capabilities.readings.find((r) => r.id === c.reading);
-  if (!device) return SITE_READINGS.some((r) => r.id === c.reading) && c.target === null;
-  return c.target === null || (device.target_options ?? []).some((o) => o.value === c.target);
+  if (!device) return SITE_READINGS.some((r) => r.id === c.reading) && target === null;
+  return target === null || (device.target_options ?? []).some((o) => o.value === target);
 }
 
 function restorePayload(r: RestoreForm, capabilities: Capabilities): RestoreSpec {
@@ -378,12 +386,24 @@ function actionErrors(form: ScheduleFormState, capabilities: Capabilities): Form
   return errors;
 }
 
+/** True when the row's target is one the reading still offers, or the row has no target. */
+export function targetOffered(row: ConditionRow, reading: ReadingChoice | undefined): boolean {
+  return !row.target || (reading?.targets ?? []).some((t) => t.value === row.target);
+}
+
+function rowError(row: ConditionRow, readings: ReadingChoice[]): string | null {
+  const reading = readings.find((r) => r.id === row.reading);
+  if (!reading) return "This reading is no longer available. Pick another.";
+  if (!targetOffered(row, reading)) return `Target "${row.target}" is no longer offered for ${reading.label}. Pick another.`;
+  return parseNumber(row.value) === null ? `Enter a number for ${reading.label}.` : null;
+}
+
+/** Only ticked rows are checked; an unticked row is saved as typed. */
 function rowErrors(prefix: string, rows: ConditionRow[], readings: ReadingChoice[]): FormErrors {
   const errors: FormErrors = {};
   for (const row of rows.filter((r) => r.use)) {
-    const reading = readings.find((r) => r.id === row.reading);
-    if (!reading) errors[`${prefix}.${row.key}`] = "This reading is no longer available. Pick another.";
-    else if (parseNumber(row.value) === null) errors[`${prefix}.${row.key}`] = `Enter a number for ${reading.label}.`;
+    const message = rowError(row, readings);
+    if (message) errors[`${prefix}.${row.key}`] = message;
   }
   return errors;
 }

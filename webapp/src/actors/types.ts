@@ -47,7 +47,10 @@ export interface ConditionSpec {
   reading: string;
   op: "gt" | "lt";
   value: number;
-  target: string | null;
+  /** Left out or null when the reading has no target. */
+  target?: string | null;
+  /** False for a switched-off row. Rows saved before the flag existed leave it out and count as on. */
+  enabled?: boolean;
 }
 
 export type ActionParamValue = number | string | boolean | string[];

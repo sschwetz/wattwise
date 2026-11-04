@@ -53,14 +53,14 @@ function payload(trigger: TriggerSpec): SchedulePayload {
     enabled: true,
     trigger,
     conditions: [
-      { reading: "outdoor_temp_c", op: "gt", value: 30, target: null },
-      { reading: "zone_temp_c", op: "lt", value: 18.5, target: "Bed 1" },
+      { reading: "outdoor_temp_c", op: "gt", value: 30, enabled: true },
+      { reading: "zone_temp_c", op: "lt", value: 18.5, target: "Bed 1", enabled: true },
     ],
     action: { id: "set_zones", params: { zones: ["Lounge"], enabled: false } },
     restore: {
       enabled: true, when: "after_minutes", minutes: 45, time: null,
-      only_if: [{ reading: "battery_soc_pct", op: "gt", value: 20, target: null }],
-      early_if: [{ reading: "indoor_temp_c", op: "gt", value: 27, target: null }],
+      only_if: [{ reading: "battery_soc_pct", op: "gt", value: 20, enabled: true }],
+      early_if: [{ reading: "indoor_temp_c", op: "gt", value: 27, enabled: true }],
     },
     retry: { max_attempts: 4, interval_seconds: 20, give_up_minutes: 10 },
     notify_email: true,
@@ -98,10 +98,71 @@ describe("toPayload and fromSchedule round-trip", () => {
     expect(toPayload(fromSchedule(p), caps)).toEqual(p);
   });
 
-  it("leaves out unticked condition rows", () => {
+  it("unticked rows are saved with enabled false", () => {
     const form = fromSchedule(payload(triggers[0]));
     form.conditions[0].use = false;
-    expect(toPayload(form, caps).conditions).toEqual([{ reading: "zone_temp_c", op: "lt", value: 18.5, target: "Bed 1" }]);
+    form.restore.earlyIf[0].use = false;
+    const body = toPayload(form, caps);
+    expect(body.conditions).toEqual([
+      { reading: "outdoor_temp_c", op: "gt", value: 30, enabled: false },
+      { reading: "zone_temp_c", op: "lt", value: 18.5, target: "Bed 1", enabled: true },
+    ]);
+    expect(body.restore.early_if).toEqual([{ reading: "indoor_temp_c", op: "gt", value: 27, enabled: false }]);
+  });
+
+  it("fromSchedule loads the tick state and treats a missing flag as ticked", () => {
+    const p = payload(triggers[0]);
+    p.conditions = [
+      { reading: "outdoor_temp_c", op: "gt", value: 30, target: null, enabled: false },
+      { reading: "zone_temp_c", op: "lt", value: 18.5, target: "Bed 1" },
+    ];
+    p.restore.only_if = [{ reading: "battery_soc_pct", op: "gt", value: 20, target: null, enabled: false }];
+    p.restore.early_if = [{ reading: "indoor_temp_c", op: "gt", value: 27 }];
+    const form = fromSchedule(p);
+    expect(form.conditions.map((r) => r.use)).toEqual([false, true]);
+    expect(form.conditions[0].target).toBeNull();
+    expect(form.restore.onlyIf[0].use).toBe(false);
+    expect(form.restore.earlyIf[0]).toMatchObject({ use: true, target: null });
+  });
+});
+
+describe("unticked rows", () => {
+  const junk = { op: "gt" as const, use: false };
+
+  it("an unticked incomplete row does not block saving and sends a server-valid body", () => {
+    const form = valid();
+    form.conditions.push({ ...junk, key: 5, reading: "gone_reading", value: "", target: "Garage" });
+    form.conditions.push({ ...junk, key: 6, reading: "indoor_temp_c", value: "abc", target: null });
+    form.restore.onlyIf.push({ ...junk, key: 5, reading: "zone_temp_c", value: "", target: "Garage" });
+    expect(validateForm(form, caps)).toEqual({});
+    const body = toPayload(form, caps);
+    expect(body.conditions.slice(2)).toEqual([
+      { reading: "gone_reading", op: "gt", value: 0, target: "Garage", enabled: false },
+      { reading: "indoor_temp_c", op: "gt", value: 0, enabled: false },
+    ]);
+    expect(body.restore.only_if[1]).toEqual({ reading: "zone_temp_c", op: "gt", value: 0, target: "Garage", enabled: false });
+    expect(serverProblems(caps, body)).toEqual([]);
+  });
+
+  it("a ticked row with an empty value still blocks saving", () => {
+    const form = valid();
+    form.conditions[0].value = "";
+    form.restore.earlyIf[0].value = "";
+    const errors = validateForm(form, caps);
+    expect(errors["conditions.0"]).toBe("Enter a number for Outdoor temperature.");
+    expect(errors["restore.earlyIf.0"]).toBe("Enter a number for Indoor temperature.");
+  });
+
+  it("a stale target on a ticked row blocks saving, and an unticked one does not", () => {
+    const form = valid();
+    form.conditions[1].target = "Garage";
+    form.restore.earlyIf[0].target = "Lounge";
+    const errors = validateForm(form, caps);
+    expect(errors["conditions.1"]).toBe('Target "Garage" is no longer offered for Zone temperature. Pick another.');
+    expect(errors["restore.earlyIf.0"]).toBe('Target "Lounge" is no longer offered for Indoor temperature. Pick another.');
+    form.conditions[1].use = false;
+    form.restore.earlyIf[0].use = false;
+    expect(validateForm(form, caps)).toEqual({});
   });
 });
 
@@ -282,6 +343,7 @@ describe("with restore off, hidden fields never make the payload rejectable", ()
     ["target on a reading without targets", (f) => { f.restore.earlyIf[0].target = "Lounge"; }],
     ["target on a site reading", (f) => { f.restore.onlyIf[0].target = "Lounge"; }],
     ["no value", (f) => { f.restore.earlyIf[0].value = "abc"; }],
+    ["unticked row with an undeclared reading", (f) => { f.restore.onlyIf[0] = { ...f.restore.onlyIf[0], use: false, reading: "gone_reading", value: "" }; }],
   ];
 
   it.each(garbage)("%s", (_name, spoil) => {
