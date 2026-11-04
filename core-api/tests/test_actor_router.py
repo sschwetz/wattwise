@@ -51,7 +51,8 @@ def _open_run(db, schedule) -> None:
 
 
 def _discover(http, provider=PROVIDER, key=ACTOR_KEY):
-    return http.get("/api/v1/actor/instances", params={"provider": provider}, headers={"X-Actor-Key": key})
+    headers = {"X-Actor-Key": key, "X-Actor-Provider": provider}
+    return http.get("/api/v1/actor/instances", params={"provider": provider}, headers=headers)
 
 
 def test_discovery_lists_only_matching_provider(http, db, site):
@@ -238,3 +239,11 @@ def test_schedule_conditions_carry_enabled_flag(http, db, site):
     assert [c["enabled"] for c in body["conditions"]] == [True, False]
     assert body["restore"]["only_if"][0]["enabled"] is True
     assert body["restore"]["early_if"][0]["enabled"] is False
+
+
+@pytest.mark.parametrize("headers", [{"X-Actor-Key": ACTOR_KEY},
+                                     {"X-Actor-Key": ACTOR_KEY, "X-Actor-Provider": "other"}])
+def test_discovery_needs_the_matching_provider_header(http, db, site, headers):
+    _instance(db, site)
+    r = http.get("/api/v1/actor/instances", params={"provider": PROVIDER}, headers=headers)
+    assert (r.status_code, r.json()["code"]) == (401, "invalid_actor_key")

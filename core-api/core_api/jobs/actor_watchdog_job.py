@@ -1,5 +1,8 @@
 """Emails the site owner once about each action run that is holding a unit
-off past its restore time, or whose actor has stopped reporting."""
+off past its restore time, or whose actor has stopped reporting.
+
+The run is marked before the email is sent and a failed send is not retried,
+so a mail outage never turns into repeated emails about the same run."""
 
 from __future__ import annotations
 
@@ -8,11 +11,12 @@ import datetime
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from core_api.actor_email import site_local_time, site_owner
 from core_api.actor_failures import HeldOffFailure, held_off_failures
 from core_api.email_sender import EmailSender, try_send_email
 from core_api.models.actors import ActorInstance, ActorRun
-from core_api.models.identity import Site, User
-from core_api.time_utils import as_utc, site_tz
+from core_api.models.identity import Site
+from core_api.time_utils import as_utc
 
 
 def run_actor_watchdog_job(db: Session, now: datetime.datetime, email_sender: EmailSender) -> None:
@@ -36,7 +40,7 @@ def _notify_once(
     db.commit()
     if claimed != 1:
         return
-    owner = db.get(User, site.owner_user_id)
+    owner = site_owner(db, site)
     if owner is None:
         return
     subject, body = _email_text(site, held)
@@ -45,7 +49,7 @@ def _notify_once(
 
 def _email_text(site: Site, held: HeldOffFailure) -> tuple[str, str]:
     name = held.schedule.name
-    when = held.failure.since.astimezone(site_tz(site.timezone)).strftime("%Y-%m-%d %H:%M %Z")
+    when = site_local_time(held.failure.since, site)
     if held.failure.kind == "still_off":
         problem = f"The unit is still off. It should have been turned back on at {when}."
     else:

@@ -11,7 +11,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    field_serializer,
+    PlainSerializer,
     field_validator,
     model_validator,
 )
@@ -21,6 +21,9 @@ from core_api.time_utils import as_utc
 
 _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 HHMM = Annotated[str, Field(pattern=_TIME_PATTERN.pattern)]
+# A stored timestamp sent as an ISO string with a UTC offset. SQLite drops the
+# offset on write, so a naive value read back is UTC.
+AwareUtc = Annotated[datetime.datetime, PlainSerializer(lambda v: as_utc(v).isoformat(), return_type=str)]
 
 
 class _Strict(BaseModel):
@@ -43,7 +46,9 @@ class WindowEndTrigger(_Strict):
 class TimeTrigger(_Strict):
     type: Literal["time"]
     time: HHMM
-    days_of_week: list[Annotated[int, Field(ge=0, le=6)]] = Field(default_factory=lambda: list(range(7)))
+    days_of_week: list[Annotated[int, Field(ge=0, le=6)]] = Field(
+        default_factory=lambda: list(range(7)), min_length=1
+    )
 
 
 class PriceAboveTrigger(_Strict):
@@ -178,18 +183,14 @@ class RunOut(BaseModel):
     id: int
     schedule_id: int
     kind: RunKind
-    trigger_at: datetime.datetime
-    started_at: datetime.datetime | None
-    finished_at: datetime.datetime | None
+    trigger_at: AwareUtc
+    started_at: AwareUtc | None
+    finished_at: AwareUtc | None
     outcome: RunOutcome
     message: str | None
     attempts: int
     parent_run_id: int | None
     snapshot: dict | None
-
-    @field_serializer("trigger_at", "started_at", "finished_at")
-    def _as_aware_utc(self, value: datetime.datetime | None) -> str | None:
-        return None if value is None else as_utc(value).isoformat()
 
 
 # Owner-facing API (web app)
@@ -216,14 +217,10 @@ class ActorInstanceView(BaseModel):
     name: str | None
     enabled: bool
     capabilities: dict | None
-    capabilities_updated_at: datetime.datetime | None
+    capabilities_updated_at: AwareUtc | None
     latest_readings: dict | None
-    last_seen_at: datetime.datetime | None
+    last_seen_at: AwareUtc | None
     auth_state: dict | None
-
-    @field_serializer("capabilities_updated_at", "last_seen_at")
-    def _as_aware_utc(self, value: datetime.datetime | None) -> str | None:
-        return None if value is None else as_utc(value).isoformat()
 
 
 class ScheduleCreate(_Strict):

@@ -3,23 +3,28 @@ from __future__ import annotations
 import datetime
 
 from fastapi import APIRouter, Depends, Header, status
-from pydantic import AwareDatetime, BaseModel, ConfigDict, field_serializer
+from pydantic import AwareDatetime, BaseModel, ConfigDict
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core_api.actor_capabilities import Capabilities
 from core_api.actor_context import ActorContext, build_context
+from core_api.actor_email import site_local_time, site_owner
 from core_api.actor_runs import has_unfinished_action_run, unfinished_action_runs
-from core_api.actor_schemas import RunCreate, RunOut, RunUpdate, StoredConditions, StoredRestore
+from core_api.actor_schemas import AwareUtc, RunCreate, RunOut, RunUpdate, StoredConditions, StoredRestore
 from core_api.deps import get_actor_instance, get_db_session, get_email_sender, require_actor_key
 from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
 from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
-from core_api.models.identity import Site, User
-from core_api.time_utils import as_utc, site_tz
+from core_api.models.identity import Site
+from core_api.time_utils import as_utc
 
 router = APIRouter(prefix="/actor", tags=["actor"])
+
+# A run with one of these outcomes is finished. The one change still allowed is
+# an ok action run becoming overridden (see _is_override).
+_TERMINAL = {RunOutcome.OK, RunOutcome.SKIPPED, RunOutcome.FAILED, RunOutcome.OVERRIDDEN}
 
 
 class ActorInstanceOut(BaseModel):
@@ -54,11 +59,7 @@ class ActorScheduleOut(BaseModel):
     restore: StoredRestore
     retry: dict
     notify_email: bool
-    created_at: datetime.datetime
-
-    @field_serializer("created_at")
-    def _as_aware_utc(self, value: datetime.datetime) -> str:
-        return as_utc(value).isoformat()
+    created_at: AwareUtc
 
 
 class WindowOccurrenceOut(BaseModel):
@@ -77,8 +78,8 @@ class ActorContextOut(BaseModel):
     windows: list[WindowOccurrenceOut]
 
 
-def actor_instances_for_provider(db: Session, provider: str) -> list[tuple[ActorInstance, bool]]:
-    """Instances of `provider` the actor should drive, each with a restore_only flag.
+def actor_instances_for_provider(db: Session, provider: str) -> list[tuple[ActorInstance, Site, bool]]:
+    """Instances of `provider` the actor should drive, each with its site and a restore_only flag.
     A disabled instance or site is listed only while an action run still needs
     its restore, and then restore_only is true."""
     rows = db.execute(
@@ -87,12 +88,12 @@ def actor_instances_for_provider(db: Session, provider: str) -> list[tuple[Actor
         .where(ActorInstance.provider == provider)
         .order_by(ActorInstance.id)
     ).all()
-    result: list[tuple[ActorInstance, bool]] = []
+    result: list[tuple[ActorInstance, Site, bool]] = []
     for instance, site in rows:
         if instance.enabled and site.enabled:
-            result.append((instance, False))
+            result.append((instance, site, False))
         elif has_unfinished_action_run(db, instance.id):
-            result.append((instance, True))
+            result.append((instance, site, True))
     return result
 
 
@@ -100,23 +101,24 @@ def actor_instances_for_provider(db: Session, provider: str) -> list[tuple[Actor
 def list_actor_instances(
     provider: str,
     x_actor_key: str = Header(...),
+    x_actor_provider: str | None = Header(None),
     db: Session = Depends(get_db_session),
 ) -> list[ActorInstanceOut]:
+    """The provider header must name the provider asked for, as on the per-instance routes."""
     require_actor_key(x_actor_key)
-    out = []
-    for instance, restore_only in actor_instances_for_provider(db, provider):
-        site = db.get(Site, instance.site_id)
-        out.append(
-            ActorInstanceOut(
-                instance_id=instance.id,
-                site_id=instance.site_id,
-                name=instance.name,
-                timezone=site.timezone,
-                restore_only=restore_only,
-                config=dict(instance.config or {}),
-            )
+    if x_actor_provider != provider:
+        raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
+    return [
+        ActorInstanceOut(
+            instance_id=instance.id,
+            site_id=instance.site_id,
+            name=instance.name,
+            timezone=site.timezone,
+            restore_only=restore_only,
+            config=dict(instance.config or {}),
         )
-    return out
+        for instance, site, restore_only in actor_instances_for_provider(db, provider)
+    ]
 
 
 @router.patch("/instances/{instance_id}/discovered-config", status_code=status.HTTP_204_NO_CONTENT)
@@ -200,9 +202,6 @@ def _context_out(context: ActorContext) -> ActorContextOut:
     )
 
 
-_TERMINAL = {RunOutcome.OK, RunOutcome.SKIPPED, RunOutcome.FAILED, RunOutcome.OVERRIDDEN}
-
-
 @router.get("/instances/{instance_id}/runs", response_model=list[RunOut])
 def list_actor_runs(
     unfinished: bool = False,
@@ -262,7 +261,7 @@ def update_actor_run(
     email_sender: EmailSender = Depends(get_email_sender),
 ) -> ActorRun:
     run = _instance_run(db, instance, run_id)
-    if run.outcome in _TERMINAL and not _is_override(run.outcome, payload.outcome):
+    if run.outcome in _TERMINAL and not _is_override(run, payload.outcome):
         raise AppError(409, "run_finished", "This run has already finished")
     if payload.outcome == RunOutcome.PENDING:
         raise AppError(422, "invalid_outcome", "A run cannot return to pending")
@@ -272,13 +271,15 @@ def update_actor_run(
     return run
 
 
-def _is_override(current: RunOutcome, new: RunOutcome) -> bool:
-    """The one change allowed on a finished run: the owner changed the unit after an ok action."""
-    return current == RunOutcome.OK and new == RunOutcome.OVERRIDDEN
+def _is_override(run: ActorRun, new: RunOutcome) -> bool:
+    """The one change allowed on a finished run: the owner changed the unit after an ok action run."""
+    return run.kind == RunKind.ACTION and run.outcome == RunOutcome.OK and new == RunOutcome.OVERRIDDEN
 
 
 def _check_restore_parent(db: Session, payload: RunCreate) -> None:
     if payload.kind != RunKind.RESTORE:
+        if payload.parent_run_id is not None:
+            raise AppError(422, "invalid_parent", "Only a restore run takes parent_run_id")
         return
     parent = db.get(ActorRun, payload.parent_run_id) if payload.parent_run_id is not None else None
     if parent is None or parent.kind != RunKind.ACTION or parent.schedule_id != payload.schedule_id:
@@ -299,14 +300,15 @@ def _instance_run(db: Session, instance: ActorInstance, run_id: int) -> ActorRun
 def _transition_run(db: Session, run: ActorRun, payload: RunUpdate, now: datetime.datetime) -> None:
     """Apply the update in one conditional UPDATE so a concurrent caller cannot
     claim twice or rewrite a finished run. Zero matched rows means it lost."""
+    overriding = _is_override(run, payload.outcome)
+    # An override keeps the snapshot and attempts of the action it overrides.
+    fields = ("message",) if overriding else ("message", "attempts", "snapshot")
     values: dict = {"outcome": payload.outcome}
-    for field in ("message", "attempts", "snapshot"):
-        if field in payload.model_fields_set:
-            values[field] = getattr(payload, field)
+    values.update({f: getattr(payload, f) for f in fields if f in payload.model_fields_set})
     if payload.outcome == RunOutcome.RUNNING:
         values["started_at"] = now
         allowed, lost = (RunOutcome.PENDING,), AppError(409, "run_not_pending", "This run is no longer pending")
-    elif _is_override(run.outcome, payload.outcome):
+    elif overriding:
         # finished_at stays as the action set it.
         allowed, lost = (RunOutcome.OK,), AppError(409, "run_finished", "This run has already finished")
     else:
@@ -332,10 +334,10 @@ def _email_failure(db: Session, run: ActorRun, email_sender: EmailSender) -> Non
         return
     instance = db.get(ActorInstance, schedule.instance_id)
     site = db.get(Site, instance.site_id) if instance else None
-    owner = db.get(User, site.owner_user_id) if site else None
-    if owner is None:
+    owner = site_owner(db, site) if site else None
+    if site is None or owner is None:
         return
-    when = as_utc(run.finished_at).astimezone(site_tz(site.timezone)).strftime("%Y-%m-%d %H:%M %Z")
+    when = site_local_time(run.finished_at, site)
     body = (
         f'The schedule "{schedule.name}" failed at {when} for the site "{site.name}".\n\n'
         f"What went wrong: {run.message or 'no details were reported'}\n"

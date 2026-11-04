@@ -72,10 +72,12 @@ def upgrade() -> None:
     sa.UniqueConstraint('schedule_id', 'kind', 'trigger_at', name='uq_actor_runs_schedule_kind_trigger')
     )
     op.create_index(op.f('ix_actor_runs_schedule_id'), 'actor_runs', ['schedule_id'], unique=False)
+    op.create_index(op.f('ix_actor_runs_parent_run_id'), 'actor_runs', ['parent_run_id'], unique=False)
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index(op.f('ix_actor_runs_parent_run_id'), table_name='actor_runs')
     op.drop_index(op.f('ix_actor_runs_schedule_id'), table_name='actor_runs')
     op.drop_table('actor_runs')
     op.drop_index(op.f('ix_actor_schedules_instance_id'), table_name='actor_schedules')

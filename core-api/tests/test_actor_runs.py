@@ -280,3 +280,44 @@ def test_lost_override_race_is_409(http, db, inst, monkeypatch):
     assert (r.status_code, r.json()["code"]) == (409, "run_finished")
     db.expire_all()
     assert db.get(ActorRun, done["id"]).message == "winner"
+
+
+@pytest.mark.parametrize("kind", ["action", "test"])
+def test_parent_run_id_only_for_restore_runs(http, db, inst, kind):
+    s = _schedule(db, inst)
+    parent = _create(http, inst, s, trigger_at=T0 - datetime.timedelta(hours=1)).json()
+    r = _create(http, inst, s, kind=kind, parent_run_id=parent["id"])
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_parent")
+
+
+def _finished_of_kind(http, db, inst, kind):
+    s = _schedule(db, inst)
+    if kind == "restore":
+        parent = _create(http, inst, s, trigger_at=T0 - datetime.timedelta(hours=1)).json()
+        run = _create(http, inst, s, kind="restore", parent_run_id=parent["id"]).json()
+    else:
+        run = _create(http, inst, s, kind=kind).json()
+    path = _url(inst, f"/runs/{run['id']}")
+    http.patch(path, json={"outcome": "running"}, headers=HEADERS)
+    http.patch(path, json={"outcome": "ok"}, headers=HEADERS)
+    return path
+
+
+@pytest.mark.parametrize("kind", ["restore", "test"])
+def test_only_action_runs_can_become_overridden(http, db, inst, kind):
+    path = _finished_of_kind(http, db, inst, kind)
+    r = http.patch(path, json={"outcome": "overridden"}, headers=HEADERS)
+    assert (r.status_code, r.json()["code"]) == (409, "run_finished")
+
+
+def test_override_keeps_snapshot_and_attempts(http, db, inst):
+    s = _schedule(db, inst)
+    run = _create(http, inst, s, snapshot={"mode": "COOL"}).json()
+    path = _url(inst, f"/runs/{run['id']}")
+    http.patch(path, json={"outcome": "running"}, headers=HEADERS)
+    http.patch(path, json={"outcome": "ok", "attempts": 2}, headers=HEADERS)
+    r = http.patch(path, json={"outcome": "overridden", "message": "owner changed the unit", "attempts": 9,
+                               "snapshot": {"mode": "HEAT"}}, headers=HEADERS)
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["outcome"], body["attempts"], body["snapshot"]) == ("overridden", 2, {"mode": "COOL"})

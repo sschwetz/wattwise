@@ -18,13 +18,13 @@ from core_api.jobs.demand_config import (
     pricing_source_ids_for_site,
     site_tariffs_for_site,
     tariff_effective_at,
+    weather_source_ids_for_site,
     window_in_force,
 )
 from core_api.models.billing import DemandWindow, SiteTariff
 from core_api.models.identity import Site
 from core_api.models.pricing import PriceChannel, PriceInterval
 from core_api.models.readings import EnergyMetric, EnergyReading, WeatherMetric, WeatherReading
-from core_api.models.sources import Source, SourceKind
 from core_api.time_utils import as_utc, site_tz
 
 LOOKBACK = datetime.timedelta(hours=24)
@@ -69,9 +69,8 @@ def _finite(value: float | None) -> float | None:
 
 
 def _latest_weather_temp(db: Session, site_id: int, now: datetime.datetime) -> float | None:
-    source_ids = select(Source.id).where(Source.site_id == site_id, Source.kind == SourceKind.WEATHER)
     stmt = select(WeatherReading.value).where(
-        WeatherReading.source_id.in_(source_ids),
+        WeatherReading.source_id.in_(weather_source_ids_for_site(db, site_id)),
         WeatherReading.metric == WeatherMetric.TEMP_C,
         WeatherReading.ts <= now,
         WeatherReading.ts >= now - FRESHNESS,

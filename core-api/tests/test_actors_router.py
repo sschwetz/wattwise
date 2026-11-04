@@ -511,3 +511,46 @@ def test_delete_still_refused_when_sign_in_lost_while_held_off(http, db, site):
     _open_run(db, _db_schedule(db, inst))
     r = http.delete(f"{_base(site)}/instances/{inst.id}")
     assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
+
+
+# Test now refusals
+
+
+def test_test_run_refused_for_disabled_site(http, db, site):
+    sched = _db_schedule(db, _instance(db, site))
+    site.enabled = False
+    db.commit()
+    r = http.post(f"{_base(site)}/schedules/{sched.id}/test")
+    assert (r.status_code, r.json()["code"]) == (409, "site_disabled")
+
+
+def test_test_run_refused_for_disabled_schedule(http, db, site):
+    sched = _db_schedule(db, _instance(db, site), enabled=False)
+    r = http.post(f"{_base(site)}/schedules/{sched.id}/test")
+    assert (r.status_code, r.json()["code"]) == (409, "schedule_disabled")
+
+
+@pytest.mark.parametrize("outcome", [RunOutcome.PENDING, RunOutcome.RUNNING])
+def test_test_run_refused_while_one_is_in_progress(http, db, site, outcome):
+    sched = _db_schedule(db, _instance(db, site))
+    db.add(ActorRun(schedule_id=sched.id, kind=RunKind.TEST, trigger_at=datetime.datetime.now(UTC), outcome=outcome))
+    db.commit()
+    r = http.post(f"{_base(site)}/schedules/{sched.id}/test")
+    assert (r.status_code, r.json()["code"]) == (409, "test_in_progress")
+
+
+def test_test_run_allowed_after_the_last_one_finished(http, db, site):
+    sched = _db_schedule(db, _instance(db, site))
+    db.add(ActorRun(schedule_id=sched.id, kind=RunKind.TEST, trigger_at=datetime.datetime.now(UTC),
+                    outcome=RunOutcome.OK))
+    db.commit()
+    assert http.post(f"{_base(site)}/schedules/{sched.id}/test").status_code == 201
+
+
+def test_time_trigger_needs_a_day(http, db, site):
+    inst = _instance(db, site)
+    no_days = {"type": "time", "time": "10:00", "days_of_week": []}
+    assert http.post(f"{_base(site)}/schedules", json=_body(inst, trigger=no_days)).status_code == 422
+    sid = http.post(f"{_base(site)}/schedules", json=_body(inst)).json()["id"]
+    r = http.patch(f"{_base(site)}/schedules/{sid}", json={"trigger": no_days})
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")

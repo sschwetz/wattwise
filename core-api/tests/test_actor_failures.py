@@ -259,3 +259,34 @@ def test_failures_endpoint_hidden_from_strangers(db, site):
     app.dependency_overrides[get_db_session] = lambda: db
     app.dependency_overrides[get_current_user] = lambda: stranger
     assert TestClient(app).get(f"/api/v1/sites/{site.id}/actors/failures").status_code == 404
+
+
+def test_failed_restore_is_not_cleared_by_a_later_skip(db, site):
+    schedule = make_schedule(db, make_instance(db, site))
+    action = make_run(db, schedule, NOW - datetime.timedelta(hours=3), RunOutcome.OK)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=2), RunOutcome.FAILED, kind=RunKind.RESTORE,
+             parent=action.id)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=1), RunOutcome.SKIPPED)
+    assert kinds(db, site) == ["run_failed"]
+
+
+@pytest.mark.parametrize("outcome", [RunOutcome.OK, RunOutcome.OVERRIDDEN])
+def test_failed_restore_is_cleared_by_a_later_ok_or_override(db, site, outcome):
+    schedule = make_schedule(db, make_instance(db, site))
+    action = make_run(db, schedule, NOW - datetime.timedelta(hours=3), RunOutcome.OK)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=2), RunOutcome.FAILED, kind=RunKind.RESTORE,
+             parent=action.id)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=1), outcome)
+    assert "run_failed" not in kinds(db, site)
+
+
+def test_next_local_time_on_the_dst_end_day_takes_the_first_pass():
+    from core_api.actor_failures import next_local_time
+    from core_api.time_utils import site_tz
+
+    tz = site_tz("Australia/Sydney")
+    after = datetime.datetime(2026, 4, 4, 14, 0, tzinfo=UTC)  # 01:00 AEDT on 5 April
+    first = next_local_time(after, "02:30", tz)
+    assert first == datetime.datetime(2026, 4, 4, 15, 30, tzinfo=UTC)  # 02:30 AEDT
+    second = next_local_time(first + datetime.timedelta(minutes=1), "02:30", tz)
+    assert second == datetime.datetime(2026, 4, 4, 16, 30, tzinfo=UTC)  # 02:30 AEST, the repeated hour

@@ -217,18 +217,36 @@ def delete_schedule(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+def _refuse_test(db: Session, site: Site, schedule: ActorSchedule) -> None:
+    """The actor does not poll a disabled site or instance, has nothing to act on without
+    capabilities, and runs one test of a schedule at a time."""
+    instance = db.get(ActorInstance, schedule.instance_id)
+    if not site.enabled:
+        raise AppError(409, "site_disabled", "Enable the site before testing a schedule")
+    if not instance.enabled:
+        raise AppError(409, "instance_disabled", "Enable the actor before testing a schedule")
+    if not schedule.enabled:
+        raise AppError(409, "schedule_disabled", "Enable the schedule before testing it")
+    if not instance.capabilities:
+        raise AppError(409, "no_capabilities", "This actor has not declared its capabilities yet")
+    in_progress = db.scalar(
+        select(ActorRun.id).where(
+            ActorRun.schedule_id == schedule.id,
+            ActorRun.kind == RunKind.TEST,
+            ActorRun.outcome.in_((RunOutcome.PENDING, RunOutcome.RUNNING)),
+        ).limit(1)
+    )
+    if in_progress is not None:
+        raise AppError(409, "test_in_progress", "A test of this schedule is already waiting or running")
+
+
 @router.post("/schedules/{schedule_id}/test", response_model=RunOut, status_code=status.HTTP_201_CREATED)
 def test_schedule(
     schedule_id: int, site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
 ):
-    """Queue a test run for the actor to pick up. Refused with 409 when the actor is disabled
-    (it would never poll) or has no declared capabilities."""
+    """Queue a test run for the actor to pick up. Refused with 409 when the actor would not run it."""
     schedule = _schedule_of_site(db, site, schedule_id)
-    instance = db.get(ActorInstance, schedule.instance_id)
-    if not instance.enabled:
-        raise AppError(409, "instance_disabled", "Enable the actor before testing a schedule")
-    if not instance.capabilities:
-        raise AppError(409, "no_capabilities", "This actor has not declared its capabilities yet")
+    _refuse_test(db, site, schedule)
     run = ActorRun(
         schedule_id=schedule.id,
         kind=RunKind.TEST,

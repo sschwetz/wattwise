@@ -1,7 +1,8 @@
 """The current actor failures at a site, for the Dashboard tile and the watchdog job.
 
-A failure is current while its cause holds: a failed run until a later run
-of the same schedule ends ok, skipped or overridden; a held-off unit until
+A failure is current while its cause holds: a failed action run until a later
+run of the same schedule ends ok, skipped or overridden, and a failed restore
+until a later run ends ok or overridden (a skip leaves the unit as it was); a held-off unit until
 its restore finishes; a quiet actor until it reports again; a lost sign-in
 until the actor clears the instance's auth_state."""
 
@@ -13,7 +14,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import ValidationError
-from sqlalchemy import exists, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from core_api.actor_context import window_occurrences
@@ -29,7 +30,7 @@ SILENT_AFTER = datetime.timedelta(minutes=5)
 # The latest a restore can fall: a window end with no matching occurrence, and a
 # conditions-only restore whose condition never holds, both restore a day after the trigger.
 RESTORE_CAP = datetime.timedelta(hours=24)
-_CLEARING_OUTCOMES = (RunOutcome.OK, RunOutcome.SKIPPED, RunOutcome.OVERRIDDEN)
+_CLEARS_ANY = (RunOutcome.OK, RunOutcome.OVERRIDDEN)
 
 
 @dataclass(frozen=True)
@@ -94,13 +95,16 @@ def _sign_in_failures(instance: ActorInstance, now: datetime.datetime) -> list[A
 
 
 def _failed_runs(db: Session, instance: ActorInstance) -> list[ActorFailure]:
-    """The latest failed action or restore run of each schedule, when no later run
-    of that schedule ended ok, skipped or overridden."""
+    """The latest failed action or restore run of each schedule that no later run of that
+    schedule cleared. A skip clears a failed action but not a failed restore."""
     later = aliased(ActorRun)
     cleared = exists().where(
         later.schedule_id == ActorRun.schedule_id,
         later.trigger_at > ActorRun.trigger_at,
-        later.outcome.in_(_CLEARING_OUTCOMES),
+        or_(
+            later.outcome.in_(_CLEARS_ANY),
+            and_(ActorRun.kind == RunKind.ACTION, later.outcome == RunOutcome.SKIPPED),
+        ),
     )
     stmt = (
         select(ActorRun, ActorSchedule)
@@ -182,13 +186,36 @@ def _window_end(db: Session, site: Site, trigger: dict, trigger_at: datetime.dat
 
 
 def next_local_time(after: datetime.datetime, hhmm: str, tz: zoneinfo.ZoneInfo) -> datetime.datetime:
-    """The first instant at or after `after` whose wall clock in `tz` reads HH:MM.
-    A day where that time falls in a DST gap is skipped."""
+    """The first instant at or after `after` whose wall clock in `tz` reads HH:MM, as the
+    actor's schedule_eval works it out: a repeated time counts on both passes, and a time
+    in a DST gap falls at the end of the gap."""
     wall = datetime.time.fromisoformat(hhmm)
     day = after.astimezone(tz).date()
     while True:
-        local = datetime.datetime.combine(day, wall, tzinfo=tz)
-        instant = local.astimezone(datetime.UTC)
-        if instant.astimezone(tz).replace(tzinfo=None) == local.replace(tzinfo=None) and instant >= after:
-            return instant
+        for instant in _local_instants(datetime.datetime.combine(day, wall), tz):
+            if instant >= after:
+                return instant
         day += datetime.timedelta(days=1)
+
+
+def _local_instants(naive: datetime.datetime, tz: zoneinfo.ZoneInfo) -> list[datetime.datetime]:
+    found: list[datetime.datetime] = []
+    for fold in (0, 1):
+        instant = naive.replace(tzinfo=tz, fold=fold).astimezone(datetime.UTC)
+        if instant.astimezone(tz).replace(tzinfo=None) == naive and instant not in found:
+            found.append(instant)
+    return sorted(found) or [_gap_end(naive, tz)]
+
+
+def _gap_end(naive: datetime.datetime, tz: zoneinfo.ZoneInfo) -> datetime.datetime:
+    """The instant the clock jumps over `naive`: where the offset changes."""
+    hi = naive.replace(tzinfo=tz).astimezone(datetime.UTC)
+    lo = hi - datetime.timedelta(hours=3)
+    before = lo.astimezone(tz).utcoffset()
+    while hi - lo > datetime.timedelta(seconds=1):
+        mid = lo + (hi - lo) / 2
+        if mid.astimezone(tz).utcoffset() == before:
+            lo = mid
+        else:
+            hi = mid
+    return hi.replace(microsecond=0)

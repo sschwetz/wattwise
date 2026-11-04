@@ -281,6 +281,12 @@ def energy_source_ids_for_site(db: Session, site_id: int) -> list[int]:
     return list(db.execute(stmt).scalars())
 
 
+def weather_source_ids_for_site(db: Session, site_id: int) -> list[int]:
+    """A site has at most one weather source (uq_sources_site_weather), so this is empty or one id."""
+    stmt = select(Source.id).where(Source.site_id == site_id, Source.kind == SourceKind.WEATHER)
+    return list(db.execute(stmt).scalars())
+
+
 def pricing_source_ids_for_site(db: Session, site_id: int) -> list[int]:
     stmt = select(Source.id).where(Source.site_id == site_id, Source.kind == SourceKind.PRICING)
     return list(db.execute(stmt).scalars())

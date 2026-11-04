@@ -42,7 +42,7 @@ class ActorInstance(Base):
     capabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     capabilities_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     latest_readings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    # Set on each call from the actor.
+    # Set when the actor sends readings (PUT .../readings), including its heartbeat.
     last_seen_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -83,7 +83,7 @@ class ActorRun(Base):
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Restore rows only: the action run they undo.
-    parent_run_id: Mapped[int | None] = mapped_column(ForeignKey("actor_runs.id"), nullable=True)
+    parent_run_id: Mapped[int | None] = mapped_column(ForeignKey("actor_runs.id"), nullable=True, index=True)
     # State saved before acting.
     snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Set when the watchdog has emailed about this run.
