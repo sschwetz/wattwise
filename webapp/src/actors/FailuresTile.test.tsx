@@ -132,6 +132,35 @@ describe("FailuresTile", () => {
     expect(tile.textContent).not.toMatch(/UTC/);
   });
 
+  it("a needs_sign_in row shows no time", async () => {
+    mockData({ failures: [failure(1, { kind: "needs_sign_in", since: "2026-11-05T03:00:00Z" })] });
+    const { container } = renderTile();
+    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    await screen.findByText("Needs sign-in");
+    await within(tile).findByText("Message 1");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(container.querySelector("time")).toBeNull();
+    expect(tile.textContent).not.toMatch(/Today|Yesterday|since/i);
+  });
+
+  it("other kinds still show their time", async () => {
+    mockData({ failures: [failure(1, { kind: "still_off" }), failure(2, { kind: "needs_sign_in" })] });
+    const { container } = renderTile();
+    await screen.findByText(/2 Oct.*00:30/);
+    expect(container.querySelectorAll("time")).toHaveLength(1);
+  });
+
+  it("never lets a needs_sign_in row push out an older failure", async () => {
+    const signIn = failure(9, { kind: "needs_sign_in", since: new Date().toISOString() });
+    mockData({ failures: [signIn, ...[5, 4, 3, 2, 1].map((n) => failure(n))] });
+    renderTile();
+    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const rows = within(tile).getAllByRole("listitem");
+    expect(rows).toHaveLength(5);
+    expect(tile.textContent).not.toContain("Schedule 9");
+    expect(within(tile).getByRole("link", { name: "and 1 more" })).toBeInTheDocument();
+  });
+
   it("viewer sees the tile", async () => {
     mockData({ failures: [failure(1)] });
     renderTile();

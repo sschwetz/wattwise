@@ -22,6 +22,7 @@ function oldestFirst(failures: ActorFailure[]): ActorFailure[] {
   return [...failures].sort((a, b) => new Date(a.since).getTime() - new Date(b.since).getTime());
 }
 
+/** needs_sign_in has no real start time: the server sends "now" on every request, so no time is shown. */
 function FailureRow({ failure, timezone }: { failure: ActorFailure; timezone: string | undefined }) {
   const now = useNow(CLOCK_MS);
   return (
@@ -29,7 +30,7 @@ function FailureRow({ failure, timezone }: { failure: ActorFailure; timezone: st
       <p className="font-medium text-danger">{KIND_LABEL[failure.kind] ?? failure.kind}</p>
       {failure.schedule_name && <p className="text-ink">{failure.schedule_name}</p>}
       <p className="text-ink">{failure.message}</p>
-      {timezone && (
+      {timezone && failure.kind !== "needs_sign_in" && (
         <time dateTime={failure.since} className="block text-ink-muted">
           {formatRunTime(failure.since, timezone, now)}
         </time>
