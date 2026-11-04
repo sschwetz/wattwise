@@ -12,6 +12,8 @@ class Settings:
     poll_fallback_seconds: int = 30
     reconcile_seconds: int = 300
     heartbeat_seconds: int = 60
+    # How long a test run holds the action before it restores.
+    test_hold_seconds: int = 30
 
 
 def _seconds(name: str, default: int) -> int:
@@ -39,4 +41,5 @@ def get_settings() -> Settings:
         poll_fallback_seconds=_seconds("POLL_FALLBACK_SECONDS", 30),
         reconcile_seconds=_seconds("RECONCILE_SECONDS", 300),
         heartbeat_seconds=_seconds("HEARTBEAT_SECONDS", 60),
+        test_hold_seconds=_seconds("TEST_HOLD_SECONDS", 30),
     )

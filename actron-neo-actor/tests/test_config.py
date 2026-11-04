@@ -10,6 +10,7 @@ def test_defaults_and_trailing_slash(monkeypatch):
     assert settings.core_api_url == "http://core"
     assert (settings.tick_seconds, settings.poll_fallback_seconds) == (30, 30)
     assert (settings.reconcile_seconds, settings.heartbeat_seconds) == (300, 60)
+    assert settings.test_hold_seconds == 30
 
 
 def test_overrides(monkeypatch):
@@ -32,3 +33,14 @@ def test_required(monkeypatch, missing):
 
 def test_key_not_in_repr():
     assert "topsecret" not in repr(Settings("http://core", "topsecret"))
+
+
+def test_test_hold_seconds(monkeypatch):
+    monkeypatch.setenv("CORE_API_URL", "http://core")
+    monkeypatch.setenv("ACTOR_KEY", "k")
+    monkeypatch.setenv("TEST_HOLD_SECONDS", "5")
+    assert get_settings().test_hold_seconds == 5
+    for bad in ("0", "1.5"):
+        monkeypatch.setenv("TEST_HOLD_SECONDS", bad)
+        with pytest.raises(RuntimeError, match="TEST_HOLD_SECONDS"):
+            get_settings()
