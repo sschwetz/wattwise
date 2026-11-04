@@ -33,6 +33,7 @@ class Settings:
     envoy_collector_key: str
     weather_collector_key: str
     pricing_collector_key: str
+    actor_key: str
 
 
 def get_settings() -> Settings:
@@ -57,4 +58,5 @@ def get_settings() -> Settings:
         envoy_collector_key=_require_env("ENVOY_COLLECTOR_KEY"),
         weather_collector_key=_require_env("WEATHER_COLLECTOR_KEY"),
         pricing_collector_key=_require_env("PRICING_COLLECTOR_KEY"),
+        actor_key=_require_env("ACTOR_KEY"),
     )

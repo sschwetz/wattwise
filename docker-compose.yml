@@ -13,6 +13,7 @@ services:
       ENVOY_COLLECTOR_KEY: ${ENVOY_COLLECTOR_KEY:?set a long random secret, shared with the envoy-collector service below}
       WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weatherlink-local-collector service below}
       PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the amber-pricing-collector service below}
+      ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with the actor}
       DATABASE_URL: sqlite:////data/core_api.db
       AVATAR_STORAGE_DIR: /data/avatars
       SMTP_HOST: mail-relay

@@ -9,6 +9,7 @@ REQUIRED_ENV = {
     "ENVOY_COLLECTOR_KEY": "envoy-key",
     "WEATHER_COLLECTOR_KEY": "weather-key",
     "PRICING_COLLECTOR_KEY": "pricing-key",
+    "ACTOR_KEY": "actor-key",
 }
 
 
@@ -43,5 +44,16 @@ def test_get_settings_raises_if_weather_collector_key_missing(monkeypatch):
 
 def test_get_settings_raises_if_pricing_collector_key_missing(monkeypatch):
     _set_required_env(monkeypatch, PRICING_COLLECTOR_KEY=None)
+    with pytest.raises(RuntimeError):
+        get_settings()
+
+
+def test_get_settings_reads_actor_key(monkeypatch):
+    _set_required_env(monkeypatch)
+    assert get_settings().actor_key == "actor-key"
+
+
+def test_get_settings_raises_if_actor_key_missing(monkeypatch):
+    _set_required_env(monkeypatch, ACTOR_KEY=None)
     with pytest.raises(RuntimeError):
         get_settings()
