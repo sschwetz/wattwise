@@ -107,7 +107,7 @@ class CoreApiClient:
 
     def get_schedules(self, instance_id: int) -> list[Schedule]:
         body = self._request("GET", f"/instances/{instance_id}/schedules", "fetch schedules", 200)
-        return _parsed("schedules", body, lambda b: [Schedule.from_json(s) for s in b])
+        return _parsed("schedules", body, lambda b: [Schedule.from_json(s, instance_id) for s in b])
 
     def get_context(self, instance_id: int) -> Context:
         body = self._request("GET", f"/instances/{instance_id}/context", "fetch context", 200)

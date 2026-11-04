@@ -210,3 +210,17 @@ def test_disabled_instance_without_run_403(http, db, site, method, suffix, body)
     i = _instance(db, site, enabled=False)
     r = http.request(method, f"/api/v1/actor/instances/{i.id}/{suffix}", headers=HEADERS, json=body)
     assert (r.status_code, r.json()["code"]) == (403, "instance_disabled")
+
+
+def test_schedule_response_shape_is_pinned(http, db, site):
+    """The actron-neo-actor client fixture SCHEDULE_JSON mirrors this shape."""
+    i = _instance(db, site)
+    s = _schedule(db, i)
+    r = http.get(f"/api/v1/actor/instances/{i.id}/schedules", headers=HEADERS)
+    [body] = r.json()
+    assert set(body) == {
+        "id", "name", "enabled", "trigger", "conditions", "action", "restore", "retry", "notify_email", "created_at",
+    }
+    created = datetime.datetime.fromisoformat(body["created_at"])
+    assert created.utcoffset() == datetime.timedelta(0)
+    assert created == s.created_at.replace(tzinfo=datetime.UTC)

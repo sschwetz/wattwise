@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 
 from fastapi import APIRouter, Depends, Header, status
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, field_serializer
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -54,6 +54,11 @@ class ActorScheduleOut(BaseModel):
     restore: dict
     retry: dict
     notify_email: bool
+    created_at: datetime.datetime
+
+    @field_serializer("created_at")
+    def _as_aware_utc(self, value: datetime.datetime) -> str:
+        return as_utc(value).isoformat()
 
 
 class WindowOccurrenceOut(BaseModel):

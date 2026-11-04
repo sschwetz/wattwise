@@ -133,10 +133,11 @@ class Schedule:
     retry: RetrySpec
 
     @classmethod
-    def from_json(cls, data: dict) -> Schedule:
+    def from_json(cls, data: dict, instance_id: int) -> Schedule:
+        """Core API does not send instance_id; the caller knows it from the URL."""
         return cls(
             id=data["id"],
-            instance_id=data["instance_id"],
+            instance_id=instance_id,
             name=data["name"],
             enabled=data["enabled"],
             notify_email=data["notify_email"],

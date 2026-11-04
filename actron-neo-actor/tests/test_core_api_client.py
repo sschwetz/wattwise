@@ -25,9 +25,10 @@ RUN_JSON = {
     "snapshot": {"mode": "COOL"},
 }
 
+# Mirrors test_schedule_response_shape_is_pinned in core-api/tests/test_actor_router.py:
+# the same keys as GET /actor/instances/{id}/schedules (no instance_id).
 SCHEDULE_JSON = {
     "id": 3,
-    "instance_id": 1,
     "name": "Pre-cool",
     "enabled": True,
     "trigger": {"type": "time", "time": "14:00", "days_of_week": [0, 1]},
@@ -116,6 +117,7 @@ def test_naive_datetime_in_body_is_rejected(client):
 def test_get_schedules_parses_nested_specs(client):
     respx.get(f"{BASE}/api/v1/actor/instances/1/schedules").respond(json=[SCHEDULE_JSON])
     [schedule] = client.get_schedules(1)
+    assert schedule.instance_id == 1
     assert schedule.trigger.type == "time" and schedule.trigger.days_of_week == [0, 1]
     assert schedule.conditions[0].op == "gt"
     assert schedule.action.params["zones"] == ["a"]
