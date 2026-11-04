@@ -1,0 +1,255 @@
+"""Pure schedule evaluation: which triggers are due or missed, when a restore
+falls, and whether conditions pass. Every function takes `now`; none read the
+clock or do I/O."""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
+from actron_neo_actor.models import Condition, Context, Run, Schedule, WindowOccurrence
+
+GRACE = timedelta(minutes=10)
+LOOKBACK = timedelta(hours=24)
+PRICE_STEP_SECONDS = 300
+
+
+@dataclass(frozen=True)
+class DueTrigger:
+    trigger_at: datetime
+    label: str
+
+
+@dataclass(frozen=True)
+class ConditionResult:
+    passed: bool
+    reason: str | None = None
+
+
+# --- local clock helpers -------------------------------------------------
+
+
+def _parse_hhmm(value: str) -> time:
+    hours, minutes = value.split(":")
+    return time(int(hours), int(minutes))
+
+
+def _gap_end(naive: datetime, tz: ZoneInfo) -> datetime:
+    """The instant the clock jumps over `naive`: where the offset changes."""
+    hi = naive.replace(tzinfo=tz).astimezone(UTC)
+    lo = hi - timedelta(hours=3)
+    before = lo.astimezone(tz).utcoffset()
+    while hi - lo > timedelta(seconds=1):
+        mid = lo + (hi - lo) / 2
+        if mid.astimezone(tz).utcoffset() == before:
+            lo = mid
+        else:
+            hi = mid
+    return hi.replace(microsecond=0)
+
+
+def _local_instant(day: date, clock: time, tz: ZoneInfo) -> datetime:
+    """UTC instant at which the site clock reads `clock` on `day`. A time in a
+    DST gap moves to the end of the gap; an ambiguous time takes the first."""
+    naive = datetime.combine(day, clock)
+    utc = naive.replace(tzinfo=tz).astimezone(UTC)
+    if utc.astimezone(tz).replace(tzinfo=None) == naive:
+        return utc
+    return _gap_end(naive, tz)
+
+
+def _time_trigger_instants(
+    days: list[int], clock: time, tz: ZoneInfo, start: datetime, end: datetime
+) -> list[datetime]:
+    first = start.astimezone(tz).date() - timedelta(days=1)
+    last = end.astimezone(tz).date() + timedelta(days=1)
+    out: list[datetime] = []
+    for offset in range((last - first).days + 1):
+        day = first + timedelta(days=offset)
+        if day.weekday() in days:
+            out.append(_local_instant(day, clock, tz))
+    return out
+
+
+# --- triggers ------------------------------------------------------------
+
+
+def _window_candidates(schedule: Schedule, context: Context) -> list[DueTrigger]:
+    trigger = schedule.trigger
+    use_start = trigger.type == "window_start"
+    return [
+        DueTrigger(w.start if use_start else w.end, w.label)
+        for w in context.windows
+        if w.window_id == trigger.window_id
+    ]
+
+
+def _time_candidates(schedule: Schedule, context: Context, now: datetime) -> list[DueTrigger]:
+    trigger = schedule.trigger
+    if trigger.time is None or trigger.days_of_week is None:
+        return []
+    instants = _time_trigger_instants(
+        trigger.days_of_week, _parse_hhmm(trigger.time), ZoneInfo(context.timezone), now - LOOKBACK, now
+    )
+    return [DueTrigger(at, trigger.time) for at in instants]
+
+
+def _candidates(schedule: Schedule, context: Context, now: datetime, existing: set[datetime]) -> list[DueTrigger]:
+    """Non-price triggers inside [max(created_at, now - 24h), now] not yet recorded."""
+    if not schedule.enabled:
+        return []
+    kind = schedule.trigger.type
+    if kind in ("window_start", "window_end"):
+        found = _window_candidates(schedule, context)
+    elif kind == "time":
+        found = _time_candidates(schedule, context, now)
+    else:
+        return []
+    floor = max(schedule.created_at, now - LOOKBACK)
+    kept = [d for d in found if floor <= d.trigger_at <= now and d.trigger_at not in existing]
+    return sorted(kept, key=lambda d: d.trigger_at)
+
+
+def _price_crossing(
+    schedule: Schedule, context: Context, now: datetime, existing: set[datetime], price_was_above: bool | None
+) -> list[DueTrigger]:
+    limit = schedule.trigger.c_per_kwh
+    price = context.price_c_per_kwh
+    if limit is None or price is None or not math.isfinite(price) or price <= limit:
+        return []
+    if price_was_above is True:
+        return []
+    step = int(now.timestamp()) // PRICE_STEP_SECONDS * PRICE_STEP_SECONDS
+    at = datetime.fromtimestamp(step, UTC)
+    if at in existing:
+        return []
+    return [DueTrigger(at, f"price above {limit:g}")]
+
+
+def due_triggers(
+    schedule: Schedule,
+    context: Context,
+    now: datetime,
+    existing_trigger_ats: set[datetime],
+    price_was_above: bool | None,
+) -> list[DueTrigger]:
+    """Triggers at most 10 minutes old that have no run yet."""
+    if not schedule.enabled:
+        return []
+    if schedule.trigger.type == "price_above":
+        return _price_crossing(schedule, context, now, existing_trigger_ats, price_was_above)
+    found = _candidates(schedule, context, now, existing_trigger_ats)
+    return [d for d in found if now - d.trigger_at <= GRACE]
+
+
+def missed_triggers(
+    schedule: Schedule, context: Context, now: datetime, existing_trigger_ats: set[datetime]
+) -> list[DueTrigger]:
+    """Triggers more than 10 minutes old that have no run yet. Price crossings never qualify."""
+    found = _candidates(schedule, context, now, existing_trigger_ats)
+    return [d for d in found if now - d.trigger_at > GRACE]
+
+
+# --- restore -------------------------------------------------------------
+
+
+def _window_end_restore(schedule: Schedule, trigger_at: datetime, windows: list[WindowOccurrence]) -> datetime:
+    for w in windows:
+        if w.window_id == schedule.trigger.window_id and w.start == trigger_at:
+            return w.end
+    return trigger_at + LOOKBACK
+
+
+def _at_time_restore(trigger_at: datetime, clock: time, tz: ZoneInfo) -> datetime:
+    day = trigger_at.astimezone(tz).date()
+    for offset in range(3):
+        candidate = _local_instant(day + timedelta(days=offset), clock, tz)
+        if candidate >= trigger_at:
+            return candidate
+    raise ValueError("no restore instant found")  # unreachable: one of three days is at or after trigger_at
+
+
+def restore_time(schedule: Schedule, action_run: Run, context: Context) -> datetime | None:
+    spec = schedule.restore
+    trigger_at = action_run.trigger_at
+    if not spec.enabled or spec.when == "conditions_only":
+        return None
+    if spec.when == "window_end":
+        return _window_end_restore(schedule, trigger_at, context.windows)
+    if spec.when == "after_minutes" and spec.minutes is not None:
+        return trigger_at + timedelta(minutes=spec.minutes)
+    if spec.when == "at_time" and spec.time is not None:
+        return _at_time_restore(trigger_at, _parse_hhmm(spec.time), ZoneInfo(context.timezone))
+    return None
+
+
+# --- conditions ----------------------------------------------------------
+
+_CONTEXT_READINGS = ("outdoor_temp_c", "battery_soc_pct", "price_c_per_kwh")
+
+
+def _key(cond: Condition) -> str:
+    return f"{cond.reading}@{cond.target}" if cond.target else cond.reading
+
+
+def _lookup(key: str, readings: Mapping[str, float], stale: set[str], context: Context) -> float | None:
+    """A fresh, finite value for `key`, or None. Device readings win over the site context."""
+    if key in stale:
+        return None
+    value = readings.get(key)
+    if value is None and "@" not in key and key in _CONTEXT_READINGS:
+        value = getattr(context, key)
+    if value is None or not math.isfinite(value):
+        return None
+    return float(value)
+
+
+_WORDS = {"gt": "above", "lt": "below"}
+
+
+def _holds(cond: Condition, value: float) -> bool:
+    if cond.op == "gt":
+        return value > cond.value
+    if cond.op == "lt":
+        return value < cond.value
+    raise ValueError(f"unknown condition op: {cond.op!r}")
+
+
+def _failure(cond: Condition, key: str, value: float) -> str:
+    return f"{key} {value:.1f} is not {_WORDS[cond.op]} {cond.value:.1f}"
+
+
+def evaluate_conditions(
+    conditions: list[Condition], readings: Mapping[str, float], stale: set[str], context: Context
+) -> ConditionResult:
+    """All conditions must pass. A missing or stale reading fails."""
+    for cond in conditions:
+        key = _key(cond)
+        value = _lookup(key, readings, stale, context)
+        if value is None:
+            return ConditionResult(False, f"reading unavailable: {key}")
+        if not _holds(cond, value):
+            return ConditionResult(False, _failure(cond, key, value))
+    return ConditionResult(True)
+
+
+def restore_gate_passes(
+    conditions: list[Condition], readings: Mapping[str, float], stale: set[str], context: Context
+) -> bool:
+    """Like evaluate_conditions, but a missing or stale reading passes so it never keeps the unit off."""
+    for cond in conditions:
+        value = _lookup(_key(cond), readings, stale, context)
+        if value is not None and not _holds(cond, value):
+            return False
+    return True
+
+
+def early_restore_due(schedule: Schedule, readings: Mapping[str, float], stale: set[str], context: Context) -> bool:
+    """True only when early_if is set and every condition is evaluable and passes."""
+    conditions = schedule.restore.early_if
+    if not conditions:
+        return False
+    return evaluate_conditions(conditions, readings, stale, context).passed
