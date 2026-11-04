@@ -396,6 +396,22 @@ def test_early_restore_when_indoor_above_threshold():
     run(scenario())
 
 
+def test_conditions_only_restore_with_a_missing_reading_restores_at_the_day_cap():
+    async def scenario() -> None:
+        never = restore_spec(when="conditions_only", early_if=[Condition("mystery_c", "lt", 20)])
+        h = harness([schedule(restore=never)])
+        await h.tick()
+        await h.tick_at(START + datetime.timedelta(hours=23, minutes=59))
+        assert h.core.of("restore") == []
+        assert h.api.device["UserAirconSettings"]["isOn"] is False
+        await h.tick_at(START + datetime.timedelta(hours=24))
+        restore = only(h.core.of("restore"))
+        assert (restore.outcome, restore.trigger_at) == ("ok", START + datetime.timedelta(hours=24))
+        assert h.api.device["UserAirconSettings"]["isOn"] is True
+
+    run(scenario())
+
+
 def test_restore_gate_false_waits_then_restores_when_it_passes():
     async def scenario() -> None:
         gate = restore_spec(only_if=[Condition("outdoor_temp_c", "lt", 25)])
@@ -652,6 +668,37 @@ def test_heartbeat_and_change_push_to_core_api():
         h.worker.pulse()
         await h.worker.idle()
         assert len(h.core.readings) == 3
+
+    run(scenario())
+
+
+def test_no_heartbeat_once_the_device_state_is_older_than_5_minutes():
+    async def scenario() -> None:
+        h = harness([])
+        await h.tick()
+        assert len(h.core.readings) == 1
+        h.clock.current = START + 4 * MIN
+        h.worker.pulse()
+        await h.worker.idle()
+        assert len(h.core.readings) == 2
+        h.clock.current = START + 6 * MIN
+        h.worker.pulse()
+        await h.worker.idle()
+        assert len(h.core.readings) == 2
+
+    run(scenario())
+
+
+def test_no_heartbeat_after_sign_out():
+    async def scenario() -> None:
+        h = harness([])
+        await h.tick()
+        assert len(h.core.readings) == 1
+        h.factory.signed_in = False
+        await h.tick_at(START + 61 * SEC)
+        h.worker.pulse()
+        await h.worker.idle()
+        assert len(h.core.readings) == 1
 
     run(scenario())
 

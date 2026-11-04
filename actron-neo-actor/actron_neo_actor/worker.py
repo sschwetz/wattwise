@@ -30,7 +30,7 @@ from actron_neo_actor.restores import record_override_skips, run_restores, watch
 from actron_neo_actor.resume import resume
 from actron_neo_actor.schedule_eval import LOOKBACK
 from actron_neo_actor.test_runs import TestControl, run_test, triage
-from actron_neo_actor.view import TickView
+from actron_neo_actor.view import STALE_AFTER, TickView
 
 _LOG = logging.getLogger(__name__)
 
@@ -212,10 +212,16 @@ class InstanceWorker:
         self._override_watch.poke()
 
     def pulse(self) -> None:
-        """Send the readings if the last send is `heartbeat_seconds` old."""
-        sent_at = self._readings_sent_at
+        """Send the readings if the last send is `heartbeat_seconds` old and the device state is fresh.
+
+        The heartbeat keeps the instance's last_seen_at current, so it stops once the device
+        state is older than STALE_AFTER or the device is dropped. Core API then shows the actor
+        as not reporting."""
+        latest, sent_at, now = self._latest, self._readings_sent_at, self._clock()
         heartbeat = datetime.timedelta(seconds=self._settings.heartbeat_seconds)
-        if self._latest is not None and (sent_at is None or self._clock() - sent_at >= heartbeat):
+        if latest is None or now - latest.updated_at > STALE_AFTER:
+            return
+        if sent_at is None or now - sent_at >= heartbeat:
             self._readings.poke()
 
     async def _send_readings(self) -> None:
@@ -273,7 +279,7 @@ class InstanceWorker:
         await self._drop_device()
 
     async def _drop_device(self) -> None:
-        env, self._env, self._view = self._env, None, None
+        env, self._env, self._view, self._latest = self._env, None, None, None
         if env is not None:
             await env.device.stop_sync()
 

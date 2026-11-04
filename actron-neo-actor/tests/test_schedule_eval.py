@@ -192,7 +192,7 @@ def test_price_above_fires_once_per_crossing():
         (restore("after_minutes", minutes=90), utc(2026, 11, 5, 2, 30)),
         (restore("at_time", time="18:00"), utc(2026, 11, 5, 7, 0)),
         (restore("at_time", time="09:00"), utc(2026, 11, 5, 22, 0)),
-        (restore("conditions_only"), None),
+        (restore("conditions_only"), utc(2026, 11, 6, 1, 0)),
         (restore("after_minutes", enabled=False, minutes=90), None),
     ],
 )

@@ -14,6 +14,9 @@ from actron_neo_actor.models import Condition, Context, Run, Schedule, WindowOcc
 
 GRACE = timedelta(minutes=10)
 LOOKBACK = timedelta(hours=24)
+# The latest a restore falls: a window end with no matching occurrence, and a
+# conditions-only restore whose condition never holds, both restore a day after the trigger.
+RESTORE_CAP = timedelta(hours=24)
 PRICE_STEP_SECONDS = 300
 
 
@@ -167,7 +170,7 @@ def _window_end_restore(schedule: Schedule, trigger_at: datetime, windows: list[
     for w in windows:
         if w.window_id == schedule.trigger.window_id and w.start == trigger_at:
             return w.end
-    return trigger_at + LOOKBACK
+    return trigger_at + RESTORE_CAP
 
 
 def _at_time_restore(trigger_at: datetime, clock: time, tz: ZoneInfo) -> datetime:
@@ -180,10 +183,14 @@ def _at_time_restore(trigger_at: datetime, clock: time, tz: ZoneInfo) -> datetim
 
 
 def restore_time(schedule: Schedule, action_run: Run, context: Context) -> datetime | None:
+    """When the unit is put back, or None when restore is off. A conditions-only restore
+    falls due at the day cap; an early restore can come before it."""
     spec = schedule.restore
     trigger_at = action_run.trigger_at
-    if not spec.enabled or spec.when == "conditions_only":
+    if not spec.enabled:
         return None
+    if spec.when == "conditions_only":
+        return trigger_at + RESTORE_CAP
     if spec.when == "window_end":
         return _window_end_restore(schedule, trigger_at, context.windows)
     if spec.when == "after_minutes" and spec.minutes is not None:
