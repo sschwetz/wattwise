@@ -206,12 +206,18 @@ async def test_cancel_cancels_the_pending_task():
 @async_test
 async def test_cancelled_ensure_session_leaves_no_task():
     h = Harness()
-    before = len(asyncio.all_tasks())
+    h.api.code_gate = asyncio.Event()
+    before = set(asyncio.all_tasks())
     run = asyncio.ensure_future(h.tick())
+    await settle()
+    assert not run.done()  # suspended inside request_device_code
     run.cancel()
     await asyncio.gather(run, return_exceptions=True)
     await settle()
-    assert len(asyncio.all_tasks()) == before
+    assert run.cancelled()
+    assert asyncio.all_tasks() - before == set()
+    assert h.api.poll_calls == []
+    assert h.core.calls == []
 
 
 @async_test
@@ -249,60 +255,157 @@ async def test_rotated_refresh_token_is_persisted():
     assert h.core.calls == [{"instance_id": 7, "config": {"refresh_token": NEW}, "auth_state": UNSET}]
 
 
-@async_test
-async def test_rejected_token_sets_needs_sign_in():
-    h = Harness(STORED)
+def fail_refresh(h: Harness) -> None:
     h.api.oauth2_auth.refresh_error = ActronAirAuthError("invalid_grant")
+
+
+async def reject(h: Harness) -> None:
+    """Three failed refreshes, 60 s apart."""
+    fail_refresh(h)
+    await h.tick()
+    h.advance(60)
+    await h.tick()
+    h.advance(60)
+    await h.tick()
+
+
+@async_test
+async def test_rejected_token_sets_needs_sign_in_after_three_failures():
+    h = Harness(STORED)
+    fail_refresh(h)
+    assert (await h.tick()).signed_in is False
+    h.advance(60)
+    assert (await h.tick()).signed_in is False
+    assert h.core.calls == []
+    h.advance(60)
     result = await h.tick()
     assert result.signed_in is False
+    assert h.api.oauth2_auth.refreshes == 3
     assert h.core.calls == [{"instance_id": 7, "config": None, "auth_state": {"needs_sign_in": True}}]
     assert h.api.codes_issued == 0
 
 
 @async_test
-async def test_rejected_token_is_retried_only_after_ten_minutes():
+async def test_failures_inside_the_gap_do_not_count_or_call_the_api():
     h = Harness(STORED)
-    h.api.oauth2_auth.refresh_error = ActronAirAuthError("invalid_grant")
+    fail_refresh(h)
     await h.tick()
-    h.advance(599)
-    await h.tick()
+    for _ in range(5):
+        h.advance(10)
+        await h.tick()
     assert h.api.oauth2_auth.refreshes == 1
-    assert len(h.core.calls) == 1
-    h.advance(1)
-    await h.tick()
-    assert h.api.oauth2_auth.refreshes == 2
+    assert h.core.calls == []
 
 
 @async_test
-async def test_retry_succeeds_once_the_owner_fixed_it():
+async def test_a_successful_refresh_resets_the_failure_count():
     h = Harness(STORED)
-    h.api.oauth2_auth.refresh_error = ActronAirAuthError("invalid_grant")
+    fail_refresh(h)
     await h.tick()
+    h.advance(60)
+    await h.tick()
+    h.api.oauth2_auth.refresh_error = None
+    h.advance(60)
+    assert (await h.tick()).signed_in is True
+    h.state.session_token = None  # type: ignore[union-attr]  # force a new refresh
+    fail_refresh(h)
+    for _ in range(2):
+        h.advance(60)
+        await h.tick()
+    assert h.core.calls == []
+
+
+@async_test
+async def test_rejected_token_is_retried_only_after_ten_minutes():
+    h = Harness(STORED)
+    await reject(h)
+    assert h.api.oauth2_auth.refreshes == 3
+    h.advance(599)
+    await h.tick()
+    assert h.api.oauth2_auth.refreshes == 3
+    assert len(h.core.calls) == 1
+    h.advance(1)
+    await h.tick()
+    assert h.api.oauth2_auth.refreshes == 4
+
+
+@async_test
+async def test_retry_succeeds_once_the_owner_fixed_it_and_clears_needs_sign_in():
+    h = Harness(STORED)
+    await reject(h)
     h.advance(600)
     h.api.oauth2_auth.refresh_error = None
     assert (await h.tick()).signed_in is True
+    assert h.core.calls[-1] == {"instance_id": 7, "config": None, "auth_state": None}
+    await h.tick()
+    assert len(h.core.calls) == 2
+
+
+@async_test
+async def test_failed_clear_of_needs_sign_in_is_retried():
+    h = Harness(STORED)
+    await reject(h)
+    h.advance(600)
+    h.api.oauth2_auth.refresh_error = None
+    h.core.fail_posts = 1
+    assert (await h.tick()).signed_in is True
+    assert len(h.core.calls) == 1
+    await h.tick()
+    assert h.core.calls[-1] == {"instance_id": 7, "config": None, "auth_state": None}
 
 
 @async_test
 async def test_changed_token_resets_the_rejection():
     h = Harness(STORED)
-    h.api.oauth2_auth.refresh_error = ActronAirAuthError("invalid_grant")
-    await h.tick()
+    await reject(h)
     h.token = "REFRESH-OTHER"
     h.api.oauth2_auth.refresh_error = None
     assert (await h.tick()).signed_in is True
-    assert h.api.oauth2_auth.refreshes == 2
+    assert h.api.oauth2_auth.refreshes == 4
+    assert h.core.calls[-1]["auth_state"] is None
 
 
 @async_test
 async def test_cleared_token_after_rejection_starts_a_sign_in():
     h = Harness(STORED)
-    h.api.oauth2_auth.refresh_error = ActronAirAuthError("invalid_grant")
-    await h.tick()
+    await reject(h)
     h.token = None
     await h.tick()
     assert h.api.codes_issued == 1
     assert len(posted_codes(h.core)) == 1
+
+
+@async_test
+async def test_failed_persist_of_rotated_token_keeps_it_and_retries():
+    h = Harness(STORED)
+    h.api.oauth2_auth.rotate_to = NEW
+    h.core.fail_posts = 1
+    result = await h.tick()
+    assert result.signed_in is True
+    assert h.core.calls == []
+    # The instance config still has the old token; the next tick must not go back to it.
+    result = await h.tick()
+    assert result.signed_in is True
+    assert h.api.oauth2_auth.refreshes == 1
+    assert h.api.oauth2_auth.refresh_token == NEW
+    assert h.core.calls == [{"instance_id": 7, "config": {"refresh_token": NEW}, "auth_state": UNSET}]
+    await h.tick()
+    assert len(h.core.calls) == 1
+    h.token = NEW  # Core API now carries the rotated token
+    assert (await h.tick()).signed_in is True
+    assert h.api.oauth2_auth.refreshes == 1
+
+
+@async_test
+async def test_stale_pending_rotation_is_dropped_when_the_owner_signs_in_again():
+    h = Harness(STORED)
+    h.api.oauth2_auth.rotate_to = NEW
+    await h.tick()
+    h.token = "REFRESH-OTHER"
+    h.api.oauth2_auth.rotate_to = None
+    assert (await h.tick()).signed_in is True
+    assert h.api.oauth2_auth.refreshes == 2
+    assert h.api.oauth2_auth.refresh_token == "REFRESH-OTHER"
 
 
 # Secrets
@@ -329,7 +432,7 @@ async def test_tokens_never_logged(caplog):
     await h2.tick()
     h3 = Harness(STORED)
     h3.api.oauth2_auth.refresh_error = ActronAirAuthError(f"bad {STORED}")
-    await h3.tick()
+    await reject(h3)
     text = "\n".join(f"{r.getMessage()} {r.exc_text or ''}" for r in caplog.records)
     for secret in SECRETS:
         assert secret not in text

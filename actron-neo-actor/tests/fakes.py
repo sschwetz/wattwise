@@ -134,6 +134,7 @@ class FakeActronApi:
         self.polls = 0
         self.oauth2_auth = FakeOAuth()
         self.code_error: Exception | None = None
+        self.code_gate: asyncio.Event | None = None
         self.codes_issued = 0
         self.expires_in = 600
         self.code_interval = 5
@@ -194,6 +195,8 @@ class FakeActronApi:
         return self.oauth2_auth.refresh_token
 
     async def request_device_code(self) -> ActronAirDeviceCode:
+        if self.code_gate is not None:
+            await self.code_gate.wait()
         if self.code_error is not None:
             raise self.code_error
         self.codes_issued += 1

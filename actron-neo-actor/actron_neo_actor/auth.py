@@ -22,11 +22,22 @@ from actron_neo_api.models.auth import ActronAirToken
 from actron_neo_actor.core_api_client import CoreApiClient, CoreApiError
 from actron_neo_actor.models import Instance
 
-__all__ = ["REJECTED_RETRY", "SIGN_IN_HOLDOFF", "SessionResult", "SignInState", "ensure_session"]
+__all__ = [
+    "REFRESH_FAILURES_TO_REJECT",
+    "REFRESH_GAP",
+    "REJECTED_RETRY",
+    "Rotation",
+    "SIGN_IN_HOLDOFF",
+    "SessionResult",
+    "SignInState",
+    "ensure_session",
+]
 
 _LOG = logging.getLogger(__name__)
 
 REJECTED_RETRY = datetime.timedelta(minutes=10)
+REFRESH_GAP = datetime.timedelta(seconds=60)
+REFRESH_FAILURES_TO_REJECT = 3
 SIGN_IN_HOLDOFF = datetime.timedelta(seconds=30)
 
 
@@ -35,12 +46,24 @@ def _utc_now() -> datetime.datetime:
 
 
 @dataclass(eq=False, repr=False)
+class Rotation:
+    """A refresh token the server issued in place of `old`. `stored` is True once Core API has `new`."""
+
+    old: str
+    new: str
+    stored: bool = False
+
+
+@dataclass(eq=False, repr=False)
 class SignInState:
     """What `ensure_session` carries from one tick to the next. Pass back the `state` of the last result.
 
     `task` is the running `poll_for_token`. `posted` is False until Core API has the code.
-    `failed_at` is when the last poll ended without a token. `rejected_token` and `rejected_at`
-    record a refused stored token. `session_token` is the stored token the session was restored from.
+    `failed_at` is when the last poll ended without a token. For a stored token, `failing_token`,
+    `refresh_failures` and `last_failure_at` count consecutive failed refreshes, `rejected_at` is when
+    the third one was declared a rejection, and `needs_sign_in_posted` says Core API shows "needs sign-in".
+    `session_token` is the token the session runs on. `pending_rotation` is a token the server rotated
+    that Core API may not have yet.
     """
 
     task: asyncio.Task[ActronAirToken | None] | None = None
@@ -49,9 +72,13 @@ class SignInState:
     verification_uri: str | None = None
     expires_at: datetime.datetime | None = None
     failed_at: datetime.datetime | None = None
-    rejected_token: str | None = None
+    failing_token: str | None = None
+    refresh_failures: int = 0
+    last_failure_at: datetime.datetime | None = None
     rejected_at: datetime.datetime | None = None
+    needs_sign_in_posted: bool = False
     session_token: str | None = None
+    pending_rotation: Rotation | None = None
 
     def __repr__(self) -> str:
         pending = self.task is not None and not self.task.done()
@@ -93,32 +120,88 @@ async def _restore(
     instance: Instance,
     client: CoreApiClient,
     state: SignInState | None,
-    token: str,
+    stored: str,
     now: datetime.datetime,
 ) -> SessionResult:
-    if state is not None:
-        state.cancel()
-        if state.session_token == token:
-            return SessionResult(True, state)
-        if state.rejected_token == token and state.rejected_at is not None and now - state.rejected_at < REJECTED_RETRY:
-            return SessionResult(False, state)
+    state = state or SignInState()
+    state.cancel()
+    state.task = None
+    token = _token_in_use(state, stored)
+    if state.session_token != token and not await _refresh(api, instance, client, state, token, now):
+        return SessionResult(False, state)
+    _tidy_up(instance, client, state)
+    return SessionResult(True, state)
+
+
+def _token_in_use(state: SignInState, stored: str) -> str:
+    """The stored token, or the rotated one while Core API still returns the token it replaced."""
+    rotation = state.pending_rotation
+    if rotation is not None and stored == rotation.old and stored != rotation.new:
+        return rotation.new
+    state.pending_rotation = None
+    return stored
+
+
+async def _refresh(
+    api: ActronAirAPI, instance: Instance, client: CoreApiClient, state: SignInState, token: str, now: datetime.datetime
+) -> bool:
+    """Check the token against the cloud. False when it is not usable (yet)."""
+    if state.failing_token != token:
+        state.failing_token, state.refresh_failures = token, 0
+        state.last_failure_at = state.rejected_at = None
+    if _waiting_to_retry(state, now):
+        return False
     api.oauth2_auth.refresh_token = token
     try:
         await api.oauth2_auth.refresh_access_token()
     except ActronAirAuthError:
-        _LOG.warning("Stored sign-in was rejected (instance %s)", instance.instance_id)
-        client.patch_discovered(instance.instance_id, auth_state={"needs_sign_in": True})
-        return SessionResult(False, SignInState(rejected_token=token, rejected_at=now))
-    return SessionResult(True, SignInState(session_token=_persist_rotation(api, instance, client, token)))
+        _note_failure(instance, client, state, now)
+        return False
+    state.failing_token, state.refresh_failures = None, 0
+    state.last_failure_at = state.rejected_at = None
+    _note_session(api, state, token)
+    return True
 
 
-def _persist_rotation(api: ActronAirAPI, instance: Instance, client: CoreApiClient, token: str) -> str:
-    """Store a refresh token the server rotated during the refresh; returns the token now in use."""
+def _waiting_to_retry(state: SignInState, now: datetime.datetime) -> bool:
+    if state.rejected_at is not None:
+        return now - state.rejected_at < REJECTED_RETRY
+    return state.last_failure_at is not None and now - state.last_failure_at < REFRESH_GAP
+
+
+def _note_failure(instance: Instance, client: CoreApiClient, state: SignInState, now: datetime.datetime) -> None:
+    """The library reports network errors and 5xx as auth errors, so only repeated failures count as a rejection."""
+    state.refresh_failures += 1
+    state.last_failure_at = now
+    if state.refresh_failures < REFRESH_FAILURES_TO_REJECT:
+        return
+    _LOG.warning("Stored sign-in was rejected (instance %s)", instance.instance_id)
+    client.patch_discovered(instance.instance_id, auth_state={"needs_sign_in": True})
+    state.needs_sign_in_posted = True
+    state.rejected_at = now
+
+
+def _note_session(api: ActronAirAPI, state: SignInState, token: str) -> None:
+    """Remember the token the session runs on; a token the server rotated must be stored in Core API."""
     current = api.refresh_token_value
     if current and current != token:
-        client.patch_discovered(instance.instance_id, config={"refresh_token": current})
-        return current
-    return token
+        state.pending_rotation = Rotation(old=token, new=current)
+        token = current
+    state.session_token = token
+
+
+def _tidy_up(instance: Instance, client: CoreApiClient, state: SignInState) -> None:
+    """Store a rotated token and clear a posted needs_sign_in. A failed post is retried next tick."""
+    rotation = state.pending_rotation
+    try:
+        if rotation is not None and not rotation.stored:
+            client.patch_discovered(instance.instance_id, config={"refresh_token": rotation.new})
+            rotation.stored = True
+        if state.needs_sign_in_posted:
+            client.patch_discovered(instance.instance_id, auth_state=None)
+            state.needs_sign_in_posted = False
+    except CoreApiError as exc:
+        _LOG.warning("Could not update Core API (instance %s): %s", instance.instance_id, type(exc).__name__)
 
 
 async def _sign_in(
@@ -190,3 +273,4 @@ def _post_code(instance: Instance, client: CoreApiClient, state: SignInState) ->
         _LOG.warning("Could not post the sign-in code (instance %s): %s", instance.instance_id, type(exc).__name__)
         return
     state.posted = True
+    state.needs_sign_in_posted = False
