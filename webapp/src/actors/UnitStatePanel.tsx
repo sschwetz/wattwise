@@ -1,4 +1,5 @@
-import { isStale, formatRunTime, useNow } from "./runFormat";
+import { isStale, formatRunTime } from "./runFormat";
+import { useNow } from "../dashboard/useNow";
 import { cardClass } from "./styles";
 import type { ActorInstance, DeviceStatePayload } from "./types";
 

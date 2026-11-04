@@ -1,5 +1,6 @@
 import type { Capabilities } from "./types";
-import type { FormErrors, ScheduleFormState } from "./scheduleForm";
+import type { ScheduleFormState } from "./scheduleForm";
+import type { FormErrors } from "./scheduleValidation";
 
 /** What every editor step gets: the whole form, a setter, the current errors and the device's declaration. */
 export interface EditorModel {

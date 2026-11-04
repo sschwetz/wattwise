@@ -1,18 +1,8 @@
-import { useEffect, useState } from "react";
 import type { ActorRun, RunOutcome } from "./types";
 
-/** The actor reports about every 30 seconds; two minutes of silence means it stopped. */
+/** The actor sends its readings at least every 60 seconds while it can see the unit;
+ * two minutes of silence means it stopped. */
 export const STALE_MS = 120_000;
-
-/** The current time, refreshed on an interval so "Today" and "Not updating" stay right. */
-export function useNow(intervalMs: number): Date {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
 
 export function isStale(lastSeen: string | null, now: Date): boolean {
   return lastSeen === null || now.getTime() - new Date(lastSeen).getTime() > STALE_MS;
@@ -78,12 +68,21 @@ const DEFAULT_MESSAGE: Partial<Record<RunOutcome, string>> = {
   overridden: "Changed by you",
 };
 
-const KIND_LABEL: Record<string, string | undefined> = { restore: "Restored", test: "Test run" };
+const KIND_LABEL: Record<string, string | undefined> = { test: "Test run" };
+/** A restore that did not put the unit back says so; its message gives the reason. */
+const RESTORE_LABEL: Record<string, string | undefined> = { skipped: "Restore skipped", failed: "Restore failed" };
+
+function runLabel(run: ActorRun, actionLabel: string): string {
+  if (run.kind === "action") return actionLabel;
+  if (run.kind === "restore") return RESTORE_LABEL[run.outcome] ?? "Restored";
+  return KIND_LABEL[run.kind] ?? "Run";
+}
 
 /** What happened in a run, in one line. */
 export function runDescription(run: ActorRun, actionLabel: string): string {
-  const base = run.kind === "action" ? actionLabel : KIND_LABEL[run.kind] ?? "Run";
-  const detail = run.message || (DEFAULT_MESSAGE as Record<string, string | undefined>)[run.outcome];
+  const base = runLabel(run, actionLabel);
+  const fallback = run.kind === "restore" ? undefined : (DEFAULT_MESSAGE as Record<string, string | undefined>)[run.outcome];
+  const detail = run.message || fallback;
   const tries = run.outcome === "failed" && run.attempts > 1 ? ` (after ${run.attempts} tries)` : "";
   return `${detail ? `${base}: ${detail}` : base}${tries}`;
 }

@@ -1,3 +1,4 @@
+import { useNow } from "../dashboard/useNow";
 import { useResetSignIn, useUpdateInstance } from "./useActors";
 import { errorMessage } from "../api/client";
 import { cardClass, noticeClass, primaryButtonClass, buttonClass } from "./styles";
@@ -16,6 +17,18 @@ function formatExpiry(iso: string, timezone: string): string {
   return new Intl.DateTimeFormat("en-AU", { timeStyle: "short", timeZone: timezone }).format(new Date(iso));
 }
 
+function ExpiryLine({ expiresAt, timezone }: { expiresAt: string; timezone: string }) {
+  const now = useNow(15_000);
+  if (new Date(expiresAt).getTime() <= now.getTime()) {
+    return <p className="text-sm text-ink-muted">This code has expired. A new one will appear shortly.</p>;
+  }
+  return (
+    <p className="text-sm text-ink-muted">
+      The code expires at {formatExpiry(expiresAt, timezone)}. This page updates once the sign-in is approved.
+    </p>
+  );
+}
+
 export function SignInPanel({ auth, timezone }: { auth: CodeState; timezone: string }) {
   return (
     <section className={`${cardClass} space-y-3`}>
@@ -25,9 +38,7 @@ export function SignInPanel({ auth, timezone }: { auth: CodeState; timezone: str
       <a href={auth.verification_uri} target="_blank" rel="noopener noreferrer" className="text-solar underline">
         Open the Actron sign-in page
       </a>
-      <p className="text-sm text-ink-muted">
-        The code expires at {formatExpiry(auth.expires_at, timezone)}. This page updates once the sign-in is approved.
-      </p>
+      <ExpiryLine expiresAt={auth.expires_at} timezone={timezone} />
     </section>
   );
 }

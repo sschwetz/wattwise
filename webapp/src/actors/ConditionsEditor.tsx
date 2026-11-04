@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { formatUnit, invalidProps } from "./editorModel";
-import { addCondition, targetOffered, type ConditionRow, type FormErrors, type ReadingChoice } from "./scheduleForm";
+import { addCondition, type ConditionRow, type ReadingChoice } from "./scheduleForm";
+import { targetOffered, type FormErrors } from "./scheduleValidation";
 import { FieldError } from "./Step";
 import { compactInputClass, hintClass, secondaryButtonClass } from "./styles";
 

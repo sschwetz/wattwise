@@ -51,6 +51,8 @@ function TimeFields({ model }: { model: EditorModel }) {
   const change = triggerSetter(model);
   const { time, days } = model.form.trigger;
   const error = model.errors["trigger.time"];
+  const daysError = model.errors["trigger.days"];
+  const daysErrorId = `${errorId}-days`;
   return (
     <div className="space-y-3">
       <label className={labelClass}>
@@ -58,8 +60,12 @@ function TimeFields({ model }: { model: EditorModel }) {
         <input value={time} onChange={(e) => change({ time: e.target.value })} placeholder="16:00" inputMode="numeric" className={`${inputClass} max-w-32`} {...invalidProps(errorId, error)} />
       </label>
       <FieldError id={errorId} message={error} />
-      <CheckboxGroup legend="Days" options={DAY_OPTIONS} selection={{ selected: days, onChange: (next) => change({ days: next }) }} />
-      <FieldError id={`${errorId}-days`} message={model.errors["trigger.days"]} />
+      <CheckboxGroup
+        legend="Days"
+        options={DAY_OPTIONS}
+        selection={{ selected: days, onChange: (next) => change({ days: next }), describedBy: daysError ? daysErrorId : undefined }}
+      />
+      <FieldError id={daysErrorId} message={daysError} />
     </div>
   );
 }

@@ -9,10 +9,10 @@ import {
   restoreOptions,
   setTriggerType,
   toPayload,
-  validateForm,
   type SchedulePayload,
   type ScheduleFormState,
 } from "./scheduleForm";
+import { validateForm } from "./scheduleValidation";
 import { serverProblems } from "./serverRules.testHelper";
 import type { Capabilities, TriggerSpec } from "./types";
 

@@ -75,12 +75,17 @@ function restoreProblems(body: SchedulePayload): string[] {
   if (r.time !== null && !HHMM.test(r.time)) problems.push("restore.time pattern");
   if (r.when === "after_minutes" && r.minutes === null) problems.push("restore.minutes required");
   if (r.when === "at_time" && r.time === null) problems.push("restore.time required");
+  // actor_schedule_validation._check_window_end_restore
+  if (r.enabled && r.when === "window_end" && body.trigger.type !== "window_start") problems.push("restore.when window_end needs a window_start trigger");
   return problems;
 }
 
 function triggerProblems(body: SchedulePayload): string[] {
   const t = body.trigger;
-  if (t.type === "time") return HHMM.test(t.time) && t.days_of_week.every((d) => isWhole(d, 0) && d <= 6) ? [] : ["trigger time"];
+  if (t.type === "time") {
+    const days = t.days_of_week.length > 0 && t.days_of_week.every((d) => isWhole(d, 0) && d <= 6);
+    return HHMM.test(t.time) && days ? [] : ["trigger time"];
+  }
   if (t.type === "price_above") return isFiniteNumber(t.c_per_kwh) ? [] : ["trigger price"];
   return Number.isInteger(t.window_id) ? [] : ["trigger window_id"];
 }

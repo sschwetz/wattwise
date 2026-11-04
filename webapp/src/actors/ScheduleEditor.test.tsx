@@ -312,6 +312,44 @@ describe("ScheduleEditor", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("a 409 on save shows the server's message", async () => {
+    const message = "This schedule is holding the unit off. Change its trigger, action or restore after the unit is put back.";
+    mockApi({ failWith: new ApiError(409, "unit_held_off", message, null) });
+    const user = userEvent.setup();
+    renderDetail(saved);
+    await ready();
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  });
+
+  it("names the Enabled switch from its visible label", async () => {
+    renderDetail(saved);
+    await ready();
+    const toggle = screen.getByRole("switch", { name: "Enabled" });
+    expect(toggle).not.toHaveAttribute("aria-label");
+    expect(document.getElementById(toggle.getAttribute("aria-labelledby") ?? "")).toHaveTextContent("Enabled");
+  });
+
+  it("links the days error to the days group", async () => {
+    const user = userEvent.setup();
+    renderDetail({ ...saved, trigger: { type: "time", time: "16:00", days_of_week: [0] }, restore: { ...saved.restore, when: "after_minutes", minutes: 60 } });
+    await ready();
+    const days = screen.getByRole("group", { name: "Days" });
+    await user.click(within(days).getByRole("checkbox", { name: "Mon" }));
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    const error = await screen.findByText("Tick at least one day.");
+    expect(days).toHaveAttribute("aria-describedby", error.id);
+    expect(days).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("says a conditions-only restore falls back to 24 hours", async () => {
+    const user = userEvent.setup();
+    renderDetail(saved);
+    await ready();
+    await user.selectOptions(screen.getByRole("combobox", { name: "When to put it back" }), "conditions_only");
+    expect(screen.getByText(/If it never happens, the unit is put back after 24 hours\./)).toBeInTheDocument();
+  });
+
   it("offers windows of the current tariff in words", async () => {
     renderDetail(saved);
     await ready();

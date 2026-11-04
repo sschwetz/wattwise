@@ -49,6 +49,11 @@ describe("runDescription", () => {
     expect(runDescription(run({ kind: "restore", message: "Back to cool" }), "x")).toBe("Restored: Back to cool");
     expect(runDescription(run({ kind: "test" }), "x")).toBe("Test run");
   });
+  it("says a skipped or failed restore did not restore", () => {
+    expect(runDescription(run({ kind: "restore", outcome: "skipped", message: "owner override" }), "x")).toBe("Restore skipped: owner override");
+    expect(runDescription(run({ kind: "restore", outcome: "skipped" }), "x")).toBe("Restore skipped");
+    expect(runDescription(run({ kind: "restore", outcome: "failed", message: "not confirmed" }), "x")).toBe("Restore failed: not confirmed");
+  });
   it("falls back to a plain default by outcome", () => {
     expect(runDescription(run({ outcome: "skipped" }), "Turn off")).toBe("Turn off: Skipped");
     expect(runDescription(run({ outcome: "overridden" }), "Turn off")).toBe("Turn off: Changed by you");

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useSites } from "../sites/useSites";
-import { formatRunTime, useNow } from "./runFormat";
+import { formatRunTime } from "./runFormat";
+import { useNow } from "../dashboard/useNow";
 import { hintClass } from "./styles";
 import type { ActorFailure, ActorFailureKind } from "./types";
 import { useActorFailures, useActorInstances } from "./useActors";
@@ -64,7 +65,8 @@ export function FailuresTile({ siteId }: { siteId: number }) {
   const failures = useActorFailures(siteId);
   if (!instances.data || instances.data.length === 0) return null;
   const href = `/sites/${siteId}/schedule`;
-  if (failures.isError) return <p className={hintClass}>Schedule status unavailable</p>;
+  // A failed background refetch keeps the failures already shown.
+  if (failures.isError && !failures.data) return <p className={hintClass}>Schedule status unavailable</p>;
   if (!failures.data) return null;
   if (failures.data.length === 0) {
     return (

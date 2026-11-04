@@ -77,11 +77,11 @@ function MultiChoiceField({ param, input, errorId }: FieldProps) {
     input.onChange({ kind: "value", value: order.filter((v) => next.includes(v)) });
   }
   return (
-    <fieldset className="flex flex-wrap gap-x-4 gap-y-2 text-sm" {...invalidProps(errorId, input.error)}>
+    <fieldset className="flex flex-wrap gap-x-4 gap-y-2 text-sm" aria-describedby={input.error ? errorId : undefined}>
       <legend className="mb-1.5 text-ink">{param.label}</legend>
       {param.options.map((o) => (
         <label key={o.value} className="flex items-center gap-1.5 text-ink">
-          <input type="checkbox" className="accent-solar" checked={picked.includes(o.value)} onChange={() => toggle(o.value)} />
+          <input type="checkbox" className="accent-solar" checked={picked.includes(o.value)} onChange={() => toggle(o.value)} aria-invalid={input.error ? true : undefined} />
           {o.label}
         </label>
       ))}

@@ -38,6 +38,9 @@ function WhenFields({ model }: { model: EditorModel }) {
           <input type="number" min={1} step={1} value={restore.minutes} onChange={(e) => change({ minutes: e.target.value })} className={`${inputClass} max-w-32`} {...invalidProps(errorId, error)} />
         </label>
       )}
+      {restore.when === "conditions_only" && (
+        <p className={hintClass}>Puts it back when a condition under Restore early when is met. If it never happens, the unit is put back after 24 hours.</p>
+      )}
       {restore.when === "at_time" && (
         <label className={labelClass}>
           Put it back at (HH:MM, site time)

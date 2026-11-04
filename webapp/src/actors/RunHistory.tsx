@@ -1,6 +1,7 @@
 import { QueryError } from "../components/QueryError";
 import { Spinner } from "../components/Spinner";
-import { formatRunTime, outcomeLabel, outcomeTone, runDescription, useNow } from "./runFormat";
+import { formatRunTime, outcomeLabel, outcomeTone, runDescription } from "./runFormat";
+import { useNow } from "../dashboard/useNow";
 import { cardClass } from "./styles";
 import type { ActorInstance, ActorRun, ActorSchedule } from "./types";
 import { useScheduleRuns } from "./useActors";
@@ -26,7 +27,7 @@ function RunRow({ row }: { row: RunRowData }) {
   return (
     <li className="flex items-start gap-3 py-2 text-sm">
       <time dateTime={run.trigger_at} className="w-32 shrink-0 text-ink-muted">{formatRunTime(run.trigger_at, timezone, now)}</time>
-      <span className="min-w-0 flex-1 text-ink">{runDescription(run, actionLabel)}</span>
+      <span className="min-w-0 flex-1 break-words text-ink">{runDescription(run, actionLabel)}</span>
       <span data-testid="outcome" className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${outcomeTone(run.outcome)}`}>
         {outcomeLabel(run.outcome)}
       </span>

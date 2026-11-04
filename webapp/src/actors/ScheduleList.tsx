@@ -1,4 +1,5 @@
-import { formatRunTime, outcomeLabel, useNow } from "./runFormat";
+import { formatRunTime, outcomeLabel } from "./runFormat";
+import { useNow } from "../dashboard/useNow";
 import type { ActorInstance, ActorRunListItem, ActorSchedule } from "./types";
 import { useRuns } from "./useActors";
 import { buttonClass, cardClass, primaryButtonClass } from "./styles";

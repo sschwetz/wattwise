@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 import { errorMessage } from "../api/client";
 import type { DemandWindow } from "../billing/useBilling";
 import { type SaveState, SubmitButton } from "../components/SubmitButton";
@@ -10,7 +10,8 @@ import { type DeleteControls, DeleteSchedule } from "./DeleteSchedule";
 import type { EditorModel } from "./editorModel";
 import { RestoreStep } from "./RestoreStep";
 import { RetryStep } from "./RetryStep";
-import { alignParams, applyRestorable, conditionReadings, emptyForm, fromSchedule, type SchedulePayload, toPayload, validateForm } from "./scheduleForm";
+import { alignParams, applyRestorable, conditionReadings, emptyForm, fromSchedule, type SchedulePayload, toPayload } from "./scheduleForm";
+import { validateForm } from "./scheduleValidation";
 import { Step } from "./Step";
 import { noticeClass, primaryButtonClass } from "./styles";
 import type { ActorInstance, ActorSchedule, Capabilities } from "./types";
@@ -39,20 +40,21 @@ function initialForm({ schedule, instance, capabilities, windows }: EditorSetup)
 }
 
 function EnabledSwitch({ checked, onChange, disabled }: { checked: boolean; onChange: (on: boolean) => void; disabled: boolean }) {
+  const labelId = useId();
   return (
     <div className="flex items-center gap-3">
       <button
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-label="Enabled"
+        aria-labelledby={labelId}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={`relative h-6 w-11 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50 ${checked ? "bg-solar" : "bg-line"}`}
       >
         <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${checked ? "translate-x-5" : ""}`} />
       </button>
-      <span className="text-sm text-ink">Enabled</span>
+      <span id={labelId} className="text-sm text-ink">Enabled</span>
     </div>
   );
 }

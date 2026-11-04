@@ -35,8 +35,7 @@ function mockData({ instances = [{ id: 3, auth_state: null }], failures = [], si
   });
 }
 
-function renderTile() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderTile(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
@@ -115,6 +114,19 @@ describe("FailuresTile", () => {
     renderTile();
     expect(await screen.findByText("Schedule status unavailable")).toBeInTheDocument();
     expect(screen.queryByText("All schedules OK")).not.toBeInTheDocument();
+  });
+
+  it("keeps showing cached failures when a background refetch errors", async () => {
+    mockData({ failures: [failure(1)] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderTile(queryClient);
+    await screen.findByRole("region", { name: "Needs attention" });
+    mockData({ failures: new Error("boom") });
+    await queryClient.refetchQueries();
+    await vi.waitFor(() => expect(queryClient.getQueryCache().getAll().some((q) => q.state.status === "error")).toBe(true));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByRole("region", { name: "Needs attention" })).toHaveTextContent("Message 1");
+    expect(screen.queryByText("Schedule status unavailable")).not.toBeInTheDocument();
   });
 
   it("waits for the site time zone before formatting times", async () => {
