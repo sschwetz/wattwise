@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import type { Site } from "../sites/useSites";
 
@@ -11,22 +12,27 @@ function chipClass(selected: boolean, enabled: boolean): string {
   return `${chipBase} ${state}${disabled}`;
 }
 
-/** One chip per site (disabled sites included) plus a trailing Add chip. */
+/** One chip per enabled site plus a trailing Add chip. Disabled sites stay hidden
+ * until the toggle is on, except the one currently selected. */
 export function SiteChips({
   sites,
   selectedId,
-  tab,
+  hrefFor,
 }: {
   sites: Site[];
   selectedId: number | undefined;
-  tab: string;
+  hrefFor: (siteId: number) => string;
 }) {
+  const [showDisabled, setShowDisabled] = useState(false);
+  const hasDisabled = sites.some((site) => !site.enabled);
+  const visible = sites.filter((site) => site.enabled || showDisabled || site.id === selectedId);
+
   return (
     <nav aria-label="Sites" className="flex gap-2 overflow-x-auto pb-1">
-      {sites.map((site) => (
+      {visible.map((site) => (
         <NavLink
           key={site.id}
-          to={`/settings/sites/${site.id}/${tab}`}
+          to={hrefFor(site.id)}
           aria-label={site.enabled ? undefined : `${site.name} (disabled)`}
           className={chipClass(site.id === selectedId, site.enabled)}
         >
@@ -36,6 +42,16 @@ export function SiteChips({
       <NavLink to="/sites/new" className={chipClass(false, true)}>
         Add
       </NavLink>
+      {hasDisabled && (
+        <button
+          type="button"
+          aria-pressed={showDisabled}
+          onClick={() => setShowDisabled((on) => !on)}
+          className="ml-auto shrink-0 rounded-full px-3 py-1 text-sm text-ink-muted transition-colors hover:text-ink"
+        >
+          {showDisabled ? "Hide disabled" : "Show disabled"}
+        </button>
+      )}
     </nav>
   );
 }

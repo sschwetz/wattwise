@@ -220,17 +220,27 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("link", { name: "Cabin" })).not.toHaveAttribute("aria-current");
   });
 
-  it("shows a chip per site including disabled ones, and an Add chip last", async () => {
+  it("shows a chip per enabled site, and an Add chip last", async () => {
     renderAt("/settings/sites/7/general");
     const chips = await screen.findByRole("navigation", { name: "Sites" });
     const links = Array.from(chips.querySelectorAll("a"));
     expect(links.map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual([
-      "Home (disabled)",
       "Cabin",
       "Shed",
       "Add",
     ]);
-    expect(links[3]).toHaveAttribute("href", "/sites/new");
+    expect(links[2]).toHaveAttribute("href", "/sites/new");
+  });
+
+  it("hides other disabled sites until Show disabled is clicked", async () => {
+    renderAt("/settings/sites/9/general");
+    const chips = await screen.findByRole("navigation", { name: "Sites" });
+    const labels = () => Array.from(chips.querySelectorAll("a")).map((a) => a.getAttribute("aria-label") ?? a.textContent);
+    expect(labels()).toEqual(["Cabin", "Shed", "Add"]);
+    await userEvent.click(screen.getByRole("button", { name: "Show disabled" }));
+    expect(labels()).toEqual(["Home (disabled)", "Cabin", "Shed", "Add"]);
+    await userEvent.click(screen.getByRole("button", { name: "Hide disabled" }));
+    expect(labels()).toEqual(["Cabin", "Shed", "Add"]);
   });
 
   it("changes the siteId in the URL when a chip is clicked, keeping the tab", async () => {

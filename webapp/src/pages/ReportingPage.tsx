@@ -131,7 +131,7 @@ export function ReportingPage() {
   const { siteId } = useParams<{ siteId: string }>();
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
+    <div className="space-y-6">
       <h1 className="font-display text-2xl font-semibold text-ink">Reporting</h1>
       <HistoryAndCost siteId={Number(siteId)} />
     </div>
