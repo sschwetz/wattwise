@@ -92,7 +92,8 @@ def _sign_in_failures(instance: ActorInstance, now: datetime.datetime) -> list[A
 
 
 def _failed_runs(db: Session, instance: ActorInstance) -> list[ActorFailure]:
-    """Failed action and restore runs with no later run of the same schedule that ended ok, skipped or overridden."""
+    """The latest failed action or restore run of each schedule, when no later run
+    of that schedule ended ok, skipped or overridden."""
     later = aliased(ActorRun)
     cleared = exists().where(
         later.schedule_id == ActorRun.schedule_id,
@@ -108,9 +109,10 @@ def _failed_runs(db: Session, instance: ActorInstance) -> list[ActorFailure]:
             ActorRun.outcome == RunOutcome.FAILED,
             ~cleared,
         )
-        .order_by(ActorRun.trigger_at)
+        .order_by(ActorRun.trigger_at, ActorRun.id)
     )
-    return [_run_failed(instance, run, schedule) for run, schedule in db.execute(stmt).all()]
+    latest = {schedule.id: (run, schedule) for run, schedule in db.execute(stmt).all()}
+    return [_run_failed(instance, run, schedule) for run, schedule in latest.values()]
 
 
 def _run_failed(instance: ActorInstance, run: ActorRun, schedule: ActorSchedule) -> ActorFailure:

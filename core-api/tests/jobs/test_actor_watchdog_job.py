@@ -39,6 +39,17 @@ def test_watchdog_emails_silent_actor(db, site):
     assert "not reported" in body
 
 
+def test_watchdog_skips_restore_disabled_run_with_silent_actor(db, site):
+    instance = make_instance(db, site, last_seen_at=None)
+    schedule = make_schedule(db, instance, restore={"enabled": False}, notify=True)
+    run = make_run(db, schedule, NOW - datetime.timedelta(hours=2), RunOutcome.OK)
+    sender = FakeEmailSender()
+    run_actor_watchdog_job(db, NOW, sender)
+    assert sender.sent == []
+    db.refresh(run)
+    assert run.watchdog_notified_at is None
+
+
 def test_watchdog_silent_when_notify_off(db, site):
     run = stuck_run(db, site, notify=False)
     sender = FakeEmailSender()

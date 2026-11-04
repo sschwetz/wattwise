@@ -85,6 +85,15 @@ def test_discovery_keeps_restore_only_with_unfinished_run(http, db, site):
     assert [(e["instance_id"], e["restore_only"]) for e in body] == [(i.id, True)]
 
 
+def test_discovery_omits_disabled_instance_whose_run_never_restores(http, db, site):
+    i = _instance(db, site, enabled=False)
+    schedule = _schedule(db, i)
+    schedule.restore = {"enabled": False}
+    db.commit()
+    _open_run(db, schedule)
+    assert _discover(http).json() == []
+
+
 def test_discovered_config_merges_and_encrypts(http, db, site):
     i = _instance(db, site, config={"a": 1, "b": 2}, auth_state={"old": 1})
     r = http.patch(f"/api/v1/actor/instances/{i.id}/discovered-config", headers=HEADERS,

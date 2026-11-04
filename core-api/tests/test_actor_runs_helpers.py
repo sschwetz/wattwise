@@ -62,3 +62,17 @@ def test_other_instance_runs_ignored(db, schedule, site):
     db.add(other)
     db.commit()
     assert not has_unfinished_action_run(db, other.id)
+
+
+@pytest.mark.parametrize(
+    ("restore", "unfinished"),
+    [({"enabled": False}, False), ({"enabled": True}, True), ({}, True), ({"enabled": "no"}, True)],
+)
+def test_restore_disabled_action_is_not_unfinished(db, schedule, restore, unfinished):
+    """No restore row will ever exist for a schedule with restore disabled. A
+    missing or malformed enabled flag counts as enabled."""
+    schedule.restore = restore
+    db.commit()
+    _add(db, schedule, RunKind.ACTION, RunOutcome.OK)
+    assert has_unfinished_action_run(db, schedule.instance_id) is unfinished
+    assert len(unfinished_action_runs(db, schedule.instance_id)) == int(unfinished)

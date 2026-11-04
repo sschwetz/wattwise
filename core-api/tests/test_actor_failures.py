@@ -152,6 +152,30 @@ def test_actor_silent_with_unfinished_run(db, site):
     assert kinds(db, site) == ["actor_silent"]
 
 
+def test_restore_disabled_run_with_silent_actor_is_not_a_failure(db, site):
+    schedule = make_schedule(db, make_instance(db, site, last_seen_at=None), restore={"enabled": False})
+    make_run(db, schedule, NOW - datetime.timedelta(hours=1), RunOutcome.OK)
+    assert kinds(db, site) == []
+
+
+def test_one_run_failed_per_schedule_dated_by_the_latest_failure(db, site):
+    schedule = make_schedule(db, make_instance(db, site))
+    make_run(db, schedule, NOW - datetime.timedelta(hours=5), RunOutcome.FAILED)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=4), RunOutcome.OK, kind=RunKind.TEST)
+    action = make_run(db, schedule, NOW - datetime.timedelta(hours=3), RunOutcome.FAILED)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=2), RunOutcome.FAILED, kind=RunKind.TEST)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=1), RunOutcome.FAILED, kind=RunKind.RESTORE,
+             parent=action.id)
+    other = make_schedule(db, make_instance(db, site))
+    make_run(db, other, NOW - datetime.timedelta(hours=6), RunOutcome.FAILED)
+    failures = current_failures(db, site.id, NOW)
+    assert [(f.kind, f.schedule_id, f.since) for f in failures] == [
+        ("run_failed", other.id, NOW - datetime.timedelta(hours=6)),
+        ("run_failed", schedule.id, NOW - datetime.timedelta(hours=1)),
+    ]
+    assert failures[1].message.startswith("The restore failed")
+
+
 def test_silent_actor_without_unfinished_run_is_not_a_failure(db, site):
     schedule = make_schedule(db, make_instance(db, site, last_seen_at=None))
     action = make_run(db, schedule, NOW - datetime.timedelta(minutes=30), RunOutcome.OK)
