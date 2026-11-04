@@ -262,6 +262,15 @@ async def _start_poll(api: ActronAirAPI, state: SignInState, now: datetime.datet
     state.task = asyncio.create_task(
         api.poll_for_token(code.device_code, interval=code.interval, timeout=code.expires_in)
     )
+    state.task.add_done_callback(_mark_retrieved)
+
+
+def _mark_retrieved(task: asyncio.Task[ActronAirToken | None]) -> None:
+    """Read a failed poll's exception as soon as it ends. A task dropped without anyone
+    reading it makes asyncio log "Task exception was never retrieved" with the library's
+    text; `_poll_outcome` still sees the exception through `task.result()`."""
+    if not task.cancelled():
+        task.exception()
 
 
 async def _post_code(instance: Instance, client: CoreApiClient, state: SignInState) -> None:

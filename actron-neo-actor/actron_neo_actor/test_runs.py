@@ -16,6 +16,10 @@ from actron_neo_actor.view import TickView
 
 INTERRUPTED = "the actor restarted during the test"
 RESTORE_OFF = "applied; restore is off for this schedule"
+EXPIRED = "expired"
+# A test run that waited longer than this (the actor was down, or the site or
+# instance was disabled) is not run: the owner is no longer watching for it.
+TEST_EXPIRY = datetime.timedelta(minutes=10)
 # After a stop, the restore gets this long from the stop: a try starts only if its confirm window
 # can end inside it.
 STOP_RESTORE_SECONDS = 60
@@ -78,7 +82,9 @@ async def triage(env: Env, view: TickView, run: Run) -> Schedule | None:
     While an action holds the unit, a test would save the actor's own change as
     the state to put back, so it is skipped like an overlapping schedule."""
     schedule = view.schedules.get(run.schedule_id)
-    if view.unfinished:
+    if run.outcome == "pending" and env.clock() - run.trigger_at > TEST_EXPIRY:
+        await update(env, run, "skipped", EXPIRED)
+    elif view.unfinished:
         await update(env, run, "skipped", OTHER_ACTIVE)
     elif schedule is None:
         await update(env, run, "failed", "schedule is not active")

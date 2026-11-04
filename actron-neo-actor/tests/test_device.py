@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import datetime
 import json
 import logging
@@ -656,3 +657,58 @@ def test_restore_after_system_off_skips_mode_and_power_when_owner_changed_both()
     result = run(device.restore(snapshot, current))
     assert result == RestoreResult(restored=[], skipped=["mode", "power"])
     assert len(api.commands) == sent
+
+
+# Confirmation needs a state seen after the command was sent
+
+
+def test_apply_does_not_confirm_on_a_stale_state_that_matches():
+    device, api, clock = make(FakeActronApi(raw_state(is_on=False)))
+    run(device.refresh())  # the cached state says off
+    api.owner_sets("UserAirconSettings.isOn", True)  # the unit is really on
+    api.respond_to_commands = False
+    with pytest.raises(DeviceError, match="not confirmed"):
+        run(device.apply("system_off", {}))
+    assert device.state().is_on is True
+
+
+def test_restore_does_not_confirm_on_a_stale_state_that_matches():
+    device, api, _ = make()
+    cached = run(device.refresh())  # the cached state says on
+    snapshot = device.snapshot_for("system_off", {})
+    api.owner_sets("UserAirconSettings.isOn", False)  # the unit is really off
+    api.respond_to_commands = False
+    off = dataclasses.replace(cached, is_on=False)
+    with pytest.raises(DeviceError, match="not confirmed"):
+        run(device.restore(snapshot, off))
+
+
+def test_apply_with_nothing_to_send_confirms_at_once():
+    device, api, clock = make()
+    run(device.refresh())
+    api.poll_error = ActronAirAPIError("down")
+    run(device.apply("set_zones", {"zones": ["Kids"], "enabled": False}))
+    assert api.commands == []
+    assert clock.elapsed() == 0
+
+
+def test_change_handler_failure_logs_the_type_name_only(caplog):
+    def handler(_state: DeviceState) -> None:
+        raise RuntimeError("response body with a secret")
+
+    device, _, _ = make(on_change=handler)
+    caplog.set_level(logging.DEBUG)
+    run(device.refresh())
+    assert "device change handler failed: RuntimeError" in caplog.text
+    assert "secret" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_zone_without_a_reported_temperature_has_no_reading():
+    raw = raw_state()
+    del raw["RemoteZoneInfo"][2]["LiveTemp_oC"]
+    device, _, _ = make(FakeActronApi(raw))
+    state = run(device.refresh())
+    assert state.zone_temps_c == {"Family": 24.0, "Master": 23.5}
+    assert "zone_temp_c@Kids" not in state.readings()
+    assert state.enabled_zones["Kids"] is False

@@ -81,16 +81,21 @@ class _Push:
         return self.started and self.connected and not self.stopped
 
 
-async def _switch_zones(status: ActronAirStatus, params: dict, state: DeviceState) -> None:
+async def _switch_zones(status: ActronAirStatus, params: dict, state: DeviceState) -> bool:
+    """Command only the zones that differ. False when every zone is already as asked."""
     names, enabled = list(params["zones"]), bool(params["enabled"])
     check_zones(names, state)
     index = {title: i for i, title in titled_zones(status)}
-    for name in names:
-        if state.enabled_zones[name] != enabled:
-            await status.remote_zone_info[index[name]].enable(enabled)
+    differ = [name for name in names if state.enabled_zones[name] != enabled]
+    for name in differ:
+        await status.remote_zone_info[index[name]].enable(enabled)
+    return bool(differ)
 
 
-async def _dispatch(status: ActronAirStatus, action_id: str, params: dict, state: DeviceState) -> None:
+async def _dispatch(status: ActronAirStatus, action_id: str, params: dict, state: DeviceState) -> bool:
+    """Send the command. False when nothing needed sending."""
+    if action_id == "set_zones":
+        return await _switch_zones(status, params, state)
     settings = status.user_aircon_settings
     if action_id == "system_off":
         await settings.set_system_mode(AC_MODE_OFF)
@@ -98,10 +103,9 @@ async def _dispatch(status: ActronAirStatus, action_id: str, params: dict, state
         await settings.set_system_mode(str(params["mode"]))
     elif action_id == "set_temperature":
         await settings.set_temperature(clamp_setpoint(state, float(params["temperature_c"])))
-    elif action_id == "set_fan_mode":
-        await settings.set_fan_mode(str(params["fan_mode"]))
     else:
-        await _switch_zones(status, params, state)
+        await settings.set_fan_mode(str(params["fan_mode"]))
+    return True
 
 
 class ActronDevice:
@@ -122,6 +126,8 @@ class ActronDevice:
         self._clock = clock
         self._sleep = sleep
         self._state: DeviceState | None = None
+        # Counts the states stored, so a confirm can tell a state seen after a send from the cached one.
+        self._stores = 0
         self._push = _Push(delay_seconds=settings.poll_fallback_seconds)
         self._last_poll_at = clock()
         self._task: asyncio.Task[None] | None = None
@@ -171,15 +177,18 @@ class ActronDevice:
         return RestoreResult(restored=plan.restored, skipped=plan.skipped)
 
     async def _run(self, commands: list[Command]) -> None:
-        sent_at = self._clock()
-        for action_id, params in commands:
-            await self._send(action_id, params)
-        await self._confirm(commands, sent_at)
+        """Send the commands, then wait for a state seen after sending that shows them all.
+        A cached state from before the send never confirms. When nothing needed sending
+        the unit is already as asked."""
+        sent_at, stores_before = self._clock(), self._stores
+        sent = [await self._send(action_id, params) for action_id, params in commands]
+        if any(sent):
+            await self._confirm(commands, sent_at, stores_before)
 
-    async def _send(self, action_id: str, params: dict) -> None:
+    async def _send(self, action_id: str, params: dict) -> bool:
         status, state = self._status(), self._require_state()
         try:
-            await _dispatch(status, action_id, params, state)
+            return await _dispatch(status, action_id, params, state)
         except ActronAirAuthError as err:
             raise DeviceAuthError(f"{action_id}: sign-in rejected") from err
         except (ActronAirAPIError, OSError) as err:
@@ -192,18 +201,21 @@ class ActronDevice:
             detail = str(err) if type(err) is ValueError else type(err).__name__
             raise DeviceError(f"{action_id} failed: {detail}") from err
 
-    async def _confirm(self, commands: list[Command], sent_at: datetime.datetime) -> None:
+    async def _confirm(self, commands: list[Command], sent_at: datetime.datetime, stores_before: int) -> None:
         deadline = sent_at + datetime.timedelta(seconds=CONFIRM_SECONDS)
-        while not self._confirmed(commands):
+        while not self._confirmed(commands, sent_at, stores_before):
             if self._clock() >= deadline:
                 raise DeviceError("not confirmed")
             await self._sleep(CONFIRM_STEP_SECONDS)
             if self._push_quiet_since(sent_at):
                 await self._poll_quietly()
 
-    def _confirmed(self, commands: list[Command]) -> bool:
+    def _confirmed(self, commands: list[Command], sent_at: datetime.datetime, stores_before: int) -> bool:
+        """True once a state stored after the send started, at or after `sent_at`, shows every command."""
         state = self._state
-        return state is not None and all(_matches_action(a, p, state) for a, p in commands)
+        if state is None or self._stores == stores_before or state.updated_at < sent_at:
+            return False
+        return all(_matches_action(a, p, state) for a, p in commands)
 
     def _push_quiet_since(self, sent_at: datetime.datetime) -> bool:
         if not self._push.healthy:
@@ -300,11 +312,12 @@ class ActronDevice:
         new = state_from_status(status, self._clock())
         changed = new != self._state
         self._state = new
+        self._stores += 1
         if changed and self._on_change is not None:
             try:
                 self._on_change(new)
-            except Exception:
-                _LOG.exception("device change handler failed")
+            except Exception as err:  # its text or traceback could quote a response body
+                _LOG.error("device change handler failed: %s", type(err).__name__)
         return new
 
     def _status(self) -> ActronAirStatus:

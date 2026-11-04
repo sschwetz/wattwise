@@ -112,6 +112,13 @@ def _reported(model: BaseModel, name: str) -> float | None:
     return float(getattr(model, name)) if name in model.model_fields_set else None
 
 
+def _zone_temps(status: ActronAirStatus, zones: list[tuple[int, str]]) -> dict[str, float]:
+    """Zones whose sensor reported a temperature. A zone without one is left out, so a
+    condition on it has no reading rather than the library's 0.0 default."""
+    temps = {title: _reported(status.remote_zone_info[i], "live_temp_c") for i, title in zones}
+    return {title: temp for title, temp in temps.items() if temp is not None}
+
+
 def state_from_status(status: ActronAirStatus, now: datetime.datetime) -> DeviceState:
     settings = status.user_aircon_settings
     master = status.master_info
@@ -127,7 +134,7 @@ def state_from_status(status: ActronAirStatus, now: datetime.datetime) -> Device
         indoor_temp_c=_reported(master, "live_temp_c"),
         outdoor_temp_c=_reported(master, "live_outdoor_temp_c"),
         humidity_pct=_reported(master, "live_humidity_pc"),
-        zone_temps_c={title: float(status.remote_zone_info[i].live_temp_c) for i, title in zones},
+        zone_temps_c=_zone_temps(status, zones),
         updated_at=now.astimezone(datetime.UTC),
         setpoint_min_c=float(status.min_temp),
         setpoint_max_c=float(status.max_temp),

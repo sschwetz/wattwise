@@ -493,6 +493,30 @@ def test_test_run_applies_then_restores_after_the_hold():
     run(scenario())
 
 
+def test_test_run_older_than_10_minutes_is_skipped_as_expired():
+    async def scenario() -> None:
+        h = harness()
+        h.core.contexts[1] = dataclasses.replace(h.core.contexts[1], windows=[])
+        old = h.core.add_run(schedule_id=1, kind="test", trigger_at=START - 11 * MIN)
+        await h.tick()
+        done = h.core.runs[old.id]
+        assert (done.outcome, done.message) == ("skipped", "expired")
+        assert power_commands(h.api) == []
+
+    run(scenario())
+
+
+def test_test_run_10_minutes_old_still_runs():
+    async def scenario() -> None:
+        h = harness()
+        h.core.contexts[1] = dataclasses.replace(h.core.contexts[1], windows=[])
+        test = h.core.add_run(schedule_id=1, kind="test", trigger_at=START - 10 * MIN)
+        await h.tick()
+        assert h.core.runs[test.id].outcome == "ok"
+
+    run(scenario())
+
+
 def test_test_run_waits_while_an_action_holds_the_unit():
     async def scenario() -> None:
         h = harness()

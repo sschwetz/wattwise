@@ -468,3 +468,36 @@ async def test_core_api_calls_run_off_the_event_loop_thread() -> None:
         h.advance(61)
     assert len(h.core.calls) == 3
     assert h.core.threads and threading.get_ident() not in h.core.threads
+
+
+@async_test
+async def test_failed_poll_replaced_by_a_stored_token_logs_no_unretrieved_exception(caplog):
+    import gc
+
+    caplog.set_level(logging.DEBUG)
+    h = Harness()
+    await h.tick()
+    h.api.fail_poll(RuntimeError("library text from a response"))
+    await settle()
+    h.token = STORED
+    assert (await h.tick()).signed_in is True
+    gc.collect()
+    await settle()
+    assert "never retrieved" not in caplog.text
+    assert "library text" not in caplog.text
+
+
+@async_test
+async def test_failed_poll_of_a_dropped_state_logs_no_unretrieved_exception(caplog):
+    import gc
+
+    caplog.set_level(logging.DEBUG)
+    h = Harness()
+    await h.tick()
+    h.api.fail_poll(RuntimeError("library text from a response"))
+    await settle()
+    h.state = None  # the worker was dropped without cancelling
+    gc.collect()
+    await settle()
+    assert "never retrieved" not in caplog.text
+    assert "library text" not in caplog.text

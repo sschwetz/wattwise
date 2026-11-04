@@ -144,7 +144,8 @@ class CoreApiClient:
         attempts: int | None = None,
         snapshot: dict | None = None,
     ) -> Run:
-        """Only the fields given are sent."""
+        """Sends the outcome and each of message, attempts and snapshot that is not None.
+        A None is left out rather than sent, so this call cannot clear a field."""
         given = {"message": message, "attempts": attempts, "snapshot": snapshot}
         payload = {"outcome": outcome, **{k: v for k, v in given.items() if v is not None}}
         body = self._request("PATCH", f"/instances/{instance_id}/runs/{run_id}", "update run", 200, json=payload)

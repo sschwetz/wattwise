@@ -11,14 +11,14 @@ import dataclasses
 import datetime
 
 from actron_neo_actor.actions import finish
-from actron_neo_actor.device import RestoreResult
+from actron_neo_actor.device import CONFIRM_SECONDS, RestoreResult
 from actron_neo_actor.executor import Attempt, Env, create, current_state_restore, record, update, with_retries
 from actron_neo_actor.models import RetrySpec, Run, Schedule
 from actron_neo_actor.schedule_eval import early_restore_due, restore_gate_passes, restore_time
 from actron_neo_actor.unit_checks import owner_changed, restore_message
 from actron_neo_actor.view import TickView, sensed
 
-CONFIRM_WINDOW = datetime.timedelta(seconds=45)
+CONFIRM_WINDOW = datetime.timedelta(seconds=CONFIRM_SECONDS)
 OWNER_CHANGED = "owner changed the unit"
 OWNER_OVERRIDE = "owner override"
 
