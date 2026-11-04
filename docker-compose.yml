@@ -121,6 +121,18 @@ services:
         condition: service_healthy
     networks: *app-network
 
+  actron-neo-actor:
+    build: ./actron-neo-actor
+    environment:
+      CORE_API_URL: http://core-api:8000
+      ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with core-api's own ACTOR_KEY}
+    depends_on:
+      core-api:
+        condition: service_healthy
+    # Shutdown can spend about 65 s putting a unit back before the process exits.
+    stop_grace_period: 90s
+    networks: *app-network
+
 volumes:
   core_api_data:
 

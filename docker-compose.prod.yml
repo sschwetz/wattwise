@@ -46,3 +46,8 @@ services:
     image: ghcr.io/sschwetz/wattwise-local-pricing-collector:${WATTWISE_VERSION:-latest}
     build: !reset null
     restart: unless-stopped
+
+  actron-neo-actor:
+    image: ghcr.io/sschwetz/wattwise-actron-neo-actor:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
