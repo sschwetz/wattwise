@@ -1,0 +1,14 @@
+FROM python:3.12-alpine
+
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+COPY actron_neo_actor ./actron_neo_actor
+RUN uv sync --frozen --no-dev
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["/app/.venv/bin/python", "-m", "actron_neo_actor.main"]
