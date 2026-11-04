@@ -188,6 +188,14 @@ def require_source_kind(expected_kind: SourceKind):
     return _dependency
 
 
+def require_actor_key(presented: str) -> None:
+    """Raise 401 unless `presented` is the shared actor key."""
+    expected = get_settings().actor_key
+    # Bytes, not str: compare_digest raises TypeError on non-ASCII str.
+    if not secrets.compare_digest(presented.encode("utf-8"), expected.encode("utf-8")):
+        raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
+
+
 def get_actor_instance(
     instance_id: int,
     x_actor_key: str = Header(...),
@@ -198,10 +206,7 @@ def get_actor_instance(
     use the same 401 for an unknown instance, so ids cannot be probed. A
     disabled instance or site is refused unless an action run still needs its
     restore, so the actor can put the device back."""
-    expected = get_settings().actor_key
-    # Bytes, not str: compare_digest raises TypeError on non-ASCII str.
-    if not secrets.compare_digest(x_actor_key.encode("utf-8"), expected.encode("utf-8")):
-        raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
+    require_actor_key(x_actor_key)
     instance = db.get(ActorInstance, instance_id)
     if instance is None or instance.provider != x_actor_provider:
         raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
