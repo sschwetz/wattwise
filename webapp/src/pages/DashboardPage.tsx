@@ -2,6 +2,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useActiveDemandWindow } from "../billing/useBilling";
+import { FailuresTile } from "../actors/FailuresTile";
 import { compassDirection } from "../dashboard/compass";
 import { ChartFrame, ErrorAlert, ResetZoomButton } from "../dashboard/chartParts";
 import { DataFreshness } from "../dashboard/DataFreshness";
@@ -356,6 +357,7 @@ function LiveTiles({ siteId, live }: { siteId: number; live: LiveStream }) {
 
   return (
     <div className="space-y-6" data-testid="live-tiles">
+      <FailuresTile siteId={siteId} />
       {energy.isError && <ErrorAlert message="Failed to load live readings." />}
       <MetricTileGrid readings={energyReadings} labels={TILE_LABELS} units={TILE_UNITS} siteId={siteId} />
       <BillingPeriodTiles siteId={siteId} />

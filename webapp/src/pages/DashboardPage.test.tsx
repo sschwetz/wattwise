@@ -896,3 +896,22 @@ describe("DashboardPage live stream", () => {
     expect(await screen.findByText("1000 W")).toBeInTheDocument();
   });
 });
+
+describe("DashboardPage failures tile", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  it("dashboard renders the tile above the metric tiles", async () => {
+    mockApi({ production_w: [{ ts: "2026-10-01T00:00:00Z", metric: "production_w", value: 2500 }] });
+    const base = vi.mocked(apiFetch).getMockImplementation()!;
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path.endsWith("/actors/instances")) return Promise.resolve([{ id: 3, auth_state: null }]);
+      return base(path);
+    });
+    renderPage();
+    const tile = await screen.findByText("All schedules OK");
+    const live = await screen.findByText("2500 W");
+    expect(tile.compareDocumentPosition(live) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
