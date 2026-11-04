@@ -262,7 +262,7 @@ def update_actor_run(
     email_sender: EmailSender = Depends(get_email_sender),
 ) -> ActorRun:
     run = _instance_run(db, instance, run_id)
-    if run.outcome in _TERMINAL:
+    if run.outcome in _TERMINAL and not _is_override(run.outcome, payload.outcome):
         raise AppError(409, "run_finished", "This run has already finished")
     if payload.outcome == RunOutcome.PENDING:
         raise AppError(422, "invalid_outcome", "A run cannot return to pending")
@@ -270,6 +270,11 @@ def update_actor_run(
     if payload.outcome == RunOutcome.FAILED:
         _email_failure(db, run, email_sender)
     return run
+
+
+def _is_override(current: RunOutcome, new: RunOutcome) -> bool:
+    """The one change allowed on a finished run: the owner changed the unit after an ok action."""
+    return current == RunOutcome.OK and new == RunOutcome.OVERRIDDEN
 
 
 def _check_restore_parent(db: Session, payload: RunCreate) -> None:
@@ -301,6 +306,9 @@ def _transition_run(db: Session, run: ActorRun, payload: RunUpdate, now: datetim
     if payload.outcome == RunOutcome.RUNNING:
         values["started_at"] = now
         allowed, lost = (RunOutcome.PENDING,), AppError(409, "run_not_pending", "This run is no longer pending")
+    elif _is_override(run.outcome, payload.outcome):
+        # finished_at stays as the action set it.
+        allowed, lost = (RunOutcome.OK,), AppError(409, "run_finished", "This run has already finished")
     else:
         values["finished_at"] = now
         allowed = (RunOutcome.PENDING, RunOutcome.RUNNING)

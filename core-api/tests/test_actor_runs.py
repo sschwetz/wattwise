@@ -218,3 +218,65 @@ def test_lost_terminal_race_changes_nothing_and_sends_no_email(http, db, inst, f
     row = db.get(ActorRun, run["id"])
     assert (row.message, row.snapshot) == ("winner", {"w": 1})
     assert row.finished_at.replace(tzinfo=UTC) == finished
+
+
+def _finished(http, inst, sched, outcome="ok"):
+    run = _create(http, inst, sched).json()
+    path = _url(inst, f"/runs/{run['id']}")
+    http.patch(path, json={"outcome": "running"}, headers=HEADERS)
+    return path, http.patch(path, json={"outcome": outcome}, headers=HEADERS).json()
+
+
+def test_ok_run_can_become_overridden_and_keeps_finished_at(http, db, inst):
+    path, done = _finished(http, inst, _schedule(db, inst))
+    r = http.patch(path, json={"outcome": "overridden", "message": "owner changed the unit"}, headers=HEADERS)
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["outcome"], body["message"]) == ("overridden", "owner changed the unit")
+    assert body["finished_at"] == done["finished_at"]
+
+
+def test_ok_run_cannot_become_failed(http, db, inst):
+    path, _ = _finished(http, inst, _schedule(db, inst))
+    r = http.patch(path, json={"outcome": "failed"}, headers=HEADERS)
+    assert (r.status_code, r.json()["code"]) == (409, "run_finished")
+
+
+@pytest.mark.parametrize("outcome", ["ok", "overridden", "failed"])
+def test_overridden_run_is_final(http, db, inst, outcome):
+    path, _ = _finished(http, inst, _schedule(db, inst))
+    http.patch(path, json={"outcome": "overridden"}, headers=HEADERS)
+    r = http.patch(path, json={"outcome": outcome}, headers=HEADERS)
+    assert (r.status_code, r.json()["code"]) == (409, "run_finished")
+
+
+@pytest.mark.parametrize("outcome", ["skipped", "failed"])
+def test_only_ok_runs_can_become_overridden(http, db, inst, outcome):
+    path, _ = _finished(http, inst, _schedule(db, inst), outcome)
+    r = http.patch(path, json={"outcome": "overridden"}, headers=HEADERS)
+    assert (r.status_code, r.json()["code"]) == (409, "run_finished")
+
+
+def test_lost_override_race_is_409(http, db, inst, monkeypatch):
+    from sqlalchemy import update
+    from sqlalchemy.orm.attributes import set_committed_value
+
+    from core_api.routers import actor as actor_module
+
+    path, done = _finished(http, inst, _schedule(db, inst))
+    real = actor_module._instance_run
+
+    def racing(db_, instance, run_id):
+        found = real(db_, instance, run_id)
+        # Another request overrides the run after this handler has read it as ok.
+        db_.execute(update(ActorRun).where(ActorRun.id == run_id).values(
+            outcome=RunOutcome.OVERRIDDEN, message="winner").execution_options(synchronize_session=False))
+        db_.commit()
+        set_committed_value(found, "outcome", RunOutcome.OK)
+        return found
+
+    monkeypatch.setattr(actor_module, "_instance_run", racing)
+    r = http.patch(path, json={"outcome": "overridden", "message": "loser"}, headers=HEADERS)
+    assert (r.status_code, r.json()["code"]) == (409, "run_finished")
+    db.expire_all()
+    assert db.get(ActorRun, done["id"]).message == "winner"
