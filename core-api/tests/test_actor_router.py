@@ -272,4 +272,4 @@ def test_invalid_discovered_config_does_not_echo_the_sign_in_code(http, db, site
                        json={"auth_state": auth_state})
     assert r.status_code == 422
     assert SIGN_IN_CODE not in r.text and "example.com" not in r.text
-    assert SIGN_IN_CODE not in caplog.text
+    assert SIGN_IN_CODE not in caplog.text and "example.com" not in caplog.text

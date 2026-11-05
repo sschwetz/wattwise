@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from core_api.actor_schemas import ActorInstanceView, instance_view
+from core_api.actor_schemas import ActorInstanceView, instance_view, shown_auth_state
 from core_api.deps import get_current_user, get_db_session
 from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
@@ -591,6 +591,11 @@ def test_instance_view_redacts_for_anyone_but_the_owner(db, site, user):
     assert CODE not in shown and LINK not in shown and '"signing_in":true' in shown
     inst.auth_state = None
     assert instance_view(inst, site, viewer).auth_state is None
+
+
+@pytest.mark.parametrize("stored", ["QZXW-7731", ["QZXW-7731"], 7])
+def test_shown_auth_state_hides_a_malformed_value_from_a_viewer(stored):
+    assert shown_auth_state(stored, is_owner=False) == {"signing_in": True}
 
 
 def test_instance_view_cannot_be_built_from_the_row_directly(db, site):

@@ -141,8 +141,8 @@ Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET/POST /instances`, `PATCH/DELETE /instances/{iid}` | Manage the device accounts. `DELETE` is refused with 409 `unit_held_off` while an action run owes a restore. Responses are built by `instance_view`, which returns the sign-in code and link in `auth_state` to the site owner only; a viewer gets `{"signing_in": true}`. |
-| `POST /instances/{iid}/sign-in/reset` | Drop the stored refresh token. Same 409 rule. |
+| `GET/POST /instances`, `PATCH/DELETE /instances/{iid}` | Manage the device accounts. `DELETE` is refused with 409 `unit_held_off` while an action run owes a restore and returns 204 otherwise. The `GET`, `POST` and `PATCH` responses are built by `instance_view`, which returns the sign-in code and link in `auth_state` to the site owner only; a viewer gets `{"signing_in": true}`. |
+| `POST /instances/{iid}/sign-in/reset` | Drop the stored refresh token. Same 409 rule. The response is built by `instance_view` too. |
 | `GET/POST /schedules`, `PATCH/DELETE /schedules/{sid}` | Manage schedules. Writes are validated against the instance's capabilities (422 `invalid_schedule` or `no_capabilities`). |
 | `POST /schedules/{sid}/test` | Queue a test run. 409 `instance_disabled` or `no_capabilities`. |
 | `GET /runs?limit=`, `GET /schedules/{sid}/runs?limit=` | Run history, newest first. `limit` is 1 to 200, default 50. |

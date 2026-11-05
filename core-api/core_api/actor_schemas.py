@@ -208,7 +208,8 @@ class ActorInstancePatch(_Strict):
 
 
 class ActorInstanceView(BaseModel):
-    """Owner-facing instance. Never carries `config`, which holds the provider refresh token.
+    """An instance as the Schedule page shows it, to the site owner and to viewers. Never
+    carries `config`, which holds the provider refresh token.
 
     Build it with `instance_view`, which hides the sign-in code from anyone but the site owner.
     It has no `from_attributes`, so a route cannot return the database row in its place."""
@@ -227,9 +228,11 @@ class ActorInstanceView(BaseModel):
 
 def shown_auth_state(auth_state: dict | None, is_owner: bool) -> dict | None:
     """The owner gets the stored value. Anyone else gets `needs_sign_in` as is, and a pending
-    sign-in code and link become `{"signing_in": true}`."""
+    sign-in code and link become `{"signing_in": true}`, as does any value that is not a dict."""
     if is_owner or auth_state is None:
         return auth_state
+    if not isinstance(auth_state, dict):
+        return {"signing_in": True}
     if auth_state.get("needs_sign_in") is True:
         return {"needs_sign_in": True}
     return {"signing_in": True}
