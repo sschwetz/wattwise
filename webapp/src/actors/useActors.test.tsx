@@ -127,6 +127,17 @@ describe("actor hooks", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("polls instances faster while a viewer sees signing_in", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fetchMock.mockResolvedValueOnce(json([instance({ signing_in: true })])).mockImplementation(() => Promise.resolve(json([instance(null)])));
+    const { result } = renderHook(() => useActorInstances(7), { wrapper: wrapperFor(makeClient()) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(INSTANCES_SIGN_IN_POLL_MS + 100);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("useDeleteInstance hits the right URL and method", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
     const { result } = renderHook(() => useDeleteInstance(7), { wrapper: wrapperFor(makeClient()) });

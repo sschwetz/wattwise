@@ -4,7 +4,7 @@ import { AddInstanceForm } from "../actors/AddInstanceForm";
 import { ScheduleDetail } from "../actors/ScheduleDetail";
 import { ScheduleList, type Selection } from "../actors/ScheduleList";
 import { DisabledNotice, NeedsSignInNotice, SignInPanel } from "../actors/SignInPanel";
-import type { ActorInstance, ActorSchedule } from "../actors/types";
+import { type ActorInstance, type ActorSchedule, isSigningIn } from "../actors/types";
 import { useActorInstances, useSchedules } from "../actors/useActors";
 import { QueryError } from "../components/QueryError";
 import { Spinner } from "../components/Spinner";
@@ -12,22 +12,20 @@ import { AccessNote } from "../settings/AccessNote";
 import { useSiteAccess } from "../settings/useSiteAccess";
 import { type Site, useSites } from "../sites/useSites";
 
-function hasCode(i: ActorInstance): i is ActorInstance & { auth_state: { user_code: string; verification_uri: string; expires_at: string } } {
-  return i.auth_state !== null && "user_code" in i.auth_state;
-}
-
 function needsSignIn(i: ActorInstance): boolean {
   return i.auth_state !== null && "needs_sign_in" in i.auth_state;
 }
 
 function isBlocked(i: ActorInstance): boolean {
-  return hasCode(i) || needsSignIn(i) || !i.enabled || i.capabilities === null;
+  return isSigningIn(i.auth_state) || needsSignIn(i) || !i.enabled || i.capabilities === null;
 }
 
 /** The notice or panel for an instance that cannot run schedules yet, or null when it can. */
 function BlockedInstance({ site, instance, canEdit }: { site: Site; instance: ActorInstance; canEdit: boolean }) {
   const common = { siteId: site.id, instance, canEdit };
-  if (hasCode(instance)) return <SignInPanel auth={instance.auth_state} timezone={site.timezone} />;
+  if (isSigningIn(instance.auth_state)) {
+    return <SignInPanel auth={instance.auth_state} timezone={site.timezone} canEdit={canEdit} />;
+  }
   if (needsSignIn(instance)) return <NeedsSignInNotice {...common} />;
   if (!instance.enabled) return <DisabledNotice {...common} />;
   if (instance.capabilities === null) {

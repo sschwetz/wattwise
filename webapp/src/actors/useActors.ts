@@ -13,11 +13,12 @@ import type {
   ScheduleBody,
   SchedulePatchBody,
 } from "./types";
+import { isSigningIn } from "./types";
 
 export const FAILURES_POLL_MS = 15_000;
 /** Poll rate for run lists while a run is queued or running. */
 export const RUNS_ACTIVE_POLL_MS = 5_000;
-/** Poll rate while a sign-in panel waits for the user to approve the code. */
+/** Poll rate while a sign-in waits for the owner to approve the code (a viewer sees `signing_in`). */
 export const INSTANCES_SIGN_IN_POLL_MS = 10_000;
 
 export const actorKeys = {
@@ -32,7 +33,7 @@ const base = (siteId: number) => `/api/v1/sites/${siteId}/actors`;
 const validSite = (siteId: number) => Number.isFinite(siteId);
 
 function awaitingApproval(instances: ActorInstance[] | undefined): boolean {
-  return (instances ?? []).some((i) => i.auth_state !== null && "user_code" in i.auth_state);
+  return (instances ?? []).some((i) => isSigningIn(i.auth_state));
 }
 
 export function useActorInstances(siteId: number) {

@@ -236,6 +236,21 @@ describe("SchedulePage", () => {
     expect(screen.queryByRole("heading", { name: "Schedules" })).not.toBeInTheDocument();
   });
 
+  it("shows a viewer the signing-in line alone while there are no schedules", async () => {
+    mockApi({ instances: [instance({ auth_state: { signing_in: true }, capabilities: null })], userId: 2 });
+    renderPage();
+    expect(await screen.findByText("The owner is signing the air conditioner in to Actron.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open the Actron sign-in page" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Schedules" })).not.toBeInTheDocument();
+  });
+
+  it("shows a viewer the signing-in line above existing schedules", async () => {
+    mockApi({ instances: [instance({ auth_state: { signing_in: true } })], schedules: [schedule(1, "Evening peak")], userId: 2 });
+    renderPage();
+    expect(await screen.findByText("The owner is signing the air conditioner in to Actron.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Schedules" })).toBeInTheDocument();
+  });
+
   it("keeps existing schedules visible below a sign-in notice", async () => {
     mockApi({ instances: [instance({ auth_state: { needs_sign_in: true } })], schedules: [schedule(1, "Evening peak")] });
     renderPage();

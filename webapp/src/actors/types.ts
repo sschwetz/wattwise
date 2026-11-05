@@ -92,10 +92,19 @@ export interface DeviceStatePayload {
   setpoint_max_c: number;
 }
 
-/** The sign-in code the actor posts, or the flag it posts when the stored sign-in is lost. */
+/** The sign-in code the actor posts, or the flag it posts when the stored sign-in is lost.
+ * Only the site owner gets the code and link; anyone else gets `signing_in` in their place. */
 export type AuthState =
   | { user_code: string; verification_uri: string; expires_at: string }
+  | { signing_in: true }
   | { needs_sign_in: true };
+
+/** A sign-in in progress: the code and link for the owner, or the flag a viewer gets. */
+export type SigningInState = Exclude<AuthState, { needs_sign_in: true }>;
+
+export function isSigningIn(auth: AuthState | null): auth is SigningInState {
+  return auth !== null && ("user_code" in auth || "signing_in" in auth);
+}
 
 export interface ActorInstance {
   id: number;

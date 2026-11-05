@@ -2,9 +2,7 @@ import { useNow } from "../dashboard/useNow";
 import { useResetSignIn, useUpdateInstance } from "./useActors";
 import { errorMessage } from "../api/client";
 import { cardClass, noticeClass, primaryButtonClass, buttonClass } from "./styles";
-import type { ActorInstance, AuthState } from "./types";
-
-type CodeState = Extract<AuthState, { user_code: string }>;
+import type { ActorInstance, SigningInState } from "./types";
 
 export interface InstanceNoticeProps {
   siteId: number;
@@ -29,7 +27,12 @@ function ExpiryLine({ expiresAt, timezone }: { expiresAt: string; timezone: stri
   );
 }
 
-export function SignInPanel({ auth, timezone }: { auth: CodeState; timezone: string }) {
+/** The code and link go to the owner only. Core API leaves them out for anyone else, and this
+ * checks `canEdit` as well, so a viewer sees a plain line either way. */
+export function SignInPanel({ auth, timezone, canEdit }: { auth: SigningInState; timezone: string; canEdit: boolean }) {
+  if (!canEdit || !("user_code" in auth)) {
+    return <p className="text-sm text-ink-muted">The owner is signing the air conditioner in to Actron.</p>;
+  }
   return (
     <section className={`${cardClass} space-y-3`}>
       <h2 className="text-lg font-medium text-ink">Sign in to Actron</h2>
