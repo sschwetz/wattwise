@@ -48,6 +48,8 @@ export function useGuardedSelection(selected: Selection, apply: (next: Selection
   const { dirty, dirtyRef, report } = useDirtyFlag();
   const [held, setHeld] = useState<{ next: Selection } | null>(null);
   const leave = useLeaveGuard(dirty);
+  // The edits went away underneath the dialog (the editor unmounted), so there is nothing to ask about.
+  if (held !== null && !dirty) setHeld(null);
   const select = (next: Selection) => {
     if (dirtyRef.current && !sameSelection(next, selected)) setHeld({ next });
     else apply(next);

@@ -70,6 +70,37 @@ describe("isDirty", () => {
     expect(isDirty({ ...named, name: "7" }, named)).toBe(true);
   });
 
+  it("counts each kind of real edit", () => {
+    expect(edit((f) => ({ ...f, conditions: f.conditions.map((c) => ({ ...c, use: false })) }))).toBe(true);
+    expect(edit((f) => ({ ...f, trigger: { ...f.trigger, days: [0, 2, 4, 6] } }))).toBe(true);
+    expect(edit((f) => ({ ...f, trigger: { ...f.trigger, days: [0, 2] } }))).toBe(true);
+    expect(edit((f) => ({ ...f, notifyEmail: true }))).toBe(true);
+    expect(edit((f) => ({ ...f, enabled: !f.enabled }))).toBe(true);
+    expect(edit((f) => ({ ...f, retry: { ...f.retry, giveUpMinutes: "20" } }))).toBe(true);
+    expect(edit((f) => ({ ...f, retry: { ...f.retry, intervalSeconds: "31" } }))).toBe(true);
+    expect(edit((f) => ({ ...f, name: "Peak of" }))).toBe(true);
+  });
+
+  it("does not count re-typing the same value", () => {
+    expect(edit((f) => ({ ...f, name: "Peak off" }))).toBe(false);
+    expect(edit((f) => ({ ...f, retry: { ...f.retry, maxAttempts: "3" } }))).toBe(false);
+    expect(edit((f) => ({ ...f, conditions: f.conditions.map((c) => ({ ...c, value: "30.0" })) }))).toBe(false);
+    expect(edit((f) => ({ ...f, name: "Peak off\t" }))).toBe(false);
+  });
+
+  it("counts a zone toggled on or off, and not a zone toggled off and back on", () => {
+    const zoned = fromSchedule({ ...saved, action: { id: "set_zones", params: { zones: ["Lounge", "Study"] } } });
+    const zones = (value: string[]) => ({ ...zoned, params: { ...zoned.params, zones: { kind: "value" as const, value } } });
+    expect(isDirty(zones(["Lounge"]), zoned)).toBe(true);
+    expect(isDirty(zones(["Lounge", "Study", "Bed 1"]), zoned)).toBe(true);
+    expect(isDirty(zones(["Study", "Lounge"]), zoned)).toBe(false);
+  });
+
+  it("counts a change to a param named key", () => {
+    const keyed = fromSchedule({ ...saved, action: { id: "custom", params: { key: "a" } } });
+    expect(isDirty({ ...keyed, params: { key: { kind: "value", value: "b" } } }, keyed)).toBe(true);
+  });
+
   it("is false again once the edit is undone", () => {
     const changed = { ...baseline, name: "Other" };
     expect(isDirty({ ...changed, name: "Peak off" }, baseline)).toBe(false);

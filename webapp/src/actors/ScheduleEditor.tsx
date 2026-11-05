@@ -116,15 +116,17 @@ function useEditorForm(setup: EditorSetup, actions: EditorActions) {
 export function ScheduleEditor({ setup, actions }: { setup: EditorSetup; actions: EditorActions }) {
   const { model, handleSubmit } = useEditorForm(setup, actions);
   const { form, setForm, canEdit } = model;
+  // While a new schedule is saving, edits would be lost when the editor moves to it.
+  const locked = !canEdit || (setup.schedule === null && actions.saveState.isPending);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-medium text-ink">{setup.title}</h2>
-        <EnabledSwitch checked={form.enabled} onChange={(enabled) => setForm({ ...form, enabled })} disabled={!canEdit} />
+        <EnabledSwitch checked={form.enabled} onChange={(enabled) => setForm({ ...form, enabled })} disabled={locked} />
       </div>
       <form onSubmit={handleSubmit} noValidate className="space-y-6">
-        <ReadOnlyFieldset readOnly={!canEdit}>
+        <ReadOnlyFieldset readOnly={locked}>
           <ActorStep model={model} instance={setup.instance} />
           <WhenStep model={model} windows={setup.windows} />
           <OnlyIfStep model={model} />

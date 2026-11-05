@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Link, MemoryRouter, Route, RouterProvider, Routes } from "react-router-dom";
+import { AuthProvider, useAuth } from "../auth/AuthContext";
+import { ProtectedRoute } from "../auth/ProtectedRoute";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import type { ActorInstance, ActorSchedule, AuthState, Capabilities } from "../actors/types";
@@ -39,6 +41,8 @@ interface Data {
   schedules?: ActorSchedule[];
   userId?: number;
   createError?: Error;
+  /** A POST waits for this before it answers. */
+  createGate?: Promise<unknown>;
   /** Schedules served for site 8, when a test switches sites. */
   schedules8?: ActorSchedule[];
 }
@@ -48,9 +52,10 @@ let current: Data = {};
 function mockApi(data: Data) {
   current = data;
   vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
-    const { instances = [], schedules = [], userId = 1, createError, schedules8 = [] } = current;
+    const { instances = [], schedules = [], userId = 1, createError, createGate, schedules8 = [] } = current;
     if (path.endsWith("/api/v1/sites")) return Promise.resolve([site, { ...site, id: 8 }]);
     if (path.endsWith("/users/me")) return Promise.resolve({ id: userId });
+    if (init?.method === "POST" && createGate) return createGate.then(() => Promise.reject(createError));
     if (init?.method === "POST" && createError) return Promise.reject(createError);
     if (init?.method) return Promise.resolve(instance());
     if (path.endsWith("/instances")) return Promise.resolve(instances);
@@ -391,6 +396,58 @@ describe("SchedulePage unsaved edits", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
+  it("locks the form while a new schedule is saving, and unlocks it with the edits kept if the save fails", async () => {
+    let fail = () => {};
+    const createGate = new Promise<void>((resolve) => { fail = resolve; });
+    mockApi({ ...twoSchedules, createGate, createError: new ApiError(500, "server_error", "Try again.", null) });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "New schedule" }));
+    await editName("Night");
+    await userEvent.type(screen.getByLabelText(/^Time/), "22:00");
+    await userEvent.click(screen.getByRole("button", { name: "Save schedule" }));
+    await waitFor(() => expect(calls("POST")).toHaveLength(1));
+    const name = screen.getByLabelText("Name");
+    expect(name).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Enabled" })).toBeDisabled();
+    await userEvent.type(name, " shift");
+    expect(name).toHaveValue("Night");
+    await act(async () => fail());
+    expect(await screen.findByText("Try again.")).toBeInTheDocument();
+    expect(name).toBeEnabled();
+    expect(name).toHaveValue("Night");
+    expect(screen.getByLabelText(/^Time/)).toHaveValue("22:00");
+    expect(leaveIsQuestioned()).toBe(true);
+  });
+
+  it("does not ask when the edited schedule is deleted, and is clean afterwards", async () => {
+    mockApi(twoSchedules);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Morning/ }));
+    await editName("Late morning");
+    await userEvent.click(screen.getByRole("button", { name: "Delete schedule" }));
+    const confirm = screen.getByRole("alertdialog", { name: "Delete this schedule?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(calls("DELETE")).toHaveLength(1));
+    expect(await screen.findByRole("heading", { name: "Evening peak" })).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog", { name: "Discard unsaved changes?" })).not.toBeInTheDocument();
+    expect(leaveIsQuestioned()).toBe(false);
+  });
+
+  it("closes the dialog when the edited schedule disappears underneath it", async () => {
+    mockApi(twoSchedules);
+    const { queryClient } = renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Morning/ }));
+    await editName("Late morning");
+    await userEvent.click(screen.getByRole("button", { name: /Evening peak/ }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    mockApi({ ...twoSchedules, schedules: [schedule(1, "Evening peak")] });
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Evening peak" })).toBeInTheDocument();
+    await editName("Late peak");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
   it("keeps the dialog and the edits while the schedules refetch", async () => {
     mockApi(twoSchedules);
     const { queryClient } = renderPage();
@@ -450,5 +507,40 @@ describe("SchedulePage leaving with unsaved edits", () => {
     expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
     await userEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     expect(await screen.findByText("Help page")).toBeInTheDocument();
+  });
+});
+
+describe("SchedulePage signing out with unsaved edits", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+    localStorage.setItem("access_token", "token");
+  });
+
+  function LogOff() {
+    const { logout } = useAuth();
+    return <button type="button" onClick={logout}>Log off</button>;
+  }
+
+  it("signs out without asking", async () => {
+    mockApi(twoSchedules);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (
+      <AuthProvider>
+        <LogOff />
+        <Routes>
+          <Route path="/login" element={<p>Login page</p>} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="/sites/:siteId/schedule" element={<SchedulePage />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
+    );
+    const router = createMemoryRouter([{ path: "*", element: tree }], { initialEntries: ["/sites/7/schedule"] });
+    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+    await editName("Late peak");
+    await userEvent.click(screen.getByRole("button", { name: "Log off" }));
+    expect(await screen.findByText("Login page")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(leaveIsQuestioned()).toBe(false);
   });
 });
