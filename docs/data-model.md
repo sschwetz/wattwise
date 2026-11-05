@@ -232,13 +232,13 @@ Three tables hold the [actors](actors.md) feature. The migration is `895863e431c
 
 | Table | Purpose |
 |---|---|
-| `actor_instances` | One signed-in device account at a site. Columns: `site_id`, `provider` (free text, `actron_neo` today), `name`, `enabled`, `config` (`EncryptedJSON`, holds the refresh token), `auth_state`, `capabilities`, `capabilities_updated_at`, `latest_readings`, `last_seen_at` (set when the actor reports readings). |
+| `actor_instances` | One signed-in device account at a site. Columns: `site_id`, `provider` (free text, `actron_neo` today), `name`, `enabled`, `config` (`EncryptedJSON`, holds the refresh token), `auth_state` (`EncryptedJSON`, holds the sign-in code and link), `capabilities`, `capabilities_updated_at`, `latest_readings`, `last_seen_at` (set when the actor reports readings). |
 | `actor_schedules` | One action on one instance: `instance_id`, `name`, `enabled`, `trigger`, `conditions`, `action`, `restore`, `retry`, `notify_email` (default false), `created_at`. |
 | `actor_runs` | One row per attempt: `schedule_id`, `kind`, `trigger_at`, `started_at`, `finished_at`, `outcome`, `message`, `attempts`, `parent_run_id`, `snapshot`, `watchdog_notified_at`. |
 
 `kind` is `action`, `restore` or `test`. `outcome` is `pending`, `running`, `ok`, `skipped`, `failed` or `overridden`. Both are text with a `CHECK` constraint. A unique constraint on (`schedule_id`, `kind`, `trigger_at`) stops a restart or a second actor process from running the same trigger twice. `parent_run_id` is set on restore rows only, is indexed, and points at the action run that holds the snapshot. Deleting a schedule or instance deletes its runs; the API does this because the foreign keys have no cascade.
 
-Only `config` is encrypted. `auth_state`, `capabilities` and `latest_readings` are plain JSON and hold no secret: `auth_state` is a sign-in code and link that expires, and `latest_readings` is the unit's state without the raw status. The owner API never returns `config`.
+`config` and `auth_state` are encrypted. Anyone holding the sign-in code could approve it for their own Actron account, so it is treated as a secret. `capabilities` and `latest_readings` are plain JSON and hold no secret: `latest_readings` is the unit's state without the raw status. The owner API never returns `config`, and returns the sign-in code and link to the site owner only.
 
 ### JSON shapes
 
@@ -308,7 +308,7 @@ The minimums are 1, 5 and 1.
 
 A param `type` is `number` (with optional `min`, `max`, `unit`), `choice`, `bool` or `multi_choice` (both choice types use `options`).
 
-`auth_state` is `{ "user_code", "verification_uri", "expires_at" }` while the actor waits for approval, `{ "needs_sign_in": true }` after Actron rejects the stored token, and `null` otherwise.
+`auth_state` is `{ "user_code", "verification_uri", "expires_at" }` while the actor waits for approval, `{ "needs_sign_in": true }` after Actron rejects the stored token, and `null` otherwise. The owner API gives a viewer `{ "signing_in": true }` in place of the code shape, so a viewer never receives the code, the link or the expiry. That shape is never stored.
 
 `latest_readings` is the unit's state exactly as the actor sent it: `is_on`, `mode`, `fan_mode`, `cool_setpoint_c`, `heat_setpoint_c`, `enabled_zones` (zone name to boolean), `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `zone_temps_c`, `setpoint_min_c`, `setpoint_max_c` and `updated_at` (UTC).
 

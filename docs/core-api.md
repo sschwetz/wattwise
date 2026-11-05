@@ -141,7 +141,7 @@ Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET/POST /instances`, `PATCH/DELETE /instances/{iid}` | Manage the device accounts. `DELETE` is refused with 409 `unit_held_off` while an action run owes a restore. |
+| `GET/POST /instances`, `PATCH/DELETE /instances/{iid}` | Manage the device accounts. `DELETE` is refused with 409 `unit_held_off` while an action run owes a restore. Responses are built by `instance_view`, which returns the sign-in code and link in `auth_state` to the site owner only; a viewer gets `{"signing_in": true}`. |
 | `POST /instances/{iid}/sign-in/reset` | Drop the stored refresh token. Same 409 rule. |
 | `GET/POST /schedules`, `PATCH/DELETE /schedules/{sid}` | Manage schedules. Writes are validated against the instance's capabilities (422 `invalid_schedule` or `no_capabilities`). |
 | `POST /schedules/{sid}/test` | Queue a test run. 409 `instance_disabled` or `no_capabilities`. |
@@ -254,7 +254,7 @@ The rule, from the Storing Secrets section of [`CLAUDE.md`](../CLAUDE.md): never
 | Passwords | bcrypt hash (`hash_password`) | The app only checks them |
 | Password-reset, email-confirmation and email-change tokens | SHA-256 (`hash_token`) | 256-bit random values cannot be brute-forced, so a plain hash is enough |
 | TOTP recovery codes | Keyed HMAC-SHA256 (`hash_recovery_code`), 16 hex characters | Short enough that a plain hash could be guessed offline from a leaked database. The HMAC key is derived from `SECRETS_ENCRYPTION_KEY`. |
-| `sources.config` (Envoy token, Enlighten login, and the rest), `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret` | Fernet encryption (`EncryptedJSON`, `EncryptedString` in `encrypted_types.py`) | The app has to send these on, so a hash would be useless |
+| `sources.config` (Envoy token, Enlighten login, and the rest), `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret`, `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link) | Fernet encryption (`EncryptedJSON`, `EncryptedString` in `encrypted_types.py`) | The app has to send these on, so a hash would be useless |
 
 Consequences to know about:
 

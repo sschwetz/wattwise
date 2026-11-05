@@ -92,7 +92,7 @@ Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadin
 | Component | Shows |
 |---|---|
 | `AddInstanceForm` | The empty state. The owner names the air conditioner (provider `actron_neo`). A viewer sees "No device is set up for this site yet." |
-| `SignInPanel` | The Actron code, its link and the expiry while the actor waits for approval. The page polls every 10 seconds (`INSTANCES_SIGN_IN_POLL_MS`). |
+| `SignInPanel` | The Actron code, its link and the expiry while the actor waits for approval, for the site owner only. A viewer gets `auth_state` as `{signing_in: true}` from Core API and sees "The owner is signing the air conditioner in to Actron." The page polls every 10 seconds (`INSTANCES_SIGN_IN_POLL_MS`) while either shape is present. |
 | `NeedsSignInNotice` | "The Actron account needs to sign in again." with **Sign in again**, which calls `POST .../instances/{id}/sign-in/reset`. A 409 `unit_held_off` shows as the error. |
 | `DisabledNotice` | Shown when the instance is disabled, with **Turn on** |
 | `ScheduleList` | The schedules per instance with an On or Off pill and the last run. **New schedule**. |

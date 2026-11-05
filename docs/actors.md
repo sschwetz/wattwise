@@ -138,6 +138,8 @@ A trigger that is no more than 10 minutes old still runs. An older one that has 
 
 The web app uses these routes under `/api/v1/sites/{site_id}/actors`. Reads need site access (owner or viewer). Every write needs the site owner; a viewer gets 403.
 
+The sign-in code and link are shown to the site owner only. Every route that returns an instance builds it with `instance_view` in `actor_schemas.py`. A viewer gets `auth_state` as `{"signing_in": true}` while a code is pending, with no `user_code`, `verification_uri` or `expires_at`, and `{"needs_sign_in": true}` as stored.
+
 | Endpoint | Purpose |
 |---|---|
 | `GET /instances`, `POST /instances` | List and add an instance. The body of `POST` is `provider` (lowercase letters, digits and underscore) and `name`. |
@@ -212,7 +214,7 @@ flowchart LR
 ### Sign-in
 
 1. The owner opens **Schedule** and adds an air conditioner (provider `actron_neo`).
-2. The actor requests an Actron device code and posts the code, the link and the expiry in `auth_state`. The page shows them.
+2. The actor requests an Actron device code and posts the code, the link and the expiry in `auth_state`, which Core API stores encrypted. The page shows the code and link to the site owner only. A viewer sees "The owner is signing the air conditioner in to Actron."
 3. The owner approves the code on the Actron page. The actor stores the refresh token in `ActorInstance.config`, an `EncryptedJSON` column, and clears `auth_state`.
 4. On later starts the actor signs in from the stored token. If Actron rotates the token, the actor stores the new one. Tokens and codes never go into logs.
 

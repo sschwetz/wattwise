@@ -134,7 +134,7 @@ The `actron-neo-actor` container runs schedules against an Actron Neo air condit
 
 1. Set `ACTOR_KEY` in `.env` (see [Secrets](#secrets)), then `docker compose up -d --build`. Core API and the actor must hold the same value.
 2. Open **Schedule** in the web app and add an air conditioner. Only the site owner can.
-3. The page shows an Actron code and a link. Open the link, sign in to Actron and enter the code. The page checks every 10 seconds, and once you approve, the actor stores the refresh token and the code disappears.
+3. The page shows an Actron code and a link to the site owner only (a viewer sees a line saying the owner is signing in). Open the link, sign in to Actron and enter the code. The page checks every 10 seconds, and once you approve, the actor stores the refresh token and the code disappears.
 4. The actor reports what the unit can do. **New schedule** is available once it has.
 5. Use **Test now** on a new schedule. It runs the action at once, ignoring the trigger and conditions, and puts the unit back after 30 seconds if the schedule restores.
 
@@ -260,7 +260,7 @@ Migrations run automatically when `core-api` starts. Take a backup first. Rollin
 
 Never commit `.env`. The repository ignores it, and only `.env.example` is tracked.
 
-Stored credentials are encrypted. `sources.config` (Envoy token, Enlighten login), `actor_instances.config` (the Actron refresh token), `users.amber_api_key` and the authenticator secrets are Fernet-encrypted with `SECRETS_ENCRYPTION_KEY`. Passwords are bcrypt hashes and recovery codes are keyed hashes. A stolen database file does not expose these values without the key. The full list and the reasoning are in [Core API](core-api.md#where-secrets-are-stored).
+Stored credentials are encrypted. `sources.config` (Envoy token, Enlighten login), `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link), `users.amber_api_key` and the authenticator secrets are Fernet-encrypted with `SECRETS_ENCRYPTION_KEY`. Passwords are bcrypt hashes and recovery codes are keyed hashes. A stolen database file does not expose these values without the key. The full list and the reasoning are in [Core API](core-api.md#where-secrets-are-stored).
 
 The consequences for you:
 
