@@ -6,7 +6,9 @@ import decimal
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from core_api.actor_schemas import ActorInstanceView, instance_view
 from core_api.deps import get_current_user, get_db_session
 from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
@@ -554,3 +556,44 @@ def test_time_trigger_needs_a_day(http, db, site):
     sid = http.post(f"{_base(site)}/schedules", json=_body(inst)).json()["id"]
     r = http.patch(f"{_base(site)}/schedules/{sid}", json={"trigger": no_days})
     assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
+
+
+CODE = "QZXW-7731"
+LINK = "https://example.com/device?code=QZXW-7731"
+PENDING = {"user_code": CODE, "verification_uri": LINK, "expires_at": "2026-11-05T03:00:00+00:00"}
+
+
+def test_owner_sees_the_sign_in_code(http, db, site):
+    _instance(db, site, auth_state=PENDING)
+    assert http.get(f"{_base(site)}/instances").json()[0]["auth_state"] == PENDING
+
+
+def test_viewer_sees_signing_in_without_the_code_or_link(http, db, site, viewer):
+    _instance(db, site, auth_state=PENDING)
+    r = http.get(f"{_base(site)}/instances")
+    assert r.json()[0]["auth_state"] == {"signing_in": True}
+    for secret in (CODE, LINK, "example.com", "user_code", "verification_uri", "expires_at"):
+        assert secret not in r.text
+
+
+def test_viewer_sees_needs_sign_in(http, db, site, viewer):
+    _instance(db, site, auth_state={"needs_sign_in": True})
+    assert http.get(f"{_base(site)}/instances").json()[0]["auth_state"] == {"needs_sign_in": True}
+
+
+def test_instance_view_redacts_for_anyone_but_the_owner(db, site, user):
+    viewer = User(email="other@example.com", password_hash="x")
+    db.add(viewer)
+    db.commit()
+    inst = _instance(db, site, auth_state=PENDING)
+    assert instance_view(inst, site, user).auth_state == PENDING
+    shown = instance_view(inst, site, viewer).model_dump_json()
+    assert CODE not in shown and LINK not in shown and '"signing_in":true' in shown
+    inst.auth_state = None
+    assert instance_view(inst, site, viewer).auth_state is None
+
+
+def test_instance_view_cannot_be_built_from_the_row_directly(db, site):
+    inst = _instance(db, site, auth_state=PENDING)
+    with pytest.raises(ValidationError):
+        ActorInstanceView.model_validate(inst)

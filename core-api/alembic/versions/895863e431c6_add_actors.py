@@ -26,7 +26,7 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=200), nullable=True),
     sa.Column('enabled', sa.Boolean(), nullable=False),
     sa.Column('config', sa.Text(), nullable=False),
-    sa.Column('auth_state', sa.JSON(), nullable=True),
+    sa.Column('auth_state', sa.Text(), nullable=True),
     sa.Column('capabilities', sa.JSON(), nullable=True),
     sa.Column('capabilities_updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('latest_readings', sa.JSON(), nullable=True),

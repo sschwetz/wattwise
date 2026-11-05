@@ -37,8 +37,9 @@ class ActorInstance(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Encrypted at rest: holds the provider refresh token.
     config: Mapped[dict] = mapped_column(EncryptedJSON, nullable=False, default=dict)
-    # Sign-in code and link while waiting for approval, or "needs_sign_in". Cleared on approval.
-    auth_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Encrypted at rest: the sign-in code and link while waiting for approval, or
+    # {"needs_sign_in": true}. Cleared on approval. Only the site owner sees the code.
+    auth_state: Mapped[dict | None] = mapped_column(EncryptedJSON, nullable=True)
     capabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     capabilities_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     latest_readings: Mapped[dict | None] = mapped_column(JSON, nullable=True)

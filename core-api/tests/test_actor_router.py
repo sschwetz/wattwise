@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 
 import pytest
 from fastapi import FastAPI
@@ -247,3 +248,28 @@ def test_discovery_needs_the_matching_provider_header(http, db, site, headers):
     _instance(db, site)
     r = http.get("/api/v1/actor/instances", params={"provider": PROVIDER}, headers=headers)
     assert (r.status_code, r.json()["code"]) == (401, "invalid_actor_key")
+
+
+SIGN_IN_CODE = "QZXW-7731"
+SIGN_IN_LINK = "https://example.com/device?code=QZXW-7731"
+
+
+def test_discovered_config_never_logs_the_sign_in_code(http, db, site, caplog):
+    i = _instance(db, site)
+    body = {"auth_state": {"user_code": SIGN_IN_CODE, "verification_uri": SIGN_IN_LINK,
+                           "expires_at": "2026-11-05T03:00:00+00:00"}}
+    with caplog.at_level(logging.DEBUG, logger="core_api"):
+        r = http.patch(f"/api/v1/actor/instances/{i.id}/discovered-config", headers=HEADERS, json=body)
+    assert r.status_code == 204
+    assert SIGN_IN_CODE not in caplog.text and "example.com" not in caplog.text
+
+
+@pytest.mark.parametrize("auth_state", [SIGN_IN_CODE, [SIGN_IN_CODE, SIGN_IN_LINK]])
+def test_invalid_discovered_config_does_not_echo_the_sign_in_code(http, db, site, caplog, auth_state):
+    i = _instance(db, site)
+    with caplog.at_level(logging.DEBUG, logger="core_api"):
+        r = http.patch(f"/api/v1/actor/instances/{i.id}/discovered-config", headers=HEADERS,
+                       json={"auth_state": auth_state})
+    assert r.status_code == 422
+    assert SIGN_IN_CODE not in r.text and "example.com" not in r.text
+    assert SIGN_IN_CODE not in caplog.text

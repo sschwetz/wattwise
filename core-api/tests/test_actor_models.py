@@ -37,6 +37,17 @@ def test_config_is_encrypted_at_rest(db, site):
     assert db.query(ActorInstance).one().config == {"refresh_token": REFRESH_TOKEN}
 
 
+def test_auth_state_is_encrypted_at_rest(db, site):
+    code = {"user_code": "QZXW-7731", "verification_uri": "https://example.com/device?code=QZXW-7731",
+            "expires_at": "2026-11-05T03:00:00+00:00"}
+    db.add(ActorInstance(site_id=site.id, provider="actron_neo", config={}, auth_state=code))
+    db.commit()
+    raw = db.execute(sa.text("SELECT auth_state FROM actor_instances")).scalar()
+    assert "QZXW-7731" not in raw and "example.com" not in raw
+    db.expire_all()
+    assert db.query(ActorInstance).one().auth_state == code
+
+
 def test_duplicate_run_key_rejected(db, site):
     schedule = _schedule(db, site)
     db.add(_run(schedule))

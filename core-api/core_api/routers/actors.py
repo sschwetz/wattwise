@@ -20,11 +20,12 @@ from core_api.actor_schemas import (
     ScheduleCreate,
     SchedulePatch,
     ScheduleView,
+    instance_view,
 )
-from core_api.deps import get_db_session, require_site_access, require_site_owner
+from core_api.deps import get_current_user, get_db_session, require_site_access, require_site_owner
 from core_api.errors import AppError
 from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
-from core_api.models.identity import Site
+from core_api.models.identity import Site, User
 
 router = APIRouter(prefix="/sites/{site_id}/actors", tags=["actors"])
 
@@ -93,20 +94,27 @@ def _delete_run_history(db: Session, schedule_ids: list[int]) -> None:
 
 
 @router.get("/instances", response_model=list[ActorInstanceView])
-def list_instances(site: Site = Depends(require_site_access), db: Session = Depends(get_db_session)):
+def list_instances(
+    site: Site = Depends(require_site_access),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
     stmt = select(ActorInstance).where(ActorInstance.site_id == site.id).order_by(ActorInstance.id)
-    return list(db.scalars(stmt))
+    return [instance_view(i, site, user) for i in db.scalars(stmt)]
 
 
 @router.post("/instances", response_model=ActorInstanceView, status_code=status.HTTP_201_CREATED)
 def create_instance(
-    payload: ActorInstanceCreate, site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
+    payload: ActorInstanceCreate,
+    site: Site = Depends(require_site_owner),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
 ):
     instance = ActorInstance(site_id=site.id, provider=payload.provider, name=payload.name, enabled=True, config={})
     db.add(instance)
     db.commit()
     db.refresh(instance)
-    return instance
+    return instance_view(instance, site, user)
 
 
 @router.patch("/instances/{instance_id}", response_model=ActorInstanceView)
@@ -114,6 +122,7 @@ def patch_instance(
     instance_id: int,
     payload: ActorInstancePatch,
     site: Site = Depends(require_site_owner),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     instance = _instance_of_site(db, site, instance_id)
@@ -121,7 +130,7 @@ def patch_instance(
         setattr(instance, field, value)
     db.commit()
     db.refresh(instance)
-    return instance
+    return instance_view(instance, site, user)
 
 
 @router.delete("/instances/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -140,7 +149,10 @@ def delete_instance(
 
 @router.post("/instances/{instance_id}/sign-in/reset", response_model=ActorInstanceView)
 def reset_sign_in(
-    instance_id: int, site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
+    instance_id: int,
+    site: Site = Depends(require_site_owner),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
 ):
     """Drop the stored refresh token so the actor starts a new device-code sign-in."""
     instance = _instance_of_site(db, site, instance_id)
@@ -152,7 +164,7 @@ def reset_sign_in(
     instance.auth_state = None
     db.commit()
     db.refresh(instance)
-    return instance
+    return instance_view(instance, site, user)
 
 
 # Schedules

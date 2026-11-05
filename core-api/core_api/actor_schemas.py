@@ -16,7 +16,8 @@ from pydantic import (
     model_validator,
 )
 
-from core_api.models.actors import RunKind, RunOutcome
+from core_api.models.actors import ActorInstance, RunKind, RunOutcome
+from core_api.models.identity import Site, User
 from core_api.time_utils import as_utc
 
 _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -207,9 +208,10 @@ class ActorInstancePatch(_Strict):
 
 
 class ActorInstanceView(BaseModel):
-    """Owner-facing instance. Never carries `config`, which holds the provider refresh token."""
+    """Owner-facing instance. Never carries `config`, which holds the provider refresh token.
 
-    model_config = ConfigDict(from_attributes=True)
+    Build it with `instance_view`, which hides the sign-in code from anyone but the site owner.
+    It has no `from_attributes`, so a route cannot return the database row in its place."""
 
     id: int
     site_id: int
@@ -221,6 +223,32 @@ class ActorInstanceView(BaseModel):
     latest_readings: dict | None
     last_seen_at: AwareUtc | None
     auth_state: dict | None
+
+
+def shown_auth_state(auth_state: dict | None, is_owner: bool) -> dict | None:
+    """The owner gets the stored value. Anyone else gets `needs_sign_in` as is, and a pending
+    sign-in code and link become `{"signing_in": true}`."""
+    if is_owner or auth_state is None:
+        return auth_state
+    if auth_state.get("needs_sign_in") is True:
+        return {"needs_sign_in": True}
+    return {"signing_in": True}
+
+
+def instance_view(instance: ActorInstance, site: Site, user: User) -> ActorInstanceView:
+    """The instance as `user` may see it at `site`."""
+    return ActorInstanceView(
+        id=instance.id,
+        site_id=instance.site_id,
+        provider=instance.provider,
+        name=instance.name,
+        enabled=instance.enabled,
+        capabilities=instance.capabilities,
+        capabilities_updated_at=instance.capabilities_updated_at,
+        latest_readings=instance.latest_readings,
+        last_seen_at=instance.last_seen_at,
+        auth_state=shown_auth_state(instance.auth_state, site.owner_user_id == user.id),
+    )
 
 
 class ScheduleCreate(_Strict):
