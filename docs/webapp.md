@@ -106,6 +106,8 @@ Only the site owner can change anything on the page. A viewer sees the same pane
 
 `scheduleForm.ts` shows only restore times that fit the trigger: "When the window ends" appears for a window-start trigger, and the others are "After a set number of minutes", "At a set time" and "Only when a condition below is met". A condition row has a tick box; unticked rows are kept but ignored.
 
+The editor counts as changed while its form differs from the schedule as last saved, or from the empty form for a new schedule (`isDirty` in `scheduleDirty.ts`). Numbers compare by value, so "30" and "30.0" match, and text is compared without surrounding spaces. While the owner has changes, picking another schedule, **New schedule**, any in-app link (side rail, site chips, header menu, logo, help) and browser back or forward open "Discard unsaved changes?" (`UnsavedChangesDialog`). **Keep editing**, Escape or a click outside leaves the form as it was; **Discard changes** carries on. Closing or reloading the tab gets the browser's own prompt. A save, create or delete clears the changes, and a viewer is never asked. Holding navigation needs `useBlocker`, so `main.tsx` uses `createBrowserRouter` with one catch-all route; `useLeaveGuard` (`hooks/useLeaveGuard.ts`) holds navigation only under such a data router, so under `MemoryRouter` in tests it guards the tab alone.
+
 ### The Dashboard tile
 
 [`FailuresTile`](../webapp/src/actors/FailuresTile.tsx) sits above the other tiles in `DashboardPage.tsx`. It reads `GET .../actors/failures` every 15 seconds (`FAILURES_POLL_MS`).
