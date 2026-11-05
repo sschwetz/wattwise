@@ -108,11 +108,17 @@ def test_all_expected_routes_are_registered(client):
     assert not missing, f"Missing routes: {missing}"
 
 
-def test_root_path_prefixes_the_openapi_url_in_the_docs_page(monkeypatch, tmp_path):
+def test_root_path_moves_docs_but_not_routes(monkeypatch, tmp_path):
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     monkeypatch.setenv("ROOT_PATH", "/api/")
     db_url = f"sqlite:///{tmp_path}/root_path_test.db"
     run_migrations(db_url)
     with TestClient(create_app(database_url=db_url)) as test_client:
-        response = test_client.get("/docs")
-    assert "/api/openapi.json" in response.text
+        docs = test_client.get("/api/docs")
+        spec = test_client.get("/api/openapi.json")
+        route = test_client.get("/api/v1/users/me")
+        bare_docs = test_client.get("/docs")
+    assert "/api/openapi.json" in docs.text
+    assert spec.status_code == 200
+    assert route.status_code == 401
+    assert bare_docs.status_code == 404

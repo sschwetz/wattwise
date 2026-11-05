@@ -238,7 +238,7 @@ Times use the container's clock (UTC in the image).
 | `AVATAR_STORAGE_DIR` | no | `./data/avatars` | Compose sets `/data/avatars` |
 | `JWT_EXPIRY_HOURS` | no | `24` | Access token lifetime |
 | `FRONTEND_BASE_URL` | no | `http://localhost:5173` | CORS origin and the base of links in emails |
-| `ROOT_PATH` | no | empty | Prefix a reverse proxy strips before forwarding, for example `/api`. Needed for `/docs` to load behind it |
+| `ROOT_PATH` | no | empty | Prefix for the `/docs`, `/redoc` and `/openapi.json` pages, for example `/api` to reach them at `/api/docs` through a proxy that forwards `/api` unchanged. API routes always stay under `/api/v1` |
 | `SMTP_HOST`, `SMTP_PORT` | no | `mail-relay`, `25` | Outbound mail |
 | `SMTP_FROM` | no | `noreply@localhost` | Sender address |
 | `SMTP_USER`, `SMTP_PASSWORD` | no | unset | Only if the relay needs authentication |

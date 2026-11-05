@@ -69,9 +69,17 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
             scheduler.shutdown(wait=False)
         engine.dispose()
 
-    # root_path is the prefix a reverse proxy strips before forwarding. It only
-    # changes the URLs FastAPI generates, so /docs finds /openapi.json.
-    app = FastAPI(title="Core API", lifespan=lifespan, root_path=get_settings().root_path)
+    # ROOT_PATH moves only the docs pages, so /api/docs works behind a proxy that
+    # forwards /api unchanged. It is not FastAPI's root_path: that makes Starlette
+    # strip the prefix from every request, and no /api/v1 route would match.
+    docs_prefix = get_settings().root_path
+    app = FastAPI(
+        title="Core API",
+        lifespan=lifespan,
+        docs_url=f"{docs_prefix}/docs",
+        redoc_url=f"{docs_prefix}/redoc",
+        openapi_url=f"{docs_prefix}/openapi.json",
+    )
     # The webapp is served from its own origin (a separate nginx container)
     # and calls this API directly from the browser, so without this every
     # request fails CORS before it ever reaches a route.
