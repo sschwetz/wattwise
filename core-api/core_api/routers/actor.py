@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import datetime
+from typing import cast
 
 from fastapi import APIRouter, Depends, Header, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -217,10 +218,10 @@ def list_actor_runs(
         return unfinished_action_runs(db, instance.id)
     stmt = select(ActorRun).join(ActorSchedule, ActorSchedule.id == ActorRun.schedule_id)
     stmt = stmt.where(ActorSchedule.instance_id == instance.id)
-    if pending_test:
-        stmt = stmt.where(ActorRun.kind == RunKind.TEST, ActorRun.outcome == RunOutcome.PENDING)
-    else:
+    if since is not None:
         stmt = stmt.where(ActorRun.trigger_at >= as_utc(since))
+    else:
+        stmt = stmt.where(ActorRun.kind == RunKind.TEST, ActorRun.outcome == RunOutcome.PENDING)
     return list(db.scalars(stmt.order_by(ActorRun.trigger_at, ActorRun.id)))
 
 
@@ -305,6 +306,7 @@ def _transition_run(db: Session, run: ActorRun, payload: RunUpdate, now: datetim
     fields = ("message",) if overriding else ("message", "attempts", "snapshot")
     values: dict = {"outcome": payload.outcome}
     values.update({f: getattr(payload, f) for f in fields if f in payload.model_fields_set})
+    allowed: tuple[RunOutcome, ...]
     if payload.outcome == RunOutcome.RUNNING:
         values["started_at"] = now
         allowed, lost = (RunOutcome.PENDING,), AppError(409, "run_not_pending", "This run is no longer pending")
@@ -315,11 +317,14 @@ def _transition_run(db: Session, run: ActorRun, payload: RunUpdate, now: datetim
         values["finished_at"] = now
         allowed = (RunOutcome.PENDING, RunOutcome.RUNNING)
         lost = AppError(409, "run_finished", "This run has already finished")
-    result = db.execute(
-        update(ActorRun)
-        .where(ActorRun.id == run.id, ActorRun.outcome.in_(allowed))
-        .values(**values)
-        .execution_options(synchronize_session=False)
+    result = cast(
+        CursorResult,
+        db.execute(
+            update(ActorRun)
+            .where(ActorRun.id == run.id, ActorRun.outcome.in_(allowed))
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        ),
     )
     if result.rowcount != 1:
         db.rollback()
@@ -337,7 +342,7 @@ def _email_failure(db: Session, run: ActorRun, email_sender: EmailSender) -> Non
     owner = site_owner(db, site) if site else None
     if site is None or owner is None:
         return
-    when = site_local_time(run.finished_at, site)
+    when = site_local_time(run.finished_at or run.trigger_at, site)
     body = (
         f'The schedule "{schedule.name}" failed at {when} for the site "{site.name}".\n\n'
         f"What went wrong: {run.message or 'no details were reported'}\n"

@@ -7,8 +7,9 @@ so a mail outage never turns into repeated emails about the same run."""
 from __future__ import annotations
 
 import datetime
+from typing import cast
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.orm import Session
 
 from core_api.actor_email import site_local_time, site_owner
@@ -32,11 +33,15 @@ def _notify_once(
 ) -> None:
     """Claim the run with a conditional update and email only if the claim won,
     so two job runs never both email about it."""
-    claimed = db.execute(
-        update(ActorRun)
-        .where(ActorRun.id == held.run.id, ActorRun.watchdog_notified_at.is_(None))
-        .values(watchdog_notified_at=now)
-    ).rowcount
+    result = cast(
+        CursorResult,
+        db.execute(
+            update(ActorRun)
+            .where(ActorRun.id == held.run.id, ActorRun.watchdog_notified_at.is_(None))
+            .values(watchdog_notified_at=now)
+        ),
+    )
+    claimed = result.rowcount
     db.commit()
     if claimed != 1:
         return

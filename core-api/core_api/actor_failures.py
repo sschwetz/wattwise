@@ -73,6 +73,8 @@ def held_off_failures(db: Session, site: Site, instance: ActorInstance, now: dat
     found: list[HeldOffFailure] = []
     for run in unfinished_action_runs(db, instance.id):
         schedule = db.get(ActorSchedule, run.schedule_id)
+        if schedule is None:
+            continue
         silent_since = _silent_since(instance, run, now)
         if silent_since is not None:
             found.append(HeldOffFailure(run, schedule, _held_off(instance, schedule, "actor_silent", silent_since)))
@@ -169,9 +171,9 @@ def restore_time(db: Session, site: Site, schedule: ActorSchedule, run: ActorRun
         return None
     if restore.when == "conditions_only":
         return trigger_at + RESTORE_CAP
-    if restore.when == "after_minutes":
+    if restore.when == "after_minutes" and restore.minutes is not None:
         return trigger_at + datetime.timedelta(minutes=restore.minutes)
-    if restore.when == "at_time":
+    if restore.when == "at_time" and restore.time is not None:
         return next_local_time(trigger_at, restore.time, site_tz(site.timezone))
     return _window_end(db, site, schedule.trigger or {}, trigger_at)
 

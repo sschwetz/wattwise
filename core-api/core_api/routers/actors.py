@@ -50,6 +50,13 @@ def _schedule_of_site(db: Session, site: Site, schedule_id: int) -> ActorSchedul
     return schedule
 
 
+def _instance_of(db: Session, schedule: ActorSchedule) -> ActorInstance:
+    instance = db.get(ActorInstance, schedule.instance_id)
+    if instance is None:
+        raise AppError(404, "not_found", "Actor not found")
+    return instance
+
+
 def _refuse_if_held_off(db: Session, instance_id: int, schedule_id: int | None = None) -> None:
     """Refuse while an action run owes a restore: any of the instance's runs, or only the given schedule's."""
     runs = unfinished_action_runs(db, instance_id)
@@ -208,7 +215,7 @@ def patch_schedule(
     merged = {f: getattr(schedule, f) for f in _SCHEDULE_FIELDS}
     merged.update(payload.model_dump(exclude_unset=True))
     parsed = parse_schedule({**merged, "instance_id": schedule.instance_id})
-    validate_schedule(db, site.id, db.get(ActorInstance, schedule.instance_id), parsed)
+    validate_schedule(db, site.id, _instance_of(db, schedule), parsed)
     _refuse_held_spec_change(db, schedule, parsed)
     for field, value in parsed.model_dump(mode="json", include=set(_SCHEDULE_FIELDS)).items():
         setattr(schedule, field, value)
@@ -232,7 +239,7 @@ def delete_schedule(
 def _refuse_test(db: Session, site: Site, schedule: ActorSchedule) -> None:
     """The actor does not poll a disabled site or instance, has nothing to act on without
     capabilities, and runs one test of a schedule at a time."""
-    instance = db.get(ActorInstance, schedule.instance_id)
+    instance = _instance_of(db, schedule)
     if not site.enabled:
         raise AppError(409, "site_disabled", "Enable the site before testing a schedule")
     if not instance.enabled:
