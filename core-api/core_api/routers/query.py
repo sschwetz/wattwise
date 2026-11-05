@@ -30,6 +30,7 @@ from core_api.jobs.demand_config import (
     export_adjustment_windows_by_tariff,
     first_matching_demand_window,
     site_tariffs_for_site,
+    weather_source_ids_for_site,
 )
 from core_api.models.billing import DemandCharge, DemandWindow
 from core_api.models.identity import Site
@@ -120,16 +121,15 @@ def get_weather_readings(
     site: Site = Depends(require_site_access),
     db: Session = Depends(get_db_session),
 ) -> list[WeatherReading]:
-    stmt = select(Source.id).where(Source.site_id == site.id, Source.kind == SourceKind.WEATHER)
-    source_id = db.execute(stmt).scalar_one_or_none()
-    if source_id is None:
+    source_ids = weather_source_ids_for_site(db, site.id)
+    if not source_ids:
         return []
     return query_readings(
         db,
         WeatherReading,
         WeatherReadingRollup5m,
         key_column=WeatherReading.source_id,
-        key_value=source_id,
+        key_value=source_ids[0],
         ts_start=start,
         ts_end=end,
         metric_column=WeatherReading.metric,

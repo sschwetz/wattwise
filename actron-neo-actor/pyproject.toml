@@ -1,0 +1,40 @@
+[project]
+name = "actron-neo-actor"
+version = "0.1.0"
+description = "Actor that runs WattWise schedules against Actron Neo air conditioners."
+requires-python = ">=3.12"
+dependencies = [
+    "actron-neo-api==0.5.16",
+    "httpx>=0.27,<1.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=8.0,<9.0",
+    "respx>=0.21,<1.0",
+    "ruff>=0.17.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["actron_neo_actor"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Long lines are left to the formatter's discretion; docstrings and URLs exceed 120.
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["actron_neo_actor"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true

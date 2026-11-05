@@ -6,15 +6,16 @@ WattWise records and displays energy data for a home solar and battery system: p
 
 | Directory | What it is |
 |---|---|
-| `core-api/` | FastAPI + SQLAlchemy + Alembic on SQLite. The only service that touches the database. Serves the REST API under `/api/v1` and runs the periodic jobs (demand intervals, demand charges, retention rollup). |
+| `core-api/` | FastAPI + SQLAlchemy + Alembic on SQLite. The only service that touches the database. Serves the REST API under `/api/v1` and runs the periodic jobs (demand intervals, demand charges, retention rollup, the actor watchdog). |
 | `envoy-collector/` | Polls the Envoy local API every minute and pushes readings to core-api. Renews the Envoy token from stored Enlighten credentials. |
 | `amber-pricing-collector/` | Polls Amber prices, with live polling and backfill. |
 | `local-pricing-collector/` | Turns rate windows entered in the webapp into price intervals, for suppliers with a fixed tariff. At 23:59 in each site's time zone it pushes the next local day's prices. Within a minute of a new source, a restart or a change to the rate windows, and on the first check of each new day, it also fills what is missing, back to the site's first data. A change to a rate window reprices from where it takes effect, within a minute. |
 | `weatherlink-local-collector/` | Polls the WeatherLink Live. |
+| `actron-neo-actor/` | An actor: runs schedules built on the webapp's Schedule page and commands an Actron Neo air conditioner, for example turning it off for a demand window and back on afterwards. See [`docs/actors.md`](docs/actors.md). |
 | `webapp/` | React single-page app (Vite, Tailwind, TanStack Query, Recharts). Includes an in-app Help viewer. |
 | `mail-relay/` | Postfix relay that sends password-reset and email-confirmation mail for core-api. |
 
-The webapp and the collectors only talk to core-api over HTTP. Each collector kind authenticates with one shared key and discovers its sources from core-api, so adding a site in the webapp needs no collector restart.
+The webapp, the collectors and the actor only talk to core-api over HTTP. Each collector kind authenticates with one shared key and discovers its sources from core-api, so adding a site in the webapp needs no collector restart.
 
 Both pricing collectors use `PRICING_COLLECTOR_KEY`. Each one asks for its own provider's sources with `GET /api/v1/collector/sources?kind=pricing&provider=<name>` and sends an `X-Collector-Provider: <name>` header. The filter keeps the Amber collector off local sources and the reverse, and core-api rejects a per-source request whose header names a different provider from the source's. Neither is a security boundary: any process holding the shared key can name another provider.
 
@@ -37,6 +38,7 @@ export SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')
 export ENVOY_COLLECTOR_KEY=dev-envoy-key
 export WEATHER_COLLECTOR_KEY=dev-weather-key
 export PRICING_COLLECTOR_KEY=dev-pricing-key
+export ACTOR_KEY=dev-actor-key
 
 uv run python -m core_api.bootstrap
 uv run uvicorn core_api.main:create_app --factory --reload --port 8000
@@ -44,7 +46,7 @@ uv run uvicorn core_api.main:create_app --factory --reload --port 8000
 
 `core_api.bootstrap` creates or upgrades the SQLite database (`core_api.db` in the current directory). Run it again after pulling new migrations.
 
-Core-api refuses to start without `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` and the three collector keys. `SECRETS_ENCRYPTION_KEY` encrypts source configs (device tokens, the Enlighten password) and Amber API keys in the database. Keep a copy of it: without it those values cannot be read. Other settings and their defaults are in `core-api/.env.example` and `core-api/core_api/config.py`. The defaults work for development: CORS allows `http://localhost:5173`, which is where Vite serves the webapp.
+Core-api refuses to start without `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY`, the three collector keys and `ACTOR_KEY`. `SECRETS_ENCRYPTION_KEY` encrypts source configs (device tokens, the Enlighten password) and Amber API keys in the database. Keep a copy of it: without it those values cannot be read. Other settings and their defaults are in `core-api/.env.example` and `core-api/core_api/config.py`. The defaults work for development: CORS allows `http://localhost:5173`, which is where Vite serves the webapp.
 
 Check that it is up:
 
@@ -89,6 +91,8 @@ CORE_API_URL=http://localhost:8000 COLLECTOR_KEY=dev-envoy-key \
 
 The other collectors work the same way. The Amber and local pricing collectors both take `PRICING_COLLECTOR_KEY` as their `COLLECTOR_KEY` and run as `amber_pricing_collector.main` and `local_pricing_collector.main`. The WeatherLink collector takes `WEATHER_COLLECTOR_KEY` and runs as `weatherlink_local_collector.main`. The Envoy and weather collectors must run on a machine that can reach the device's LAN address.
 
+The air conditioner actor runs the same way with `ACTOR_KEY`: `cd actron-neo-actor && uv sync && CORE_API_URL=http://localhost:8000 ACTOR_KEY=dev-actor-key uv run python -m actron_neo_actor.main`. Add the air conditioner on the webapp's **Schedule** page, then approve the Actron sign-in code it shows. See [`docs/actors.md`](docs/actors.md).
+
 ## Run the full stack in Docker
 
 This builds every service and starts it behind the ports Compose publishes: the webapp on 80 and core-api on 8000.
@@ -97,7 +101,7 @@ This builds every service and starts it behind the ports Compose publishes: the 
 cp .env.example .env
 ```
 
-Edit `.env`: set `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (generate it as described in `.env.example`; keep a copy) and the three `*_COLLECTOR_KEY` values (`openssl rand -hex 32` works for each). The defaults for `FRONTEND_BASE_URL` and `API_BASE_URL` suit a single machine. `RELAY_DOMAIN` and `RELAY_SMARTHOST` are required by Compose even if you don't plan to send mail. Then:
+Edit `.env`: set `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (generate it as described in `.env.example`; keep a copy), the three `*_COLLECTOR_KEY` values and `ACTOR_KEY` (`openssl rand -hex 32` works for each). The defaults for `FRONTEND_BASE_URL` and `API_BASE_URL` suit a single machine. `RELAY_DOMAIN` and `RELAY_SMARTHOST` are required by Compose even if you don't plan to send mail. Then:
 
 ```sh
 docker compose up --build
@@ -137,7 +141,7 @@ Fill in `.env`:
 |---|---|
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `SECRETS_ENCRYPTION_KEY` | `openssl rand -base64 32 \| tr '+/' '-_'`. Back it up off the host: without it the encrypted columns in a database backup cannot be read. |
-| `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` | A separate `openssl rand -hex 32` for each |
+| `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY`, `ACTOR_KEY` | A separate `openssl rand -hex 32` for each |
 | `FRONTEND_BASE_URL` | The public origin of the webapp. Also the CORS origin and the base of email links. |
 | `API_BASE_URL` | The origin the browser uses to reach core-api |
 | `RELAY_DOMAIN`, `RELAY_SMARTHOST` | Required by Compose. `RELAY_SMARTHOST` looks like `[smtp.example.com]:587`. Add `RELAY_USERNAME` and `RELAY_PASSWORD` if the smarthost needs a login. |

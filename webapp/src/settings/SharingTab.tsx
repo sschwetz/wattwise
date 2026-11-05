@@ -2,10 +2,9 @@ import { type FormEvent, useState } from "react";
 import { useMe } from "../account/useAccount";
 import { errorMessage } from "../api/client";
 import { type Invite, type InviteStatus, useCreateInvite, useRevokeInvite, useSiteInvites } from "../sites/useInvites";
+import { inputClass } from "../components/formStyles";
 import type { Site } from "../sites/useSites";
 
-const inputClass =
-  "w-full rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
 const buttonClass =
   "rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
 

@@ -1,0 +1,13 @@
+{
+  "id": 12,
+  "schedule_id": 1,
+  "kind": "action",
+  "trigger_at": "2026-11-05T05:00:00+00:00",
+  "started_at": null,
+  "finished_at": null,
+  "outcome": "pending",
+  "message": null,
+  "attempts": 0,
+  "parent_run_id": null,
+  "snapshot": {"is_on": true, "mode": "COOL"}
+}

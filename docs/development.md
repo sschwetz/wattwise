@@ -11,6 +11,7 @@ wattwise/
 ├── amber-pricing-collector/
 ├── local-pricing-collector/
 ├── weatherlink-local-collector/
+├── actron-neo-actor/            the actor: commands the air conditioner (see docs/actors.md)
 ├── webapp/                      React app and the Markdown user guide (src/docs)
 ├── mail-relay/                  Postfix container
 ├── docs/
@@ -28,6 +29,7 @@ Python projects use [uv](https://docs.astral.sh/uv/) with a committed `uv.lock`.
 ```bash
 cd core-api && uv sync && uv run pytest            # API, jobs, cost maths
 cd envoy-collector && uv sync && uv run pytest      # likewise for each collector
+cd actron-neo-actor && uv sync && uv run pytest -q   # the actor
 cd webapp && npm install && npm test                # Vitest
 cd webapp && npm run lint                           # Oxlint
 cd webapp && npm run build                          # type-checks, then builds
@@ -37,13 +39,14 @@ Each Python package is also checked with Ruff and mypy, configured in its `pypro
 
 ```bash
 cd core-api && uv run ruff check . && uv run mypy   # likewise for each collector
+cd actron-neo-actor && uv run ruff check . && uv run mypy
 ```
 
 The `CI` workflow (`.github/workflows/ci.yml`) runs Ruff, mypy and the tests for every Python package, and lint, `tsc` and Vitest for the webapp, on pushes to `master` and on pull requests.
 
 Core API tests need no environment setup: `tests/conftest.py` sets the secrets (including a test `SECRETS_ENCRYPTION_KEY`; do not hardcode real keys anywhere else), builds a fresh SQLite database through the real migrations for every test, and swaps in a fake email sender. The scheduler never starts, because the tests do not run the app lifespan. If you add a required environment variable to `config.py`, add it to `conftest.py` too, or every test fails at startup.
 
-Test files mirror modules: `core_api/cost.py` is covered by `tests/test_cost.py`, `routers/billing.py` by `tests/test_billing.py`, and the jobs by `tests/jobs/`. Collectors keep JSON fixtures of real device responses in `tests/fixtures/`.
+Test files mirror modules: `core_api/cost.py` is covered by `tests/test_cost.py`, `routers/billing.py` by `tests/test_billing.py`, and the jobs by `tests/jobs/`. Collectors keep JSON fixtures of real device responses in `tests/fixtures/`. The actor's tests run against fakes of the device and of Core API; none needs a real unit.
 
 ## Changing the database
 
@@ -52,7 +55,7 @@ Test files mirror modules: `core_api/cost.py` is covered by `tests/test_cost.py`
 
    ```bash
    cd core-api
-   export JWT_SECRET=x ENVOY_COLLECTOR_KEY=x WEATHER_COLLECTOR_KEY=x PRICING_COLLECTOR_KEY=x
+   export JWT_SECRET=x ENVOY_COLLECTOR_KEY=x WEATHER_COLLECTOR_KEY=x PRICING_COLLECTOR_KEY=x ACTOR_KEY=x
    export SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')
    uv run alembic revision --autogenerate -m "describe the change"
    ```
@@ -120,6 +123,10 @@ Write `run_x_job(db, now)` in `core_api/jobs/`, make it idempotent (upsert, or f
 ### Add a collector
 
 See [Adding a provider](adding-a-provider.md#part-2-the-technical-contract).
+
+### Add an actor
+
+See [Adding another actor](actors.md#adding-another-actor).
 
 ## Traps
 

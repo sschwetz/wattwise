@@ -49,10 +49,11 @@ describe("SiteLayout", () => {
     expect(screen.getByRole("link", { name: "Reporting" })).toHaveAttribute("href", "/sites/7/reporting");
   });
 
-  it("shows only Dashboard and Reporting in the side rail", () => {
+  it("side rail has Schedule after Reporting", () => {
     renderLayout();
     const nav = screen.getByRole("navigation", { name: "Site" });
-    expect(Array.from(nav.querySelectorAll("a")).map((a) => a.textContent)).toEqual(["Dashboard", "Reporting"]);
+    expect(Array.from(nav.querySelectorAll("a")).map((a) => a.textContent)).toEqual(["Dashboard", "Reporting", "Schedule"]);
+    expect(screen.getByRole("link", { name: "Schedule" })).toHaveAttribute("href", "/sites/7/schedule");
   });
 
   it("navigates back to the dashboard from a sibling page", async () => {
@@ -110,7 +111,7 @@ describe("SiteLayout", () => {
   it("keeps the sidebar on a help route and highlights none of its links", () => {
     renderLayout("/sites/7/help/07-billing");
     expect(screen.getByText("Help content")).toBeInTheDocument();
-    for (const name of ["Dashboard", "Reporting"]) {
+    for (const name of ["Dashboard", "Reporting", "Schedule"]) {
       expect(screen.getByRole("link", { name })).not.toHaveAttribute("aria-current");
     }
   });

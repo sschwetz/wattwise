@@ -23,6 +23,7 @@ jobs:
           - weatherlink-local-collector
           - amber-pricing-collector
           - local-pricing-collector
+          - actron-neo-actor
     steps:
       - uses: actions/checkout@v4
 

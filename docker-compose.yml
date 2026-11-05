@@ -13,6 +13,7 @@ services:
       ENVOY_COLLECTOR_KEY: ${ENVOY_COLLECTOR_KEY:?set a long random secret, shared with the envoy-collector service below}
       WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weatherlink-local-collector service below}
       PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the amber-pricing-collector service below}
+      ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with the actor}
       DATABASE_URL: sqlite:////data/core_api.db
       AVATAR_STORAGE_DIR: /data/avatars
       SMTP_HOST: mail-relay
@@ -118,6 +119,18 @@ services:
     depends_on:
       core-api:
         condition: service_healthy
+    networks: *app-network
+
+  actron-neo-actor:
+    build: ./actron-neo-actor
+    environment:
+      CORE_API_URL: http://core-api:8000
+      ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with core-api's own ACTOR_KEY}
+    depends_on:
+      core-api:
+        condition: service_healthy
+    # Shutdown can spend about 65 s putting a unit back before the process exits.
+    stop_grace_period: 90s
     networks: *app-network
 
 volumes:

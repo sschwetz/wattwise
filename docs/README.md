@@ -55,7 +55,8 @@ Three ideas explain most of the design:
 | [Data model](data-model.md) | Tables, units, sign conventions, retention |
 | [Core API](core-api.md) | Modules, endpoints, authentication, background jobs, configuration |
 | [Collectors](collectors.md) | What each collector reads, how often, and what it does when something fails |
-| [Web app](webapp.md) | Pages, routes, data fetching, the in-app help |
+| [Actors](actors.md) | The actor contract, schedules and runs, failure behaviour, and the Actron Neo actor that switches an air conditioner off during demand windows |
+| [Web app](webapp.md) | Pages (including the Schedule page), routes, data fetching, the in-app help |
 | [Adding a provider](adding-a-provider.md) | A decision tree for non-programmers, and a technical contract for developers |
 | [Operations](operations.md) | Deploying, configuration, backups, upgrades, secrets, the handover checklist |
 | [Development](development.md) | Running tests, changing the schema, conventions, common change recipes |

@@ -14,6 +14,8 @@ services:
     image: ghcr.io/sschwetz/wattwise-core-api:${WATTWISE_VERSION:-latest}
     build: !reset null
     restart: unless-stopped
+    environment:
+      ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with the actor}
 
   webapp:
     image: ghcr.io/sschwetz/wattwise-webapp:${WATTWISE_VERSION:-latest}
@@ -42,5 +44,10 @@ services:
 
   local-pricing-collector:
     image: ghcr.io/sschwetz/wattwise-local-pricing-collector:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped
+
+  actron-neo-actor:
+    image: ghcr.io/sschwetz/wattwise-actron-neo-actor:${WATTWISE_VERSION:-latest}
     build: !reset null
     restart: unless-stopped

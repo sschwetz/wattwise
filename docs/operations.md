@@ -64,6 +64,7 @@ Edit `.env`:
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `SECRETS_ENCRYPTION_KEY` | `openssl rand -base64 32 \| tr '+/' '-_'`. Encrypts stored device credentials and Amber keys. **Copy it somewhere off this machine.** Without it the encrypted data in a backup cannot be read. |
 | `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` | A different `openssl rand -hex 32` for each |
+| `ACTOR_KEY` | `openssl rand -hex 32`. Shared by `core-api` and `actron-neo-actor`. Compose refuses to start without it. |
 | `FRONTEND_BASE_URL` | Where users open the web app. Default `http://localhost`. Also the CORS origin and the base of email links. |
 | `API_BASE_URL` | Where the **browser** reaches Core API. Default `http://localhost:8000`. |
 | `SMTP_FROM` | Sender address for system mail |
@@ -124,6 +125,65 @@ docker compose restart envoy-collector
 ```
 
 Collectors and the web app can be restarted at any time. Restarting `core-api` drops in-progress requests and clears login lockouts, and collectors retry on their next cycle.
+
+## Schedules and the air conditioner actor
+
+The `actron-neo-actor` container runs schedules against an Actron Neo air conditioner. How it works is in [Actors](actors.md). This section covers running it.
+
+### First set-up
+
+1. Set `ACTOR_KEY` in `.env` (see [Secrets](#secrets)), then `docker compose up -d --build`. Core API and the actor must hold the same value.
+2. Open **Schedule** in the web app and add an air conditioner. Only the site owner can.
+3. The page shows an Actron code and a link to the site owner only (a viewer sees a line saying the owner is signing in). Open the link, sign in to Actron and enter the code. The page checks every 10 seconds, and once you approve, the actor stores the refresh token and the code disappears.
+4. The actor reports what the unit can do. **New schedule** is available once it has.
+5. Use **Test now** on a new schedule. It runs the action at once, ignoring the trigger and conditions, and puts the unit back after 30 seconds if the schedule restores.
+
+The code expires. If it does, the actor posts a new one after 30 seconds.
+
+### Reading the actor's logs
+
+```bash
+docker compose logs -f --tail=100 actron-neo-actor
+```
+
+Lines carry the instance id and the error type, never a message from Actron or Core API, because those can quote tokens or the unit's raw status. Lines to know:
+
+| Line | Meaning |
+|---|---|
+| `Discovery failed: <type>` | The actor could not list instances from Core API. Check `core-api` and `ACTOR_KEY`. |
+| `Tick failed (instance N): <type>` | One pass over instance N failed. The next pass starts 30 seconds later. |
+| `Actron sign-in rejected (instance N)` | The cloud refused the session. The actor checks the stored token again on the next tick. |
+| `Stored sign-in was rejected (instance N)` | Three refreshes failed at least a minute apart. The page now shows **needs sign-in**. |
+| `push not started: <type>` | Push updates are unavailable. The actor polls every 30 seconds instead. |
+| `Could not update Core API (instance N)` | A token or sign-in state could not be saved. It is retried on the next tick. |
+
+### What each Dashboard entry means
+
+The tile **Needs attention** appears at the top of the site Dashboard while a schedule has a problem. It refreshes every 15 seconds. With an air conditioner set up and nothing wrong it reads **All schedules OK**. Without one it does not appear.
+
+| Entry | Meaning | What to do |
+|---|---|---|
+| Run failed | An action or restore did not succeed after its tries. The message says why. | Check the unit and turn it on if a restore failed. A later good run clears the entry; a skipped run clears a failed action but not a failed restore. |
+| Still off | The unit is still off after its restore time and the schedule's give-up minutes. A restore set to happen only on a condition counts its restore time as 24 hours after the trigger. | Turn the unit on. Then check the restore settings. A "only restore if" condition that never passes causes this. |
+| Actor not reporting | The unit is held off and the actor has not reported for 5 minutes. The actor also stops reporting when it cannot reach the unit through the Actron cloud or its sign-in is lost. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. If it needs signing in, press **Sign in again**. |
+| Needs sign-in | Actron rejected the stored token. | Open **Schedule**, press **Sign in again** and approve the code. This works while the unit is held off: the actor puts it back after the new sign-in. |
+
+A needs-sign-in entry shows no time, because Core API does not record when it began. With **Email me if it still fails** on, a failed run emails the owner at once, and a still-off or silent actor emails once from the watchdog.
+
+### Known limits
+
+- The push (MQTT) path of the `actron-neo-api` library has not been tried on a real unit. Polling covers it: every 30 seconds while push is down, every 120 seconds while it works.
+- The library is unofficial and pinned to 0.5.16. A change on Actron's side can break it without notice. Check the logs after Actron updates its app.
+- The actor image has not been built yet. The first build is CI's publish workflow, or `docker compose build actron-neo-actor`.
+- Fan speeds `AUTO`, `LOW`, `MED` and `HIGH` are not confirmed on the owner's unit.
+- If the process is killed during a test run's pause, the unit stays as the test set it until the actor restarts. The next start finds the run and puts the unit back.
+- Run one actor container. Two would race on the same trigger. The unique key on a run stops a second create, but both could still act on the unit around it.
+- The actor uses the first air conditioner on the Actron account.
+- A `price_above` trigger acts again after the owner overrides it and the actor restarts in the same high-price spell, because the restarted actor counts a price already above the level as a crossing.
+
+### Stopping the actor
+
+`docker compose stop actron-neo-actor` sends SIGTERM, which the actor handles. It can take up to about 65 seconds if a test run is mid-way, because the actor puts the unit back first. The service sets `stop_grace_period: 90s` so Docker waits that long. An unfinished window action is not touched on a stop. The next start carries on to the restore.
 
 ## Backups
 
@@ -191,14 +251,16 @@ Migrations run automatically when `core-api` starts. Take a backup first. Rollin
 | `JWT_SECRET` | `.env` | Every user is logged out | Edit `.env`, `docker compose up -d` |
 | `SECRETS_ENCRYPTION_KEY` | `.env` | Stored device credentials, Amber keys and authenticator secrets become unreadable, and all recovery codes stop working | **Do not rotate.** No tool re-encrypts existing rows under a new key. |
 | `*_COLLECTOR_KEY` (3) | `.env`, used by `core-api` and that kind's collectors | Collectors get 401 until both sides match | Edit `.env`, then `docker compose up -d` so both sides restart together |
+| `ACTOR_KEY` | `.env`, used by `core-api` and `actron-neo-actor` | The actor gets 401 `invalid_actor_key` until both sides match | Edit `.env`, then `docker compose up -d` |
 | Admin password | Database (bcrypt) | n/a | Change it in Account settings |
 | Envoy token, Enlighten login | `sources.config` in the database | Readings stop if wrong | Edit the source in the web app |
+| Actron refresh token | `actor_instances.config` in the database (encrypted) | Schedules stop and the page shows **needs sign-in** | **Sign in again** on the Schedule page |
 | Amber API key | `users.amber_api_key` | Prices stop if wrong | Account settings |
 | SMTP login | `.env` (`RELAY_USERNAME`, `RELAY_PASSWORD`) | Email stops | Edit `.env`, restart `mail-relay` |
 
 Never commit `.env`. The repository ignores it, and only `.env.example` is tracked.
 
-Stored credentials are encrypted. `sources.config` (Envoy token, Enlighten login), `users.amber_api_key` and the authenticator secrets are Fernet-encrypted with `SECRETS_ENCRYPTION_KEY`. Passwords are bcrypt hashes and recovery codes are keyed hashes. A stolen database file does not expose these values without the key. The full list and the reasoning are in [Core API](core-api.md#where-secrets-are-stored).
+Stored credentials are encrypted. `sources.config` (Envoy token, Enlighten login), `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link), `users.amber_api_key` and the authenticator secrets are Fernet-encrypted with `SECRETS_ENCRYPTION_KEY`. Passwords are bcrypt hashes and recovery codes are keyed hashes. A stolen database file does not expose these values without the key. The full list and the reasoning are in [Core API](core-api.md#where-secrets-are-stored).
 
 The consequences for you:
 

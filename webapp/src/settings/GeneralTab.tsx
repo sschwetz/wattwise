@@ -3,14 +3,10 @@ import { Link } from "react-router-dom";
 import { errorMessage } from "../api/client";
 import { TimezoneSelect } from "../sites/TimezoneSelect";
 import { type Site, useUpdateSite } from "../sites/useSites";
+import { buttonClass, inputClass } from "../components/formStyles";
 import { SaveStatus, SubmitButton } from "../components/SubmitButton";
 import { AccessNote } from "./AccessNote";
 import { useSiteAccess } from "./useSiteAccess";
-
-const inputClass =
-  "w-full rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
-const buttonClass =
-  "rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
 
 function ConfirmDisable({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
   const cancelRef = useRef<HTMLButtonElement>(null);

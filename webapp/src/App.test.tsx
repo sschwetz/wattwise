@@ -70,6 +70,21 @@ describe("App routing", () => {
     expect(screen.queryByRole("link", { name: "Sources" })).not.toBeInTheDocument();
   });
 
+  it("renders the Schedule page at /sites/:siteId/schedule", async () => {
+    localStorage.setItem("access_token", "a-token");
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("/api/v1/sites")
+          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]
+          : path.endsWith("/users/me")
+            ? { id: 1 }
+            : [],
+      ),
+    );
+    renderAt("/sites/5/schedule");
+    expect(await screen.findByRole("button", { name: "Add air conditioner" })).toBeInTheDocument();
+  });
+
   it("redirects /sites/:siteId/sources to the Collectors settings tab", async () => {
     localStorage.setItem("access_token", "a-token");
     vi.mocked(apiFetch).mockImplementation((path: string) =>

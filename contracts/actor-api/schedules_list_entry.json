@@ -1,0 +1,23 @@
+{
+  "id": 1,
+  "name": "Peak off",
+  "enabled": true,
+  "trigger": {"type": "time", "time": "16:00", "days_of_week": [0, 1, 2, 3, 4]},
+  "conditions": [
+    {"reading": "outdoor_temp_c", "op": "gt", "value": 30.0, "target": null, "enabled": true}
+  ],
+  "action": {"id": "set_zones", "params": {"zones": ["Family", "Kids"], "enabled": false}},
+  "restore": {
+    "enabled": true,
+    "when": "after_minutes",
+    "minutes": 120,
+    "time": null,
+    "only_if": [],
+    "early_if": [
+      {"reading": "zone_temp_c", "op": "gt", "value": 27.0, "target": "Family", "enabled": true}
+    ]
+  },
+  "retry": {"max_attempts": 3, "interval_seconds": 30, "give_up_minutes": 15},
+  "notify_email": true,
+  "created_at": "2026-11-01T00:00:00+00:00"
+}

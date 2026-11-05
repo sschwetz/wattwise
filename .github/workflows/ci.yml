@@ -20,6 +20,7 @@ jobs:
           - weatherlink-local-collector
           - amber-pricing-collector
           - local-pricing-collector
+          - actron-neo-actor
     defaults:
       run:
         working-directory: ${{ matrix.package }}

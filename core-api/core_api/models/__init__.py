@@ -1,3 +1,4 @@
+from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
 from core_api.models.base import Base
 from core_api.models.billing import BillingCycle, DemandCharge, DemandInterval, DemandWindow, SiteTariff
 from core_api.models.identity import (
@@ -68,4 +69,9 @@ __all__ = [
     "DemandCharge",
     "LocalRateWindow",
     "LocalRepriceMarker",
+    "ActorInstance",
+    "ActorSchedule",
+    "ActorRun",
+    "RunKind",
+    "RunOutcome",
 ]

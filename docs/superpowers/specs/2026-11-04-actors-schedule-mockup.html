@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schedule tab mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#f6f7fb, #0b1222);
+    --surface: light-dark(#ffffff, #141b2e);
+    --surface-2: light-dark(#eef0f7, #1b2438);
+    --line: light-dark(#e2e5ec, #243049);
+    --ink: light-dark(#141b2e, #e7ecf5);
+    --ink-muted: light-dark(#5c6579, #8691a8);
+    --solar: #ffb020;
+    --solar-soft: light-dark(#fff4dc, #3a2a0e);
+    --flow: #22d3a6;
+    --flow-soft: light-dark(#dff8f0, #0e3b33);
+    --grid: #5b8def;
+    --danger: #e5484d;
+    --danger-soft: light-dark(#fde8e8, #3a1317);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; font-size: 16px; line-height: 1.5; min-height: 100vh; }
+  h1, h2, h3, h4, p { margin: 0; }
+  .display { font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; }
+  .muted { color: var(--ink-muted); }
+  .small { font-size: 14px; }
+  .xs { font-size: 12px; }
+
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .logo { display: flex; align-items: center; gap: 8px; }
+  .logo span { font-family: "Space Grotesk", sans-serif; font-size: 18px; font-weight: 600; color: var(--solar); }
+  .user { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; padding: 4px 8px; border-radius: 6px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center; font-size: 12px; }
+
+  .page { max-width: 1152px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .chip { flex-shrink: 0; border-radius: 9999px; border: 1px solid var(--line); padding: 4px 12px; font-size: 14px; color: var(--ink-muted); }
+  .chip.sel { border-color: var(--solar); background: var(--surface-2); color: var(--ink); font-weight: 500; }
+
+  .layout { display: flex; gap: 16px; align-items: flex-start; }
+  .rail { width: 176px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; }
+  .rail a { padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: 500; color: var(--ink-muted); }
+  .rail a.on { background: var(--surface-2); color: var(--ink); }
+  main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+
+  .grid2 { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .card h3 { font-family: "Space Grotesk", sans-serif; font-size: 18px; font-weight: 600; }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  .stack-sm { display: flex; flex-direction: column; gap: 8px; }
+
+  .sched { display: block; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .sched.sel { border-color: var(--solar); background: var(--surface-2); }
+  .sched b { font-weight: 500; font-size: 14px; display: block; }
+  .pill { display: inline-block; border-radius: 9999px; padding: 0 8px; font-size: 12px; font-weight: 500; }
+  .pill.ok { background: var(--flow-soft); color: var(--flow); }
+  .pill.off { background: var(--surface-2); color: var(--ink-muted); }
+  .pill.bad { background: var(--danger-soft); color: var(--danger); }
+  .pill.skip { background: var(--solar-soft); color: var(--solar); }
+
+  .step { display: grid; grid-template-columns: 28px 1fr; gap: 12px; }
+  .num { width: 28px; height: 28px; border-radius: 50%; background: var(--solar-soft); color: var(--solar); display: grid; place-items: center; font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 14px; }
+  .step h4 { font-weight: 500; font-size: 16px; }
+  .step .hint { font-size: 12px; color: var(--ink-muted); margin-top: 4px; }
+
+  .input, select.input { width: 100%; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 12px; font: inherit; font-size: 14px; }
+  .input.num-in { width: 72px; display: inline-block; padding: 4px 8px; margin: 0 4px; }
+  .row { display: flex; align-items: center; gap: 8px; font-size: 14px; min-height: 32px; flex-wrap: wrap; }
+  .box { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--line); background: var(--surface); flex-shrink: 0; display: grid; place-items: center; font-size: 12px; line-height: 1; }
+  .box.on { background: var(--solar); border-color: var(--solar); color: #141b2e; }
+  .cond { border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px; background: var(--surface); }
+
+  .btn { display: inline-block; border-radius: 6px; padding: 8px 12px; font-size: 14px; font-weight: 500; border: 1px solid var(--line); color: var(--ink); background: transparent; }
+  .btn.primary { background: var(--solar); border-color: var(--solar); color: #141b2e; }
+  .btn.full { display: block; text-align: center; }
+
+  .hist { display: grid; grid-template-columns: 110px 1fr auto; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; align-items: center; }
+  .hist:first-of-type { border-top: 0; }
+  .note { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--ink-muted); background: var(--surface-2); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 0; }
+
+  @media (max-width: 760px) {
+    .layout { flex-direction: column; }
+    .rail { width: auto; flex-direction: row; overflow-x: auto; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="logo">
+    <svg width="28" height="28" viewBox="0 0 120 120" aria-hidden="true">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd54a"/><stop offset="1" stop-color="#ff9f1c"/></linearGradient></defs>
+      <rect width="120" height="120" rx="28" fill="#16304f" stroke="#2a4a72" stroke-width="2"/>
+      <path d="M68 14 L30 68 H58 L48 106 L92 46 H62 Z" fill="url(#g)"/>
+    </svg>
+    <span>WattWise</span>
+  </div>
+  <div class="user"><div class="avatar">S</div><span>Stephen</span></div>
+</header>
+
+<div class="page">
+  <nav class="chips" aria-label="Sites">
+    <span class="chip sel">Home</span>
+    <span class="chip">Holiday house</span>
+    <span class="chip">Add</span>
+  </nav>
+
+  <div class="layout">
+    <nav class="rail" aria-label="Site">
+      <a>Dashboard</a>
+      <a>Reporting</a>
+      <a class="on">Schedule</a>
+    </nav>
+
+    <main>
+      <div class="grid2">
+
+        <!-- Schedules list -->
+        <section class="card stack-sm">
+          <h3>Schedules</h3>
+          <a class="sched sel">
+            <b>Peak demand: AC off</b>
+            <span class="xs muted">Living room ducted</span><br>
+            <span class="pill ok">On</span> <span class="xs muted">last run today 16:00</span>
+          </a>
+          <a class="sched">
+            <b>Evening pre-cool</b>
+            <span class="xs muted">Living room ducted</span><br>
+            <span class="pill off">Off</span>
+          </a>
+          <a class="btn full">New schedule</a>
+        </section>
+
+        <!-- Editor -->
+        <section class="card stack">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+            <h3>Peak demand: AC off</h3>
+            <div class="row"><span class="small muted">Enabled</span>
+              <span style="position:relative; width:44px; height:24px; border-radius:9999px; background:var(--solar); display:inline-block;"><span style="position:absolute; left:22px; top:2px; width:20px; height:20px; border-radius:50%; background:#fff;"></span></span>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="num">1</div>
+            <div class="stack-sm">
+              <h4>Actor</h4>
+              <select class="input"><option>actron-neo-actor: Living room ducted</option></select>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="num">2</div>
+            <div class="stack-sm">
+              <h4>When</h4>
+              <select class="input"><option>A demand window starts</option><option>A demand window ends</option><option>At a set time</option><option>Price goes above a level</option></select>
+              <select class="input"><option>Weekday peak (Nov-Mar, Mon-Fri 16:00-21:00)</option></select>
+              <p class="hint">Windows come from this site's tariff.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="num">3</div>
+            <div class="stack-sm">
+              <h4>Only if</h4>
+              <div class="cond">
+                <div class="row"><span class="box on">&#10003;</span> Outdoor temperature is below <input class="input num-in" value="35"> &deg;C</div>
+                <div class="row"><span class="box on">&#10003;</span> Indoor temperature is above <input class="input num-in" value="19"> &deg;C</div>
+                <div class="row"><span class="box"></span> Battery charge is above <input class="input num-in" value="30"> %</div>
+              </div>
+              <p class="hint">Every ticked condition must be true, or the run is skipped.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="num">4</div>
+            <div class="stack-sm">
+              <h4>Do this</h4>
+              <select class="input"><option>Turn system off</option><option>Turn system on</option><option>Set mode</option><option>Set target temperature</option><option>Turn a zone on or off</option></select>
+              <p class="hint">This list and any extra fields below it come from the actor.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="num">5</div>
+            <div class="stack-sm">
+              <h4>When the window ends</h4>
+              <div class="cond">
+                <div class="row"><span class="box on">&#10003;</span> Put it back how it was before</div>
+                <div class="row"><span class="box"></span> Run a different action instead</div>
+                <div class="row"><span class="box on">&#10003;</span> Stay off if indoor temperature is above <input class="input num-in" value="27"> &deg;C</div>
+              </div>
+            </div>
+          </div>
+
+          <hr>
+          <div class="row">
+            <a class="btn primary">Save schedule</a>
+            <a class="btn">Test now</a>
+            <span class="small muted">Saved</span>
+          </div>
+        </section>
+      </div>
+
+      <!-- History -->
+      <section class="card">
+        <h3 style="margin-bottom:8px;">Run history</h3>
+        <div class="hist"><span class="muted">Today 16:00</span><span>Turned system off</span><span class="pill ok">OK</span></div>
+        <div class="hist"><span class="muted">Today 21:00</span><span>Restored: cool, 23&deg;C</span><span class="pill ok">OK</span></div>
+        <div class="hist"><span class="muted">Yesterday 16:00</span><span>Outdoor 22&deg;C is not below 35&deg;C</span><span class="pill skip">Skipped</span></div>
+        <div class="hist"><span class="muted">Mon 16:00</span><span>Turn system off: device API timed out</span><span class="pill bad">Failed</span></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+</body>
+</html>

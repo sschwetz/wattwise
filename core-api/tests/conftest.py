@@ -29,6 +29,7 @@ def _set_test_jwt_secret():
 ENVOY_COLLECTOR_KEY = "test-envoy-key"
 WEATHER_COLLECTOR_KEY = "test-weather-key"
 PRICING_COLLECTOR_KEY = "test-pricing-key"
+ACTOR_KEY = "test-actor-key"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -36,6 +37,7 @@ def _set_test_collector_keys():
     os.environ.setdefault("ENVOY_COLLECTOR_KEY", ENVOY_COLLECTOR_KEY)
     os.environ.setdefault("WEATHER_COLLECTOR_KEY", WEATHER_COLLECTOR_KEY)
     os.environ.setdefault("PRICING_COLLECTOR_KEY", PRICING_COLLECTOR_KEY)
+    os.environ.setdefault("ACTOR_KEY", ACTOR_KEY)
 
 
 @pytest.fixture(autouse=True)

@@ -9,11 +9,13 @@ from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from core_api.actor_runs import has_unfinished_action_run
 from core_api.config import get_settings
 from core_api.db import get_db
 from core_api.email_sender import EmailSender
 from core_api.errors import AppError
 from core_api.mfa_attempts import is_locked
+from core_api.models.actors import ActorInstance
 from core_api.models.identity import Site, SiteAccess, User
 from core_api.models.sources import Source, SourceKind
 from core_api.security import decode_access_token, decode_scoped_token
@@ -184,3 +186,33 @@ def require_source_kind(expected_kind: SourceKind):
         return source
 
     return _dependency
+
+
+def require_actor_key(presented: str) -> None:
+    """Raise 401 unless `presented` is the shared actor key."""
+    expected = get_settings().actor_key
+    # Bytes, not str: compare_digest raises TypeError on non-ASCII str.
+    if not secrets.compare_digest(presented.encode("utf-8"), expected.encode("utf-8")):
+        raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
+
+
+def get_actor_instance(
+    instance_id: int,
+    x_actor_key: str = Header(...),
+    x_actor_provider: str = Header(...),
+    db: Session = Depends(get_db_session),
+) -> ActorInstance:
+    """The instance the calling actor may act on. The key and provider checks
+    use the same 401 for an unknown instance, so ids cannot be probed. A
+    disabled instance or site is refused unless an action run still needs its
+    restore, so the actor can put the device back."""
+    require_actor_key(x_actor_key)
+    instance = db.get(ActorInstance, instance_id)
+    if instance is None or instance.provider != x_actor_provider:
+        raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
+    site = db.get(Site, instance.site_id)
+    if (not instance.enabled or site is None or not site.enabled) and not has_unfinished_action_run(db, instance.id):
+        if not instance.enabled:
+            raise AppError(403, "instance_disabled", "This instance is disabled")
+        raise AppError(403, "site_disabled", "This site is disabled")
+    return instance

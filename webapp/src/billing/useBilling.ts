@@ -192,6 +192,8 @@ export function useDemandWindows(siteId: number, tariffId: number) {
     queryKey: ["demand-windows", siteId, tariffId],
     queryFn: () =>
       apiFetch<DemandWindow[]>(`/api/v1/sites/${siteId}/tariffs/${tariffId}/demand-windows`),
+    // The schedule editor passes NaN while the site has no tariff.
+    enabled: Number.isFinite(tariffId),
   });
 }
 

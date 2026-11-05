@@ -11,7 +11,7 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `db.py` | Engine and session factory. Turns on `PRAGMA foreign_keys=ON` for SQLite. |
 | `bootstrap.py` | `python -m core_api.bootstrap` runs Alembic to `head`. Safe to repeat. |
 | `admin_user.py` | Creates the first user on an empty database and writes the one-time password file. |
-| `deps.py` | FastAPI dependencies: current user, setup and MFA tokens, site access, collector-key checks. |
+| `deps.py` | FastAPI dependencies: current user, setup and MFA tokens, site access, collector-key checks, and `require_actor_key` and `get_actor_instance` for actors. |
 | `security.py` | bcrypt, JWT creation and decoding, TOTP, token hashing, keyed recovery-code hashing. |
 | `encrypted_types.py` | `EncryptedString` and `EncryptedJSON` column types. Fernet encryption on write, decryption on read. |
 | `attempt_tracker.py`, `login_attempts.py`, `mfa_attempts.py` | In-memory sliding-window lockouts (5 failures in 15 minutes). |
@@ -25,7 +25,9 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `email_sender.py` | `SmtpEmailSender` for production, `FakeEmailSender` for tests. |
 | `live.py` | `LiveHub`: the in-memory latest live sample per source and the per-site subscriber queues. Never touches the database. |
 | `scheduler.py` | Builds the APScheduler instance. |
-| `jobs/` | The three background jobs and their helpers. |
+| `actor_schemas.py`, `actor_capabilities.py`, `actor_schedule_validation.py` | Pydantic models for schedules, runs and capabilities, and the checks that tie a saved schedule to an instance's declared capabilities. See [Actors](actors.md). |
+| `actor_context.py`, `actor_runs.py`, `actor_failures.py` | The site context an actor fetches (window occurrences as UTC instants), the one definition of an unfinished action run, and the current-failures rules the Dashboard tile and the watchdog share. |
+| `jobs/` | The background jobs and their helpers. |
 
 ## Request lifecycle
 
@@ -48,6 +50,8 @@ Authorization is in the dependencies, not in the function bodies. A router funct
 | `require_mfa_token` | A valid `mfa` scoped token and the user is not locked out | 401 `too_many_attempts` |
 | `require_site_access` | Owner or `site_access` row | 404 `not_found` (also for sites the caller cannot access) |
 | `require_site_owner` | Owner only | 404 `not_found` if the caller has no access, 403 `forbidden` for a viewer |
+| `require_actor_key` | `X-Actor-Key` equals `ACTOR_KEY` (constant-time compare) | 401 `invalid_actor_key` |
+| `get_actor_instance` | The key, and the instance's `provider` equals `X-Actor-Provider`; the instance and its site are enabled unless an action run still needs its restore | 401 `invalid_actor_key` (also for an unknown id), 403 `instance_disabled` / `site_disabled` |
 | `get_source_by_collector_key` | Correct key for the source's kind, matching provider header if sent, source enabled, site enabled, and within its effective dates | 401 `invalid_collector_key`, 403 `source_disabled` / `site_disabled` / `source_expired` |
 | `require_source_kind(kind)` | The above, and the source is that kind | 403 `wrong_source_kind` |
 
@@ -122,6 +126,28 @@ All collector endpoints send `X-Collector-Key`. Per-source endpoints may also se
 
 **Config resolution.** `resolve_source_config()` in `routers/collector_config.py` is what a collector receives. For `local` sources it ignores the stored config and builds `{timezone, rate_windows, reprice}` from the rate window tables. For `amber` it adds the site owner's API key. Everything else is the stored config as is.
 
+### Actors
+
+The contract an actor follows is in [Actors](actors.md#the-contract). There are two surfaces.
+
+| Surface | Prefix | Credential | Used by |
+|---|---|---|---|
+| Actor | `/actor` | `X-Actor-Key`, and `X-Actor-Provider` on per-instance routes | The actor container |
+| Owner | `/sites/{id}/actors` | JWT. Reads need site access, writes need the owner. | The web app |
+
+Actor routes (`routers/actor.py`): `GET /actor/instances?provider=`, then under `/actor/instances/{id}`: `PATCH /discovered-config`, `PUT /capabilities`, `GET /schedules`, `GET /context`, `PUT /readings`, `GET /runs`, `POST /runs`, `PATCH /runs/{run_id}`.
+
+Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET/POST /instances`, `PATCH/DELETE /instances/{iid}` | Manage the device accounts. `DELETE` is refused with 409 `unit_held_off` while an action run owes a restore and returns 204 otherwise. The `GET`, `POST` and `PATCH` responses are built by `instance_view`, which returns the sign-in code and link in `auth_state` to the site owner only; a viewer gets `{"signing_in": true}`. |
+| `POST /instances/{iid}/sign-in/reset` | Drop the stored refresh token. Same 409 rule. The response is built by `instance_view` too. |
+| `GET/POST /schedules`, `PATCH/DELETE /schedules/{sid}` | Manage schedules. Writes are validated against the instance's capabilities (422 `invalid_schedule` or `no_capabilities`). |
+| `POST /schedules/{sid}/test` | Queue a test run. 409 `instance_disabled` or `no_capabilities`. |
+| `GET /runs?limit=`, `GET /schedules/{sid}/runs?limit=` | Run history, newest first. `limit` is 1 to 200, default 50. |
+| `GET /failures` | The current failures for the Dashboard tile |
+
 ## Live samples
 
 The dashboard tiles update from a WebSocket instead of waiting for the next stored reading. Collectors push live samples to Core API, and Core API forwards them to connected browsers. Nothing in this path writes to the database; stored readings still arrive through the batch endpoints above.
@@ -193,6 +219,7 @@ Validation failures use code `validation_error` and HTTP 422. The `detail` list 
 | `demand_interval` | Every 5 minutes | Derives `demand_intervals` for each 5-minute slot | Upsert on (site, interval_start). Recomputes the last 3 hours. |
 | `demand_charge` | Daily 00:10 | Computes `demand_charges` for each billing period | Finalized rows are skipped. Estimated rows are recomputed. |
 | `retention_rollup` | Daily 00:20 | Moves readings older than 365 days into 5-minute rollups and deletes the raw rows | Upsert into rollups, delete after. Cutoff is floored to a bucket boundary. |
+| `actor_watchdog` | Every minute | Finds action runs that hold a unit off past the restore time plus the give-up allowance, or whose actor has been silent for 5 minutes, and emails the site owner once per run if the schedule has email on | A conditional update sets `watchdog_notified_at` first, and only the job run that wins the update sends |
 | `expire_admin_password_file` | Daily 03:17, and once at startup | Deletes `initial-admin-password.txt` if it is 5 days old or older | Does nothing when the file is missing. Not a database job: it takes the file path, not a session. |
 
 Times use the container's clock (UTC in the image).
@@ -206,6 +233,7 @@ Times use the container's clock (UTC in the image).
 | `ENVOY_COLLECTOR_KEY` | yes | none | Shared secret for `energy` collectors |
 | `WEATHER_COLLECTOR_KEY` | yes | none | Shared secret for `weather` collectors |
 | `PRICING_COLLECTOR_KEY` | yes | none | Shared secret for `pricing` collectors (Amber and local) |
+| `ACTOR_KEY` | yes | none | Shared secret for all actors |
 | `DATABASE_URL` | no | `sqlite:///./core_api.db` | Compose sets `sqlite:////data/core_api.db` |
 | `AVATAR_STORAGE_DIR` | no | `./data/avatars` | Compose sets `/data/avatars` |
 | `JWT_EXPIRY_HOURS` | no | `24` | Access token lifetime |
@@ -226,7 +254,7 @@ The rule, from the Storing Secrets section of [`CLAUDE.md`](../CLAUDE.md): never
 | Passwords | bcrypt hash (`hash_password`) | The app only checks them |
 | Password-reset, email-confirmation and email-change tokens | SHA-256 (`hash_token`) | 256-bit random values cannot be brute-forced, so a plain hash is enough |
 | TOTP recovery codes | Keyed HMAC-SHA256 (`hash_recovery_code`), 16 hex characters | Short enough that a plain hash could be guessed offline from a leaked database. The HMAC key is derived from `SECRETS_ENCRYPTION_KEY`. |
-| `sources.config` (Envoy token, Enlighten login, and the rest), `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret` | Fernet encryption (`EncryptedJSON`, `EncryptedString` in `encrypted_types.py`) | The app has to send these on, so a hash would be useless |
+| `sources.config` (Envoy token, Enlighten login, and the rest), `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret`, `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link) | Fernet encryption (`EncryptedJSON`, `EncryptedString` in `encrypted_types.py`) | The app has to send these on, so a hash would be useless |
 
 Consequences to know about:
 
