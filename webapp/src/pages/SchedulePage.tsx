@@ -5,6 +5,7 @@ import { ScheduleDetail } from "../actors/ScheduleDetail";
 import { ScheduleList, type Selection } from "../actors/ScheduleList";
 import { DisabledNotice, NeedsSignInNotice, SignInPanel } from "../actors/SignInPanel";
 import { type ActorInstance, type ActorSchedule, isSigningIn } from "../actors/types";
+import { useGuardedSelection } from "../actors/unsavedEdits";
 import { useActorInstances, useSchedules } from "../actors/useActors";
 import { QueryError } from "../components/QueryError";
 import { Spinner } from "../components/Spinner";
@@ -50,6 +51,7 @@ function Workspace({ site, instances, schedules, canEdit }: {
 }) {
   const [picked, setPicked] = useState<Selection>(null);
   const selected = effectiveSelection(picked, schedules);
+  const { select, provide, dialog } = useGuardedSelection(selected, setPicked);
   const current = selected?.kind === "schedule" ? schedules.find((s) => s.id === selected.id) ?? null : null;
   const instance = instances.find((i) => i.id === current?.instance_id) ?? instances[0];
   const blocked = instances.map((i) => <BlockedInstance key={i.id} site={site} instance={i} canEdit={canEdit} />);
@@ -58,9 +60,10 @@ function Workspace({ site, instances, schedules, canEdit }: {
     <div className="space-y-4">
       {blocked}
       <div className="grid gap-4 md:grid-cols-[18rem_1fr]">
-        <ScheduleList site={site} data={{ instances, schedules }} view={{ selected, onSelect: setPicked, canEdit }} />
-        {selected && <ScheduleDetail siteId={site.id} schedule={current} instance={instance} canEdit={canEdit} onSelect={setPicked} />}
+        <ScheduleList site={site} data={{ instances, schedules }} view={{ selected, onSelect: select, canEdit }} />
+        {selected && provide(<ScheduleDetail siteId={site.id} schedule={current} instance={instance} canEdit={canEdit} onSelect={select} />)}
       </div>
+      {dialog}
     </div>
   );
 }

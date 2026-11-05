@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { createMemoryRouter, Link, MemoryRouter, Route, RouterProvider, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import type { ActorInstance, ActorSchedule, AuthState, Capabilities } from "../actors/types";
@@ -257,5 +257,198 @@ describe("SchedulePage", () => {
     expect(await screen.findByText(/needs to sign in again/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Schedules" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Evening peak/ })).toBeInTheDocument();
+  });
+});
+
+const guardCaps: Capabilities = { version: 1, actions: [{ id: "turn_off", label: "Turn off", restorable: false, params: [] }], readings: [] };
+const twoSchedules = { instances: [instance({ capabilities: guardCaps })], schedules: [schedule(1, "Evening peak"), schedule(2, "Morning")] };
+
+/** True when the page asked the browser to confirm closing the tab. */
+function leaveIsQuestioned(): boolean {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+async function editName(text: string) {
+  const name = await screen.findByLabelText("Name");
+  await userEvent.clear(name);
+  await userEvent.type(name, text);
+  return name;
+}
+
+function renderWithDataRouter() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const tree = (
+    <>
+      <Link to="/help">Help</Link>
+      <Routes>
+        <Route path="/sites/:siteId/schedule" element={<SchedulePage />} />
+        <Route path="/help" element={<p>Help page</p>} />
+      </Routes>
+    </>
+  );
+  const router = createMemoryRouter([{ path: "*", element: tree }], { initialEntries: ["/help", "/sites/7/schedule"], initialIndex: 1 });
+  render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+  return { router, queryClient };
+}
+
+describe("SchedulePage unsaved edits", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  it("questions closing the tab only while the form differs from the saved schedule", async () => {
+    mockApi(twoSchedules);
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "Evening peak" })).toBeInTheDocument();
+    expect(leaveIsQuestioned()).toBe(false);
+    await editName("Late peak");
+    expect(leaveIsQuestioned()).toBe(true);
+    await editName(" Evening peak ");
+    expect(leaveIsQuestioned()).toBe(false);
+  });
+
+  it("switches schedules without asking while nothing changed", async () => {
+    mockApi(twoSchedules);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Morning/ }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Morning" })).toBeInTheDocument();
+  });
+
+  it("asks before switching schedules, and Keep editing leaves the form as it was", async () => {
+    mockApi(twoSchedules);
+    renderPage();
+    await editName("Late peak");
+    const morning = screen.getByRole("button", { name: /Morning/ });
+    await userEvent.click(morning);
+    expect(screen.getByRole("alertdialog", { name: "Discard unsaved changes?" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("Late peak");
+    expect(screen.getByRole("button", { name: /Evening peak/ })).toHaveAttribute("aria-current", "true");
+    expect(morning).toHaveFocus();
+  });
+
+  it("switches schedules after Discard changes", async () => {
+    mockApi(twoSchedules);
+    renderPage();
+    await editName("Late peak");
+    await userEvent.click(screen.getByRole("button", { name: /Morning/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(screen.getByRole("heading", { name: "Morning" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("Morning");
+    expect(leaveIsQuestioned()).toBe(false);
+  });
+
+  it("asks before opening a new schedule", async () => {
+    mockApi(twoSchedules);
+    renderPage();
+    await editName("Late peak");
+    await userEvent.click(screen.getByRole("button", { name: "New schedule" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByLabelText("Name")).toHaveValue("Late peak");
+    await userEvent.click(screen.getByRole("button", { name: "New schedule" }));
+    await userEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(screen.getByRole("heading", { name: "New schedule", level: 2 })).toBeInTheDocument();
+  });
+
+  it("stops asking once the edits are saved", async () => {
+    mockApi(twoSchedules);
+    renderPage();
+    await editName("Late peak");
+    await userEvent.click(screen.getByRole("button", { name: "Save schedule" }));
+    await waitFor(() => expect(calls("PATCH")).toHaveLength(1));
+    await waitFor(() => expect(leaveIsQuestioned()).toBe(false));
+    await userEvent.click(screen.getByRole("button", { name: /Morning/ }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Morning" })).toBeInTheDocument();
+  });
+
+  it("does not ask when a new schedule is created", async () => {
+    mockApi(twoSchedules);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "New schedule" }));
+    expect(leaveIsQuestioned()).toBe(false);
+    await editName("Night");
+    await userEvent.type(screen.getByLabelText(/^Time/), "22:00");
+    expect(leaveIsQuestioned()).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "Save schedule" }));
+    await waitFor(() => expect(calls("POST")).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "New schedule", level: 2 })).not.toBeInTheDocument());
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(leaveIsQuestioned()).toBe(false);
+  });
+
+  it("never asks a viewer", async () => {
+    mockApi({ ...twoSchedules, userId: 2 });
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Only the owner/)).toBeInTheDocument());
+    expect(leaveIsQuestioned()).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: /Morning/ }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the dialog and the edits while the schedules refetch", async () => {
+    mockApi(twoSchedules);
+    const { queryClient } = renderPage();
+    await editName("Late peak");
+    await userEvent.click(screen.getByRole("button", { name: /Morning/ }));
+    await act(() => queryClient.invalidateQueries());
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("Late peak");
+  });
+});
+
+describe("SchedulePage leaving with unsaved edits", () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+  });
+
+  it("follows a link at once while nothing changed", async () => {
+    mockApi(twoSchedules);
+    renderWithDataRouter();
+    await screen.findByRole("heading", { name: "Evening peak" });
+    await userEvent.click(screen.getByRole("link", { name: "Help" }));
+    expect(screen.getByText("Help page")).toBeInTheDocument();
+  });
+
+  it("holds a link until Discard changes", async () => {
+    mockApi(twoSchedules);
+    const { router } = renderWithDataRouter();
+    await editName("Late peak");
+    await userEvent.click(screen.getByRole("link", { name: "Help" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(router.state.location.pathname).toBe("/sites/7/schedule");
+    expect(screen.getByLabelText("Name")).toHaveValue("Late peak");
+    await userEvent.click(screen.getByRole("link", { name: "Help" }));
+    await userEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(await screen.findByText("Help page")).toBeInTheDocument();
+    expect(leaveIsQuestioned()).toBe(false);
+  });
+
+  it("holds browser back and leaves the URL and the form as they were", async () => {
+    mockApi(twoSchedules);
+    const { router } = renderWithDataRouter();
+    await editName("Late peak");
+    await act(() => router.navigate(-1));
+    expect(router.state.location.pathname).toBe("/sites/7/schedule");
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.getByLabelText("Name")).toHaveValue("Late peak");
+  });
+
+  it("shows one dialog when a second leave is tried while it is open", async () => {
+    mockApi(twoSchedules);
+    const { router } = renderWithDataRouter();
+    await editName("Late peak");
+    await userEvent.click(screen.getByRole("button", { name: /Morning/ }));
+    await act(() => router.navigate(-1));
+    expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(await screen.findByText("Help page")).toBeInTheDocument();
   });
 });

@@ -1,3 +1,4 @@
+import { useContext } from "react";
 import type { SaveState } from "../components/SubmitButton";
 import { QueryError } from "../components/QueryError";
 import { Spinner } from "../components/Spinner";
@@ -11,6 +12,7 @@ import { cardClass } from "./styles";
 import { TestNow } from "./TestNow";
 import { UnitStatePanel } from "./UnitStatePanel";
 import type { ActorInstance, ActorSchedule } from "./types";
+import { UnsavedEditsContext } from "./unsavedEdits";
 import { useCreateSchedule, useDeleteSchedule, useUpdateSchedule } from "./useActors";
 
 export interface ScheduleDetailProps {
@@ -23,7 +25,27 @@ export interface ScheduleDetailProps {
   onSelect?: (selection: Selection) => void;
 }
 
+function withoutInstance({ instance_id: _instance, ...patch }: SchedulePayload) {
+  return patch;
+}
+
 const IDLE: SaveState = { isPending: false, isSuccess: false, submittedAt: 0 };
+
+/** What follows a create or a delete. The editor is marked clean first, so the selection
+ * change that follows does not ask about unsaved edits. */
+function useAfterMutation(onSelect: ScheduleDetailProps["onSelect"]) {
+  const reportDirty = useContext(UnsavedEditsContext);
+  return {
+    created: (onSaved: () => void) => (made: ActorSchedule) => {
+      onSaved();
+      onSelect?.({ kind: "schedule", id: made.id });
+    },
+    deleted: () => {
+      reportDirty(false);
+      onSelect?.(null);
+    },
+  };
+}
 
 /** Create, update and delete for the shown schedule. Mutation state from another
  * schedule is ignored, so a Saved note or an error does not follow the owner to the next one. */
@@ -31,23 +53,21 @@ function useScheduleActions({ siteId, schedule, onSelect }: ScheduleDetailProps)
   const create = useCreateSchedule(siteId);
   const update = useUpdateSchedule(siteId);
   const remove = useDeleteSchedule(siteId);
+  const after = useAfterMutation(onSelect);
   const id = schedule?.id;
   // A create stays relevant after onSelect moves to the schedule it made.
   const relevant = [schedule === null || create.data?.id === id ? create : null, update.variables?.id === id ? update : null]
     .filter((m) => m !== null);
   const last = [...relevant].sort((a, b) => b.submittedAt - a.submittedAt)[0];
   return {
-    save: (payload: SchedulePayload) => {
-      if (id === undefined) create.mutate(payload, { onSuccess: (made) => onSelect?.({ kind: "schedule", id: made.id }) });
-      else {
-        const { instance_id: _instance, ...patch } = payload;
-        update.mutate({ id, ...patch });
-      }
+    save: (payload: SchedulePayload, onSaved: () => void) => {
+      if (id === undefined) create.mutate(payload, { onSuccess: after.created(onSaved) });
+      else update.mutate({ ...withoutInstance(payload), id }, { onSuccess: onSaved });
     },
     saveState: last ?? IDLE,
     saveError: last?.error ?? null,
     remove: id === undefined ? null : {
-      onConfirm: () => remove.mutate(id, { onSuccess: () => onSelect?.(null) }),
+      onConfirm: () => remove.mutate(id, { onSuccess: after.deleted }),
       isPending: remove.isPending,
       error: remove.variables === id ? remove.error : null,
     },

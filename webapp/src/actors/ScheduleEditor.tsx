@@ -11,10 +11,12 @@ import type { EditorModel } from "./editorModel";
 import { RestoreStep } from "./RestoreStep";
 import { RetryStep } from "./RetryStep";
 import { alignParams, applyRestorable, conditionReadings, emptyForm, fromSchedule, type SchedulePayload, toPayload } from "./scheduleForm";
+import { isDirty } from "./scheduleDirty";
 import { validateForm } from "./scheduleValidation";
 import { Step } from "./Step";
 import { noticeClass, primaryButtonClass } from "./styles";
 import type { ActorInstance, ActorSchedule, Capabilities } from "./types";
+import { useReportDirty } from "./unsavedEdits";
 import { WhenStep } from "./WhenStep";
 
 export interface EditorSetup {
@@ -27,7 +29,8 @@ export interface EditorSetup {
 }
 
 export interface EditorActions {
-  save: (payload: SchedulePayload) => void;
+  /** `onSaved` runs once the server has accepted the payload. */
+  save: (payload: SchedulePayload, onSaved: () => void) => void;
   saveState: SaveState;
   saveError: Error | null;
   /** Null for a schedule that has not been saved yet. */
@@ -84,19 +87,35 @@ function Buttons({ actions }: { actions: EditorActions }) {
   );
 }
 
-/** The numbered schedule form. Each step gets the same model: the form, its setter and the current errors. */
-export function ScheduleEditor({ setup, actions }: { setup: EditorSetup; actions: EditorActions }) {
-  const [form, setForm] = useState(() => initialForm(setup));
+/** The form state, its errors and the submit handler. The baseline is the form as last
+ * saved, or as first shown; the editor is dirty while the form differs from it. A viewer
+ * cannot change anything, so is never dirty. */
+function useEditorForm(setup: EditorSetup, actions: EditorActions) {
+  const [start] = useState(() => initialForm(setup));
+  const [form, setForm] = useState(start);
+  const [baseline, setBaseline] = useState(start);
   const [submitted, setSubmitted] = useState(false);
   const { canEdit, capabilities } = setup;
+  const reportDirty = useReportDirty(canEdit && isDirty(form, baseline));
   const errors = submitted ? validateForm(form, capabilities) : {};
   const model: EditorModel = { form, setForm, errors, capabilities, canEdit };
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (Object.keys(validateForm(form, capabilities)).length === 0) actions.save(toPayload(form, capabilities));
+    if (Object.keys(validateForm(form, capabilities)).length > 0) return;
+    actions.save(toPayload(form, capabilities), () => {
+      setBaseline(form);
+      reportDirty(false);
+    });
   }
+  return { model, handleSubmit };
+}
+
+/** The numbered schedule form. Each step gets the same model: the form, its setter and the current errors. */
+export function ScheduleEditor({ setup, actions }: { setup: EditorSetup; actions: EditorActions }) {
+  const { model, handleSubmit } = useEditorForm(setup, actions);
+  const { form, setForm, canEdit } = model;
 
   return (
     <div className="space-y-6">
