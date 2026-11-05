@@ -713,6 +713,48 @@ def test_no_heartbeat_once_the_device_state_is_older_than_5_minutes():
     run(scenario())
 
 
+async def poll_and_tick(h: Harness, minutes: int) -> None:
+    """Advance the clock by `minutes`, poll the unit as the reconcile does, then tick."""
+    h.clock.current = h.clock.now() + minutes * MIN
+    try:
+        await h.factory.devices[-1].refresh()
+    except Exception:  # a failed poll leaves the state as it was
+        pass
+    await h.tick()
+
+
+def test_heartbeat_continues_while_polls_return_an_unchanged_state():
+    async def scenario() -> None:
+        h = harness([])
+        await h.tick()
+        assert len(h.core.readings) == 1
+        for _ in range(5):  # 10 minutes of polls that find nothing new
+            await poll_and_tick(h, 2)
+        assert len(h.core.readings) == 6
+        stamps = [payload["updated_at"] for _, payload in h.core.readings]
+        assert stamps == sorted(set(stamps))
+        assert stamps[-1] == (START + 10 * MIN).isoformat()
+
+    run(scenario())
+
+
+def test_heartbeat_stops_when_polls_fail_and_resumes_after_recovery():
+    async def scenario() -> None:
+        h = harness([])
+        await h.tick()
+        h.api.poll_error = OSError("down")
+        for _ in range(4):  # last good state at START, now START + 8 minutes
+            await poll_and_tick(h, 2)
+        sent_while_failing = len(h.core.readings)
+        assert sent_while_failing == 3  # START, +2 and +4 minutes; nothing once the state is 5 minutes old
+        h.api.poll_error = None
+        await poll_and_tick(h, 2)
+        assert len(h.core.readings) == sent_while_failing + 1
+        assert h.core.readings[-1][1]["updated_at"] == (START + 10 * MIN).isoformat()
+
+    run(scenario())
+
+
 def test_no_heartbeat_after_sign_out():
     async def scenario() -> None:
         h = harness([])

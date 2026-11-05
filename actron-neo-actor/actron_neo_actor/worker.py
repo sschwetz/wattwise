@@ -214,23 +214,29 @@ class InstanceWorker:
     def pulse(self) -> None:
         """Send the readings if the last send is `heartbeat_seconds` old and the device state is fresh.
 
-        The heartbeat keeps the instance's last_seen_at current, so it stops once the device
-        state is older than STALE_AFTER or the device is dropped. Core API then shows the actor
-        as not reporting."""
-        latest, sent_at, now = self._latest, self._readings_sent_at, self._clock()
+        The heartbeat keeps the instance's last_seen_at current. It reads the device's current
+        state, which every poll and push refreshes even when nothing in it changed, so it stops
+        only once that state is older than STALE_AFTER or the device is dropped. Core API then
+        shows the actor as not reporting."""
+        current, sent_at, now = self._current_state(), self._readings_sent_at, self._clock()
         heartbeat = datetime.timedelta(seconds=self._settings.heartbeat_seconds)
-        if latest is None or now - latest.updated_at > STALE_AFTER:
+        if current is None or now - current.updated_at > STALE_AFTER:
             return
         if sent_at is None or now - sent_at >= heartbeat:
             self._readings.poke()
+
+    def _current_state(self) -> DeviceState | None:
+        """The device's state now, or None without a device. A state kept from a dropped device is not used."""
+        return self._env.device.state() if self._env is not None else None
 
     async def _send_readings(self) -> None:
         if self._readings_sent_at is not None:
             wait = CHANGE_GAP_SECONDS - (self._clock() - self._readings_sent_at).total_seconds()
             if wait > 0:
                 await self._sleep(wait)
-        if self._latest is not None:
-            await self._core.put_readings(self.instance_id, self._latest.to_payload())
+        state = self._current_state() or self._latest
+        if state is not None:
+            await self._core.put_readings(self.instance_id, state.to_payload())
             self._readings_sent_at = self._clock()
 
     async def _watch(self) -> None:
