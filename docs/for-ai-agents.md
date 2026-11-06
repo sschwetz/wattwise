@@ -52,7 +52,7 @@ Run Python commands from the project directory. Collectors need `CORE_API_URL` a
 | What does the user see described? | `webapp/src/docs/*.md` (also shown in-app) |
 | How do actors, schedules and runs work? | `docs/actors.md`; `core_api/routers/actor.py` (actor side), `routers/actors.py` (owner side), `actor_failures.py`, `jobs/actor_watchdog_job.py` |
 | How does the Actron actor decide and act? | `actron-neo-actor/actron_neo_actor/worker.py` (tick), `schedule_eval.py`, `actions.py`, `restores.py`, `device.py` |
-| How does the Schedule page work? | `webapp/src/pages/SchedulePage.tsx`, `webapp/src/actors/` |
+| How does the Schedule tab work? | `webapp/src/pages/SchedulePage.tsx`, `webapp/src/actors/` |
 | How does the Envoy collector handle expiry and certificates? | `envoy-collector/envoy_collector/main.py` |
 | When does the local pricing collector act? | `local-pricing-collector/local_pricing_collector/triggers.py`, `plan.py`, `poll.py` |
 | Why was it built this way? | `docs/superpowers/specs/` (date-ordered; the Core API spec is `2026-09-25-core-api-design.md`) |

@@ -61,7 +61,7 @@ describe("FailuresTile", () => {
     renderTile();
     const tile = await screen.findByRole("region", { name: "Schedule status" });
     expect(within(tile).getByText("All schedules OK")).toBeInTheDocument();
-    expect(within(tile).getByRole("link", { name: /schedule page/i })).toHaveAttribute("href", "/sites/7/schedule");
+    expect(within(tile).getByRole("link", { name: /schedule page/i })).toHaveAttribute("href", "/settings/sites/7/schedule");
     expect(tile.className).not.toContain("danger-glow");
   });
 
@@ -84,7 +84,7 @@ describe("FailuresTile", () => {
     expect(rows[1]).toHaveTextContent("Actor not reporting");
     expect(rows[1]).not.toHaveTextContent("null");
     expect(rows[2]).toHaveTextContent("Needs sign-in");
-    expect(within(tile).getByRole("link", { name: "Open the Schedule page" })).toHaveAttribute("href", "/sites/7/schedule");
+    expect(within(tile).getByRole("link", { name: "Open the Schedule tab" })).toHaveAttribute("href", "/settings/sites/7/schedule");
     expect(within(tile).getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
 
@@ -106,7 +106,7 @@ describe("FailuresTile", () => {
     const rows = within(tile).getAllByRole("listitem");
     expect(rows.map((r) => /Schedule (\d)/.exec(r.textContent ?? "")?.[1])).toEqual(["1", "2", "3", "4", "5"]);
     const more = within(tile).getByRole("link", { name: "and 2 more" });
-    expect(more).toHaveAttribute("href", "/sites/7/schedule");
+    expect(more).toHaveAttribute("href", "/settings/sites/7/schedule");
   });
 
   it("shows the muted unavailable line when the failures request errors while instances exist", async () => {
@@ -179,6 +179,6 @@ describe("FailuresTile", () => {
     const tile = await screen.findByRole("region", { name: "Needs attention" });
     expect(within(tile).getByText("Message 1")).toBeInTheDocument();
     expect(within(tile).queryByRole("button")).not.toBeInTheDocument();
-    expect(within(tile).getByRole("link", { name: "Open the Schedule page" })).toBeInTheDocument();
+    expect(within(tile).getByRole("link", { name: "Open the Schedule tab" })).toBeInTheDocument();
   });
 });

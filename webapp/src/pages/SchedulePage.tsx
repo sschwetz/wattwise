@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
 import { AddInstanceForm } from "../actors/AddInstanceForm";
 import { ScheduleDetail } from "../actors/ScheduleDetail";
 import { ScheduleList, type Selection } from "../actors/ScheduleList";
@@ -11,7 +10,7 @@ import { QueryError } from "../components/QueryError";
 import { Spinner } from "../components/Spinner";
 import { AccessNote } from "../settings/AccessNote";
 import { useSiteAccess } from "../settings/useSiteAccess";
-import { type Site, useSites } from "../sites/useSites";
+import type { Site } from "../sites/useSites";
 
 function needsSignIn(i: ActorInstance): boolean {
   return i.auth_state !== null && "needs_sign_in" in i.auth_state;
@@ -68,7 +67,8 @@ function Workspace({ site, instances, schedules, canEdit }: {
   );
 }
 
-function SchedulePageBody({ site }: { site: Site }) {
+/** The Schedule tab of Site settings. */
+export function ScheduleTab({ site }: { site: Site }) {
   const { readOnly, note } = useSiteAccess(site);
   const instances = useActorInstances(site.id);
   const schedules = useSchedules(site.id);
@@ -85,14 +85,4 @@ function SchedulePageBody({ site }: { site: Site }) {
       {body}
     </div>
   );
-}
-
-export function SchedulePage() {
-  const siteId = Number(useParams<{ siteId: string }>().siteId);
-  const sites = useSites();
-  const site = sites.data?.find((s) => s.id === siteId);
-  if (sites.isError) return <QueryError error={sites.error} fallback="Could not load the site." onRetry={() => void sites.refetch()} />;
-  if (!sites.data) return <Spinner />;
-  if (!site) return <p className="text-sm text-ink-muted">Site not found.</p>;
-  return <SchedulePageBody site={site} />;
 }

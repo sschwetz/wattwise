@@ -40,11 +40,13 @@ function FailureRow({ failure, timezone }: { failure: ActorFailure; timezone: st
   );
 }
 
+const scheduleHref = (siteId: number) => `/settings/sites/${siteId}/schedule`;
+
 function FailureList({ failures, siteId }: { failures: ActorFailure[]; siteId: number }) {
   const timezone = useSites().data?.find((s) => s.id === siteId)?.timezone;
   const shown = oldestFirst(failures).slice(0, MAX_SHOWN);
   const hidden = failures.length - shown.length;
-  const href = `/sites/${siteId}/schedule`;
+  const href = scheduleHref(siteId);
   return (
     <>
       <h2 className="font-display text-lg font-semibold text-ink">Needs attention ({failures.length})</h2>
@@ -54,7 +56,7 @@ function FailureList({ failures, siteId }: { failures: ActorFailure[]; siteId: n
         ))}
       </ul>
       {hidden > 0 && <Link to={href} className={`${linkClass} mt-2 block`}>and {hidden} more</Link>}
-      <Link to={href} className={`${linkClass} mt-3 block`}>Open the Schedule page</Link>
+      <Link to={href} className={`${linkClass} mt-3 block`}>Open the Schedule tab</Link>
     </>
   );
 }
@@ -64,7 +66,7 @@ export function FailuresTile({ siteId }: { siteId: number }) {
   const instances = useActorInstances(siteId);
   const failures = useActorFailures(siteId);
   if (!instances.data || instances.data.length === 0) return null;
-  const href = `/sites/${siteId}/schedule`;
+  const href = scheduleHref(siteId);
   // A failed background refetch keeps the failures already shown.
   if (failures.isError && !failures.data) return <p className={hintClass}>Schedule status unavailable</p>;
   if (!failures.data) return null;
@@ -73,7 +75,7 @@ export function FailuresTile({ siteId }: { siteId: number }) {
       <section aria-label="Schedule status" className={tileClass}>
         <div role="status" aria-live="polite" className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="text-sm text-ink-muted">All schedules OK</p>
-          <Link to={href} className={linkClass}>Open the Schedule page</Link>
+          <Link to={href} className={linkClass}>Open the Schedule tab</Link>
         </div>
       </section>
     );

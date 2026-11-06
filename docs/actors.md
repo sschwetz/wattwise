@@ -7,7 +7,7 @@ Actors follow the collector design: one small Python container per kind of devic
 | | Collector | Actor |
 |---|---|---|
 | Direction | Device to Core API | Core API to device |
-| Configured by | A source in Settings | A schedule on the **Schedule** page |
+| Configured by | A source in Settings | A schedule on the **Schedule** tab of Site settings |
 | Key | One per kind (`ENVOY_COLLECTOR_KEY`, and so on) | `ACTOR_KEY`, shared by all actors |
 | Provider header | `X-Collector-Provider` (optional on most routes) | `X-Actor-Provider` (required on every route) |
 | Endpoints | `/collector/...` and `/sources/{id}/...` | `/actor/...` |
@@ -245,7 +245,7 @@ These were observed on the owner's unit.
 
 ### Keeping in step with the unit
 
-The actor asks the library for push updates and keeps a copy of the unit's state. It polls `update_status()` every `RECONCILE_SECONDS` (default 120) as a safety net while push works, and every `POLL_FALLBACK_SECONDS` (default 30) while push is down. A reading is stale after 5 minutes, which is why the safety poll runs more often than that. The actor sends the state to Core API when it changes (no more than once every 2 seconds) and at least every `HEARTBEAT_SECONDS` (default 60) while its copy is less than 5 minutes old. Every poll and push renews the copy's time, even when the unit has not changed, so a steady, idle unit keeps the heartbeat going. It stops the heartbeat once the copy is older than 5 minutes or the sign-in is lost, so `last_seen_at` goes stale when the actor cannot see the unit. The Schedule page shows **Not updating** when `last_seen_at` is more than 2 minutes old.
+The actor asks the library for push updates and keeps a copy of the unit's state. It polls `update_status()` every `RECONCILE_SECONDS` (default 120) as a safety net while push works, and every `POLL_FALLBACK_SECONDS` (default 30) while push is down. A reading is stale after 5 minutes, which is why the safety poll runs more often than that. The actor sends the state to Core API when it changes (no more than once every 2 seconds) and at least every `HEARTBEAT_SECONDS` (default 60) while its copy is less than 5 minutes old. Every poll and push renews the copy's time, even when the unit has not changed, so a steady, idle unit keeps the heartbeat going. It stops the heartbeat once the copy is older than 5 minutes or the sign-in is lost, so `last_seen_at` goes stale when the actor cannot see the unit. The Schedule tab shows **Not updating** when `last_seen_at` is more than 2 minutes old.
 
 ### Settings
 

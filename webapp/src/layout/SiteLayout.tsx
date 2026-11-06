@@ -5,7 +5,7 @@ import { SideRail } from "./SideRail";
 
 /**
  * Shared chrome for the site-scoped pages, laid out like Site settings: site
- * chips across the top, a left rail between Dashboard/Reporting, then the page.
+ * chips across the top, a left rail between Dashboard and Reporting, then the page.
  * Child routes inherit :siteId from here.
  */
 export function SiteLayout() {
@@ -35,7 +35,6 @@ export function SiteLayout() {
           items={[
             { to: `/sites/${siteId}`, label: "Dashboard", end: true },
             { to: `/sites/${siteId}/reporting`, label: "Reporting" },
-            { to: `/sites/${siteId}/schedule`, label: "Schedule" },
           ]}
         />
         <main className="min-w-0 flex-1">

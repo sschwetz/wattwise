@@ -7,7 +7,16 @@ import { ProtectedRoute } from "../auth/ProtectedRoute";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import type { ActorInstance, ActorSchedule, AuthState, Capabilities } from "../actors/types";
-import { SchedulePage } from "./SchedulePage";
+import { useParams } from "react-router-dom";
+import { useSites } from "../sites/useSites";
+import { ScheduleTab } from "./SchedulePage";
+
+/** Mounts the tab the way Site settings does, for the site in the URL. */
+function SchedulePage() {
+  const siteId = Number(useParams<{ siteId: string }>().siteId);
+  const site = useSites().data?.find((s) => s.id === siteId);
+  return site ? <ScheduleTab key={site.id} site={site} /> : null;
+}
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
@@ -68,10 +77,10 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/sites/7/schedule"]}>
-        <Link to="/sites/8/schedule">Other site</Link>
+      <MemoryRouter initialEntries={["/settings/sites/7/schedule"]}>
+        <Link to="/settings/sites/8/schedule">Other site</Link>
         <Routes>
-          <Route path="/sites/:siteId/schedule" element={<SchedulePage />} />
+          <Route path="/settings/sites/:siteId/schedule" element={<SchedulePage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -288,12 +297,12 @@ function renderWithDataRouter() {
     <>
       <Link to="/help">Help</Link>
       <Routes>
-        <Route path="/sites/:siteId/schedule" element={<SchedulePage />} />
+        <Route path="/settings/sites/:siteId/schedule" element={<SchedulePage />} />
         <Route path="/help" element={<p>Help page</p>} />
       </Routes>
     </>
   );
-  const router = createMemoryRouter([{ path: "*", element: tree }], { initialEntries: ["/help", "/sites/7/schedule"], initialIndex: 1 });
+  const router = createMemoryRouter([{ path: "*", element: tree }], { initialEntries: ["/help", "/settings/sites/7/schedule"], initialIndex: 1 });
   render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
   return { router, queryClient };
 }
@@ -479,7 +488,7 @@ describe("SchedulePage leaving with unsaved edits", () => {
     await userEvent.click(screen.getByRole("link", { name: "Help" }));
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
-    expect(router.state.location.pathname).toBe("/sites/7/schedule");
+    expect(router.state.location.pathname).toBe("/settings/sites/7/schedule");
     expect(screen.getByLabelText("Name")).toHaveValue("Late peak");
     await userEvent.click(screen.getByRole("link", { name: "Help" }));
     await userEvent.click(screen.getByRole("button", { name: "Discard changes" }));
@@ -492,7 +501,7 @@ describe("SchedulePage leaving with unsaved edits", () => {
     const { router } = renderWithDataRouter();
     await editName("Late peak");
     await act(() => router.navigate(-1));
-    expect(router.state.location.pathname).toBe("/sites/7/schedule");
+    expect(router.state.location.pathname).toBe("/settings/sites/7/schedule");
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
     expect(screen.getByLabelText("Name")).toHaveValue("Late peak");
@@ -530,12 +539,12 @@ describe("SchedulePage signing out with unsaved edits", () => {
         <Routes>
           <Route path="/login" element={<p>Login page</p>} />
           <Route element={<ProtectedRoute />}>
-            <Route path="/sites/:siteId/schedule" element={<SchedulePage />} />
+            <Route path="/settings/sites/:siteId/schedule" element={<SchedulePage />} />
           </Route>
         </Routes>
       </AuthProvider>
     );
-    const router = createMemoryRouter([{ path: "*", element: tree }], { initialEntries: ["/sites/7/schedule"] });
+    const router = createMemoryRouter([{ path: "*", element: tree }], { initialEntries: ["/settings/sites/7/schedule"] });
     render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
     await editName("Late peak");
     await userEvent.click(screen.getByRole("button", { name: "Log off" }));
