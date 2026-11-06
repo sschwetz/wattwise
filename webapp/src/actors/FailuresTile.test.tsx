@@ -61,7 +61,7 @@ describe("FailuresTile", () => {
     renderTile();
     const tile = await screen.findByRole("region", { name: "Schedule status" });
     expect(within(tile).getByText("All schedules OK")).toBeInTheDocument();
-    expect(within(tile).getByRole("link", { name: /schedule page/i })).toHaveAttribute("href", "/settings/sites/7/schedule");
+    expect(within(tile).getByRole("link", { name: /schedule tab/i })).toHaveAttribute("href", "/settings/sites/7/schedule");
     expect(tile.className).not.toContain("danger-glow");
   });
 
