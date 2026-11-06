@@ -133,7 +133,7 @@ The `actron-neo-actor` container runs schedules against an Actron Neo air condit
 ### First set-up
 
 1. Set `ACTOR_KEY` in `.env` (see [Secrets](#secrets)), then `docker compose up -d --build`. Core API and the actor must hold the same value.
-2. Open **Schedule** in the web app and add an air conditioner. Only the site owner can.
+2. Open **Schedule** in Site settings and add an air conditioner. Only the site owner can.
 3. The page shows an Actron code and a link to the site owner only (a viewer sees a line saying the owner is signing in). Open the link, sign in to Actron and enter the code. The page checks every 10 seconds, and once you approve, the actor stores the refresh token and the code disappears.
 4. The actor reports what the unit can do. **New schedule** is available once it has.
 5. Use **Test now** on a new schedule. It runs the action at once, ignoring the trigger and conditions, and puts the unit back after 30 seconds if the schedule restores.
@@ -166,7 +166,7 @@ The tile **Needs attention** appears at the top of the site Dashboard while a sc
 | Run failed | An action or restore did not succeed after its tries. The message says why. | Check the unit and turn it on if a restore failed. A later good run clears the entry; a skipped run clears a failed action but not a failed restore. |
 | Still off | The unit is still off after its restore time and the schedule's give-up minutes. A restore set to happen only on a condition counts its restore time as 24 hours after the trigger. | Turn the unit on. Then check the restore settings. A "only restore if" condition that never passes causes this. |
 | Actor not reporting | The unit is held off and the actor has not reported for 5 minutes. The actor also stops reporting when it cannot reach the unit through the Actron cloud or its sign-in is lost. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. If it needs signing in, press **Sign in again**. |
-| Needs sign-in | Actron rejected the stored token. | Open **Schedule**, press **Sign in again** and approve the code. This works while the unit is held off: the actor puts it back after the new sign-in. |
+| Needs sign-in | Actron rejected the stored token. | Open **Schedule** in Site settings, press **Sign in again** and approve the code. This works while the unit is held off: the actor puts it back after the new sign-in. |
 
 A needs-sign-in entry shows no time, because Core API does not record when it began. With **Email me if it still fails** on, a failed run emails the owner at once, and a still-off or silent actor emails once from the watchdog.
 
@@ -254,7 +254,7 @@ Migrations run automatically when `core-api` starts. Take a backup first. Rollin
 | `ACTOR_KEY` | `.env`, used by `core-api` and `actron-neo-actor` | The actor gets 401 `invalid_actor_key` until both sides match | Edit `.env`, then `docker compose up -d` |
 | Admin password | Database (bcrypt) | n/a | Change it in Account settings |
 | Envoy token, Enlighten login | `sources.config` in the database | Readings stop if wrong | Edit the source in the web app |
-| Actron refresh token | `actor_instances.config` in the database (encrypted) | Schedules stop and the page shows **needs sign-in** | **Sign in again** on the Schedule page |
+| Actron refresh token | `actor_instances.config` in the database (encrypted) | Schedules stop and the page shows **needs sign-in** | **Sign in again** on the Schedule tab |
 | Amber API key | `users.amber_api_key` | Prices stop if wrong | Account settings |
 | SMTP login | `.env` (`RELAY_USERNAME`, `RELAY_PASSWORD`) | Email stops | Edit `.env`, restart `mail-relay` |
 

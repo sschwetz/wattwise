@@ -70,7 +70,7 @@ describe("App routing", () => {
     expect(screen.queryByRole("link", { name: "Sources" })).not.toBeInTheDocument();
   });
 
-  it("renders the Schedule page at /sites/:siteId/schedule", async () => {
+  it("renders the Schedule tab at /settings/sites/:siteId/schedule", async () => {
     localStorage.setItem("access_token", "a-token");
     vi.mocked(apiFetch).mockImplementation((path: string) =>
       Promise.resolve(
@@ -81,7 +81,7 @@ describe("App routing", () => {
             : [],
       ),
     );
-    renderAt("/sites/5/schedule");
+    renderAt("/settings/sites/5/schedule");
     expect(await screen.findByRole("button", { name: "Add air conditioner" })).toBeInTheDocument();
   });
 

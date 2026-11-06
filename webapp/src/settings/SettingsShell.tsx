@@ -3,6 +3,7 @@ import { SideRail } from "../layout/SideRail";
 import type { Site } from "../sites/useSites";
 import { BillingTab, TariffsTab } from "../pages/BillingPage";
 import { CollectorsTab } from "../pages/SourcesPage";
+import { ScheduleTab } from "../pages/SchedulePage";
 import { AccessNote } from "./AccessNote";
 import { GeneralTab } from "./GeneralTab";
 import { SharingTab } from "./SharingTab";
@@ -10,7 +11,7 @@ import { SiteChips } from "../layout/SiteChips";
 import { TABS } from "./tabs";
 import { type SiteAccess, useSiteAccess } from "./useSiteAccess";
 
-/** Tab content for the selected site. GeneralTab and SharingTab work out their own access. */
+/** Tab content for the selected site. GeneralTab, ScheduleTab and SharingTab work out their own access. */
 function TabContent({ tab, site, access }: { tab: string; site: Site; access: SiteAccess }) {
   switch (tab) {
     case "general":
@@ -21,6 +22,8 @@ function TabContent({ tab, site, access }: { tab: string; site: Site; access: Si
       return <TariffsTab key={site.id} siteId={site.id} readOnly={access.readOnly} />;
     case "billing":
       return <BillingTab key={site.id} siteId={site.id} readOnly={access.readOnly} />;
+    case "schedule":
+      return <ScheduleTab key={site.id} site={site} />;
     case "sharing":
       return <SharingTab key={site.id} site={site} />;
     default:

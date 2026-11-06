@@ -249,7 +249,7 @@ describe("SettingsPage", () => {
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/sites/9/billing");
   });
 
-  it("lists the five tabs in order", async () => {
+  it("lists the six tabs in order", async () => {
     renderAt("/settings/sites/7/general");
     const rail = await screen.findByRole("navigation", { name: "Site settings" });
     expect(Array.from(rail.querySelectorAll("a")).map((a) => a.textContent)).toEqual([
@@ -257,6 +257,7 @@ describe("SettingsPage", () => {
       "Collectors",
       "Tariffs",
       "Billing",
+      "Schedule",
       "Sharing",
     ]);
   });

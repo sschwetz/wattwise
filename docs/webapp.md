@@ -29,10 +29,9 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 | `/account` | `AccountPage` | Name, photo, password, email, authenticator, Amber key |
 | `/help/:slug?` | `HelpPage` | The user guide |
 | `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts, and the **Needs attention** tile (`FailuresTile`) when the site has an air conditioner set up |
-| `/sites/:siteId/schedule` | `SchedulePage` | Add an air conditioner, build schedules, test them and read the run history. See [The Schedule page](#the-schedule-page). |
 | `/sites/:siteId/reporting` | `ReportingPage` | Month picker, Net/Gross option, a chart (`TotalsChart`) and a sortable totals table (`TotalsTable`) with a total row (`totalsSummary.ts`) at the bottom. Clicking a day, on the chart or in the table, lists its hours, and clicking an hour lists its minutes. While totals load, a spinner shows, over the dimmed previous rows when the level stays the same. The level is in the URL as `?month=&day=&hour=` (see `reportingView.ts`), so the browser back button works. |
-| `/settings`, `/settings/sites/:siteId`, `/settings/sites/:siteId/:tab` | `SettingsPage` | Site chips and a tab rail. `:tab` is `general`, `collectors`, `tariffs`, `billing` or `sharing`. `/settings` goes to the first enabled site's `general` tab. An unknown site goes to the first enabled site and keeps a valid tab. An unknown or missing tab keeps the site and goes to `general`. Viewers see every tab read-only. If a background refresh of the sites fails, the page stays and shows a **Retry** alert. |
-| `/sites/:siteId/sources`, `/sites/:siteId/billing` | Redirects | Go to the `collectors` and `billing` settings tabs |
+| `/settings`, `/settings/sites/:siteId`, `/settings/sites/:siteId/:tab` | `SettingsPage` | Site chips and a tab rail. `:tab` is `general`, `collectors`, `tariffs`, `billing`, `schedule` or `sharing`. The `schedule` tab (`ScheduleTab`) adds an air conditioner, builds schedules, tests them and shows the run history. See [The Schedule tab](#the-schedule-tab). `/settings` goes to the first enabled site's `general` tab. An unknown site goes to the first enabled site and keeps a valid tab. An unknown or missing tab keeps the site and goes to `general`. Viewers see every tab read-only. If a background refresh of the sites fails, the page stays and shows a **Retry** alert. |
+| `/sites/:siteId/sources`, `/sites/:siteId/billing`, `/sites/:siteId/schedule` | Redirects | Go to the `collectors`, `billing` and `schedule` settings tabs |
 
 <table>
 <tr>
@@ -56,7 +55,7 @@ More screenshots, with the explanation of every tile and field, are in the [user
 | `src/layout/` | Header, site chips and side rail, avatar |
 | `src/pages/` | One component per route, with its test beside it |
 | `src/dashboard/` | Hooks for live readings and history, and pure helpers for charts (`historyChart.ts`, `priceChart.ts`, `compass.ts`) |
-| `src/actors/` | The Schedule page's parts and hooks. `useActors.ts` has the TanStack Query hooks. `scheduleForm.ts` turns a schedule into form state and back (and holds the client-side checks that mirror Core API). `runFormat.ts` formats run times and outcomes. `types.ts` mirrors the API shapes. |
+| `src/actors/` | The Schedule tab's parts and hooks. `useActors.ts` has the TanStack Query hooks. `scheduleForm.ts` turns a schedule into form state and back (and holds the client-side checks that mirror Core API). `runFormat.ts` formats run times and outcomes. `types.ts` mirrors the API shapes. |
 | `src/billing/` | `useBilling.ts` (all tariff and cycle calls), `ConditionalCredits.tsx`, `tariffHeading.ts` |
 | `src/sources/` | `useSources.ts`, `useRateWindows.ts`, the rate window panel and form, `rateCoverage.ts` (finds uncovered times) |
 | `src/settings/` | The Settings page: `SettingsPage` (route and redirects), `SettingsShell`, `GeneralTab`, `SharingTab`, `tabs.ts`. The Collectors, Tariffs and Billing tabs reuse `CollectorsTab` in `pages/SourcesPage.tsx` and `TariffsTab` and `BillingTab` in `pages/BillingPage.tsx`. |
@@ -85,9 +84,9 @@ Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadin
 - **Auth close.** On close code 1008 the hook does not reconnect. The page tries again only when the dashboard remounts, for example after a reload or a site change.
 - **Expired token.** Core API checks the token once, at connect, so a socket stays open after its token expires.
 
-## The Schedule page
+## The Schedule tab
 
-[`SchedulePage`](../webapp/src/pages/SchedulePage.tsx) is the `Schedule` item in the site side rail ([`SiteLayout.tsx`](../webapp/src/layout/SiteLayout.tsx)). It draws everything from the instance's declared capabilities, so a new actor needs no change here. [Actors](actors.md) describes the feature.
+[`ScheduleTab`](../webapp/src/pages/SchedulePage.tsx) is the `Schedule` tab in Site settings ([`SettingsShell.tsx`](../webapp/src/settings/SettingsShell.tsx)). It draws everything from the instance's declared capabilities, so a new actor needs no change here. [Actors](actors.md) describes the feature.
 
 | Component | Shows |
 |---|---|
@@ -113,7 +112,7 @@ The editor counts as changed while its form differs from the schedule as last sa
 [`FailuresTile`](../webapp/src/actors/FailuresTile.tsx) sits above the other tiles in `DashboardPage.tsx`. It reads `GET .../actors/failures` every 15 seconds (`FAILURES_POLL_MS`).
 
 - No air conditioner set up: nothing is shown.
-- No failures: "All schedules OK" and a link to the Schedule page.
+- No failures: "All schedules OK" and a link to the Schedule tab.
 - Failures: **Needs attention (N)** in the `danger-glow` style. Each row has a label (Run failed, Still off, Actor not reporting, Needs sign-in), the schedule name, the message and the time. It lists the five oldest and links "and N more". A `needs_sign_in` row shows no time, because Core API has none to give.
 - If the request fails, "Schedule status unavailable".
 
@@ -138,7 +137,7 @@ Tests protect the guide: `docs.test.ts` and `links.test.ts` fail when a chapter 
 | The providers offered when adding a source | `PROVIDERS_BY_KIND` in `src/pages/SourcesPage.tsx` |
 | The settings form for a provider | `CONFIG_FORMS` in the same file. A provider without a form gets a raw JSON editor. |
 | A dashboard tile | `src/pages/DashboardPage.tsx` and `src/dashboard/` |
-| The Schedule page | `src/pages/SchedulePage.tsx` and `src/actors/` |
+| The Schedule tab | `src/pages/SchedulePage.tsx` and `src/actors/` |
 | How a chart is shaped | `historyChart.ts` or `priceChart.ts`, which have unit tests |
 | Tariff and billing forms | `src/pages/BillingPage.tsx` and `src/billing/` |
 | Help text | `src/docs/*.md` |
