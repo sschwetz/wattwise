@@ -56,7 +56,7 @@ function TabBar({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void }) {
           aria-controls="about-panel"
           tabIndex={tab === name ? 0 : -1}
           onClick={() => onChange(name)}
-          className={`px-3 py-2 text-sm text-ink hover:bg-surface-2 ${tab === name ? "border-b-2 border-solar font-medium" : "text-ink-muted"}`}
+          className={`px-3 py-2 text-sm hover:bg-surface-2 ${tab === name ? "border-b-2 border-solar font-medium text-ink" : "text-ink-muted"}`}
         >
           {name}
         </button>
@@ -68,21 +68,26 @@ function TabBar({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void }) {
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("Containers");
   const panelRef = useRef<HTMLDivElement>(null);
+  const pressStartedOnBackdrop = useRef(false);
   useDialogKeys(onClose, panelRef);
   useEffect(() => panelRef.current?.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')?.focus(), []);
 
   return (
     <div
       data-testid="about-backdrop"
-      onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onMouseDown={(e) => {
+        pressStartedOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && pressStartedOnBackdrop.current) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="about-title"
-        onClick={(e) => e.stopPropagation()}
         className="flex max-h-[85vh] w-full max-w-3xl flex-col gap-3 rounded-md border border-line bg-surface p-4 text-ink shadow-lg"
       >
         <div className="flex items-center justify-between">

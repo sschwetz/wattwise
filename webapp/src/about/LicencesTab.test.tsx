@@ -37,6 +37,13 @@ describe("LicencesTab", () => {
     expect(screen.getByText("MIT text body")).toBeInTheDocument();
   });
 
+  it("makes the licence text focusable and named", async () => {
+    renderTab();
+    const text = await screen.findByLabelText("Licence text for react 19.0.0");
+    expect(text).toHaveAttribute("tabindex", "0");
+    expect(text).toHaveTextContent("MIT text body");
+  });
+
   it("shows the text of a selected package", async () => {
     renderTab();
     await userEvent.click(await screen.findByRole("option", { name: "fastapi 0.110.0" }));

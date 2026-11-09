@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { type LicenceDocument, type LicencePackage, useLicences } from "./useLicences";
 
 const keyOf = (p: LicencePackage) => `${p.ecosystem}:${p.name}@${p.version}`;
+const optionId = (key: string, index: number) => `licence-option-${index}-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
 interface ListProps {
   packages: LicencePackage[];
@@ -19,15 +20,16 @@ function nextKey(packages: LicencePackage[], current: string | undefined, key: s
 
 interface OptionProps {
   pkg: LicencePackage;
+  index: number;
   selected: boolean;
   onSelect: (key: string) => void;
 }
 
-function PackageOption({ pkg, selected, onSelect }: OptionProps) {
+function PackageOption({ pkg, index, selected, onSelect }: OptionProps) {
   const key = keyOf(pkg);
   return (
     <li
-      id={optionId(key)}
+      id={optionId(key, index)}
       role="option"
       aria-selected={selected}
       onClick={() => onSelect(key)}
@@ -44,37 +46,42 @@ function PackageList({ packages, selectedKey, onSelect }: ListProps) {
     if (key === null) return;
     event.preventDefault();
     onSelect(key);
-    requestAnimationFrame(() => document.getElementById(optionId(key))?.scrollIntoView?.({ block: "nearest" }));
+    const id = optionId(key, packages.findIndex((p) => keyOf(p) === key));
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView?.({ block: "nearest" }));
   }
+  const activeIndex = packages.findIndex((p) => keyOf(p) === selectedKey);
+  const activeId = selectedKey && activeIndex >= 0 ? optionId(selectedKey, activeIndex) : undefined;
   return (
     <ul
       role="listbox"
       aria-label="Packages"
       tabIndex={0}
-      aria-activedescendant={selectedKey ? optionId(selectedKey) : undefined}
+      aria-activedescendant={activeId}
       onKeyDown={handleKeyDown}
       className="max-h-48 overflow-y-auto rounded-md border border-line sm:max-h-none sm:flex-1"
     >
-      {packages.map((p) => (
-        <PackageOption key={keyOf(p)} pkg={p} selected={keyOf(p) === selectedKey} onSelect={onSelect} />
+      {packages.map((p, index) => (
+        <PackageOption key={`${keyOf(p)}#${index}`} pkg={p} index={index} selected={keyOf(p) === selectedKey} onSelect={onSelect} />
       ))}
     </ul>
   );
 }
 
-const optionId = (key: string) => `licence-option-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-
 function LicenceDetail({ pkg, text }: { pkg: LicencePackage | undefined; text: string | undefined }) {
   if (!pkg) return <p className="p-3 text-sm text-ink-muted">No packages match.</p>;
   return (
-    <div className="flex min-h-0 flex-col gap-2 sm:flex-[2]">
+    <div className="flex min-h-0 min-w-0 flex-col gap-2 sm:flex-[2]">
       <h3 className="text-sm font-medium text-ink">
         {pkg.name} {pkg.version}
       </h3>
       <p className="text-xs text-ink-muted">
         {pkg.ecosystem} - {pkg.license}
       </p>
-      <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-line p-3 text-xs text-ink sm:max-h-none">
+      <pre
+        tabIndex={0}
+        aria-label={`Licence text for ${pkg.name} ${pkg.version}`}
+        className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-md border border-line p-3 text-xs text-ink sm:max-h-none"
+      >
         {text ?? "No licence text available."}
       </pre>
     </div>
@@ -109,7 +116,7 @@ function LicenceBrowser({ doc }: { doc: LicenceDocument }) {
 
 export function LicencesTab() {
   const { data, isError } = useLicences(true);
-  if (isError) return <p role="alert" className="p-3 text-sm text-red-400">Could not load the licence list.</p>;
+  if (isError) return <p role="alert" className="p-3 text-sm text-danger">Could not load the licence list.</p>;
   if (!data) return <p className="p-3 text-sm text-ink-muted">Loading...</p>;
   return <LicenceBrowser doc={data} />;
 }

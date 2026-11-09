@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "../api/client";
@@ -45,6 +45,13 @@ describe("AboutDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await userEvent.click(screen.getByTestId("about-backdrop"));
     expect(onClose).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not close when a press starts in the panel and ends on the backdrop", () => {
+    const onClose = renderDialog();
+    fireEvent.mouseDown(screen.getByRole("dialog"));
+    fireEvent.click(screen.getByTestId("about-backdrop"));
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("does not close when the panel itself is clicked", async () => {
