@@ -11,6 +11,8 @@ import json
 import pathlib
 import re
 import subprocess
+import sys
+import tempfile
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -31,7 +33,9 @@ PYTHON_SERVICES = [
 OUTPUT = ROOT / "webapp" / "public" / "licences.json"
 PYPI_URL = "https://pypi.org/pypi/{name}/{version}/json"
 LONG_TEXT = 100
-LICENCE_FILE_GLOBS = ("LICENSE*", "LICENCE*", "COPYING*")
+LICENCE_PREFIXES = ("license", "licence", "copying", "notice")
+EXACT_NAMES = ("license", "licence")
+TEXT_SEPARATOR = "\n\n----------\n\n"
 
 Lookup = Callable[[str, str], tuple[str, str | None]]
 Opener = Callable[..., Any]
@@ -46,13 +50,48 @@ class Package:
     text: str | None
 
 
+def licence_files(directory: pathlib.Path) -> list[pathlib.Path]:
+    """Licence-like files directly in a directory, exact LICENSE/LICENCE names first."""
+    matches = [p for p in directory.iterdir()
+               if p.is_file() and p.name.lower().startswith(LICENCE_PREFIXES)]
+    return sorted(matches, key=lambda p: (p.name.lower() not in EXACT_NAMES, p.name))
+
+
+def read_text(path: pathlib.Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
 def find_licence_text(package_dir: pathlib.Path) -> str | None:
-    """Return the text of the first licence-like file in an installed package."""
-    for pattern in LICENCE_FILE_GLOBS:
-        for path in sorted(package_dir.glob(pattern)):
-            if path.is_file():
-                return path.read_text(encoding="utf-8", errors="replace")
-    return None
+    """Return the text of the preferred licence file in an installed npm package."""
+    files = licence_files(package_dir)
+    return read_text(files[0]) if files else None
+
+
+def dist_info_text(dist_info: pathlib.Path) -> str | None:
+    """Join every licence file in a dist-info dir, in sorted filename order."""
+    files = licence_files(dist_info)
+    licences = dist_info / "licenses"
+    if licences.is_dir():
+        files += [p for p in licences.rglob("*") if p.is_file()]
+    if not files:
+        return None
+    ordered = sorted(files, key=lambda p: str(p.relative_to(dist_info)))
+    return TEXT_SEPARATOR.join(read_text(p).strip() for p in ordered)
+
+
+def normalise(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def dist_info_texts(target: pathlib.Path) -> dict[tuple[str, str], str]:
+    """Map (normalised name, version) to licence text for each dist-info in target."""
+    found: dict[tuple[str, str], str] = {}
+    for info in target.glob("*.dist-info"):
+        name, _, version = info.name[: -len(".dist-info")].partition("-")
+        text = dist_info_text(info)
+        if text:
+            found[(normalise(name), version)] = text
+    return found
 
 
 def npm_packages(lockfile: pathlib.Path, node_modules: pathlib.Path) -> list[Package]:
@@ -124,9 +163,33 @@ def make_lookup(opener: Opener = urllib.request.urlopen) -> Lookup:
     return lookup
 
 
-def python_packages(service_dir: pathlib.Path, lookup: Lookup) -> list[Package]:
+def install_service(service_dir: pathlib.Path, target: pathlib.Path) -> None:
+    """Install the locked non-dev set of a service into target without dependencies."""
+    requirements = target.parent / f"{service_dir.name}-requirements.txt"
+    requirements.write_text(uv_export(service_dir))
+    cmd = ["uv", "pip", "install", "--quiet", "--no-deps", "--target", str(target),
+           "-r", str(requirements)]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as err:
+        raise InstallError(f"installing {service_dir.name} failed: {err.stderr.strip()}") from err
+
+
+class InstallError(RuntimeError):
+    """Raised when a service's locked packages cannot be installed."""
+
+
+def python_packages(
+    service_dir: pathlib.Path, lookup: Lookup,
+    installer: Callable[[pathlib.Path, pathlib.Path], None] = install_service,
+) -> list[Package]:
     pairs = parse_export(uv_export(service_dir))
-    return [Package(n, v, "python", *lookup(n, v)) for n, v in pairs]
+    with tempfile.TemporaryDirectory() as tmp:
+        target = pathlib.Path(tmp) / "site"
+        installer(service_dir, target)
+        texts = dist_info_texts(target)
+        return [Package(n, v, "python", lookup(n, v)[0], texts.get((normalise(n), v)))
+                for n, v in pairs]
 
 
 def build_document(packages: list[Package]) -> dict[str, Any]:
@@ -148,7 +211,10 @@ def main() -> None:
     lookup = make_lookup()
     packages = npm_packages(ROOT / "webapp" / "package-lock.json", ROOT / "webapp" / "node_modules")
     for service in PYTHON_SERVICES:
-        packages += python_packages(ROOT / service, lookup)
+        try:
+            packages += python_packages(ROOT / service, lookup)
+        except (InstallError, subprocess.CalledProcessError) as err:
+            sys.exit(f"error: {service}: {err}")
     document = build_document(packages)
     OUTPUT.write_text(json.dumps(document, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     entries = document["packages"]

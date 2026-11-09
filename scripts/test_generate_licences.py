@@ -67,7 +67,7 @@ def test_pypi_lookup_precedence() -> None:
 def test_python_packages_parses_export(monkeypatch: Any, tmp_path: pathlib.Path) -> None:
     out = "# c\nfoo==1.0 ; python_version < '4'\n    # via x\n-e .\nbar==2.0\n"
     monkeypatch.setattr(gl, "uv_export", lambda d: out)
-    pkgs = gl.python_packages(tmp_path, lambda n, v: ("MIT", None))
+    pkgs = gl.python_packages(tmp_path, lambda n, v: ("MIT", None), lambda d, t: None)
     assert [(p.name, p.version) for p in pkgs] == [("foo", "1.0"), ("bar", "2.0")]
 
 
@@ -88,3 +88,55 @@ def test_build_document_dedupes_and_sorts() -> None:
     assert doc["packages"][2] == {"name": "beta", "version": "1", "ecosystem": "python",
                                   "license": "unknown", "text_id": None}
     assert doc["generated_at"].endswith("Z")
+
+
+def test_lowercase_npm_licence_file(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "license").write_text("lower")
+    (tmp_path / "README.md").write_text("no")
+    assert gl.find_licence_text(tmp_path) == "lower"
+
+
+def test_npm_prefers_exact_name(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "LICENSE-MIT").write_text("variant")
+    (tmp_path / "LICENSE").write_text("exact")
+    assert gl.find_licence_text(tmp_path) == "exact"
+
+
+def make_dist(target: pathlib.Path, name: str, files: dict[str, str]) -> None:
+    for rel, body in files.items():
+        path = target / name / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+
+
+def test_dist_info_licences_dir(tmp_path: pathlib.Path) -> None:
+    make_dist(tmp_path, "Foo_Bar-1.0.dist-info", {"licenses/LICENSE.md": "foo text"})
+    assert gl.dist_info_texts(tmp_path) == {("foo-bar", "1.0"): "foo text"}
+
+
+def test_dist_info_joins_in_sorted_order(tmp_path: pathlib.Path) -> None:
+    make_dist(tmp_path, "x-1.dist-info", {"licenses/B": "second", "LICENSE": "first", "licenses/A": "mid"})
+    text = gl.dist_info_texts(tmp_path)[("x", "1")]
+    assert text == gl.TEXT_SEPARATOR.join(["first", "mid", "second"])
+
+
+def test_no_file_gives_null_text_but_keeps_licence(monkeypatch: Any, tmp_path: pathlib.Path) -> None:
+    monkeypatch.setattr(gl, "uv_export", lambda d: "foo==1.0\n")
+    pkgs = gl.python_packages(tmp_path, lambda n, v: ("MIT", None), lambda d, t: None)
+    doc = gl.build_document(pkgs)
+    assert doc["packages"][0]["license"] == "MIT"
+    assert doc["packages"][0]["text_id"] is None
+
+
+def test_install_failure_names_service(monkeypatch: Any, tmp_path: pathlib.Path) -> None:
+    import subprocess
+    import pytest
+    svc = tmp_path / "svc-a"
+    svc.mkdir()
+    monkeypatch.setattr(gl, "uv_export", lambda d: "foo==1.0\n")
+
+    def boom(*a: Any, **k: Any) -> None:
+        raise subprocess.CalledProcessError(1, "uv", stderr="nope")
+    monkeypatch.setattr(gl.subprocess, "run", boom)
+    with pytest.raises(gl.InstallError, match="svc-a"):
+        gl.install_service(svc, tmp_path / "site")
