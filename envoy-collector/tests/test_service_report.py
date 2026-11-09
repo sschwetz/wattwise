@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 import time
 
 import httpx
@@ -45,8 +47,10 @@ def _wait_for_calls(route: respx.Route, count: int) -> None:
 def test_reporter_posts_repeatedly_from_a_daemon_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_COMMIT", "0123456789abcdef")
     route = respx.post(URL).mock(return_value=httpx.Response(204))
-    thread = start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", interval_seconds=0.01)
+    stop = threading.Event()
+    thread = start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
     _wait_for_calls(route, 2)
+    stop.set()
     assert thread.daemon is True
     assert route.call_count >= 2
     assert json.loads(route.calls[0].request.content)["commit"] == "0123456"
@@ -56,6 +60,39 @@ def test_reporter_posts_repeatedly_from_a_daemon_thread(monkeypatch: pytest.Monk
 def test_reporter_sends_unknown_when_git_commit_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GIT_COMMIT", raising=False)
     route = respx.post(URL).mock(return_value=httpx.Response(204))
-    start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", interval_seconds=0.01)
+    stop = threading.Event()
+    start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
     _wait_for_calls(route, 1)
+    stop.set()
     assert json.loads(route.calls[0].request.content)["commit"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("0123456\n", "0123456"), (" ABCDEF1234", "abcdef1"), ("HEAD", "unknown"), ("abc", "unknown")],
+)
+@respx.mock
+def test_reporter_normalises_or_rejects_git_commit(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, raw: str, expected: str
+) -> None:
+    monkeypatch.setenv("GIT_COMMIT", raw)
+    route = respx.post(URL).mock(return_value=httpx.Response(204))
+    stop = threading.Event()
+    with caplog.at_level(logging.WARNING):
+        start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
+        _wait_for_calls(route, 1)
+        stop.set()
+    assert json.loads(route.calls[0].request.content)["commit"] == expected
+    assert ("is not a hex commit" in caplog.text) == (expected == "unknown")
+
+
+@respx.mock
+def test_reporter_warning_names_the_http_status(caplog: pytest.LogCaptureFixture) -> None:
+    route = respx.post(URL).mock(return_value=httpx.Response(422))
+    stop = threading.Event()
+    with caplog.at_level(logging.WARNING):
+        start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
+        _wait_for_calls(route, 2)
+        stop.set()
+    assert caplog.text.count("Could not report commit") == 1
+    assert "HTTP 422" in caplog.text

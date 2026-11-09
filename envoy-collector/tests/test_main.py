@@ -23,7 +23,10 @@ FAR_EXPIRY = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=300)
 
 @pytest.fixture(autouse=True)
 def _no_commit_reporter(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() starts a real reporter thread; keep it out of the main-loop tests."""
+    """main() starts a real reporter thread; keep it out of the main-loop tests.
+
+    This hides the call; test_main_starts_the_commit_reporter covers it.
+    """
     monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args, **kwargs: None)
 
 
@@ -570,6 +573,27 @@ def test_main_polls_every_discovered_source_each_cycle(monkeypatch):
 
     assert len(polled) == 2
     assert {c["host"] for c in polled} == {"envoy-a.local", "envoy-b.local"}
+
+
+def test_main_starts_the_commit_reporter(monkeypatch):
+    monkeypatch.setattr(main_module, "get_settings", lambda: SETTINGS)
+    started = []
+    monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args: started.append(args))
+    monkeypatch.setattr(
+        main_module,
+        "fetch_collector_sources",
+        lambda base_url, key: [{"source_id": 1, "site_id": 10, "config": {"host": "h", "token": "a"}}],
+    )
+    monkeypatch.setattr(main_module, "discover_and_sync_serial", lambda settings, source_id, config: None)
+
+    def _stop(seconds):
+        raise SystemExit
+
+    monkeypatch.setattr(main_module.time, "sleep", _stop)
+    with pytest.raises(SystemExit):
+        main_module.main()
+
+    assert started == [(SETTINGS.core_api_url, "X-Collector-Key", SETTINGS.collector_key, "envoy-collector")]
 
 
 def test_main_keeps_last_known_sources_when_discovery_refresh_fails(monkeypatch):
