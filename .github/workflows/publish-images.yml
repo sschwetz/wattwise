@@ -46,6 +46,23 @@ jobs:
             type=sha
             type=semver,pattern={{version}}
 
+      # The About dialog reads webapp/public/licences.json. Regenerate it so the
+      # image ships current data; the file is not committed back.
+      - if: matrix.service == 'webapp'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - if: matrix.service == 'webapp'
+        run: npm ci
+        working-directory: webapp
+
+      - if: matrix.service == 'webapp'
+        uses: astral-sh/setup-uv@v6
+
+      - if: matrix.service == 'webapp'
+        run: python3 scripts/generate_licences.py
+
       - uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.service }}

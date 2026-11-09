@@ -1,0 +1,1756 @@
+{
+ "generated_at": "2026-11-09T08:58:45Z",
+ "texts": {
+  "0e4c9a9b6c71": "MIT License\n\nCopyright (c) 2021-present Floating UI contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software is furnished to do so,\nsubject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS\nFOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR\nCOPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\nIN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN\nCONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+  "49784961ec6c": "MIT License\n\nCopyright (c) 2018 Mark Erikson\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "653b779005a3": "MIT License\n\nCopyright (c) 2024 Colin McDonnell\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+  "9cf216650731": "MIT License\n\nCopyright (c) 2024 Fabian Hiller\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+  "a405ee70c632": "MIT License\n\nCopyright (c) 2021-present Tanner Linsley\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "c2cfccb812fe": "    MIT License\n\n    Copyright (c) Microsoft Corporation.\n\n    Permission is hereby granted, free of charge, to any person obtaining a copy\n    of this software and associated documentation files (the \"Software\"), to deal\n    in the Software without restriction, including without limitation the rights\n    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n    copies of the Software, and to permit persons to whom the Software is\n    furnished to do so, subject to the following conditions:\n\n    The above copyright notice and this permission notice shall be included in all\n    copies or substantial portions of the Software.\n\n    THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n    SOFTWARE\n",
+  "dc6d4961d8b6": "ISC License\n\nCopyright (c) 2021, Andrea Giammarchi, @WebReflection\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY\nAND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM\nLOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE\nOR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR\nPERFORMANCE OF THIS SOFTWARE.\n",
+  "2dc046572936": "Copyright (c) 2015, Contributors\n\nPermission to use, copy, modify, and/or distribute this software\nfor any purpose with or without fee is hereby granted, provided\nthat the above copyright notice and this permission notice\nappear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES\nOF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE\nLIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES\nOR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,\nWHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,\nARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n",
+  "693866fc419c": "Copyright (c) 2011-2016 Heather Arthur <fayearthur@gmail.com>\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n",
+  "7357445bac39": "The MIT License (MIT)\nCopyright (c) 2015 Dmitry Ivanov\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+  "c02110eedc16": "(The MIT License)\n\nCopyright (c) 2012-2014 Roman Shtylman <shtylman@gmail.com>\nCopyright (c) 2015 Douglas Christopher Wilson <doug@somethingdoug.com>\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n'Software'), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n",
+  "11d55bd4541c": "Copyright (c) 2017-2018 Fredrik Nicol\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "3e6849627f74": "Copyright 2010-2023 Mike Bostock\n\nPermission to use, copy, modify, and/or distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright notice\nand this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
+  "faa682e3e430": "Copyright 2010-2022 Mike Bostock\n\nPermission to use, copy, modify, and/or distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright notice\nand this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
+  "b989d9085148": "Copyright 2010-2021 Mike Bostock\nCopyright 2001 Robert Penner\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without modification,\nare permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the above copyright notice,\n  this list of conditions and the following disclaimer in the documentation\n  and/or other materials provided with the distribution.\n\n* Neither the name of the author nor the names of contributors may be used to\n  endorse or promote products derived from this software without specific prior\n  written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND\nANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\nWARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR\nANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES\n(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;\nLOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON\nANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
+  "2a6d2d5f32ba": "Copyright 2010-2026 Mike Bostock\n\nPermission to use, copy, modify, and/or distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright notice\nand this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
+  "e008c5e25a6b": "Copyright 2010-2021 Mike Bostock\n\nPermission to use, copy, modify, and/or distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright notice\nand this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
+  "a09b0d6d76e7": "Copyright 2015-2022 Mike Bostock\n\nPermission to use, copy, modify, and/or distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright notice\nand this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
+  "8d3951c38967": "MIT License\n\nCopyright (c) 2021 Sasha Koss and Lesha Koss https://kossnocorp.mit-license.org\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "3a61c6c96caf": "(The MIT License)\n\nCopyright (c) 2014-2017 TJ Holowaychuk <tj@vision-media.ca>\nCopyright (c) 2018-2021 Josh Junon\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software\nand associated documentation files (the 'Software'), to deal in the Software without restriction,\nincluding without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,\nand/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,\nsubject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial\nportions of the Software.\n\nTHE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT\nLIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nWHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n",
+  "3a07d95c7d93": "The MIT Expat Licence.\n\nCopyright (c) 2020 Michael Mclaughlin\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n'Software'), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n",
+  "c46324e45a00": "```\nDijkstra path-finding functions. Adapted from the Dijkstar Python project.\n\nCopyright (C) 2008\n  Wyatt Baldwin <self@wyattbaldwin.com>\n  All rights reserved\n\nLicensed under the MIT license.\n\n  http://www.opensource.org/licenses/mit-license.php\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n```\n",
+  "483acb265f18": "Copyright Mathias Bynens <https://mathiasbynens.be/>\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+  "51f3674294d9": "MIT License\n\nCopyright (c) 2024 Viva Republica, Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "3aecc12b1cb2": "The MIT License (MIT)\n\nCopyright (c) 2014 Arnout Kazemier\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "97af7428f93a": "The MIT License (MIT)\n\nCopyright (c) 2014 Stefan Thomas\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n",
+  "902dbb415467": "ISC License (ISC)\nCopyright 2018 Stefan Penner\n\nPermission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n",
+  "542aefa99456": "Copyright (c) 2015, Dan Flettre <fletd01@yahoo.com>\n\nPermission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n",
+  "99cf22f6960a": "MIT License\n\nCopyright (c) 2017 Michel Weststrate\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "395c95f20598": "(The MIT License)\n\nCopyright (c) 2012 TJ Holowaychuk <tj@vision-media.ca>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the 'Software'), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+  "9ea8903938da": "Copyright 2021 Mike Bostock\n\nPermission to use, copy, modify, and/or distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright notice\nand this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
+  "176b07a18c0b": "pngjs2 original work Copyright (c) 2015 Luke Page & Original Contributors\npngjs derived work Copyright (c) 2012 Kuba Niegowski\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+  "da6d3703ed11": "MIT License\n\nCopyright (c) Meta Platforms, Inc. and affiliates.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "4592fda39906": "The MIT License (MIT)\n\nCopyright (c) 2014-2025 HackerOne Inc and individual contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "f2da73c752c6": "The MIT License (MIT)\n\nCopyright (c) 2015-present Dan Abramov\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "77c9ee6a9c5d": "MIT License\n\nCopyright (c) React Training LLC 2015-2019\nCopyright (c) Remix Software Inc. 2020-2021\nCopyright (c) Shopify Inc. 2022-2023\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "2d3aa48a8d1d": "The MIT License (MIT)\n\nCopyright (c) 2015-present recharts\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n",
+  "a92e52eb1fa7": "The MIT License (MIT)\n\nCopyright (c) 2011 Troy Goode <troygoode@gmail.com>\n\nPermission is hereby granted, free of charge, to any person obtaining a\ncopy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be included\nin all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS\nOR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+  "365496ca1f56": "Copyright (c) 2016, Contributors\n\nPermission to use, copy, modify, and/or distribute this software\nfor any purpose with or without fee is hereby granted, provided\nthat the above copyright notice and this permission notice\nappear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES\nOF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE\nLIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES\nOR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,\nWHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,\nARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n",
+  "e98047a5dee0": "The MIT License (MIT)\n\nCopyright (c) 2015-2018 Reselect Contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "c5c6c5183a78": "The MIT License (MIT)\n\nCopyright (c) 2015 Nathan Friedly <nathan@nfriedly.com> (http://nfriedly.com/)\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+  "bbb380e5c1a7": "The MIT License (MIT)\n\nCopyright (c) 2020 Menglin \"Mark\" Xu <mark@remarkablemark.org>\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+  "896c9fd6b5fc": "The MIT License (MIT)\n\nCopyright (c) 2017 Menglin \"Mark\" Xu <mark@remarkablemark.org>\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+  "8e714750725e": "The MIT License (MIT)\n\nCopyright (c) 2015 David Clark\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n",
+  "b1c501095de7": "MIT License\n\nCopyright (c) 2019 Alexander Reardon\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+  "852bf81203aa": "Copyright (c) 2016, Contributors\n\nPermission to use, copy, modify, and/or distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright notice\nand this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
+  "2034cce3b6fa": "Copyright (c) 2015, Contributors\n\nPermission to use, copy, modify, and/or distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright notice\nand this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
+  "2f1a503bfab8": "MIT License\n\nCopyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com)\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n"
+ },
+ "packages": [
+  {
+   "name": "@floating-ui/core",
+   "version": "1.8.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "0e4c9a9b6c71"
+  },
+  {
+   "name": "@floating-ui/dom",
+   "version": "1.8.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "0e4c9a9b6c71"
+  },
+  {
+   "name": "@floating-ui/react",
+   "version": "0.27.20",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "0e4c9a9b6c71"
+  },
+  {
+   "name": "@floating-ui/react-dom",
+   "version": "2.1.9",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "0e4c9a9b6c71"
+  },
+  {
+   "name": "@floating-ui/utils",
+   "version": "0.2.12",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "0e4c9a9b6c71"
+  },
+  {
+   "name": "@reduxjs/toolkit",
+   "version": "2.13.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "49784961ec6c"
+  },
+  {
+   "name": "@standard-schema/spec",
+   "version": "1.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "653b779005a3"
+  },
+  {
+   "name": "@standard-schema/utils",
+   "version": "0.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "9cf216650731"
+  },
+  {
+   "name": "@tanstack/query-core",
+   "version": "5.104.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "a405ee70c632"
+  },
+  {
+   "name": "@tanstack/react-query",
+   "version": "5.104.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "a405ee70c632"
+  },
+  {
+   "name": "@types/d3-array",
+   "version": "3.2.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/d3-color",
+   "version": "3.1.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/d3-ease",
+   "version": "3.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/d3-interpolate",
+   "version": "3.0.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/d3-path",
+   "version": "3.1.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/d3-scale",
+   "version": "4.0.9",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/d3-shape",
+   "version": "3.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/d3-time",
+   "version": "3.0.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/d3-timer",
+   "version": "3.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/debug",
+   "version": "4.1.13",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/estree",
+   "version": "1.0.9",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/estree-jsx",
+   "version": "1.0.5",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/hast",
+   "version": "3.0.5",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/mdast",
+   "version": "4.0.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/ms",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/react",
+   "version": "19.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/unist",
+   "version": "2.0.11",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/unist",
+   "version": "3.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@types/use-sync-external-store",
+   "version": "0.0.6",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c2cfccb812fe"
+  },
+  {
+   "name": "@ungap/structured-clone",
+   "version": "1.4.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "dc6d4961d8b6"
+  },
+  {
+   "name": "actron-neo-api",
+   "version": "0.5.16",
+   "ecosystem": "python",
+   "license": "MIT License",
+   "text_id": null
+  },
+  {
+   "name": "aiohappyeyeballs",
+   "version": "2.7.1",
+   "ecosystem": "python",
+   "license": "PSF-2.0",
+   "text_id": null
+  },
+  {
+   "name": "aiohttp",
+   "version": "3.14.5",
+   "ecosystem": "python",
+   "license": "Apache-2.0 AND MIT",
+   "text_id": null
+  },
+  {
+   "name": "aiomqtt",
+   "version": "2.5.1",
+   "ecosystem": "python",
+   "license": "BSD License",
+   "text_id": null
+  },
+  {
+   "name": "aiosignal",
+   "version": "1.4.0",
+   "ecosystem": "python",
+   "license": "Apache 2.0",
+   "text_id": null
+  },
+  {
+   "name": "alembic",
+   "version": "1.20.0",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "annotated-doc",
+   "version": "0.0.5",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "annotated-types",
+   "version": "0.8.0",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "ansi-regex",
+   "version": "5.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "ansi-styles",
+   "version": "4.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "anyio",
+   "version": "4.15.1",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "anyio",
+   "version": "4.16.0",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "apscheduler",
+   "version": "3.11.3",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "attrs",
+   "version": "26.1.0",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "bail",
+   "version": "2.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "bcrypt",
+   "version": "4.3.0",
+   "ecosystem": "python",
+   "license": "Apache-2.0",
+   "text_id": null
+  },
+  {
+   "name": "camelcase",
+   "version": "5.3.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "ccount",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "certifi",
+   "version": "2026.10.23",
+   "ecosystem": "python",
+   "license": "MPL-2.0",
+   "text_id": null
+  },
+  {
+   "name": "certifi",
+   "version": "2026.7.22",
+   "ecosystem": "python",
+   "license": "MPL-2.0",
+   "text_id": null
+  },
+  {
+   "name": "cffi",
+   "version": "2.1.1",
+   "ecosystem": "python",
+   "license": "MIT-0",
+   "text_id": null
+  },
+  {
+   "name": "character-entities",
+   "version": "2.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "character-entities-html4",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "character-entities-legacy",
+   "version": "3.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "character-reference-invalid",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "click",
+   "version": "8.5.0",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "cliui",
+   "version": "6.0.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "2dc046572936"
+  },
+  {
+   "name": "clsx",
+   "version": "2.1.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "color-convert",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "693866fc419c"
+  },
+  {
+   "name": "color-name",
+   "version": "1.1.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "7357445bac39"
+  },
+  {
+   "name": "comma-separated-tokens",
+   "version": "2.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "cookie",
+   "version": "1.1.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c02110eedc16"
+  },
+  {
+   "name": "cryptography",
+   "version": "46.0.7",
+   "ecosystem": "python",
+   "license": "Apache-2.0 OR BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "cryptography",
+   "version": "50.0.2",
+   "ecosystem": "python",
+   "license": "Apache-2.0 OR BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "csstype",
+   "version": "3.2.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "11d55bd4541c"
+  },
+  {
+   "name": "d3-array",
+   "version": "3.2.4",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "3e6849627f74"
+  },
+  {
+   "name": "d3-color",
+   "version": "3.1.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "faa682e3e430"
+  },
+  {
+   "name": "d3-ease",
+   "version": "3.0.1",
+   "ecosystem": "npm",
+   "license": "BSD-3-Clause",
+   "text_id": "b989d9085148"
+  },
+  {
+   "name": "d3-format",
+   "version": "3.1.2",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "2a6d2d5f32ba"
+  },
+  {
+   "name": "d3-interpolate",
+   "version": "3.0.1",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "e008c5e25a6b"
+  },
+  {
+   "name": "d3-path",
+   "version": "3.1.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "a09b0d6d76e7"
+  },
+  {
+   "name": "d3-scale",
+   "version": "4.0.2",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "e008c5e25a6b"
+  },
+  {
+   "name": "d3-shape",
+   "version": "3.2.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "faa682e3e430"
+  },
+  {
+   "name": "d3-time",
+   "version": "3.1.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "faa682e3e430"
+  },
+  {
+   "name": "d3-time-format",
+   "version": "4.1.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "e008c5e25a6b"
+  },
+  {
+   "name": "d3-timer",
+   "version": "3.0.1",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "e008c5e25a6b"
+  },
+  {
+   "name": "date-fns",
+   "version": "4.4.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "8d3951c38967"
+  },
+  {
+   "name": "debug",
+   "version": "4.4.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "3a61c6c96caf"
+  },
+  {
+   "name": "decamelize",
+   "version": "1.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "decimal.js-light",
+   "version": "2.5.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "3a07d95c7d93"
+  },
+  {
+   "name": "decode-named-character-reference",
+   "version": "1.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "defusedxml",
+   "version": "0.7.1",
+   "ecosystem": "python",
+   "license": "PSFL",
+   "text_id": null
+  },
+  {
+   "name": "dequal",
+   "version": "2.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "devlop",
+   "version": "1.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "dijkstrajs",
+   "version": "1.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c46324e45a00"
+  },
+  {
+   "name": "dnspython",
+   "version": "2.8.0",
+   "ecosystem": "python",
+   "license": "ISC",
+   "text_id": null
+  },
+  {
+   "name": "email-validator",
+   "version": "2.3.0",
+   "ecosystem": "python",
+   "license": "Unlicense",
+   "text_id": null
+  },
+  {
+   "name": "emoji-regex",
+   "version": "8.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "483acb265f18"
+  },
+  {
+   "name": "es-toolkit",
+   "version": "1.52.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "51f3674294d9"
+  },
+  {
+   "name": "escape-string-regexp",
+   "version": "5.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "estree-util-is-identifier-name",
+   "version": "3.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "eventemitter3",
+   "version": "5.0.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "3aecc12b1cb2"
+  },
+  {
+   "name": "extend",
+   "version": "3.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "97af7428f93a"
+  },
+  {
+   "name": "fastapi",
+   "version": "0.141.1",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "find-up",
+   "version": "4.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "frozenlist",
+   "version": "1.8.0",
+   "ecosystem": "python",
+   "license": "Apache-2.0",
+   "text_id": null
+  },
+  {
+   "name": "get-caller-file",
+   "version": "2.0.5",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "902dbb415467"
+  },
+  {
+   "name": "github-slugger",
+   "version": "2.0.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "542aefa99456"
+  },
+  {
+   "name": "h11",
+   "version": "0.16.0",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "hast-util-heading-rank",
+   "version": "3.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "hast-util-to-jsx-runtime",
+   "version": "2.3.6",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "hast-util-to-string",
+   "version": "3.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "hast-util-whitespace",
+   "version": "3.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "html-url-attributes",
+   "version": "3.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "httpcore",
+   "version": "1.0.9",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "httpx",
+   "version": "0.28.1",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "idna",
+   "version": "3.20",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "immer",
+   "version": "11.1.18",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "99cf22f6960a"
+  },
+  {
+   "name": "inline-style-parser",
+   "version": "0.2.7",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "395c95f20598"
+  },
+  {
+   "name": "internmap",
+   "version": "2.0.3",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "9ea8903938da"
+  },
+  {
+   "name": "is-alphabetical",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "is-alphanumerical",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "is-decimal",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "is-fullwidth-code-point",
+   "version": "3.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "is-hexadecimal",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "is-plain-obj",
+   "version": "4.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "locate-path",
+   "version": "5.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "longest-streak",
+   "version": "3.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mako",
+   "version": "1.4.3",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "markdown-table",
+   "version": "3.0.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "markupsafe",
+   "version": "3.0.3",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-find-and-replace",
+   "version": "3.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-from-markdown",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-gfm",
+   "version": "3.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-gfm-autolink-literal",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-gfm-footnote",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-gfm-strikethrough",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-gfm-table",
+   "version": "2.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-gfm-task-list-item",
+   "version": "2.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-mdx-expression",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-mdx-jsx",
+   "version": "3.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-mdxjs-esm",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-phrasing",
+   "version": "4.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-to-hast",
+   "version": "13.2.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-to-markdown",
+   "version": "2.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "mdast-util-to-string",
+   "version": "4.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark",
+   "version": "4.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-core-commonmark",
+   "version": "2.0.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-extension-gfm",
+   "version": "3.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-extension-gfm-autolink-literal",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-extension-gfm-footnote",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-extension-gfm-strikethrough",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-extension-gfm-table",
+   "version": "2.1.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-extension-gfm-tagfilter",
+   "version": "2.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-extension-gfm-task-list-item",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-factory-destination",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-factory-label",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-factory-space",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-factory-title",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-factory-whitespace",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-character",
+   "version": "2.1.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-chunked",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-classify-character",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-combine-extensions",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-decode-numeric-character-reference",
+   "version": "2.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-decode-string",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-edit-map",
+   "version": "1.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-encode",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-html-tag-name",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-normalize-identifier",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-resolve-all",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-sanitize-uri",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-subtokenize",
+   "version": "2.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-symbol",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "micromark-util-types",
+   "version": "2.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "ms",
+   "version": "2.1.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "multidict",
+   "version": "7.2.1",
+   "ecosystem": "python",
+   "license": "Apache-2.0",
+   "text_id": null
+  },
+  {
+   "name": "p-limit",
+   "version": "2.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "p-locate",
+   "version": "4.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "p-try",
+   "version": "2.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "paho-mqtt",
+   "version": "2.1.0",
+   "ecosystem": "python",
+   "license": "EPL-2.0 OR BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "parse-entities",
+   "version": "4.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "path-exists",
+   "version": "4.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "pngjs",
+   "version": "5.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "176b07a18c0b"
+  },
+  {
+   "name": "propcache",
+   "version": "0.5.4",
+   "ecosystem": "python",
+   "license": "Apache-2.0",
+   "text_id": null
+  },
+  {
+   "name": "property-information",
+   "version": "7.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "pycparser",
+   "version": "3.11",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "pydantic",
+   "version": "2.13.5",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "pydantic",
+   "version": "2.14.2",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "pydantic-core",
+   "version": "2.46.5",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "pydantic-core",
+   "version": "2.50.2",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "pyjwt",
+   "version": "2.15.0",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "pyotp",
+   "version": "2.10.0",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "python-multipart",
+   "version": "0.0.32",
+   "ecosystem": "python",
+   "license": "Apache-2.0",
+   "text_id": null
+  },
+  {
+   "name": "qrcode",
+   "version": "1.5.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "react",
+   "version": "19.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "da6d3703ed11"
+  },
+  {
+   "name": "react-datepicker",
+   "version": "9.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "4592fda39906"
+  },
+  {
+   "name": "react-dom",
+   "version": "19.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "da6d3703ed11"
+  },
+  {
+   "name": "react-is",
+   "version": "19.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "da6d3703ed11"
+  },
+  {
+   "name": "react-markdown",
+   "version": "10.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "react-redux",
+   "version": "9.3.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "f2da73c752c6"
+  },
+  {
+   "name": "react-router",
+   "version": "7.18.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "77c9ee6a9c5d"
+  },
+  {
+   "name": "react-router-dom",
+   "version": "7.18.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "77c9ee6a9c5d"
+  },
+  {
+   "name": "recharts",
+   "version": "3.10.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "2d3aa48a8d1d"
+  },
+  {
+   "name": "redux",
+   "version": "5.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "f2da73c752c6"
+  },
+  {
+   "name": "redux-thunk",
+   "version": "3.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "f2da73c752c6"
+  },
+  {
+   "name": "rehype-slug",
+   "version": "6.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "remark-gfm",
+   "version": "4.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "remark-parse",
+   "version": "11.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "remark-rehype",
+   "version": "11.1.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "remark-stringify",
+   "version": "11.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "require-directory",
+   "version": "2.1.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "a92e52eb1fa7"
+  },
+  {
+   "name": "require-main-filename",
+   "version": "2.0.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "365496ca1f56"
+  },
+  {
+   "name": "reselect",
+   "version": "5.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "e98047a5dee0"
+  },
+  {
+   "name": "scheduler",
+   "version": "0.28.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "da6d3703ed11"
+  },
+  {
+   "name": "set-blocking",
+   "version": "2.0.0",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "365496ca1f56"
+  },
+  {
+   "name": "set-cookie-parser",
+   "version": "2.7.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "c5c6c5183a78"
+  },
+  {
+   "name": "space-separated-tokens",
+   "version": "2.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "sqlalchemy",
+   "version": "2.1.0",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "starlette",
+   "version": "1.7.0",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "string-width",
+   "version": "4.2.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "stringify-entities",
+   "version": "4.0.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "strip-ansi",
+   "version": "6.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "style-to-js",
+   "version": "1.1.21",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "bbb380e5c1a7"
+  },
+  {
+   "name": "style-to-object",
+   "version": "1.0.14",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "896c9fd6b5fc"
+  },
+  {
+   "name": "tabbable",
+   "version": "6.5.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "8e714750725e"
+  },
+  {
+   "name": "tiny-invariant",
+   "version": "1.3.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "b1c501095de7"
+  },
+  {
+   "name": "trim-lines",
+   "version": "3.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "trough",
+   "version": "2.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "typing-extensions",
+   "version": "4.16.0",
+   "ecosystem": "python",
+   "license": "PSF-2.0",
+   "text_id": null
+  },
+  {
+   "name": "typing-inspection",
+   "version": "0.4.4",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "typing-inspection",
+   "version": "0.4.5",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "tzdata",
+   "version": "2026.5",
+   "ecosystem": "python",
+   "license": "Apache-2.0",
+   "text_id": null
+  },
+  {
+   "name": "tzlocal",
+   "version": "5.4.4",
+   "ecosystem": "python",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "unified",
+   "version": "11.0.5",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "unist-util-is",
+   "version": "6.0.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "unist-util-position",
+   "version": "5.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "unist-util-stringify-position",
+   "version": "4.0.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "unist-util-visit",
+   "version": "5.1.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "unist-util-visit-parents",
+   "version": "6.0.2",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "use-sync-external-store",
+   "version": "1.7.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "da6d3703ed11"
+  },
+  {
+   "name": "uvicorn",
+   "version": "0.54.0",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "vfile",
+   "version": "6.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "vfile-message",
+   "version": "4.0.3",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "victory-vendor",
+   "version": "37.3.6",
+   "ecosystem": "npm",
+   "license": "MIT AND ISC",
+   "text_id": null
+  },
+  {
+   "name": "websockets",
+   "version": "15.0.1",
+   "ecosystem": "python",
+   "license": "BSD-3-Clause",
+   "text_id": null
+  },
+  {
+   "name": "which-module",
+   "version": "2.0.1",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "852bf81203aa"
+  },
+  {
+   "name": "wrap-ansi",
+   "version": "6.2.0",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  },
+  {
+   "name": "y18n",
+   "version": "4.0.3",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "2034cce3b6fa"
+  },
+  {
+   "name": "yargs",
+   "version": "15.4.1",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": "2f1a503bfab8"
+  },
+  {
+   "name": "yargs-parser",
+   "version": "18.1.3",
+   "ecosystem": "npm",
+   "license": "ISC",
+   "text_id": "365496ca1f56"
+  },
+  {
+   "name": "yarl",
+   "version": "1.25.1",
+   "ecosystem": "python",
+   "license": "Apache-2.0",
+   "text_id": null
+  },
+  {
+   "name": "zwitch",
+   "version": "2.0.4",
+   "ecosystem": "npm",
+   "license": "MIT",
+   "text_id": null
+  }
+ ]
+}
