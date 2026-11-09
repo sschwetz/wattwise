@@ -35,6 +35,21 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest -q
 
+  core-api-prod-import:
+    # The image installs with --no-dev, so a runtime import of a dev-only package crashes it on start.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: core-api/uv.lock
+      - run: uv sync --locked --no-dev
+      - run: uv run --no-sync python -c "import core_api.main"
+
   webapp:
     runs-on: ubuntu-latest
     defaults:
