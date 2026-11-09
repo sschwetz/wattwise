@@ -79,6 +79,10 @@ flowchart LR
     COL["collectors"] -- "http://core-api:8000<br/>internal network" --> API
 ```
 
+## Build commit and service status
+
+Every Python service reports the commit it was built from to Core API when it starts and every 60 seconds. A collector sends `X-Collector-Key` and the actor sends `X-Actor-Key`, the credentials they already use. The webapp does not report: it serves `GET /version`, and Core API fetches that from `FRONTEND_BASE_URL` once a minute. `mail-relay` does not report. The webapp's About dialog reads the result from `GET /api/v1/services`. See [Service status](core-api.md#service-status).
+
 ## Who is allowed to do what
 
 Three separate authentication schemes exist. They never mix.

@@ -226,6 +226,18 @@ Window patterns (`months`, `days_of_week`, `start_time`, `end_time`) share one r
 | `local_reprice_markers` | At most one per source: the earliest instant whose price may have changed because a window was added, edited or deleted. `version` increases on every change so a collector clearing an old marker does not erase a newer edit. |
 | `price_gap_markers` | Days a provider confirmed it has no data for, so backfill stops asking. |
 
+## Service status
+
+`service_status` holds the latest report from each service, one row per service. The migration is `a1b2c3d4e5f6`.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `service` | string(64), primary key | Service name, such as `core-api` or `envoy-collector` |
+| `commit` | string(40) | The commit the service reported |
+| `reported_at` | timestamp with time zone | When Core API stored the report |
+
+The table holds no secrets. `GET /services` adds the `reporting` flag at read time; it is not stored. See [Service status](core-api.md#service-status).
+
 ## Actor tables
 
 Three tables hold the [actors](actors.md) feature. The migration is `895863e431c6`.

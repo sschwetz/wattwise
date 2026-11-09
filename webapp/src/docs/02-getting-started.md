@@ -44,7 +44,7 @@ After you sign in, every screen has the header. The dashboard and Reporting page
 
 ![The WattWise header at the top and the site sidebar down the left side](images/sidebar-and-header.png)
 
-- **Header** (top): the WattWise logo and your name and photo. Click your name to open the user menu with **Account settings**, **Site settings**, **Help** and **Log off**.
+- **Header** (top): the WattWise logo and your name and photo. Click your name to open the user menu with **Account settings**, **Site settings**, **Help**, **About** and **Log off**. **About** shows the version each WattWise container is running and the licences of the packages it uses.
 
 ![The user menu open, showing Account settings, Help and Log off](images/header-menu.png)
 

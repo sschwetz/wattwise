@@ -79,6 +79,10 @@ An action that is `restorable` saves the fields it changes (the snapshot) before
 - **Disabling** the schedule, the instance or the site while a run holds the unit off restores it at once, subject to the gate.
 - A schedule with restore switched off never restores, and Core API does not count its runs as holding the unit off.
 
+### Commit report
+
+The actor also posts its build commit to `POST /api/v1/services/report` with `X-Actor-Key` at start and every 60 seconds, from a daemon thread (`actron_neo_actor/service_report.py`). It reports as `actron-neo-actor`. See [Service status](core-api.md#service-status).
+
 ## Runs
 
 Every attempt is one row in `actor_runs`, with a `kind`, an `outcome` and a message.

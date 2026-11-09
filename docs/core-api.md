@@ -27,6 +27,7 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `scheduler.py` | Builds the APScheduler instance. |
 | `actor_schemas.py`, `actor_capabilities.py`, `actor_schedule_validation.py` | Pydantic models for schedules, runs and capabilities, and the checks that tie a saved schedule to an instance's declared capabilities. See [Actors](actors.md). |
 | `actor_context.py`, `actor_runs.py`, `actor_failures.py` | The site context an actor fetches (window occurrences as UTC instants), the one definition of an unfinished action run, and the current-failures rules the Dashboard tile and the watchdog share. |
+| `service_status.py`, `routers/services.py` | The `service_status` table's read and write helpers, the per-key service allow-list, and the two `/services` endpoints. See [Service status](#service-status). |
 | `jobs/` | The background jobs and their helpers. |
 
 ## Request lifecycle
@@ -148,6 +149,30 @@ Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 | `GET /runs?limit=`, `GET /schedules/{sid}/runs?limit=` | Run history, newest first. `limit` is 1 to 200, default 50. |
 | `GET /failures` | The current failures for the Dashboard tile |
 
+### Service status
+
+Each service tells Core API which commit it was built from, and the About dialog lists the result. Core API keeps one row per service in the `service_status` table (see [Data model](data-model.md#service-status)). A report overwrites the row.
+
+| Endpoint | Credential | Behaviour |
+|---|---|---|
+| `POST /services/report` | `X-Collector-Key` or `X-Actor-Key` | Body `{"service": "...", "commit": "..."}`. Returns 204 and stores the commit with the current UTC time. |
+| `GET /services` | User token | Returns 7 rows in a fixed order: `core-api`, `webapp`, `envoy-collector`, `weatherlink-local-collector`, `amber-pricing-collector`, `local-pricing-collector`, `actron-neo-actor`. Each row has `service`, `commit`, `last_reported_at` and `reporting`. A service with no row yet has null `commit` and `last_reported_at`. |
+
+`POST /services/report` answers 401 `invalid_service_key` when the key matches none of `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` or `ACTOR_KEY`. It answers 403 `service_not_allowed` when the key is valid but not for the named service, and 422 when the body has extra fields or `commit` is not 7 to 40 lowercase hex characters, `unknown` or `dev`. Each key may report for these services:
+
+| Key | Allowed services |
+|---|---|
+| `ENVOY_COLLECTOR_KEY` | `envoy-collector` |
+| `WEATHER_COLLECTOR_KEY` | `weatherlink-local-collector` |
+| `PRICING_COLLECTOR_KEY` | `amber-pricing-collector`, `local-pricing-collector` |
+| `ACTOR_KEY` | `actron-neo-actor` |
+
+The two pricing collectors share a key, so either can report as the other. Core API accepts that.
+
+`reporting` is true while `last_reported_at` is at most 180 seconds old (three report intervals). Timestamps are UTC.
+
+Core API reports for itself and for the webapp. The `service_status` job (see [Background jobs](#background-jobs)) writes the `core-api` row from `GIT_COMMIT`, then fetches `<FRONTEND_BASE_URL>/version` and stores the `commit` it returns as the `webapp` row. If the fetch fails or returns a bad body, the `webapp` row stays as it was and ages into `reporting: false`. `mail-relay` is not listed because it does not report.
+
 ## Live samples
 
 The dashboard tiles update from a WebSocket instead of waiting for the next stored reading. Collectors push live samples to Core API, and Core API forwards them to connected browsers. Nothing in this path writes to the database; stored readings still arrive through the batch endpoints above.
@@ -220,6 +245,7 @@ Validation failures use code `validation_error` and HTTP 422. The `detail` list 
 | `demand_charge` | Daily 00:10 | Computes `demand_charges` for each billing period | Finalized rows are skipped. Estimated rows are recomputed. |
 | `retention_rollup` | Daily 00:20 | Moves readings older than 365 days into 5-minute rollups and deletes the raw rows | Upsert into rollups, delete after. Cutoff is floored to a bucket boundary. |
 | `actor_watchdog` | Every minute | Finds action runs that hold a unit off past the restore time plus the give-up allowance, or whose actor has been silent for 5 minutes, and emails the site owner once per run if the schedule has email on | A conditional update sets `watchdog_notified_at` first, and only the job run that wins the update sends |
+| `service_status` | Every 60 seconds, and once at startup | Writes the `core-api` row, then fetches `<FRONTEND_BASE_URL>/version` (5 second timeout) and writes the `webapp` row | Upsert on the service name. A failed fetch leaves the webapp row unchanged. |
 | `expire_admin_password_file` | Daily 03:17, and once at startup | Deletes `initial-admin-password.txt` if it is 5 days old or older | Does nothing when the file is missing. Not a database job: it takes the file path, not a session. |
 
 Times use the container's clock (UTC in the image).
@@ -237,7 +263,8 @@ Times use the container's clock (UTC in the image).
 | `DATABASE_URL` | no | `sqlite:///./core_api.db` | Compose sets `sqlite:////data/core_api.db` |
 | `AVATAR_STORAGE_DIR` | no | `./data/avatars` | Compose sets `/data/avatars` |
 | `JWT_EXPIRY_HOURS` | no | `24` | Access token lifetime |
-| `FRONTEND_BASE_URL` | no | `http://localhost:5173` | CORS origin and the base of links in emails |
+| `GIT_COMMIT` | no | `unknown` | The build commit. Core API keeps the first 7 characters. The Dockerfile sets it from a build arg; see [Operations](operations.md#build-commit). |
+| `FRONTEND_BASE_URL` | no | `http://localhost:5173` | CORS origin, the base of links in emails, and where the `service_status` job fetches `/version` |
 | `ROOT_PATH` | no | empty | Prefix for the `/docs`, `/redoc` and `/openapi.json` pages, for example `/api` to reach them at `/api/docs` through a proxy that forwards `/api` unchanged. API routes always stay under `/api/v1` |
 | `SMTP_HOST`, `SMTP_PORT` | no | `mail-relay`, `25` | Outbound mail |
 | `SMTP_FROM` | no | `noreply@localhost` | Sender address |

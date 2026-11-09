@@ -60,6 +60,7 @@ More screenshots, with the explanation of every tile and field, are in the [user
 | `src/sources/` | `useSources.ts`, `useRateWindows.ts`, the rate window panel and form, `rateCoverage.ts` (finds uncovered times) |
 | `src/settings/` | The Settings page: `SettingsPage` (route and redirects), `SettingsShell`, `GeneralTab`, `SharingTab`, `tabs.ts`. The Collectors, Tariffs and Billing tabs reuse `CollectorsTab` in `pages/SourcesPage.tsx` and `TariffsTab` and `BillingTab` in `pages/BillingPage.tsx`. |
 | `src/sites/`, `src/account/` | Site, invitation and account hooks and forms. `useEnabledSites` filters `GET /sites` to enabled sites for the picker. The switcher shows enabled sites plus the current site when it is disabled. |
+| `src/about/` | The About dialog: `AboutDialog.tsx` (tabs, Escape and focus handling), `ContainersTab.tsx` and `useServices.ts` (`GET /services`), `LicencesTab.tsx` and `useLicences.ts` (`/licences.json`) |
 | `src/help/` | The help viewer |
 | `src/docs/` | The user guide as Markdown, plus `images/` |
 
@@ -120,9 +121,29 @@ The editor counts as changed while its form differs from the schedule as last sa
 
 The API address is not compiled in. `public/config.js` sets `window.__APP_CONFIG__.apiBaseUrl`, and `src/api/config.ts` reads it (falling back to `http://localhost:8000`). In the container, [`docker-entrypoint.sh`](../webapp/docker-entrypoint.sh) rewrites `config.js` from the `API_BASE_URL` environment variable each time it starts. So one image works for any deployment, and changing the address needs a restart, not a rebuild.
 
-`nginx.conf` serves `index.html` for every unknown path so that browser refreshes on client-side routes work.
+`nginx.conf` serves `/version` as JSON (see [The About dialog](#the-about-dialog)) and `index.html` for every other unknown path so that browser refreshes on client-side routes work.
 
 The entrypoint also writes `/etc/nginx/security-headers.conf`, which `nginx.conf` includes. It sets a Content-Security-Policy (with `connect-src` limited to `API_BASE_URL` and the same address with `ws://` or `wss://`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` and `Permissions-Policy`. A new third-party script, style or image host needs adding to the CSP in `docker-entrypoint.sh`.
+
+## The About dialog
+
+**About** sits in the account menu above **Log off** (`src/layout/Header.tsx`). It opens a dialog with two tabs.
+
+- **Containers** lists the 7 services from `GET /api/v1/services`. A reporting service shows its commit as a link to the GitHub commit page. A service that is not reporting shows "not reporting" and either its last-reported time or "never reported". See [Service status](core-api.md#service-status) for how the data arrives.
+- **Licences** is a filterable list of npm and Python packages. Selecting a package shows its licence name and licence text. The data is the static file `public/licences.json`, served by nginx. The page makes no registry calls.
+
+Commits show as 7 characters. The webapp's own commit comes from `GET /version`, which returns `{"commit": "<7 characters or unknown>"}`. [`write-version.sh`](../webapp/write-version.sh) writes that file from `GIT_COMMIT` each time the container starts (the entrypoint calls it), and nginx serves it with `Cache-Control: no-store`. The container healthcheck requests `/version`, so a container that cannot serve it is unhealthy. Core API fetches the same URL to fill the webapp's row.
+
+### Regenerating the licence list
+
+[`scripts/generate_licences.py`](../scripts/generate_licences.py) writes `webapp/public/licences.json`. It reads npm packages from `webapp/package-lock.json` and their licence files from `webapp/node_modules`. For each Python service it exports the locked set from `uv.lock`, installs it into a temporary directory with `uv`, reads licence files from the installed packages, and asks PyPI for the licence name. It needs network access and `uv`, and `npm ci` must have run in `webapp/` first:
+
+```bash
+cd webapp && npm ci && cd ..
+python3 scripts/generate_licences.py
+```
+
+The committed `licences.json` is a snapshot. The `publish-images` workflow regenerates it for the webapp image only, so published webapp images carry current data and the workflow does not commit the file back. A package whose licence PyPI does not name shows `unknown`.
 
 ## The in-app help is this repository's user guide
 
@@ -141,3 +162,4 @@ Tests protect the guide: `docs.test.ts` and `links.test.ts` fail when a chapter 
 | How a chart is shaped | `historyChart.ts` or `priceChart.ts`, which have unit tests |
 | Tariff and billing forms | `src/pages/BillingPage.tsx` and `src/billing/` |
 | Help text | `src/docs/*.md` |
+| The About dialog | `src/about/`. The licence data comes from `scripts/generate_licences.py`. |

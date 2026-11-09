@@ -104,6 +104,7 @@ The file exists only if the database had no users at first start. If you don't d
 | Containers up | `docker compose ps` | All `running`, `core-api` `healthy` |
 | API answering | `curl http://localhost:8000/health` | `{"status":"ok"}` |
 | Data flowing | Dashboard live tiles | Values change within a minute or two |
+| Services reporting | **About** in the user menu, Containers tab | Each of the 7 services shows a commit, not "not reporting" |
 | Per-source problems | Logs (below) | No repeating errors |
 
 If a site's data stops and its sources look healthy, check whether the site was disabled: open **Site settings** in the webapp and look at **Enabled** on the **General** tab. A disabled site is dimmed in the site chips and its collectors log 403 `site_disabled` if they still hold the old source list. The data is kept. Turning **Enabled** on resumes collection within one discovery refresh (`DISCOVERY_REFRESH_SECONDS`).
@@ -243,6 +244,17 @@ Migrations run automatically when `core-api` starts. Take a backup first. Rollin
 **Upgrading to the site settings release:** the migrations `d4f6a8b1c3e5` and `e5a7b9c2d4f6` run at startup. Every existing site stays enabled. Every existing viewer grant becomes an accepted invitation from the site owner. The direct-grant routes under `/sites/{id}/access` are gone, so owners now share through invitations on the **Sharing** tab.
 
 `--remove-orphans` matters after a service rename. The `pricing-collector` service became `amber-pricing-collector`, and without the flag the old container keeps running and polls Amber alongside the new one.
+
+### Build commit
+
+The About dialog shows the commit each service was built from. The `GIT_COMMIT` build arg carries it, and every Dockerfile turns it into an environment variable. The publish workflow passes `github.sha`, so published images have it. `docker compose build` passes `${GIT_COMMIT:-unknown}`, so a local build shows `unknown` unless you set it:
+
+```bash
+GIT_COMMIT=$(git rev-parse HEAD) docker compose build
+GIT_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
+```
+
+Every service keeps the first 7 characters. A service shows "not reporting" in the About dialog after 180 seconds without a report, with its last-reported time, or "never reported" if it has never checked in. `mail-relay` does not report and is not listed. The webapp does not report either: Core API fetches `<FRONTEND_BASE_URL>/version` every 60 seconds, so a wrong `FRONTEND_BASE_URL` makes the webapp show "not reporting".
 
 ## Secrets
 

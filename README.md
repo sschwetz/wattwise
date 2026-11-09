@@ -115,6 +115,8 @@ docker compose exec core-api cat /data/initial-admin-password.txt
 
 Data lives in the `core_api_data` volume. `docker compose down -v` deletes it.
 
+The About item in the account menu shows the commit each service was built from. A local build shows `unknown` unless you set `GIT_COMMIT`: `GIT_COMMIT=$(git rev-parse HEAD) docker compose up --build`. See [Operations](docs/operations.md#build-commit).
+
 ### Upgrading from `pricing-collector`
 
 The Compose service `pricing-collector` is now `amber-pricing-collector`. On a host that already runs the stack, `docker compose up -d` leaves the old `pricing-collector` container running, and it keeps polling Amber alongside the new one. Upgrade with:
