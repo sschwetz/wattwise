@@ -257,6 +257,7 @@ GIT_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
 Every service keeps the first 7 characters. A service shows "not reporting" in the About dialog after 180 seconds without a report, with its last-reported time, or "never reported" if it has never checked in. `mail-relay` does not report and is not listed. The webapp does not report either: Core API fetches `<FRONTEND_BASE_URL>/version` every 60 seconds, from inside its own container, so `FRONTEND_BASE_URL` must be reachable from core-api's container, not from your browser.
 
 - With the compose default `http://localhost`, the request goes to core-api itself, which does not serve `/version`. The webapp row shows "not reporting", or "never reported" if it has never succeeded.
+- With the host's IP address and published port, such as `http://10.69.6.2:8180`, the container reaches the webapp through the host and the row works.
 - With a public hostname behind a reverse proxy, core-api's container must resolve that hostname and reach the proxy. Hairpin NAT does not work on some home routers, so a name that works from your laptop can fail from the container.
 - If `SCHEDULER_ENABLED=false`, the job does not run, and the core-api and webapp rows are never written.
 
