@@ -39,6 +39,7 @@ from envoy_collector.mapping import (
     map_meter_power_readings,
     map_meter_readings,
 )
+from envoy_collector.service_report import start_commit_reporter
 
 logger = logging.getLogger("envoy_collector")
 
@@ -552,6 +553,7 @@ def _refresh_sources(settings: Settings, known: dict[int, dict]) -> dict[int, di
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     settings = get_settings()
+    start_commit_reporter(settings.core_api_url, "X-Collector-Key", settings.collector_key, "envoy-collector")
     sources: dict[int, dict] = {}
     while not sources:
         sources = _refresh_sources(settings, sources)

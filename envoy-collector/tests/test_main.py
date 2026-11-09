@@ -21,6 +21,12 @@ from tests.test_enlighten_client import make_jwt
 FAR_EXPIRY = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=300)).isoformat()
 
 
+@pytest.fixture(autouse=True)
+def _no_commit_reporter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """main() starts a real reporter thread; keep it out of the main-loop tests."""
+    monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args, **kwargs: None)
+
+
 def _cert(fingerprint: str, days_left: int) -> CertificateInfo:
     return CertificateInfo(
         fingerprint=fingerprint,
