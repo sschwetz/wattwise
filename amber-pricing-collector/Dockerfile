@@ -9,6 +9,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY amber_pricing_collector ./amber_pricing_collector
 RUN uv sync --frozen --no-dev
 
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+
 ENV PYTHONUNBUFFERED=1
 
 CMD ["/app/.venv/bin/python", "-m", "amber_pricing_collector.main"]

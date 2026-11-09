@@ -6,6 +6,13 @@ import multiprocessing
 from amber_pricing_collector.backfill import run_backfill_forever
 from amber_pricing_collector.config import get_settings
 from amber_pricing_collector.live_poll import run_live_poll_forever, run_recent_poll_forever
+from amber_pricing_collector.service_report import start_commit_reporter
+
+
+def run_commit_reporter(core_api_url: str, collector_key: str) -> None:
+    """Entry point of the reporter process. The reporter is a thread, so it runs
+    in its own process to keep the main process single-threaded (see main())."""
+    start_commit_reporter(core_api_url, "X-Collector-Key", collector_key, "amber-pricing-collector").join()
 
 
 def main() -> None:
@@ -37,6 +44,11 @@ def main() -> None:
         target=run_recent_poll_forever, args=(settings.core_api_url, settings.collector_key), daemon=False
     )
     recent_poll_process.start()
+
+    commit_reporter_process = multiprocessing.Process(
+        target=run_commit_reporter, args=(settings.core_api_url, settings.collector_key), daemon=True
+    )
+    commit_reporter_process.start()
 
     run_live_poll_forever(settings.core_api_url, settings.collector_key)
 

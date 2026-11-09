@@ -41,11 +41,16 @@ def test_main_starts_backfill_and_recent_poll_processes_and_runs_live_poll(monke
 
     main_module.main()
 
-    assert len(FakeProcess.instances) == 2
+    assert len(FakeProcess.instances) == 3
     by_target = {p.target: p for p in FakeProcess.instances}
-    assert set(by_target) == {main_module.run_backfill_forever, main_module.run_recent_poll_forever}
+    assert set(by_target) == {
+        main_module.run_backfill_forever,
+        main_module.run_recent_poll_forever,
+        main_module.run_commit_reporter,
+    }
     assert by_target[main_module.run_backfill_forever].daemon is True
     assert by_target[main_module.run_recent_poll_forever].daemon is False
+    assert by_target[main_module.run_commit_reporter].daemon is True
     for process in FakeProcess.instances:
         assert process.started is True
         assert process.args == (SETTINGS.core_api_url, SETTINGS.collector_key)
@@ -56,3 +61,21 @@ def test_main_does_not_use_threading(monkeypatch):
     """The parent process must stay single-threaded -- guards against the
     threading.Thread backfill launcher creeping back in."""
     assert not hasattr(main_module, "threading")
+
+
+def test_commit_reporter_process_starts_the_reporter_with_the_collector_key(monkeypatch):
+    calls = []
+
+    class FakeThread:
+        def join(self):
+            calls.append("joined")
+
+    def fake_start(*args):
+        calls.append(args)
+        return FakeThread()
+
+    monkeypatch.setattr(main_module, "start_commit_reporter", fake_start)
+
+    main_module.run_commit_reporter("http://localhost:8000", "shared-key")
+
+    assert calls == [("http://localhost:8000", "X-Collector-Key", "shared-key", "amber-pricing-collector"), "joined"]
