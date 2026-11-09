@@ -28,4 +28,19 @@ check "unset gives unknown" '{"commit":"unknown"}'
 GIT_COMMIT= sh "$here/write-version.sh" "$out"
 check "empty gives unknown" '{"commit":"unknown"}'
 
+GIT_COMMIT=ABCDEF0123 sh "$here/write-version.sh" "$out"
+check "uppercase hex is lowercased" '{"commit":"abcdef0"}'
+
+GIT_COMMIT=HEAD sh "$here/write-version.sh" "$out"
+check "HEAD gives unknown" '{"commit":"unknown"}'
+
+GIT_COMMIT='ab"cdef0123' sh "$here/write-version.sh" "$out"
+check "quote gives unknown" '{"commit":"unknown"}'
+
+GIT_COMMIT=abc12 sh "$here/write-version.sh" "$out"
+check "fewer than 7 chars gives unknown" '{"commit":"unknown"}'
+
+GIT_COMMIT=dev sh "$here/write-version.sh" "$out"
+check "dev is kept" '{"commit":"dev"}'
+
 exit "$fail"

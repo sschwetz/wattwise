@@ -1,13 +1,17 @@
 #!/bin/sh
-# Writes the build commit (first 7 chars of $GIT_COMMIT) as JSON to $1.
+# Writes the build commit ($GIT_COMMIT lowercased, first 7 chars; unknown unless 7 hex chars, or dev) as JSON to $1.
 set -eu
 
 out=${1:?usage: write-version.sh <output-path>}
-commit=${GIT_COMMIT:-}
-if [ -z "$commit" ]; then
-  commit=unknown
-fi
-commit=$(printf '%s' "$commit" | cut -c1-7)
+commit=$(printf '%s' "${GIT_COMMIT:-}" | tr 'A-F' 'a-f' | cut -c1-7)
+case $commit in
+  unknown | dev) ;;
+  *)
+    if ! printf '%s' "$commit" | grep -Eq '^[0-9a-f]{7}$'; then
+      commit=unknown
+    fi
+    ;;
+esac
 
 printf '{"commit":"%s"}\n' "$commit" > "$out"
 chmod 644 "$out"

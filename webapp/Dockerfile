@@ -19,6 +19,10 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 COPY write-version.sh /write-version.sh
 RUN chmod +x /docker-entrypoint.sh /write-version.sh
 
+# Read by write-version.sh at container start.
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD ["wget", "-q", "--spider", "http://127.0.0.1/version"]
 

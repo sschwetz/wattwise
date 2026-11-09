@@ -57,3 +57,27 @@ def test_get_settings_raises_if_actor_key_missing(monkeypatch):
     _set_required_env(monkeypatch, ACTOR_KEY=None)
     with pytest.raises(RuntimeError):
         get_settings()
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("0123456789abcdef", "0123456"),
+        ("ABCDEF0123", "abcdef0"),
+        ("  abcdef0123  ", "abcdef0"),
+        ("abc12", "unknown"),
+        ("HEAD", "unknown"),
+        ('ab"cdef0123', "unknown"),
+        ("", "unknown"),
+        ("dev", "dev"),
+        ("unknown", "unknown"),
+    ],
+)
+def test_get_settings_normalises_git_commit(monkeypatch, raw, expected):
+    _set_required_env(monkeypatch, GIT_COMMIT=raw)
+    assert get_settings().git_commit == expected
+
+
+def test_get_settings_git_commit_defaults_to_unknown(monkeypatch):
+    _set_required_env(monkeypatch, GIT_COMMIT=None)
+    assert get_settings().git_commit == "unknown"
