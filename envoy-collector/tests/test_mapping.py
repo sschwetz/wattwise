@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import pathlib
+from typing import Any
 
 import pytest
 
@@ -21,7 +22,7 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 TS = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.UTC)
 
 
-def load_fixture(name: str) -> dict:
+def load_fixture(name: str) -> Any:
     return json.loads((FIXTURES / name).read_text())
 
 
@@ -152,7 +153,7 @@ def test_consumption_matches_live_observed_bug_report():
 
 
 def make_sample(**overrides) -> LiveSample:
-    fields = dict(
+    fields: dict[str, Any] = dict(
         last_update=1, production_w=0.0, grid_w=0.0, battery_w=0.0, soc=50, relay_state=1, has_battery=True
     )
     fields.update(overrides)

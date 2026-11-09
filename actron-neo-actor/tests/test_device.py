@@ -469,7 +469,7 @@ def test_push_retry_backs_off_up_to_300_seconds():
         attempts.append(clock.elapsed())
         return await original(*args, **kwargs)
 
-    api.start_push = recording_start_push  # type: ignore[method-assign]
+    api.start_push = recording_start_push
     _run_sync(device, clock)
     gaps = [b - a for a, b in zip(attempts, attempts[1:], strict=False)]
     assert gaps[:4] == [30, 60, 120, 240]

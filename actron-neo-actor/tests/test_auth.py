@@ -21,7 +21,7 @@ SECRETS = [STORED, NEW, "ACCESS-NEW", "DEVICE-1", "DEVICE-2", "USER-1", "USER-2"
 def async_test(fn: Callable[..., Awaitable[None]]) -> Callable[..., None]:
     @functools.wraps(fn)
     def wrapper(**fixtures: Any) -> None:
-        asyncio.run(fn(**fixtures))
+        asyncio.run(fn(**fixtures))  # type: ignore[arg-type]
 
     return wrapper
 
@@ -56,11 +56,11 @@ class Harness:
 
     async def tick(self) -> SessionResult:
         result = await ensure_session(
-            self.api,
+            self.api,  # type: ignore[arg-type]
             self.instance(),
-            self.core,
+            self.core,  # type: ignore[arg-type]
             self.state,
-            clock=self.clock.now,  # type: ignore[arg-type]
+            clock=self.clock.now,
         )
         self.state = result.state
         await settle()  # lets a newly started poll task reach its first await
@@ -227,7 +227,7 @@ async def test_cancelled_ensure_session_leaves_no_task():
 async def test_stored_token_arrives_while_signing_in_cancels_the_pending_task():
     h = Harness()
     await h.tick()
-    task = h.state.task  # type: ignore[union-attr]
+    task = h.state.task
     h.token = STORED
     assert (await h.tick()).signed_in is True
     await settle()
@@ -310,7 +310,7 @@ async def test_a_successful_refresh_resets_the_failure_count():
     h.api.oauth2_auth.refresh_error = None
     h.advance(60)
     assert (await h.tick()).signed_in is True
-    h.state.session_token = None  # type: ignore[union-attr]  # force a new refresh
+    h.state.session_token = None  # force a new refresh
     fail_refresh(h)
     for _ in range(2):
         h.advance(60)

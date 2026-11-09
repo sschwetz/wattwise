@@ -121,7 +121,7 @@ class FakeActronApi:
         self.serial = serial
         self.device = raw_state() if device is None else device
         self.state_manager = StateManager()
-        self.state_manager.set_api(self)
+        self.state_manager.set_api(self)  # type: ignore[arg-type]
         self.commands: list[dict[str, Any]] = []
         self.respond_to_commands = True
         self.command_error: Exception | None = None
@@ -220,7 +220,7 @@ class FakeActronApi:
 
     def approve(self, refresh_token: str = "REFRESH-NEW", access_token: str = "ACCESS-NEW") -> None:
         """The owner approves the latest device code."""
-        self._polls[-1].set_result(ActronAirToken(access_token=access_token, refresh_token=refresh_token))
+        self._polls[-1].set_result(ActronAirToken(access_token=access_token, refresh_token=refresh_token))  # type: ignore[call-arg]
 
     def time_out(self) -> None:
         self._polls[-1].set_result(None)

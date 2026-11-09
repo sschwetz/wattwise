@@ -39,8 +39,8 @@ def window(**overrides) -> dict:
     return {**base, **overrides}
 
 
-def at(*args) -> datetime.datetime:
-    return datetime.datetime(*args, tzinfo=UTC)
+def at(year: int, month: int, day: int, hour: int = 0, minute: int = 0, second: int = 0) -> datetime.datetime:
+    return datetime.datetime(year, month, day, hour, minute, second, tzinfo=UTC)
 
 
 def test_a_flat_window_prices_every_minute():

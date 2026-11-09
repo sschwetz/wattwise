@@ -47,7 +47,7 @@ class Site:
             self.core.schedules[inst.instance_id] = [schedule(inst.instance_id, instance_id=inst.instance_id)]
             self.core.contexts[inst.instance_id] = context()
         self.core.instances = list(instances)
-        self.runner = Runner(AsyncCore(self.core), SETTINGS, lambda i: self.factories[i.instance_id],  # type: ignore[arg-type,return-value]
+        self.runner = Runner(AsyncCore(self.core), SETTINGS, lambda i: self.factories[i.instance_id],  # type: ignore[arg-type]
                              self.clock.now, self.clock.sleep)
 
     async def round(self, at: datetime.datetime | None = None) -> None:
@@ -86,7 +86,7 @@ def test_a_tick_still_running_is_not_started_again():
             await gate.wait()
             return True
 
-        factory.sign_in = slow_sign_in  # type: ignore[method-assign]
+        factory.sign_in = slow_sign_in  # type: ignore[assignment,method-assign]
         await site.runner.round()
         await asyncio.sleep(0)
         await site.runner.round()
@@ -181,7 +181,7 @@ def test_run_forever_ticks_then_stops_workers_when_cancelled():
 
 class AccountApi(FakeActronApi):
     async def get_ac_systems(self) -> list[ActronAirSystemInfo]:
-        return [ActronAirSystemInfo(serial=SERIAL)]
+        return [ActronAirSystemInfo(serial=SERIAL)]  # type: ignore[call-arg]
 
     async def close(self) -> None:
         pass

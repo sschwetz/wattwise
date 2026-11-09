@@ -118,8 +118,13 @@ class FakeFactory:
         if self.create_error is not None:
             raise self.create_error
         device = ActronDevice(
-            self.api, SERIAL, SETTINGS, on_change=on_change, clock=self.clock.now, sleep=device_sleep(self.clock)
-        )  # type: ignore[arg-type]
+            self.api,  # type: ignore[arg-type]
+            SERIAL,
+            SETTINGS,
+            on_change=on_change,
+            clock=self.clock.now,
+            sleep=device_sleep(self.clock),
+        )
         self.devices.append(device)
         return device
 

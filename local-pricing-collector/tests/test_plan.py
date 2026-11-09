@@ -16,8 +16,8 @@ SCHEDULED = Triggers(catch_up=False, scheduled_for=datetime.date(2026, 6, 16))
 BOTH = Triggers(catch_up=True, scheduled_for=datetime.date(2026, 6, 16))
 
 
-def at(*args) -> datetime.datetime:
-    return datetime.datetime(*args, tzinfo=UTC)
+def at(year: int, month: int, day: int, hour: int = 0, minute: int = 0, second: int = 0) -> datetime.datetime:
+    return datetime.datetime(year, month, day, hour, minute, second, tzinfo=UTC)
 
 
 def window(**overrides) -> dict:

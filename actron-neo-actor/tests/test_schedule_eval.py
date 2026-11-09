@@ -27,8 +27,8 @@ from actron_neo_actor.schedule_eval import (
 SYDNEY = "Australia/Sydney"
 
 
-def utc(*args: int) -> datetime:
-    return datetime(*args, tzinfo=UTC)
+def utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0, second: int = 0) -> datetime:
+    return datetime(year, month, day, hour, minute, second, tzinfo=UTC)
 
 
 def restore(when="window_end", enabled=True, minutes=None, time=None, only_if=(), early_if=()) -> RestoreSpec:
