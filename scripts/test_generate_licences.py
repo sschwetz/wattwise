@@ -67,7 +67,7 @@ def test_pypi_lookup_precedence() -> None:
 def test_python_packages_parses_export(monkeypatch: Any, tmp_path: pathlib.Path) -> None:
     out = "# c\nfoo==1.0 ; python_version < '4'\n    # via x\n-e .\nbar==2.0\n"
     monkeypatch.setattr(gl, "uv_export", lambda d: out)
-    pkgs = gl.python_packages(tmp_path, lambda n, v: ("MIT", None), lambda d, t: None)
+    pkgs = gl.python_packages(tmp_path, lambda n, v: ("MIT", None), lambda d, t, e: None)
     assert [(p.name, p.version) for p in pkgs] == [("foo", "1.0"), ("bar", "2.0")]
 
 
@@ -120,9 +120,22 @@ def test_dist_info_joins_in_sorted_order(tmp_path: pathlib.Path) -> None:
     assert text == gl.TEXT_SEPARATOR.join(["first", "mid", "second"])
 
 
+def test_export_runs_once_and_feeds_the_installer(monkeypatch: Any, tmp_path: pathlib.Path) -> None:
+    calls: list[pathlib.Path] = []
+    seen: list[str] = []
+
+    def fake_export(d: pathlib.Path) -> str:
+        calls.append(d)
+        return "foo==1.0\n"
+    monkeypatch.setattr(gl, "uv_export", fake_export)
+    gl.python_packages(tmp_path, lambda n, v: ("MIT", None), lambda d, t, e: seen.append(e))
+    assert len(calls) == 1
+    assert seen == ["foo==1.0\n"]
+
+
 def test_no_file_gives_null_text_but_keeps_licence(monkeypatch: Any, tmp_path: pathlib.Path) -> None:
     monkeypatch.setattr(gl, "uv_export", lambda d: "foo==1.0\n")
-    pkgs = gl.python_packages(tmp_path, lambda n, v: ("MIT", None), lambda d, t: None)
+    pkgs = gl.python_packages(tmp_path, lambda n, v: ("MIT", None), lambda d, t, e: None)
     doc = gl.build_document(pkgs)
     assert doc["packages"][0]["license"] == "MIT"
     assert doc["packages"][0]["text_id"] is None
@@ -139,4 +152,4 @@ def test_install_failure_names_service(monkeypatch: Any, tmp_path: pathlib.Path)
         raise subprocess.CalledProcessError(1, "uv", stderr="nope")
     monkeypatch.setattr(gl.subprocess, "run", boom)
     with pytest.raises(gl.InstallError, match="svc-a"):
-        gl.install_service(svc, tmp_path / "site")
+        gl.install_service(svc, tmp_path / "site", "foo==1.0\n")

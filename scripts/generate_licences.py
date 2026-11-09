@@ -163,10 +163,10 @@ def make_lookup(opener: Opener = urllib.request.urlopen) -> Lookup:
     return lookup
 
 
-def install_service(service_dir: pathlib.Path, target: pathlib.Path) -> None:
-    """Install the locked non-dev set of a service into target without dependencies."""
+def install_service(service_dir: pathlib.Path, target: pathlib.Path, export_text: str) -> None:
+    """Install the locked non-dev set of a service (its uv export text) into target without dependencies."""
     requirements = target.parent / f"{service_dir.name}-requirements.txt"
-    requirements.write_text(uv_export(service_dir))
+    requirements.write_text(export_text)
     cmd = ["uv", "pip", "install", "--quiet", "--no-deps", "--target", str(target),
            "-r", str(requirements)]
     try:
@@ -181,12 +181,13 @@ class InstallError(RuntimeError):
 
 def python_packages(
     service_dir: pathlib.Path, lookup: Lookup,
-    installer: Callable[[pathlib.Path, pathlib.Path], None] = install_service,
+    installer: Callable[[pathlib.Path, pathlib.Path, str], None] = install_service,
 ) -> list[Package]:
-    pairs = parse_export(uv_export(service_dir))
+    export_text = uv_export(service_dir)
+    pairs = parse_export(export_text)
     with tempfile.TemporaryDirectory() as tmp:
         target = pathlib.Path(tmp) / "site"
-        installer(service_dir, target)
+        installer(service_dir, target, export_text)
         texts = dist_info_texts(target)
         return [Package(n, v, "python", lookup(n, v)[0], texts.get((normalise(n), v)))
                 for n, v in pairs]
