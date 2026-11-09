@@ -269,7 +269,7 @@ Times use the container's clock (UTC in the image).
 | `SMTP_HOST`, `SMTP_PORT` | no | `mail-relay`, `25` | Outbound mail |
 | `SMTP_FROM` | no | `noreply@localhost` | Sender address |
 | `SMTP_USER`, `SMTP_PASSWORD` | no | unset | Only if the relay needs authentication |
-| `SCHEDULER_ENABLED` | no | `true` | `false`, `0` or `no` turns the jobs off |
+| `SCHEDULER_ENABLED` | no | `true` | `false`, `0` or `no` turns the jobs off. The core-api and webapp rows of the service status are then never written |
 | `ADMIN_EMAIL` | no | `admin@example.com` | Email of the first user, created on an empty database |
 
 ## Where secrets are stored

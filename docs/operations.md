@@ -104,7 +104,7 @@ The file exists only if the database had no users at first start. If you don't d
 | Containers up | `docker compose ps` | All `running`, `core-api` `healthy` |
 | API answering | `curl http://localhost:8000/health` | `{"status":"ok"}` |
 | Data flowing | Dashboard live tiles | Values change within a minute or two |
-| Services reporting | **About** in the user menu, Containers tab | Each of the 7 services shows a commit, not "not reporting" |
+| Services reporting | **About** in the user menu, Containers tab | Each of the 7 services shows a commit, not "not reporting" (the webapp row needs `FRONTEND_BASE_URL` to be reachable from core-api, see below) |
 | Per-source problems | Logs (below) | No repeating errors |
 
 If a site's data stops and its sources look healthy, check whether the site was disabled: open **Site settings** in the webapp and look at **Enabled** on the **General** tab. A disabled site is dimmed in the site chips and its collectors log 403 `site_disabled` if they still hold the old source list. The data is kept. Turning **Enabled** on resumes collection within one discovery refresh (`DISCOVERY_REFRESH_SECONDS`).
@@ -254,7 +254,11 @@ GIT_COMMIT=$(git rev-parse HEAD) docker compose build
 GIT_COMMIT=$(git rev-parse HEAD) docker compose up -d --build
 ```
 
-Every service keeps the first 7 characters. A service shows "not reporting" in the About dialog after 180 seconds without a report, with its last-reported time, or "never reported" if it has never checked in. `mail-relay` does not report and is not listed. The webapp does not report either: Core API fetches `<FRONTEND_BASE_URL>/version` every 60 seconds, so a wrong `FRONTEND_BASE_URL` makes the webapp show "not reporting".
+Every service keeps the first 7 characters. A service shows "not reporting" in the About dialog after 180 seconds without a report, with its last-reported time, or "never reported" if it has never checked in. `mail-relay` does not report and is not listed. The webapp does not report either: Core API fetches `<FRONTEND_BASE_URL>/version` every 60 seconds, from inside its own container, so `FRONTEND_BASE_URL` must be reachable from core-api's container, not from your browser.
+
+- With the compose default `http://localhost`, the request goes to core-api itself, which does not serve `/version`. The webapp row shows "not reporting", or "never reported" if it has never succeeded.
+- With a public hostname behind a reverse proxy, core-api's container must resolve that hostname and reach the proxy. Hairpin NAT does not work on some home routers, so a name that works from your laptop can fail from the container.
+- If `SCHEDULER_ENABLED=false`, the job does not run, and the core-api and webapp rows are never written.
 
 ## Secrets
 
