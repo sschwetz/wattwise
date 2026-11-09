@@ -6,7 +6,11 @@ x-app-network: &app-network
 
 services:
   core-api:
-    build: ./core-api
+    build:
+      context: ./core-api
+      args:
+        # Shown in the About dialog. Set with: GIT_COMMIT=$(git rev-parse HEAD) docker compose build
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     environment:
       JWT_SECRET: ${JWT_SECRET:?set a long random secret}
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:?set a Fernet key, see .env.example}
@@ -82,7 +86,10 @@ services:
   # restart is needed when adding a new site of an existing kind.
 
   envoy-collector:
-    build: ./envoy-collector
+    build:
+      context: ./envoy-collector
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     environment:
       CORE_API_URL: http://core-api:8000
       COLLECTOR_KEY: ${ENVOY_COLLECTOR_KEY:?set a long random secret, shared with core-api's own ENVOY_COLLECTOR_KEY}
@@ -92,7 +99,10 @@ services:
     networks: *app-network
 
   weatherlink-local-collector:
-    build: ./weatherlink-local-collector
+    build:
+      context: ./weatherlink-local-collector
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     environment:
       CORE_API_URL: http://core-api:8000
       COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with core-api's own WEATHER_COLLECTOR_KEY}
@@ -102,7 +112,10 @@ services:
     networks: *app-network
 
   amber-pricing-collector:
-    build: ./amber-pricing-collector
+    build:
+      context: ./amber-pricing-collector
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     environment:
       CORE_API_URL: http://core-api:8000
       COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with core-api's own PRICING_COLLECTOR_KEY}
@@ -112,7 +125,10 @@ services:
     networks: *app-network
 
   local-pricing-collector:
-    build: ./local-pricing-collector
+    build:
+      context: ./local-pricing-collector
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     environment:
       CORE_API_URL: http://core-api:8000
       COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with core-api's own PRICING_COLLECTOR_KEY}
@@ -122,7 +138,10 @@ services:
     networks: *app-network
 
   actron-neo-actor:
-    build: ./actron-neo-actor
+    build:
+      context: ./actron-neo-actor
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     environment:
       CORE_API_URL: http://core-api:8000
       ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with core-api's own ACTOR_KEY}
