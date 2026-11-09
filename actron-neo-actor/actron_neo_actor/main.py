@@ -7,6 +7,7 @@ import signal
 
 from actron_neo_actor.config import Settings, get_settings
 from actron_neo_actor.runner import run_forever
+from actron_neo_actor.service_report import start_commit_reporter
 
 _LOG = logging.getLogger(__name__)
 _STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
@@ -43,7 +44,9 @@ async def serve(settings: Settings) -> None:
 
 def main() -> None:
     configure_logging()
-    asyncio.run(serve(get_settings()))
+    settings = get_settings()
+    start_commit_reporter(settings.core_api_url, "X-Actor-Key", settings.actor_key, "actron-neo-actor")
+    asyncio.run(serve(settings))
 
 
 if __name__ == "__main__":

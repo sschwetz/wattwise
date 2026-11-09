@@ -65,3 +65,24 @@ def test_sigint_stops_the_runner_and_exits_cleanly(tmp_path):
     code, out, err = _stop_with(signal.SIGINT, tmp_path)
     assert "stopped" in out.split()
     assert code == 0, err
+
+
+def test_main_starts_the_commit_reporter(monkeypatch):
+    from actron_neo_actor import main as main_module
+    from actron_neo_actor.config import Settings
+
+    settings = Settings(core_api_url="http://core", actor_key="k")
+    monkeypatch.setattr(main_module, "get_settings", lambda: settings)
+    calls = []
+    monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args: calls.append(args))
+    served = []
+
+    async def fake_serve(received):
+        served.append(received)
+
+    monkeypatch.setattr(main_module, "serve", fake_serve)
+
+    main_module.main()
+
+    assert calls == [("http://core", "X-Actor-Key", "k", "actron-neo-actor")]
+    assert served == [settings]
