@@ -13,6 +13,12 @@ from weatherlink_local_collector.mapping import RainState
 
 REAL_RUN_LIVE_LOOP = main_module.run_live_loop
 
+
+@pytest.fixture(autouse=True)
+def _no_commit_reporter(monkeypatch):
+    """main() starts a real reporter thread; keep it out of the main-loop tests."""
+    monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args, **kwargs: None)
+
 SETTINGS = Settings(
     core_api_url="http://localhost:8000", collector_key="key", poll_interval_seconds=60, discovery_refresh_seconds=300
 )
@@ -595,3 +601,23 @@ def test_run_live_loop_polls_every_source_and_stops(monkeypatch):
 
     assert polled == {1, 2}
     assert not thread.is_alive()
+
+
+def test_main_starts_the_commit_reporter(monkeypatch):
+    monkeypatch.setattr(main_module, "get_settings", lambda: SETTINGS)
+    calls = []
+    monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr(
+        main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": {"host": "h"}}]
+    )
+    monkeypatch.setattr(main_module, "run_live_loop", lambda *args: None)
+
+    def _stop(seconds):
+        raise SystemExit
+
+    monkeypatch.setattr(main_module.time, "sleep", _stop)
+
+    with pytest.raises(SystemExit):
+        main_module.main()
+
+    assert calls == [("http://localhost:8000", "X-Collector-Key", "key", "weatherlink-local-collector")]

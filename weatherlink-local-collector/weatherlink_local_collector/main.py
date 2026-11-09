@@ -15,6 +15,7 @@ from weatherlink_local_collector.core_api_client import (
     push_weather_readings,
 )
 from weatherlink_local_collector.mapping import RainState, map_barometer_readings, map_iss_readings, map_live_values
+from weatherlink_local_collector.service_report import start_commit_reporter
 from weatherlink_local_collector.weatherlink_client import fetch_current_conditions
 
 logger = logging.getLogger("weatherlink_local_collector")
@@ -180,6 +181,7 @@ class _SourceHolder:
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     settings = get_settings()
+    start_commit_reporter(settings.core_api_url, "X-Collector-Key", settings.collector_key, "weatherlink-local-collector")
     sources: dict[int, _Source] = {}
     while not sources:
         sources = _refresh_sources(settings, sources)
