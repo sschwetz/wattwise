@@ -21,6 +21,7 @@ SCRIPT = textwrap.dedent(
 
 
     runner.production_runner = lambda settings: FakeRunner()
+    main.start_commit_reporter = lambda *args, **kwargs: None
     main.main()
     print("exited", flush=True)
     """
