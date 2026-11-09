@@ -43,12 +43,8 @@ def build_scheduler(
         ("demand_charge", run_demand_charge_job, CronTrigger(hour=0, minute=10)),
         ("retention_rollup", run_retention_rollup_job, CronTrigger(hour=0, minute=20)),
         ("actor_watchdog", _watchdog(email_sender), IntervalTrigger(minutes=1)),
-        ("service_status", run_service_status_job, IntervalTrigger(seconds=REPORT_INTERVAL_SECONDS)),
     ]
-    # service_status also runs once at start so the About dialog is not empty for a minute.
-    run_at_start = {"service_status"}
     for job_id, job_fn, trigger in session_jobs:
-        extra = {"next_run_time": datetime.datetime.now(datetime.UTC)} if job_id in run_at_start else {}
         scheduler.add_job(
             _run_with_session,
             args=[session_factory, job_fn],
@@ -56,8 +52,18 @@ def build_scheduler(
             id=job_id,
             max_instances=1,
             coalesce=True,
-            **extra,
         )
+    # Also runs once at start so the About dialog is not empty for a minute.
+    scheduler.add_job(
+        _run_with_session,
+        args=[session_factory, run_service_status_job],
+        trigger=IntervalTrigger(seconds=REPORT_INTERVAL_SECONDS),
+        id="service_status",
+        next_run_time=datetime.datetime.now(datetime.UTC),
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=30,
+    )
     scheduler.add_job(
         expire_password_file,
         args=[password_file],

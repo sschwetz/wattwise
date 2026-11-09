@@ -18,6 +18,7 @@ def test_scheduler_starts_and_registers_all_jobs(app_and_db_url, monkeypatch):
             "service_status",
         }
         assert scheduler.running is True
+        assert scheduler.get_job("service_status").next_run_time is not None
 
 
 def test_scheduler_disabled_via_env_var(app_and_db_url, monkeypatch):
