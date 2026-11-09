@@ -51,6 +51,7 @@ def test_reporter_posts_repeatedly_from_a_daemon_thread(monkeypatch: pytest.Monk
     thread = start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
     _wait_for_calls(route, 2)
     stop.set()
+    thread.join()
     assert thread.daemon is True
     assert route.call_count >= 2
     assert json.loads(route.calls[0].request.content)["commit"] == "0123456"
@@ -61,9 +62,10 @@ def test_reporter_sends_unknown_when_git_commit_unset(monkeypatch: pytest.Monkey
     monkeypatch.delenv("GIT_COMMIT", raising=False)
     route = respx.post(URL).mock(return_value=httpx.Response(204))
     stop = threading.Event()
-    start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
+    thread = start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
     _wait_for_calls(route, 1)
     stop.set()
+    thread.join()
     assert json.loads(route.calls[0].request.content)["commit"] == "unknown"
 
 
@@ -79,9 +81,10 @@ def test_reporter_normalises_or_rejects_git_commit(
     route = respx.post(URL).mock(return_value=httpx.Response(204))
     stop = threading.Event()
     with caplog.at_level(logging.WARNING):
-        start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
+        thread = start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
         _wait_for_calls(route, 1)
         stop.set()
+        thread.join()
     assert json.loads(route.calls[0].request.content)["commit"] == expected
     assert ("is not a hex commit" in caplog.text) == (expected == "unknown")
 
@@ -91,8 +94,9 @@ def test_reporter_warning_names_the_http_status(caplog: pytest.LogCaptureFixture
     route = respx.post(URL).mock(return_value=httpx.Response(422))
     stop = threading.Event()
     with caplog.at_level(logging.WARNING):
-        start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
+        thread = start_commit_reporter(BASE_URL, "X-Collector-Key", "k", "envoy-collector", 0.01, stop)
         _wait_for_calls(route, 2)
         stop.set()
+        thread.join()
     assert caplog.text.count("Could not report commit") == 1
     assert "HTTP 422" in caplog.text
