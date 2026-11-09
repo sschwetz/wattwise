@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { QueryError } from "../components/QueryError";
+import { Loading } from "./Loading";
 import { type LicenceDocument, type LicencePackage, useLicences } from "./useLicences";
 
 const keyOf = (p: LicencePackage) => `${p.ecosystem}:${p.name}@${p.version}`;
@@ -115,8 +117,14 @@ function LicenceBrowser({ doc }: { doc: LicenceDocument }) {
 }
 
 export function LicencesTab() {
-  const { data, isError } = useLicences(true);
-  if (isError) return <p role="alert" className="p-3 text-sm text-danger">Could not load the licence list.</p>;
-  if (!data) return <p className="p-3 text-sm text-ink-muted">Loading...</p>;
+  const { data, isError, error, refetch } = useLicences();
+  if (isError) {
+    return (
+      <div className="p-3">
+        <QueryError error={error} fallback="Could not load the licence list." onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+  if (!data) return <Loading />;
   return <LicenceBrowser doc={data} />;
 }

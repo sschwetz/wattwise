@@ -1,16 +1,7 @@
-import { commitUrl } from "../buildInfo";
+import { CommitLink } from "../components/CommitLink";
+import { QueryError } from "../components/QueryError";
+import { Loading } from "./Loading";
 import { type ServiceStatus, useServices } from "./useServices";
-
-function CommitLink({ commit }: { commit: string | null }) {
-  if (commit === null) return <span className="text-ink-muted">-</span>;
-  const url = commitUrl(commit);
-  if (url === null) return <span className="font-mono">{commit}</span>;
-  return (
-    <a href={url} target="_blank" rel="noreferrer" className="font-mono hover:underline">
-      {commit}
-    </a>
-  );
-}
 
 function reportedText(lastReportedAt: string | null): string {
   return lastReportedAt ? `last reported ${new Date(lastReportedAt).toLocaleString()}` : "never reported";
@@ -22,7 +13,7 @@ function ServiceRow({ service }: { service: ServiceStatus }) {
       <span className="font-medium text-ink">{service.service}</span>
       <span className="text-right text-ink">
         {!service.reporting && <span className="mr-2 text-ink-muted">not reporting</span>}
-        <CommitLink commit={service.commit} />
+        {service.commit === null ? <span className="text-ink-muted">-</span> : <CommitLink commit={service.commit} />}
         <span className="block text-xs text-ink-muted">{reportedText(service.last_reported_at)}</span>
       </span>
     </li>
@@ -30,7 +21,7 @@ function ServiceRow({ service }: { service: ServiceStatus }) {
 }
 
 export function ContainersTab() {
-  const { data, isError } = useServices(true);
+  const { data, isError, error, refetch } = useServices();
   if (data) {
     return (
       <ul className="divide-y divide-line rounded-md border border-line">
@@ -40,6 +31,12 @@ export function ContainersTab() {
       </ul>
     );
   }
-  if (isError) return <p role="alert" className="p-3 text-sm text-danger">Could not load container status.</p>;
-  return <p className="p-3 text-sm text-ink-muted">Loading...</p>;
+  if (isError) {
+    return (
+      <div className="p-3">
+        <QueryError error={error} fallback="Could not load container status." onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+  return <Loading />;
 }

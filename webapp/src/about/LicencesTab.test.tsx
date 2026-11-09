@@ -83,4 +83,16 @@ describe("LicencesTab", () => {
     renderTab();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
+
+  it("refetches the licences when Retry is clicked", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve(doc) });
+    vi.stubGlobal("fetch", fetchMock);
+    renderTab();
+    await userEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("option", { name: "react 19.0.0" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

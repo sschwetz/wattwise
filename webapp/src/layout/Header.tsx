@@ -3,7 +3,8 @@ import { NavLink, useMatch } from "react-router-dom";
 import { useMe } from "../account/useAccount";
 import { useAvatarImage } from "../account/useAvatarImage";
 import { useAuth } from "../auth/AuthContext";
-import { BUILD_COMMIT, BUILD_COMMIT_URL } from "../buildInfo";
+import { BUILD_COMMIT } from "../buildInfo";
+import { CommitLink } from "../components/CommitLink";
 import { AboutDialog } from "../about/AboutDialog";
 import { useSites } from "../sites/useSites";
 import { Avatar } from "./Avatar";
@@ -46,13 +47,7 @@ function BuildCommit() {
   return (
     <p className="text-xs text-ink-muted/60">
       Commit{" "}
-      {BUILD_COMMIT_URL ? (
-        <a href={BUILD_COMMIT_URL} target="_blank" rel="noreferrer" className="font-mono hover:text-ink-muted hover:underline">
-          {BUILD_COMMIT}
-        </a>
-      ) : (
-        <span className="font-mono">{BUILD_COMMIT}</span>
-      )}
+      <CommitLink commit={BUILD_COMMIT} className="hover:text-ink-muted" />
     </p>
   );
 }

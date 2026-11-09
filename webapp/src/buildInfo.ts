@@ -9,6 +9,3 @@ export const BUILD_COMMIT: string = typeof __APP_COMMIT__ === "string" ? __APP_C
 export function commitUrl(commit: string): string | null {
   return /^[0-9a-f]{7,40}$/.test(commit) ? `${REPO_URL}/commit/${commit}` : null;
 }
-
-/** GitHub page for the running commit, or null for a build with no commit. */
-export const BUILD_COMMIT_URL: string | null = commitUrl(BUILD_COMMIT);

@@ -8,11 +8,10 @@ export interface ServiceStatus {
   reporting: boolean;
 }
 
-export function useServices(enabled: boolean) {
+export function useServices() {
   return useQuery({
     queryKey: ["services"],
     queryFn: () => apiFetch<ServiceStatus[]>("/api/v1/services"),
-    enabled,
     refetchInterval: 30_000,
   });
 }

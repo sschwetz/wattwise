@@ -20,11 +20,11 @@ async function fetchLicences(): Promise<LicenceDocument> {
   return (await response.json()) as LicenceDocument;
 }
 
-export function useLicences(enabled: boolean) {
+export function useLicences() {
   return useQuery({
     queryKey: ["licences"],
     queryFn: fetchLicences,
-    enabled,
     staleTime: Infinity,
+    gcTime: Infinity,
   });
 }

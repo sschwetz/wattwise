@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContainersTab } from "./ContainersTab";
 import { type ServiceStatus, useServices } from "./useServices";
@@ -77,9 +78,12 @@ describe("ContainersTab", () => {
     expect(screen.getByText("core-api")).toBeInTheDocument();
   });
 
-  it("shows an error when the request fails", () => {
-    mockServices(undefined, { isError: true });
+  it("shows an error when the request fails and refetches on Retry", async () => {
+    const refetch = vi.fn();
+    mockServices(undefined, { isError: true, error: new Error("boom"), refetch });
     render(<ContainersTab />);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/container status|boom/);
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });
