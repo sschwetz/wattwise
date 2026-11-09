@@ -15,6 +15,8 @@ from core_api.jobs.actor_watchdog_job import run_actor_watchdog_job
 from core_api.jobs.demand_charge_job import run_demand_charge_job
 from core_api.jobs.demand_interval_job import run_demand_interval_job
 from core_api.jobs.retention_rollup_job import run_retention_rollup_job
+from core_api.jobs.service_status_job import run_service_status_job
+from core_api.service_status import REPORT_INTERVAL_SECONDS
 
 
 def _run_with_session(session_factory: sessionmaker[Session], job_fn: Callable[[Session, datetime.datetime], None]) -> None:
@@ -41,10 +43,20 @@ def build_scheduler(
         ("demand_charge", run_demand_charge_job, CronTrigger(hour=0, minute=10)),
         ("retention_rollup", run_retention_rollup_job, CronTrigger(hour=0, minute=20)),
         ("actor_watchdog", _watchdog(email_sender), IntervalTrigger(minutes=1)),
+        ("service_status", run_service_status_job, IntervalTrigger(seconds=REPORT_INTERVAL_SECONDS)),
     ]
+    # service_status also runs once at start so the About dialog is not empty for a minute.
+    run_at_start = {"service_status"}
     for job_id, job_fn, trigger in session_jobs:
+        extra = {"next_run_time": datetime.datetime.now(datetime.UTC)} if job_id in run_at_start else {}
         scheduler.add_job(
-            _run_with_session, args=[session_factory, job_fn], trigger=trigger, id=job_id, max_instances=1, coalesce=True
+            _run_with_session,
+            args=[session_factory, job_fn],
+            trigger=trigger,
+            id=job_id,
+            max_instances=1,
+            coalesce=True,
+            **extra,
         )
     scheduler.add_job(
         expire_password_file,

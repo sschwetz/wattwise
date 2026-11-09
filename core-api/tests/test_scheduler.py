@@ -15,6 +15,7 @@ def test_scheduler_starts_and_registers_all_jobs(app_and_db_url, monkeypatch):
         job_ids = {job.id for job in scheduler.get_jobs()}
         assert job_ids == {
             "demand_interval", "demand_charge", "retention_rollup", "expire_admin_password_file", "actor_watchdog",
+            "service_status",
         }
         assert scheduler.running is True
 

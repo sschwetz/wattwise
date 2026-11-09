@@ -16,6 +16,10 @@ RUN uv sync --frozen --no-dev
 
 ENV PYTHONUNBUFFERED=1
 
+# The build context has no .git, so the commit comes in as a build arg.
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
