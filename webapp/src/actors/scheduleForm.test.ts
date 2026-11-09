@@ -72,6 +72,7 @@ const triggers: TriggerSpec[] = [
   { type: "window_end", window_id: 12 },
   { type: "time", time: "06:30", days_of_week: [0, 2, 4] },
   { type: "price_above", c_per_kwh: 45.5 },
+  { type: "temperature", reading: "outdoor_temp_c", op: "lt", value: 12.5 },
 ];
 
 const context = { instanceId: 3, firstWindowId: 11 };

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from actron_neo_actor.models import Condition, Context, Run, Schedule, WindowOccurrence
+from actron_neo_actor.models import Condition, Context, Run, Schedule, Trigger, WindowOccurrence
 
 GRACE = timedelta(minutes=10)
 LOOKBACK = timedelta(hours=24)
@@ -123,20 +123,44 @@ def _candidates(schedule: Schedule, context: Context, now: datetime, existing: s
     return sorted(kept, key=lambda d: d.trigger_at)
 
 
-def _price_crossing(
-    schedule: Schedule, context: Context, now: datetime, existing: set[datetime], price_was_above: bool | None
+LEVEL_TRIGGERS = ("price_above", "temperature")
+
+
+def _level_label(trigger: Trigger) -> str:
+    if trigger.type == "price_above":
+        return f"price above {trigger.c_per_kwh:g}"
+    return f"{trigger.reading} {_WORDS.get(trigger.op or '', trigger.op)} {trigger.value:g}"
+
+
+def level_met(
+    schedule: Schedule, context: Context, readings: Mapping[str, float], stale: set[str]
+) -> bool | None:
+    """Whether a price or temperature trigger's level is passed now; None when the value is unknown
+    or the trigger is not a level trigger. A temperature uses the device reading first, then the site's."""
+    trigger = schedule.trigger
+    if trigger.type == "price_above":
+        price = context.price_c_per_kwh
+        if trigger.c_per_kwh is None or price is None or not math.isfinite(price):
+            return None
+        return price > trigger.c_per_kwh
+    if trigger.type == "temperature" and trigger.reading and trigger.op and trigger.value is not None:
+        value = _lookup(trigger.reading, readings, stale, context)
+        return None if value is None else _holds(Condition(trigger.reading, trigger.op, trigger.value), value)
+    return None
+
+
+def _level_crossing(
+    schedule: Schedule, now: datetime, existing: set[datetime], met: bool | None, was_met: bool | None
 ) -> list[DueTrigger]:
-    limit = schedule.trigger.c_per_kwh
-    price = context.price_c_per_kwh
-    if limit is None or price is None or not math.isfinite(price) or price <= limit:
-        return []
-    if price_was_above is True:
+    """One trigger per crossing, stamped to the 5-minute step. A level already passed before the
+    actor started counts as a crossing, because `was_met` is unknown then."""
+    if met is not True or was_met is True:
         return []
     step = int(now.timestamp()) // PRICE_STEP_SECONDS * PRICE_STEP_SECONDS
     at = datetime.fromtimestamp(step, UTC)
     if at in existing:
         return []
-    return [DueTrigger(at, f"price above {limit:g}")]
+    return [DueTrigger(at, _level_label(schedule.trigger))]
 
 
 def due_triggers(
@@ -144,13 +168,17 @@ def due_triggers(
     context: Context,
     now: datetime,
     existing_trigger_ats: set[datetime],
-    price_was_above: bool | None,
+    was_met: bool | None,
+    readings: Mapping[str, float] | None = None,
+    stale: set[str] | None = None,
 ) -> list[DueTrigger]:
-    """Triggers at most 10 minutes old that have no run yet."""
+    """Triggers at most 10 minutes old that have no run yet. `was_met` is whether a level trigger's
+    level was passed at the last look; `readings` and `stale` are the device's, for temperature triggers."""
     if not schedule.enabled:
         return []
-    if schedule.trigger.type == "price_above":
-        return _price_crossing(schedule, context, now, existing_trigger_ats, price_was_above)
+    if schedule.trigger.type in LEVEL_TRIGGERS:
+        met = level_met(schedule, context, readings or {}, stale or set())
+        return _level_crossing(schedule, now, existing_trigger_ats, met, was_met)
     found = _candidates(schedule, context, now, existing_trigger_ats)
     return [d for d in found if now - d.trigger_at <= GRACE]
 

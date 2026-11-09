@@ -41,7 +41,10 @@ export type TriggerSpec =
   | { type: "window_start"; window_id: number }
   | { type: "window_end"; window_id: number }
   | { type: "time"; time: string; days_of_week: number[] }
-  | { type: "price_above"; c_per_kwh: number };
+  | { type: "price_above"; c_per_kwh: number }
+  | { type: "temperature"; reading: TemperatureReading; op: "gt" | "lt"; value: number };
+
+export type TemperatureReading = "indoor_temp_c" | "outdoor_temp_c";
 
 export interface ConditionSpec {
   reading: string;

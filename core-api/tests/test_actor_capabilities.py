@@ -11,6 +11,7 @@ from core_api.actor_schemas import (
     ConditionSpec,
     PriceAboveTrigger,
     RetrySpec,
+    TemperatureTrigger,
 )
 from core_api.errors import AppError
 
@@ -174,4 +175,15 @@ def test_non_finite_floats_rejected_by_models(bad: float) -> None:
     with pytest.raises(ValidationError):
         PriceAboveTrigger(type="price_above", c_per_kwh=bad)
     with pytest.raises(ValidationError):
+        TemperatureTrigger(type="temperature", reading="indoor_temp_c", op="gt", value=bad)
+    with pytest.raises(ValidationError):
         ActionSpec(id="a", params={"x": bad})
+
+
+def test_temperature_trigger_takes_only_the_two_temperatures_and_two_directions() -> None:
+    ok = TemperatureTrigger(type="temperature", reading="outdoor_temp_c", op="lt", value=10)
+    assert (ok.reading, ok.op, ok.value) == ("outdoor_temp_c", "lt", 10.0)
+    with pytest.raises(ValidationError):
+        TemperatureTrigger(type="temperature", reading="humidity_pct", op="gt", value=1)
+    with pytest.raises(ValidationError):
+        TemperatureTrigger(type="temperature", reading="indoor_temp_c", op="eq", value=1)

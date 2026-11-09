@@ -23,6 +23,7 @@ export type FormErrors = Record<string, string>;
 function triggerErrors(t: TriggerForm): FormErrors {
   if (isWindowTrigger(t.type)) return t.windowId === "" ? { "trigger.windowId": "Pick a demand window." } : {};
   if (t.type === "price_above") return parseNumber(t.price) === null ? { "trigger.price": "Enter a price in c/kWh." } : {};
+  if (t.type === "temperature") return parseNumber(t.level) === null ? { "trigger.level": "Enter a temperature in C." } : {};
   const errors: FormErrors = {};
   if (!HHMM.test(t.time)) errors["trigger.time"] = "Enter the time as HH:MM, for example 16:00.";
   if (t.days.length === 0) errors["trigger.days"] = "Tick at least one day.";

@@ -162,7 +162,8 @@
     },
     {
       "id": "is_on",
-      "label": "Unit on (1) or off (0)"
+      "label": "Unit",
+      "type": "bool"
     },
     {
       "id": "zone_temp_c",

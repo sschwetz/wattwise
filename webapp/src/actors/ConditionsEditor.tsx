@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { formatUnit, invalidProps } from "./editorModel";
-import { addCondition, type ConditionRow, type ReadingChoice } from "./scheduleForm";
+import { addCondition, type ConditionRow, isSwitchedOn, pointAtReading, type ReadingChoice, setSwitch } from "./scheduleForm";
 import { targetOffered, type FormErrors } from "./scheduleValidation";
 import { FieldError } from "./Step";
 import { compactInputClass, hintClass, secondaryButtonClass } from "./styles";
@@ -27,11 +27,6 @@ interface RowModel {
   onRemove: () => void;
   error: string | undefined;
   canEdit: boolean;
-}
-
-function changeReading(row: ConditionRow, id: string, readings: ReadingChoice[]): ConditionRow {
-  const reading = readings.find((r) => r.id === id);
-  return { ...row, reading: id, target: reading?.targets?.[0]?.value ?? null };
 }
 
 const NO_TARGET = [{ value: "", label: "No target" }];
@@ -61,7 +56,7 @@ function ReadingSelect({ model }: { model: RowModel }) {
   const { row, number, readings, onChange } = model;
   const known = readings.some((r) => r.id === row.reading);
   return (
-    <select aria-label={`Reading ${number}`} value={row.reading} onChange={(e) => onChange(changeReading(row, e.target.value, readings))} className={compactInputClass}>
+    <select aria-label={`Reading ${number}`} value={row.reading} onChange={(e) => onChange(pointAtReading({ ...row, reading: e.target.value }, readings.find((r) => r.id === e.target.value)))} className={compactInputClass}>
       {!known && <option value={row.reading}>{row.reading} (not available)</option>}
       {readings.map((r) => (
         <option key={r.id} value={r.id}>{r.label}</option>
@@ -80,12 +75,24 @@ function ConditionLine({ model }: { model: RowModel }) {
         <input type="checkbox" aria-label={`Use condition ${number}`} className="accent-solar" checked={row.use} onChange={(e) => onChange({ ...row, use: e.target.checked })} />
         <ReadingSelect model={model} />
         <TargetSelect model={model} reading={reading} />
-        <select aria-label={`Comparison ${number}`} value={row.op} onChange={(e) => onChange({ ...row, op: e.target.value === "lt" ? "lt" : "gt" })} className={compactInputClass}>
-          <option value="gt">is above</option>
-          <option value="lt">is below</option>
-        </select>
-        <input type="number" step="any" aria-label={`Value ${number}`} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} className={`${compactInputClass} w-24`} {...invalidProps(errorId, error)} />
-        <span className="text-ink-muted">{formatUnit(reading?.unit ?? null)}</span>
+        {reading?.type === "bool" ? (
+          <>
+            <span>is</span>
+            <select aria-label={`State ${number}`} value={isSwitchedOn(row) ? "on" : "off"} onChange={(e) => onChange(setSwitch(row, e.target.value === "on"))} className={compactInputClass}>
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </>
+        ) : (
+          <>
+            <select aria-label={`Comparison ${number}`} value={row.op} onChange={(e) => onChange({ ...row, op: e.target.value === "lt" ? "lt" : "gt" })} className={compactInputClass}>
+              <option value="gt">is above</option>
+              <option value="lt">is below</option>
+            </select>
+            <input type="number" step="any" aria-label={`Value ${number}`} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} className={`${compactInputClass} w-24`} {...invalidProps(errorId, error)} />
+            <span className="text-ink-muted">{formatUnit(reading?.unit ?? null)}</span>
+          </>
+        )}
         {canEdit && (
           <button type="button" aria-label={`Remove condition ${number}`} onClick={onRemove} className="rounded-md px-2 py-1 text-sm text-ink-muted underline hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60">
             Remove

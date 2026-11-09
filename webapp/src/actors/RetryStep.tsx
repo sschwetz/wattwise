@@ -2,7 +2,7 @@ import { useId } from "react";
 import { type EditorModel, invalidProps } from "./editorModel";
 import type { RetryForm } from "./scheduleForm";
 import { FieldError, Step } from "./Step";
-import { inputClass, labelClass } from "./styles";
+import { inputClass } from "./styles";
 
 const FIELDS: { key: keyof RetryForm; label: string; min: number }[] = [
   { key: "maxAttempts", label: "Attempts", min: 1 },
@@ -15,8 +15,8 @@ function RetryField({ model, field }: { model: EditorModel; field: (typeof FIELD
   const { form, setForm, errors } = model;
   const error = errors[`retry.${field.key}`];
   return (
-    <div className="space-y-1">
-      <label className={labelClass}>
+    <div className="flex flex-col gap-1">
+      <label className="flex flex-1 flex-col justify-between gap-1 text-sm text-ink">
         {field.label}
         <input
           type="number"

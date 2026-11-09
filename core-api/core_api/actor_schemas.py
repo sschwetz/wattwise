@@ -57,8 +57,17 @@ class PriceAboveTrigger(_Strict):
     c_per_kwh: float = Field(allow_inf_nan=False)
 
 
+class TemperatureTrigger(_Strict):
+    """Fires when the temperature crosses the level in the given direction."""
+
+    type: Literal["temperature"]
+    reading: Literal["indoor_temp_c", "outdoor_temp_c"]
+    op: Literal["gt", "lt"]
+    value: float = Field(allow_inf_nan=False)
+
+
 TriggerSpec = Annotated[
-    WindowStartTrigger | WindowEndTrigger | TimeTrigger | PriceAboveTrigger,
+    WindowStartTrigger | WindowEndTrigger | TimeTrigger | PriceAboveTrigger | TemperatureTrigger,
     Field(discriminator="type"),
 ]
 

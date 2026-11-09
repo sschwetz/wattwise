@@ -59,6 +59,7 @@ A schedule has one trigger, optional conditions, one action, a restore rule and 
 | `window_start`, `window_end` | At the start or end of each occurrence of a demand window of the site's tariff |
 | `time` | At a set `HH:MM` in the site time zone on chosen days (0 is Monday). At least one day is required. |
 | `price_above` | When the buy price rises above a level, at most once per 5-minute step. After an actor restart the previous price is unknown, so a price already above the level counts as a crossing. After an owner override and an actor restart, a price trigger that fires again acts again. |
+| `temperature` | When the indoor or outdoor temperature rises above or falls below a level (`reading` is `indoor_temp_c` or `outdoor_temp_c`, `op` is `gt` or `lt`, `value` is in C), at most once per 5-minute step. It uses the device's reading first and the site's outdoor reading second. A missing or stale reading never fires and does not reset the crossing. After an actor restart a level already passed counts as a crossing, as with `price_above`. |
 
 Conditions ("only if") all have to pass or the run is skipped. A reading that is missing or stale fails a condition. A device reading is stale after 5 minutes. The site readings (`outdoor_temp_c`, `battery_soc_pct`, `price_c_per_kwh`) come from the [context](#context), where outdoor temperature and battery charge older than 15 minutes are `null`. A condition row can be switched off with its tick box: it is kept but ignored.
 
@@ -229,7 +230,7 @@ flowchart LR
 | Set fan speed (`set_fan_mode`) | `fan_mode`: `AUTO`, `LOW`, `MED`, `HIGH` (not yet confirmed on a real unit) | Puts the saved speed back |
 | Switch zones (`set_zones`) | `zones` (by name), `enabled` | Puts back only the zones the action changed |
 
-Readings for conditions: `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `is_on` (1 or 0) and `zone_temp_c` (one target per zone). A zone whose sensor reports no temperature has no `zone_temp_c` reading, so a condition on it fails as unavailable. The actor does not expose the library's continuous, quiet, turbo or away modes.
+Readings for conditions: `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `is_on` (declared as an on/off reading, stored as 1 or 0; the editor shows "is On" or "is Off") and `zone_temp_c` (one target per zone). A zone whose sensor reports no temperature has no `zone_temp_c` reading, so a condition on it fails as unavailable. The actor does not expose the library's continuous, quiet, turbo or away modes.
 
 The restore rule applies per field. Before it puts a field back, the actor compares it with what the action set. If they differ, the owner changed it, and the actor leaves that field alone and says so in the message, for example `left alone because the owner changed them: zone Study`. After a `system_off`, which sets no mode, a mode the owner picked while the unit was off is kept, and the power restore turns the unit on in that mode.
 

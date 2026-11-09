@@ -20,7 +20,7 @@ import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, Protocol
 
-from actron_neo_actor.actions import price_above, run_schedule
+from actron_neo_actor.actions import run_schedule
 from actron_neo_actor.async_core import AsyncCore
 from actron_neo_actor.config import Settings
 from actron_neo_actor.device import Device, DeviceAuthError, DeviceState
@@ -28,9 +28,9 @@ from actron_neo_actor.executor import Clock, Env, Sleep
 from actron_neo_actor.models import Instance
 from actron_neo_actor.restores import record_override_skips, run_restores, watch_for_override
 from actron_neo_actor.resume import resume
-from actron_neo_actor.schedule_eval import LOOKBACK
+from actron_neo_actor.schedule_eval import LOOKBACK, level_met
 from actron_neo_actor.test_runs import TestControl, run_test, triage
-from actron_neo_actor.view import STALE_AFTER, TickView
+from actron_neo_actor.view import STALE_AFTER, TickView, sensed
 
 _LOG = logging.getLogger(__name__)
 
@@ -102,7 +102,8 @@ class InstanceWorker:
         self._view: TickView | None = None
         self._tick_lock = asyncio.Lock()
         self._runs_lock = asyncio.Lock()
-        self._price_above: dict[int, bool | None] = {}
+        # Whether each price or temperature trigger's level was passed at the last tick that could tell.
+        self._level_met: dict[int, bool] = {}
         self._capabilities_sent: str | None = None
         self._latest: DeviceState | None = None
         self._readings_sent_at: datetime.datetime | None = None
@@ -177,8 +178,11 @@ class InstanceWorker:
 
     async def _run_due(self, env: Env, view: TickView) -> None:
         for schedule in view.schedules.values():
-            await run_schedule(env, view, schedule, self._price_above.get(schedule.id))
-            self._price_above[schedule.id] = price_above(schedule, view.context)
+            await run_schedule(env, view, schedule, self._level_met.get(schedule.id))
+            readings, stale = sensed(env.device.state(), env.clock())
+            met = level_met(schedule, view.context, readings, stale)
+            if met is not None:
+                self._level_met[schedule.id] = met
 
     # Test runs
 

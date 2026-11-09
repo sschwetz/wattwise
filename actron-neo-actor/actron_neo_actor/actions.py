@@ -7,28 +7,22 @@ from collections.abc import Callable
 
 from actron_neo_actor.device import DeviceError
 from actron_neo_actor.executor import Attempt, Cutoff, Env, apply_with_retries, create, record, update
-from actron_neo_actor.models import ActionSpec, Context, RetrySpec, Run, Schedule
+from actron_neo_actor.models import ActionSpec, RetrySpec, Run, Schedule
 from actron_neo_actor.schedule_eval import due_triggers, evaluate_conditions, missed_triggers
 from actron_neo_actor.view import TickView, sensed
 
 OTHER_ACTIVE = "another schedule is active"
 
 
-def price_above(schedule: Schedule, context: Context) -> bool | None:
-    """Whether the price is over a price trigger's level now; None when unknown or not a price trigger."""
-    limit, price = schedule.trigger.c_per_kwh, context.price_c_per_kwh
-    if schedule.trigger.type != "price_above" or limit is None or price is None:
-        return None
-    return price > limit
-
-
-async def run_schedule(env: Env, view: TickView, schedule: Schedule, price_was_above: bool | None) -> None:
+async def run_schedule(env: Env, view: TickView, schedule: Schedule, was_met: bool | None) -> None:
+    """`was_met` is whether a price or temperature trigger's level was passed at the last tick."""
     existing = view.action_trigger_ats(schedule.id)
     for missed in missed_triggers(schedule, view.context, view.now, existing):
         run = await record(env, schedule.id, "action", missed.trigger_at, "missed")
         if run is not None:
             view.note(run)
-    for due in due_triggers(schedule, view.context, view.now, existing, price_was_above):
+    readings, stale = sensed(env.device.state(), env.clock())
+    for due in due_triggers(schedule, view.context, view.now, existing, was_met, readings, stale):
         await _run_trigger(env, view, schedule, due.trigger_at)
 
 

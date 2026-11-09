@@ -44,7 +44,7 @@ describe("isDirty", () => {
     expect(edit((f) => ({ ...f, trigger: { ...f.trigger, time: "07:00" } }))).toBe(true);
     expect(edit((f) => ({ ...f, retry: { ...f.retry, maxAttempts: "4" } }))).toBe(true);
     expect(edit((f) => ({ ...f, params: { temperature_c: { kind: "number", text: "25" } } }))).toBe(true);
-    expect(edit((f) => ({ ...f, conditions: addCondition(f.conditions, [{ id: "indoor_temp_c", label: "", unit: null, targets: null }]) }))).toBe(true);
+    expect(edit((f) => ({ ...f, conditions: addCondition(f.conditions, [{ id: "indoor_temp_c", label: "", unit: null, type: "number", targets: null }]) }))).toBe(true);
   });
 
   it("ignores spacing and the way a number is written", () => {

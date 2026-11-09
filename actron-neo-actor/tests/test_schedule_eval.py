@@ -185,6 +185,28 @@ def test_price_above_fires_once_per_crossing():
     assert missed_triggers(sched, ctx, now, set()) == []
 
 
+def test_temperature_trigger_fires_once_per_crossing():
+    sched = make_schedule(Trigger("temperature", reading="indoor_temp_c", op="gt", value=28.0))
+    now = utc(2026, 11, 5, 3, 12, 40)
+    ctx = make_context(now)
+    hot, cool = {"indoor_temp_c": 29.5}, {"indoor_temp_c": 27.0}
+    got = due_triggers(sched, ctx, now, set(), False, hot, set())
+    assert got == [DueTrigger(utc(2026, 11, 5, 3, 10), "indoor_temp_c above 28")]
+    assert due_triggers(sched, ctx, now, set(), True, hot, set()) == []
+    assert len(due_triggers(sched, ctx, now, set(), None, hot, set())) == 1
+    assert due_triggers(sched, ctx, now, set(), False, cool, set()) == []
+    assert due_triggers(sched, ctx, now, set(), False, hot, {"indoor_temp_c"}) == []
+    assert due_triggers(sched, ctx, now, set(), False) == []
+
+
+def test_temperature_trigger_falls_below_and_uses_the_site_outdoor_reading():
+    sched = make_schedule(Trigger("temperature", reading="outdoor_temp_c", op="lt", value=10.0))
+    now = utc(2026, 11, 5, 3, 12, 40)
+    got = due_triggers(sched, make_context(now, outdoor=8.0), now, set(), False)
+    assert [d.label for d in got] == ["outdoor_temp_c below 10"]
+    assert due_triggers(sched, make_context(now, outdoor=12.0), now, set(), False) == []
+
+
 @pytest.mark.parametrize(
     ("rest", "expected"),
     [

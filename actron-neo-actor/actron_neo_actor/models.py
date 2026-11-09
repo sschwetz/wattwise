@@ -44,7 +44,7 @@ class Instance:
 
 @dataclass(frozen=True)
 class Trigger:
-    """One of window_start, window_end, time or price_above; the fields that
+    """One of window_start, window_end, time, price_above or temperature; the fields that
     do not belong to the type stay None."""
 
     type: str
@@ -52,6 +52,9 @@ class Trigger:
     time: str | None = None
     days_of_week: list[int] | None = None
     c_per_kwh: float | None = None
+    reading: str | None = None
+    op: str | None = None
+    value: float | None = None
 
     @classmethod
     def from_json(cls, data: dict) -> Trigger:
@@ -61,6 +64,9 @@ class Trigger:
             time=data.get("time"),
             days_of_week=data.get("days_of_week"),
             c_per_kwh=data.get("c_per_kwh"),
+            reading=data.get("reading"),
+            op=data.get("op"),
+            value=data.get("value"),
         )
 
 

@@ -13,6 +13,7 @@ const TRIGGERS: { type: TriggerType; label: string }[] = [
   { type: "window_end", label: "A demand window ends" },
   { type: "time", label: "At a set time" },
   { type: "price_above", label: "Price goes above a level" },
+  { type: "temperature", label: "A temperature crosses a level" },
 ];
 
 type FieldsProps = { model: EditorModel; windows: DemandWindow[] };
@@ -85,6 +86,38 @@ function PriceField({ model }: { model: EditorModel }) {
   );
 }
 
+function TemperatureFields({ model }: { model: EditorModel }) {
+  const errorId = useId();
+  const change = triggerSetter(model);
+  const { reading, op, level } = model.form.trigger;
+  const error = model.errors["trigger.level"];
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className={labelClass}>
+          Temperature
+          <select value={reading} onChange={(e) => change({ reading: e.target.value === "indoor_temp_c" ? "indoor_temp_c" : "outdoor_temp_c" })} className={inputClass}>
+            <option value="outdoor_temp_c">Outside</option>
+            <option value="indoor_temp_c">Inside</option>
+          </select>
+        </label>
+        <label className={labelClass}>
+          Crosses
+          <select value={op} onChange={(e) => change({ op: e.target.value === "lt" ? "lt" : "gt" })} className={inputClass}>
+            <option value="gt">Rises above</option>
+            <option value="lt">Falls below</option>
+          </select>
+        </label>
+        <label className={labelClass}>
+          Level (C)
+          <input type="number" step="any" value={level} onChange={(e) => change({ level: e.target.value })} className={`${inputClass} w-28`} {...invalidProps(errorId, error)} />
+        </label>
+      </div>
+      <FieldError id={errorId} message={error} />
+    </div>
+  );
+}
+
 function TriggerSelect({ model, windows }: FieldsProps) {
   const { form, setForm } = model;
   const noWindows = windows.length === 0;
@@ -111,6 +144,7 @@ export function WhenStep({ model, windows }: FieldsProps) {
       {isWindowTrigger(type) && <WindowField model={model} windows={windows} />}
       {type === "time" && <TimeFields model={model} />}
       {type === "price_above" && <PriceField model={model} />}
+      {type === "temperature" && <TemperatureFields model={model} />}
     </Step>
   );
 }

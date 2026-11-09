@@ -61,7 +61,7 @@ def _readings(zones: list[str]) -> list[dict]:
         {"id": "indoor_temp_c", "label": "Indoor temperature", "unit": "C"},
         {"id": "outdoor_temp_c", "label": "Outdoor temperature", "unit": "C"},
         {"id": "humidity_pct", "label": "Indoor humidity", "unit": "%"},
-        {"id": "is_on", "label": "Unit on (1) or off (0)"},
+        {"id": "is_on", "label": "Unit", "type": "bool"},
         {"id": "zone_temp_c", "label": "Zone temperature", "unit": "C", "target_options": _options(zones, _as_is)},
     ]
 

@@ -36,7 +36,7 @@ const caps: Capabilities = {
     { id: "indoor_temp_c", label: "Indoor temperature", unit: "C", type: "number", target_options: null },
     { id: "outdoor_temp_c", label: "Outdoor temperature", unit: "C", type: "number", target_options: null },
     { id: "humidity_pct", label: "Indoor humidity", unit: "%", type: "number", target_options: null },
-    { id: "is_on", label: "Unit on (1) or off (0)", unit: null, type: "number", target_options: null },
+    { id: "is_on", label: "Unit", unit: null, type: "bool", target_options: null },
     { id: "zone_temp_c", label: "Zone temperature", unit: "C", type: "number", target_options: zones },
   ],
 };
@@ -190,6 +190,49 @@ describe("ScheduleEditor", () => {
     const target = within(onlyIf).getByRole("combobox", { name: "Target 1" });
     expect(within(target).getAllByRole("option").map((o) => o.textContent)).toEqual(["Lounge", "Bed 1", "Study"]);
     expect(target).toHaveValue("Lounge");
+  });
+
+  it("an on/off reading shows 'is' and an On/Off select instead of a comparison and a value", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Only when on");
+    const onlyIf = screen.getByRole("group", { name: "Only if" });
+    await user.click(within(onlyIf).getByRole("button", { name: "Add condition" }));
+    await user.selectOptions(within(onlyIf).getByRole("combobox", { name: "Reading 1" }), "is_on");
+    expect(within(onlyIf).queryByRole("combobox", { name: "Comparison 1" })).not.toBeInTheDocument();
+    expect(within(onlyIf).queryByRole("spinbutton", { name: "Value 1" })).not.toBeInTheDocument();
+    const state = within(onlyIf).getByRole("combobox", { name: "State 1" });
+    expect(state).toHaveValue("on");
+    await user.selectOptions(state, "off");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").conditions).toEqual([{ reading: "is_on", op: "lt", value: 1, enabled: true }]);
+  });
+
+  it("a temperature trigger saves the reading, direction and level", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Hot day");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "temperature");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Temperature" }), "indoor_temp_c");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Crosses" }), "lt");
+    await user.type(screen.getByRole("spinbutton", { name: "Level (C)" }), "18");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").trigger).toEqual({ type: "temperature", reading: "indoor_temp_c", op: "lt", value: 18 });
+  });
+
+  it("a temperature trigger without a level is not saved", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Hot day");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "temperature");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(screen.getByText("Enter a temperature in C.")).toBeInTheDocument();
+    expect(writes("POST")).toHaveLength(0);
   });
 
   it("save posts the payload and shows Saved", async () => {

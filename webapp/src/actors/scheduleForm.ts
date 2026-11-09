@@ -9,6 +9,7 @@ import type {
   ConditionSpec,
   ParamDecl,
   RestoreSpec,
+  TemperatureReading,
   TriggerSpec,
 } from "./types";
 
@@ -36,6 +37,10 @@ export interface TriggerForm {
   time: string;
   days: number[];
   price: string;
+  /** Temperature trigger: which temperature, which way it crosses, and the level in C. */
+  reading: TemperatureReading;
+  op: "gt" | "lt";
+  level: string;
 }
 
 export interface RestoreForm {
@@ -70,6 +75,8 @@ export interface ReadingChoice {
   id: string;
   label: string;
   unit: string | null;
+  /** "bool" for an on/off reading such as the unit being on; anything else is a number. */
+  type: string;
   targets: { value: string; label: string }[] | null;
 }
 
@@ -79,10 +86,14 @@ export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Readings the Core API supplies for every site (actor_capabilities.SITE_READING_IDS). */
 export const SITE_READINGS: ReadingChoice[] = [
-  { id: "outdoor_temp_c", label: "Outdoor temperature", unit: "C", targets: null },
-  { id: "battery_soc_pct", label: "Battery charge", unit: "%", targets: null },
-  { id: "price_c_per_kwh", label: "Current price", unit: "c/kWh", targets: null },
+  { id: "outdoor_temp_c", label: "Outdoor temperature", unit: "C", type: "number", targets: null },
+  { id: "battery_soc_pct", label: "Battery charge", unit: "%", type: "number", targets: null },
+  { id: "price_c_per_kwh", label: "Current price", unit: "c/kWh", type: "number", targets: null },
 ];
+
+function emptyLevel(): Pick<TriggerForm, "reading" | "op" | "level"> {
+  return { reading: "outdoor_temp_c", op: "gt", level: "" };
+}
 
 export function isWindowTrigger(type: TriggerType): boolean {
   return type === "window_start" || type === "window_end";
@@ -90,7 +101,7 @@ export function isWindowTrigger(type: TriggerType): boolean {
 
 /** The device's readings first; a site reading with the same id is left out because the device one wins. */
 export function conditionReadings(capabilities: Capabilities): ReadingChoice[] {
-  const device = capabilities.readings.map((r) => ({ id: r.id, label: r.label, unit: r.unit, targets: r.target_options }));
+  const device = capabilities.readings.map((r) => ({ id: r.id, label: r.label, unit: r.unit, type: r.type, targets: r.target_options }));
   const ids = new Set(device.map((r) => r.id));
   return [...device, ...SITE_READINGS.filter((r) => !ids.has(r.id))];
 }
@@ -166,11 +177,24 @@ export function setTriggerType(form: ScheduleFormState, type: TriggerType): Sche
   return { ...form, trigger: { ...form.trigger, type }, restore: { ...form.restore, when } };
 }
 
+/** An on/off reading is tested as "is on" (above 0) or "is off" (below 1), so the server and actor need no special case. */
+export function setSwitch(row: ConditionRow, on: boolean): ConditionRow {
+  return { ...row, op: on ? "gt" : "lt", value: on ? "0" : "1" };
+}
+
+export function isSwitchedOn(row: ConditionRow): boolean {
+  return row.op !== "lt";
+}
+
+/** The row pointed at `reading`: its first target, and "is on" when the reading is an on/off one. */
+export function pointAtReading(row: ConditionRow, reading: ReadingChoice | undefined): ConditionRow {
+  const next = { ...row, reading: reading?.id ?? row.reading, target: reading?.targets?.[0]?.value ?? null };
+  return reading?.type === "bool" ? setSwitch(next, true) : next;
+}
+
 export function addCondition(rows: ConditionRow[], readings: ReadingChoice[]): ConditionRow[] {
-  const first = readings[0];
   const key = rows.reduce((max, r) => Math.max(max, r.key + 1), 0);
-  const target = first?.targets?.[0]?.value ?? null;
-  return [...rows, { key, use: true, reading: first?.id ?? "", op: "gt", value: "", target }];
+  return [...rows, pointAtReading({ key, use: true, reading: "", op: "gt", value: "", target: null }, readings[0])];
 }
 
 export function emptyForm(
@@ -183,7 +207,7 @@ export function emptyForm(
     instanceId: context.instanceId,
     name: "",
     enabled: true,
-    trigger: { type: windowed ? "window_start" : "time", windowId: windowed ? String(context.firstWindowId) : "", time: "", days: [...ALL_DAYS], price: "" },
+    trigger: { type: windowed ? "window_start" : "time", windowId: windowed ? String(context.firstWindowId) : "", time: "", days: [...ALL_DAYS], price: "", ...emptyLevel() },
     conditions: [],
     actionId: action?.id ?? "",
     params: defaultParams(action),
@@ -209,6 +233,7 @@ function triggerForm(trigger: TriggerSpec): TriggerForm {
     time: trigger.type === "time" ? trigger.time : "",
     days: trigger.type === "time" ? [...trigger.days_of_week] : [...ALL_DAYS],
     price: trigger.type === "price_above" ? String(trigger.c_per_kwh) : "",
+    ...(trigger.type === "temperature" ? { reading: trigger.reading, op: trigger.op, level: String(trigger.value) } : emptyLevel()),
   };
 }
 
@@ -263,6 +288,7 @@ export function parseWhole(text: string): number | null {
 function triggerPayload(t: TriggerForm): TriggerSpec {
   if (t.type === "time") return { type: "time", time: t.time, days_of_week: [...t.days].sort((a, b) => a - b) };
   if (t.type === "price_above") return { type: "price_above", c_per_kwh: Number(t.price) };
+  if (t.type === "temperature") return { type: "temperature", reading: t.reading, op: t.op, value: Number(t.level) };
   return { type: t.type, window_id: Number(t.windowId) };
 }
 
