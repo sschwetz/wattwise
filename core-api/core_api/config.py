@@ -34,6 +34,7 @@ class Settings:
     weather_collector_key: str
     pricing_collector_key: str
     actor_key: str
+    git_commit: str
 
 
 def get_settings() -> Settings:
@@ -59,4 +60,5 @@ def get_settings() -> Settings:
         weather_collector_key=_require_env("WEATHER_COLLECTOR_KEY"),
         pricing_collector_key=_require_env("PRICING_COLLECTOR_KEY"),
         actor_key=_require_env("ACTOR_KEY"),
+        git_commit=os.environ.get("GIT_COMMIT", "unknown")[:7] or "unknown",
     )

@@ -32,6 +32,7 @@ from core_api.models.readings import (
     WeatherReading,
     WeatherReadingRollup5m,
 )
+from core_api.models.service_status import ServiceStatus
 from core_api.models.sources import Source, SourceKind
 
 __all__ = [
@@ -69,6 +70,7 @@ __all__ = [
     "DemandCharge",
     "LocalRateWindow",
     "LocalRepriceMarker",
+    "ServiceStatus",
     "ActorInstance",
     "ActorSchedule",
     "ActorRun",

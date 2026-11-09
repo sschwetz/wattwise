@@ -29,6 +29,7 @@ from core_api.routers.password_reset import router as password_reset_router
 from core_api.routers.pricing_backfill import router as pricing_backfill_router
 from core_api.routers.pricing_backfill import site_router as pricing_site_data_router
 from core_api.routers.query import router as query_router
+from core_api.routers.services import router as services_router
 from core_api.routers.sites import router as sites_router
 from core_api.routers.sources import router as sources_router
 from core_api.routers.totp import router as totp_router
@@ -124,6 +125,7 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
     app.include_router(actors_router, prefix=api_prefix)
     app.include_router(pricing_backfill_router, prefix=api_prefix)
     app.include_router(pricing_site_data_router, prefix=api_prefix)
+    app.include_router(services_router, prefix=api_prefix)
     app.include_router(totp_router, prefix=api_prefix)
     app.include_router(password_reset_router, prefix=api_prefix)
     return app
