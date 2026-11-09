@@ -182,7 +182,7 @@ describe("Header", () => {
     it("sits between Account settings and Log off", async () => {
       await openMenu("/sites/7");
       const labels = screen.getAllByRole("menuitem").map((item) => item.textContent);
-      expect(labels).toEqual(["Account settings", "Site settings", "Help", "Log off"]);
+      expect(labels).toEqual(["Account settings", "Site settings", "Help", "About", "Log off"]);
     });
 
     it("targets the current site on a site route", async () => {
@@ -214,6 +214,28 @@ describe("Header", () => {
       await openMenu("/sites/7");
       await userEvent.click(screen.getByRole("menuitem", { name: "Help" }));
       expect(screen.queryByRole("menuitem", { name: "Log off" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("About menu item", () => {
+    it("opens the About dialog and returns focus to the menu button on Escape", async () => {
+      vi.mocked(apiFetch).mockImplementation((path: string) =>
+        Promise.resolve(
+          path === "/api/v1/me" || path.endsWith("/me")
+            ? { id: 1, email: "ada@example.com", display_name: "Ada Lovelace", has_avatar: false, has_amber_api_key: false }
+            : [],
+        ),
+      );
+      renderHeader();
+      const button = await screen.findByRole("button", { name: /ada lovelace/i });
+      await userEvent.click(button);
+      await userEvent.click(screen.getByRole("menuitem", { name: "About" }));
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "About WattWise" })).toBeInTheDocument();
+
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(button).toHaveFocus();
     });
   });
 });

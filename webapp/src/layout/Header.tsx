@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useMatch } from "react-router-dom";
 import { useMe } from "../account/useAccount";
 import { useAvatarImage } from "../account/useAvatarImage";
 import { useAuth } from "../auth/AuthContext";
 import { BUILD_COMMIT, BUILD_COMMIT_URL } from "../buildInfo";
+import { AboutDialog } from "../about/AboutDialog";
 import { useSites } from "../sites/useSites";
 import { Avatar } from "./Avatar";
 import { Logo } from "./Logo";
@@ -61,7 +62,13 @@ export function Header() {
   const avatarUrl = useAvatarImage(me?.has_avatar ?? false);
   const { logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeAbout = useCallback(() => {
+    setAboutOpen(false);
+    menuButtonRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -100,6 +107,7 @@ export function Header() {
       </div>
       <div ref={containerRef} className="relative shrink-0">
         <button
+          ref={menuButtonRef}
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
@@ -135,6 +143,17 @@ export function Header() {
               role="menuitem"
               onClick={() => {
                 setOpen(false);
+                setAboutOpen(true);
+              }}
+              className={`${menuItemClass} w-full text-left`}
+            >
+              About
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
                 logout();
               }}
               className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface-2"
@@ -144,6 +163,7 @@ export function Header() {
           </div>
         )}
       </div>
+      {aboutOpen && <AboutDialog onClose={closeAbout} />}
     </header>
   );
 }
