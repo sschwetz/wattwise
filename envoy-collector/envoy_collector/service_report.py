@@ -21,8 +21,8 @@ COMMIT_LENGTH = 7
 _COMMIT_PATTERN = re.compile(r"[0-9a-f]{7}|unknown|dev")
 
 
-def _attempt(base_url: str, key_header: str, key: str, service: str, commit: str) -> str | None:
-    """POST the commit. Returns None on success, else a short reason."""
+def report_commit_once(base_url: str, key_header: str, key: str, service: str, commit: str) -> str | None:
+    """POST the commit to core-api. Returns None on 204, else a short reason."""
     try:
         response = httpx.post(
             f"{base_url}{REPORT_PATH}",
@@ -35,11 +35,6 @@ def _attempt(base_url: str, key_header: str, key: str, service: str, commit: str
     if response.status_code != 204:
         return f"HTTP {response.status_code}"
     return None
-
-
-def report_commit_once(base_url: str, key_header: str, key: str, service: str, commit: str) -> bool:
-    """POST the commit to core-api. True on 204, False on any other outcome."""
-    return _attempt(base_url, key_header, key, service, commit) is None
 
 
 def _build_commit() -> str:
@@ -58,7 +53,7 @@ def _report_forever(
     failing = False
     while not stop.is_set():
         try:
-            reason = _attempt(base_url, key_header, key, service, commit)
+            reason = report_commit_once(base_url, key_header, key, service, commit)
         except Exception:  # the reporter must never take the service down
             logger.exception("Commit reporter hit an unexpected error")
             reason = "unexpected error"

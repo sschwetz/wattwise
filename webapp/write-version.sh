@@ -1,9 +1,9 @@
 #!/bin/sh
-# Writes the build commit ($GIT_COMMIT lowercased, first 7 chars; unknown unless 7 hex chars, or dev) as JSON to $1.
+# Writes the build commit ($GIT_COMMIT trimmed and lowercased, first 7 chars; unknown unless 7 hex chars, or dev) as JSON to $1.
 set -eu
 
 out=${1:?usage: write-version.sh <output-path>}
-commit=$(printf '%s' "${GIT_COMMIT:-}" | tr 'A-F' 'a-f' | cut -c1-7)
+commit=$(printf '%s' "${GIT_COMMIT:-}" | tr 'A-Z' 'a-z' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | cut -c1-7)
 case $commit in
   unknown | dev) ;;
   *)

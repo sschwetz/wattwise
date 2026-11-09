@@ -31,6 +31,13 @@ check "empty gives unknown" '{"commit":"unknown"}'
 GIT_COMMIT=ABCDEF0123 sh "$here/write-version.sh" "$out"
 check "uppercase hex is lowercased" '{"commit":"abcdef0"}'
 
+GIT_COMMIT=' ABCDEF0123
+' sh "$here/write-version.sh" "$out"
+check "surrounding whitespace is trimmed" '{"commit":"abcdef0"}'
+
+GIT_COMMIT=DEV sh "$here/write-version.sh" "$out"
+check "DEV is lowercased to dev" '{"commit":"dev"}'
+
 GIT_COMMIT=HEAD sh "$here/write-version.sh" "$out"
 check "HEAD gives unknown" '{"commit":"unknown"}'
 

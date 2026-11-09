@@ -16,9 +16,9 @@ URL = f"{BASE_URL}/api/v1/services/report"
 
 
 @respx.mock
-def test_report_sends_header_and_body_and_returns_true_on_204() -> None:
+def test_report_sends_header_and_body_and_returns_none_on_204() -> None:
     route = respx.post(URL).mock(return_value=httpx.Response(204))
-    assert report_commit_once(BASE_URL, "X-Collector-Key", "k", "amber-pricing-collector", "abc1234") is True
+    assert report_commit_once(BASE_URL, "X-Collector-Key", "k", "amber-pricing-collector", "abc1234") is None
     request = route.calls.last.request
     assert request.headers["X-Collector-Key"] == "k"
     assert json.loads(request.content) == {"service": "amber-pricing-collector", "commit": "abc1234"}
@@ -26,15 +26,15 @@ def test_report_sends_header_and_body_and_returns_true_on_204() -> None:
 
 @pytest.mark.parametrize("status", [401, 500])
 @respx.mock
-def test_report_returns_false_on_error_status(status: int) -> None:
+def test_report_returns_reason_on_error_status(status: int) -> None:
     respx.post(URL).mock(return_value=httpx.Response(status))
-    assert report_commit_once(BASE_URL, "X-Collector-Key", "k", "amber-pricing-collector", "abc1234") is False
+    assert report_commit_once(BASE_URL, "X-Collector-Key", "k", "amber-pricing-collector", "abc1234") is not None
 
 
 @respx.mock
-def test_report_returns_false_on_connection_error() -> None:
+def test_report_returns_reason_on_connection_error() -> None:
     respx.post(URL).mock(side_effect=httpx.ConnectError("down"))
-    assert report_commit_once(BASE_URL, "X-Collector-Key", "k", "amber-pricing-collector", "abc1234") is False
+    assert report_commit_once(BASE_URL, "X-Collector-Key", "k", "amber-pricing-collector", "abc1234") is not None
 
 
 def _wait_for_calls(route: respx.Route, count: int) -> None:
