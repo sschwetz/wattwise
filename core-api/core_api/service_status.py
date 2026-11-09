@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import datetime
-import re
-import secrets
 from dataclasses import dataclass
 
+from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from core_api.commit import COMMIT_PATTERN as COMMIT_PATTERN
 from core_api.config import get_settings
 from core_api.models.service_status import ServiceStatus
+from core_api.security import keys_match
 from core_api.time_utils import as_utc
 
 SERVICES: tuple[str, ...] = (
@@ -22,8 +24,7 @@ SERVICES: tuple[str, ...] = (
 )
 REPORT_INTERVAL_SECONDS = 60
 # A service counts as reporting while its last report is at most three intervals old.
-STALE_AFTER = datetime.timedelta(seconds=180)
-COMMIT_PATTERN: re.Pattern[str] = re.compile(r"^([0-9a-f]{7,40}|unknown|dev)$")
+STALE_AFTER = datetime.timedelta(seconds=3 * REPORT_INTERVAL_SECONDS)
 
 
 @dataclass(frozen=True)
@@ -46,22 +47,31 @@ def _key_services() -> list[tuple[str, frozenset[str]]]:
 
 def allowed_services_for_key(presented: str) -> frozenset[str]:
     """Services the presented key may report for; empty when it matches no key.
-    Compares UTF-8 bytes because compare_digest raises TypeError on non-ASCII str."""
-    presented_bytes = presented.encode("utf-8")
+    Checks every key, with no early exit."""
     allowed: frozenset[str] = frozenset()
     for key, services in _key_services():
-        if secrets.compare_digest(presented_bytes, key.encode("utf-8")):
+        if keys_match(presented, key):
             allowed = allowed | services
     return allowed
 
 
+def _update_report(db: Session, service: str, commit: str, now: datetime.datetime) -> bool:
+    result = db.execute(
+        update(ServiceStatus).where(ServiceStatus.service == service).values(commit=commit, reported_at=now)
+    )
+    return result.rowcount > 0  # type: ignore[attr-defined]
+
+
 def record_report(db: Session, service: str, commit: str, now: datetime.datetime) -> None:
-    row = db.get(ServiceStatus, service)
-    if row is None:
-        db.add(ServiceStatus(service=service, commit=commit, reported_at=now))
-    else:
-        row.commit = commit
-        row.reported_at = now
+    """Upsert without a read: UPDATE, INSERT when no row matched, and UPDATE again
+    if another writer inserted the row first."""
+    if not _update_report(db, service, commit, now):
+        try:
+            db.add(ServiceStatus(service=service, commit=commit, reported_at=now))
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            _update_report(db, service, commit, now)
     db.commit()
 
 

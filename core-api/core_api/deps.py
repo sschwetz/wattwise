@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import secrets
 from collections.abc import Callable, Iterator
 
 import jwt as pyjwt
@@ -18,7 +17,7 @@ from core_api.mfa_attempts import is_locked
 from core_api.models.actors import ActorInstance
 from core_api.models.identity import Site, SiteAccess, User
 from core_api.models.sources import Source, SourceKind
-from core_api.security import decode_access_token, decode_scoped_token
+from core_api.security import decode_access_token, decode_scoped_token, keys_match
 
 
 def get_db_session(request: Request) -> Iterator[Session]:
@@ -138,14 +137,9 @@ _KIND_KEY_ATTR: dict[SourceKind, str] = {
 
 
 def check_collector_key(kind: SourceKind, x_collector_key: str) -> bool:
-    """Compare a collector-supplied key against the expected shared key for
-    `kind`. Compares UTF-8-encoded bytes rather than the raw `str` because
-    `secrets.compare_digest` raises `TypeError` on non-ASCII `str` arguments,
-    and Starlette decodes header bytes as latin-1 -- so a non-ASCII header
-    value would otherwise crash this check with a 500 instead of cleanly
-    401ing."""
+    """Compare a collector-supplied key against the expected shared key for `kind`."""
     expected = getattr(get_settings(), _KIND_KEY_ATTR[kind])
-    return secrets.compare_digest(x_collector_key.encode("utf-8"), expected.encode("utf-8"))
+    return keys_match(x_collector_key, expected)
 
 
 def get_source_by_collector_key(
@@ -191,8 +185,7 @@ def require_source_kind(expected_kind: SourceKind):
 def require_actor_key(presented: str) -> None:
     """Raise 401 unless `presented` is the shared actor key."""
     expected = get_settings().actor_key
-    # Bytes, not str: compare_digest raises TypeError on non-ASCII str.
-    if not secrets.compare_digest(presented.encode("utf-8"), expected.encode("utf-8")):
+    if not keys_match(presented, expected):
         raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
 
 

@@ -13,6 +13,14 @@ import pyotp
 from core_api.config import get_settings
 
 
+def keys_match(presented: str, expected: str) -> bool:
+    """Constant-time key comparison. Compares UTF-8 bytes because
+    secrets.compare_digest raises TypeError on non-ASCII str, and Starlette
+    decodes header bytes as latin-1, so a non-ASCII header would otherwise
+    crash with a 500 instead of a clean 401."""
+    return secrets.compare_digest(presented.encode("utf-8"), expected.encode("utf-8"))
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 

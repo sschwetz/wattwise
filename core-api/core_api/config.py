@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
+
+from core_api.commit import normalise_commit
 
 
 def _require_env(name: str, *, insecure_default_note: str = "") -> str:
@@ -38,15 +39,6 @@ class Settings:
     git_commit: str
 
 
-_COMMIT_RE = re.compile(r"^([0-9a-f]{7}|unknown|dev)$")
-
-
-def _normalise_commit(raw: str) -> str:
-    """Lowercase and shorten to 7 chars; anything that is not a short hash, unknown or dev becomes unknown."""
-    value = raw.strip().lower()[:7]
-    return value if _COMMIT_RE.match(value) else "unknown"
-
-
 def get_settings() -> Settings:
     return Settings(
         database_url=os.environ.get("DATABASE_URL", "sqlite:///./core_api.db"),
@@ -70,5 +62,5 @@ def get_settings() -> Settings:
         weather_collector_key=_require_env("WEATHER_COLLECTOR_KEY"),
         pricing_collector_key=_require_env("PRICING_COLLECTOR_KEY"),
         actor_key=_require_env("ACTOR_KEY"),
-        git_commit=_normalise_commit(os.environ.get("GIT_COMMIT", "")),
+        git_commit=normalise_commit(os.environ.get("GIT_COMMIT")),
     )

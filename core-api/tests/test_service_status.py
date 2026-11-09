@@ -51,6 +51,35 @@ def test_record_report_upserts(db):
     assert rows[0].reported_at.replace(tzinfo=datetime.UTC) == later
 
 
+def test_record_report_recovers_when_another_writer_inserts_first(db, monkeypatch):
+    from sqlalchemy.orm import sessionmaker
+
+    from core_api import service_status
+
+    real_update = service_status._update_report
+    calls = []
+
+    def losing_update(session, service, commit, now):
+        calls.append(service)
+        if len(calls) == 1:
+            # Another writer inserts the row after our UPDATE found nothing.
+            other = sessionmaker(bind=session.get_bind())()
+            other.add(ServiceStatus(service=service, commit="aaaaaaa", reported_at=NOW))
+            other.commit()
+            other.close()
+            return False
+        return real_update(session, service, commit, now)
+
+    monkeypatch.setattr(service_status, "_update_report", losing_update)
+    later = NOW + datetime.timedelta(minutes=1)
+    record_report(db, "envoy-collector", "bbbbbbb", later)
+    assert len(calls) == 2
+    rows = db.query(ServiceStatus).all()
+    assert len(rows) == 1
+    assert rows[0].commit == "bbbbbbb"
+    assert rows[0].reported_at.replace(tzinfo=datetime.UTC) == later
+
+
 def test_list_statuses_freshness(db):
     record_report(db, SERVICES[0], "aaaaaaa", NOW - datetime.timedelta(seconds=179))
     record_report(db, SERVICES[1], "bbbbbbb", NOW - datetime.timedelta(seconds=181))
