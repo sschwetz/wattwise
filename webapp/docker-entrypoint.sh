@@ -10,6 +10,8 @@ window.__APP_CONFIG__ = {
 EOF
 chmod 644 /usr/share/nginx/html/config.js
 
+/write-version.sh /usr/share/nginx/html/version
+
 # connect-src must name the API origin, which is only known at container start.
 # The live WebSocket uses the same origin with the ws/wss scheme.
 WS_API_BASE_URL="ws${API_BASE_URL#http}"

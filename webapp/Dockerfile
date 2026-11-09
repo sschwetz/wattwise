@@ -16,9 +16,10 @@ COPY --from=build /app/dist /usr/share/nginx/html
 RUN chmod -R a+rX /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+COPY write-version.sh /write-version.sh
+RUN chmod +x /docker-entrypoint.sh /write-version.sh
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
-  CMD ["wget", "-q", "--spider", "http://127.0.0.1/"]
+  CMD ["wget", "-q", "--spider", "http://127.0.0.1/version"]
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
