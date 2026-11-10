@@ -68,3 +68,19 @@ def _timeout(request):
 def test_fetch_returns_none_on_bad_response(monkeypatch, handler):
     _patch_transport(monkeypatch, handler)
     assert fetch_webapp_commit("http://webapp") is None
+
+
+def test_job_fetches_from_webapp_version_url(db, monkeypatch):
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://public.example")
+    monkeypatch.setenv("WEBAPP_VERSION_URL", "http://10.0.0.2:8180")
+    seen = []
+    run_service_status_job(db, NOW, fetch_version=lambda url: seen.append(url))
+    assert seen == ["http://10.0.0.2:8180"]
+
+
+def test_job_falls_back_to_frontend_base_url(db, monkeypatch):
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://public.example")
+    monkeypatch.setenv("WEBAPP_VERSION_URL", "")
+    seen = []
+    run_service_status_job(db, NOW, fetch_version=lambda url: seen.append(url))
+    assert seen == ["https://public.example"]

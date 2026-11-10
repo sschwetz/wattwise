@@ -41,6 +41,6 @@ def run_service_status_job(
     """Record core-api's own commit, and the webapp's when /version answers."""
     settings = get_settings()
     record_report(db, "core-api", settings.git_commit, now)
-    webapp_commit = fetch_version(settings.frontend_base_url)
+    webapp_commit = fetch_version(settings.webapp_version_url)
     if webapp_commit is not None:
         record_report(db, "webapp", webapp_commit, now)

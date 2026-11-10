@@ -146,6 +146,7 @@ Fill in `.env`:
 | `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY`, `ACTOR_KEY` | A separate `openssl rand -hex 32` for each |
 | `FRONTEND_BASE_URL` | The public origin of the webapp. Also the CORS origin and the base of email links. |
 | `API_BASE_URL` | The origin the browser uses to reach core-api |
+| `WEBAPP_VERSION_URL` | Optional. Where core-api fetches the webapp's `/version` for the About dialog. Defaults to `FRONTEND_BASE_URL`. |
 | `RELAY_DOMAIN`, `RELAY_SMARTHOST` | Required by Compose. `RELAY_SMARTHOST` looks like `[smtp.example.com]:587`. Add `RELAY_USERNAME` and `RELAY_PASSWORD` if the smarthost needs a login. |
 | `WATTWISE_VERSION` | Optional. An image tag such as `1.2.0` or `sha-abc1234`. Defaults to `latest`, the newest `master` build. Pin a version in production. |
 

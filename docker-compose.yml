@@ -25,6 +25,8 @@ services:
       SMTP_FROM: ${SMTP_FROM:-noreply@localhost}
       # Also doubles as the CORS-allowed origin for the webapp below.
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost}
+      # Where core-api fetches /version for the About dialog. Empty means FRONTEND_BASE_URL.
+      WEBAPP_VERSION_URL: ${WEBAPP_VERSION_URL:-}
     volumes:
       - core_api_data:/data
     ports:

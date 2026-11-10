@@ -29,6 +29,7 @@ class Settings:
     smtp_user: str | None
     smtp_password: str | None
     frontend_base_url: str
+    webapp_version_url: str
     scheduler_enabled: bool
     root_path: str
     admin_email: str
@@ -40,6 +41,7 @@ class Settings:
 
 
 def get_settings() -> Settings:
+    frontend_base_url = os.environ.get("FRONTEND_BASE_URL", "http://localhost:5173")
     return Settings(
         database_url=os.environ.get("DATABASE_URL", "sqlite:///./core_api.db"),
         avatar_storage_dir=os.environ.get("AVATAR_STORAGE_DIR", "./data/avatars"),
@@ -54,7 +56,8 @@ def get_settings() -> Settings:
         smtp_from=os.environ.get("SMTP_FROM", "noreply@localhost"),
         smtp_user=os.environ.get("SMTP_USER") or None,
         smtp_password=os.environ.get("SMTP_PASSWORD") or None,
-        frontend_base_url=os.environ.get("FRONTEND_BASE_URL", "http://localhost:5173"),
+        frontend_base_url=frontend_base_url,
+        webapp_version_url=os.environ.get("WEBAPP_VERSION_URL") or frontend_base_url,
         scheduler_enabled=os.environ.get("SCHEDULER_ENABLED", "true").lower() not in ("0", "false", "no"),
         root_path=os.environ.get("ROOT_PATH", "").rstrip("/"),
         admin_email=os.environ.get("ADMIN_EMAIL", "admin@example.com"),
