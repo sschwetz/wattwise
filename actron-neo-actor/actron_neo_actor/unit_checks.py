@@ -19,8 +19,15 @@ def owner_changed(device: Device, action: ActionSpec, snapshot: dict | None, sta
     return not device.matches_action(action.id, action.params, state)
 
 
+def _word(field: str) -> str:
+    """A restore field in words: `zone:Study` is "zone Study", `zone_temp:Study` is "zone Study temperature"."""
+    if field.startswith("zone_temp:"):
+        return f"zone {field.removeprefix('zone_temp:')} temperature"
+    return field.replace("zone:", "zone ", 1)
+
+
 def _words(fields: list[str]) -> str:
-    return ", ".join(f.replace("zone:", "zone ", 1) for f in fields)
+    return ", ".join(_word(f) for f in fields)
 
 
 def restore_message(result: RestoreResult) -> str:

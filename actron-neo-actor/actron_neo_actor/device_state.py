@@ -8,9 +8,10 @@ named, typed attribute, so the PIN cannot reach a payload, a repr or a log.
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from actron_neo_api import ActronAirStatus
+from actron_neo_api import ActronAirStatus, ActronAirZone
 from pydantic import BaseModel
 
 HEAT = "HEAT"
@@ -23,6 +24,12 @@ class DeviceState:
 
     `setpoint_min_c` and `setpoint_max_c` are the unit's setpoint limits for the
     current mode (the library's `min_temp` and `max_temp`).
+
+    Per zone title: `zone_setpoints_c` is the zone's setpoint for the current mode
+    (heat in HEAT, else cool), and `zone_ranges_c` the (min, max) the unit accepts
+    for it now (the library's `zone.min_temp` and `zone.max_temp`, which follow the
+    main setpoint). `zone_cool_heat_c` holds the zone's (cool, heat) setpoints for
+    snapshots and is not sent to Core API.
     """
 
     is_on: bool
@@ -38,6 +45,9 @@ class DeviceState:
     updated_at: datetime.datetime = field(compare=False)
     setpoint_min_c: float = 10.0
     setpoint_max_c: float = 30.0
+    zone_setpoints_c: dict[str, float] = field(default_factory=dict)
+    zone_ranges_c: dict[str, tuple[float, float]] = field(default_factory=dict)
+    zone_cool_heat_c: dict[str, tuple[float, float]] = field(default_factory=dict)
 
     def to_payload(self) -> dict:
         return {
@@ -54,6 +64,8 @@ class DeviceState:
             "updated_at": self.updated_at.astimezone(datetime.UTC).isoformat(),
             "setpoint_min_c": self.setpoint_min_c,
             "setpoint_max_c": self.setpoint_max_c,
+            "zone_setpoints_c": dict(self.zone_setpoints_c),
+            "zone_ranges_c": {title: [low, high] for title, (low, high) in self.zone_ranges_c.items()},
         }
 
     def readings(self) -> dict[str, float]:
@@ -119,6 +131,24 @@ def _zone_temps(status: ActronAirStatus, zones: list[tuple[int, str]]) -> dict[s
     return {title: temp for title, temp in temps.items() if temp is not None}
 
 
+def _per_zone[T](
+    status: ActronAirStatus, zones: list[tuple[int, str]], read: Callable[[ActronAirZone], T]
+) -> dict[str, T]:
+    return {title: read(status.remote_zone_info[i]) for i, title in zones}
+
+
+def _zone_setpoint(zone: ActronAirZone) -> float:
+    return float(zone.current_setpoint)
+
+
+def _zone_range(zone: ActronAirZone) -> tuple[float, float]:
+    return float(zone.min_temp), float(zone.max_temp)
+
+
+def _zone_cool_heat(zone: ActronAirZone) -> tuple[float, float]:
+    return float(zone.temperature_setpoint_cool_c), float(zone.temperature_setpoint_heat_c)
+
+
 def state_from_status(status: ActronAirStatus, now: datetime.datetime) -> DeviceState:
     settings = status.user_aircon_settings
     master = status.master_info
@@ -138,4 +168,7 @@ def state_from_status(status: ActronAirStatus, now: datetime.datetime) -> Device
         updated_at=now.astimezone(datetime.UTC),
         setpoint_min_c=float(status.min_temp),
         setpoint_max_c=float(status.max_temp),
+        zone_setpoints_c=_per_zone(status, zones, _zone_setpoint),
+        zone_ranges_c=_per_zone(status, zones, _zone_range),
+        zone_cool_heat_c=_per_zone(status, zones, _zone_cool_heat),
     )

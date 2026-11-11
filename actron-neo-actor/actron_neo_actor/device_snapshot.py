@@ -20,27 +20,34 @@ By action:
     set_zones            applied {"zones": {"<title>": <bool>}}
                          saved   {"zones": {"<title>": <bool>}}
         set_zones lists only the named zones whose state the action changes.
+    set_zone_temperature applied {"zone": "<title>", "setpoint_c": <float>}
+                         saved   {"zone": "<title>", "cool_setpoint_c": <float>, "heat_setpoint_c": <float>}
 
 Restore reports fields as "power" (is_on with mode), "mode", "setpoint",
-"fan_mode" and "zone:<title>". A field is skipped when its current value
+"fan_mode", "zone:<title>" and "zone_temp:<title>". A field is skipped when its current value
 differs from what the action applied, because the owner has changed it since.
 After system_off, which sets no mode, "mode" is skipped when the owner chose a
 different mode while the unit was off; the power restore then turns the unit
 on in the owner's mode, not the saved one.
 
 The set_temperature `setpoint_c` is the clamped value the unit ends up at
-(see device_state.clamp_setpoint), not the value requested.
+(see device_state.clamp_setpoint), not the value requested. The library
+clamps a zone setpoint too, but set_zone_temperature refuses a value outside
+the zone's range instead (see check_zone_range), so its `setpoint_c` is the
+value requested.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from actron_neo_actor.device_state import DeviceState, active_setpoint, base_fan_mode, clamp_setpoint
+from actron_neo_actor.device_state import HEAT, DeviceState, active_setpoint, base_fan_mode, clamp_setpoint
 
 SETPOINT_TOLERANCE_C = 0.05
+# Room for float error at the range edges: 22.9 + 1.2 is 24.099999999999998.
+RANGE_EPSILON_C = 1e-6
 POWER_ACTIONS = frozenset({"system_off", "system_on", "set_mode"})
-ACTIONS = POWER_ACTIONS | {"set_temperature", "set_fan_mode", "set_zones"}
+ACTIONS = POWER_ACTIONS | {"set_temperature", "set_fan_mode", "set_zones", "set_zone_temperature"}
 
 Command = tuple[str, dict]
 
@@ -77,6 +84,26 @@ def check_zones(names: list[str], state: DeviceState) -> None:
         raise DeviceError(f"unknown zone: {', '.join(unknown)}")
 
 
+def _check_zone_known(zone: str, state: DeviceState) -> None:
+    if zone not in state.zone_ranges_c:
+        raise DeviceError(f"unknown zone: {zone}")
+
+
+def check_zone_range(zone: str, value: float, state: DeviceState) -> None:
+    """Refuse a zone setpoint outside the range the unit accepts now.
+    The library's `zone.set_temperature` would clamp it and send it anyway."""
+    _check_zone_known(zone, state)
+    low, high = state.zone_ranges_c[zone]
+    if low - RANGE_EPSILON_C <= value <= high + RANGE_EPSILON_C:
+        return
+    unit = active_setpoint(state)
+    raise DeviceError(f"{zone} {value:.1f}°C is outside {low:.1f}–{high:.1f}°C (the unit is set to {unit:.1f}°C)")
+
+
+def _near(current: float | None, target: float) -> bool:
+    return current is not None and abs(current - target) <= SETPOINT_TOLERANCE_C
+
+
 def matches_action(action_id: str, params: dict, state: DeviceState) -> bool:
     """True when the synced state shows what the action sets."""
     check_action(action_id)
@@ -87,8 +114,9 @@ def matches_action(action_id: str, params: dict, state: DeviceState) -> bool:
     if action_id == "set_mode":
         return state.mode == params["mode"]
     if action_id == "set_temperature":
-        target = clamp_setpoint(state, float(params["temperature_c"]))
-        return abs(active_setpoint(state) - target) <= SETPOINT_TOLERANCE_C
+        return _near(active_setpoint(state), clamp_setpoint(state, float(params["temperature_c"])))
+    if action_id == "set_zone_temperature":
+        return _near(state.zone_setpoints_c.get(params["zone"]), float(params["temperature_c"]))
     if action_id == "set_fan_mode":
         return base_fan_mode(state.fan_mode) == params["fan_mode"]
     return all(state.enabled_zones.get(zone) == params["enabled"] for zone in params["zones"])
@@ -103,6 +131,10 @@ def _applied(action_id: str, params: dict, state: DeviceState) -> dict:
         return {"setpoint_c": clamp_setpoint(state, float(params["temperature_c"]))}
     if action_id == "set_fan_mode":
         return {"fan_mode": params["fan_mode"]}
+    if action_id == "set_zone_temperature":
+        # No range check here: an earlier action in the same run can move the range.
+        _check_zone_known(params["zone"], state)
+        return {"zone": params["zone"], "setpoint_c": float(params["temperature_c"])}
     check_zones(list(params["zones"]), state)
     enabled = bool(params["enabled"])
     return {"zones": {zone: enabled for zone in params["zones"] if state.enabled_zones[zone] != enabled}}
@@ -115,6 +147,9 @@ def _saved(action_id: str, applied: dict, state: DeviceState) -> dict:
         return {"cool_setpoint_c": state.cool_setpoint_c, "heat_setpoint_c": state.heat_setpoint_c}
     if action_id == "set_fan_mode":
         return {"fan_mode": state.fan_mode}
+    if action_id == "set_zone_temperature":
+        cool, heat = state.zone_cool_heat_c[applied["zone"]]
+        return {"zone": applied["zone"], "cool_setpoint_c": cool, "heat_setpoint_c": heat}
     return {"zones": {zone: state.enabled_zones[zone] for zone in applied["zones"]}}
 
 
@@ -149,10 +184,24 @@ def _plan_power(applied: dict, saved: dict, current: DeviceState) -> RestorePlan
     return _single(plan, "power", owner_changed, command, current)
 
 
+def _saved_for_mode(saved: dict, current: DeviceState) -> float:
+    """The saved setpoint for the unit's mode now, which may differ from its mode at save time."""
+    return saved["heat_setpoint_c"] if current.mode.upper() == HEAT else saved["cool_setpoint_c"]
+
+
 def _plan_setpoint(applied: dict, saved: dict, current: DeviceState) -> RestorePlan:
-    owner_changed = abs(active_setpoint(current) - applied["setpoint_c"]) > SETPOINT_TOLERANCE_C
-    target = saved["heat_setpoint_c"] if current.mode.upper() == "HEAT" else saved["cool_setpoint_c"]
-    return _single(RestorePlan(), "setpoint", owner_changed, ("set_temperature", {"temperature_c": target}), current)
+    owner_changed = not _near(active_setpoint(current), applied["setpoint_c"])
+    command: Command = ("set_temperature", {"temperature_c": _saved_for_mode(saved, current)})
+    return _single(RestorePlan(), "setpoint", owner_changed, command, current)
+
+
+def _plan_zone_setpoint(applied: dict, saved: dict, current: DeviceState) -> RestorePlan:
+    """The restore command goes through the same range check as the action, so a saved value
+    the unit would now clamp fails with the range message."""
+    zone = applied["zone"]
+    owner_changed = not _near(current.zone_setpoints_c.get(zone), applied["setpoint_c"])
+    command: Command = ("set_zone_temperature", {"zone": zone, "temperature_c": _saved_for_mode(saved, current)})
+    return _single(RestorePlan(), f"zone_temp:{zone}", owner_changed, command, current)
 
 
 def _plan_fan(applied: dict, saved: dict, current: DeviceState) -> RestorePlan:
@@ -187,6 +236,8 @@ def plan_restore(snapshot: dict, current: DeviceState) -> RestorePlan:
             return _plan_fan(applied, saved, current)
         if action_id == "set_zones":
             return _plan_zones(applied, saved, current)
+        if action_id == "set_zone_temperature":
+            return _plan_zone_setpoint(applied, saved, current)
     except (KeyError, TypeError, AttributeError) as err:
         raise DeviceError(f"malformed snapshot: {type(err).__name__} {err}") from err
     raise DeviceError(f"malformed snapshot: unknown action {action_id!r}")

@@ -20,6 +20,16 @@
     },
     "updated_at": "2026-11-05T04:00:00+00:00",
     "setpoint_min_c": 16.0,
-    "setpoint_max_c": 30.0
+    "setpoint_max_c": 30.0,
+    "zone_setpoints_c": {
+      "Family": 23.0,
+      "Master": 23.0,
+      "Kids": 23.0
+    },
+    "zone_ranges_c": {
+      "Family": [21.0, 25.0],
+      "Master": [21.0, 25.0],
+      "Kids": [21.0, 25.0]
+    }
   }
 }

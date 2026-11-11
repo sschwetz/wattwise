@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from actron_neo_api import ActronAirAPI, ActronAirAPIError, ActronAirAuthError, ActronAirStatus
+from actron_neo_api import ActronAirAPI, ActronAirAPIError, ActronAirAuthError, ActronAirStatus, ActronAirZone
 from actron_neo_api.const import AC_MODE_OFF
 from actron_neo_api.rt import RealtimeConnectionEvent, RealtimeConnectionState
 
@@ -31,6 +31,7 @@ from actron_neo_actor.device_snapshot import (
     DeviceError,
     RestoreResult,
     check_action,
+    check_zone_range,
     check_zones,
     plan_restore,
 )
@@ -81,21 +82,35 @@ class _Push:
         return self.started and self.connected and not self.stopped
 
 
+def _zone(status: ActronAirStatus, title: str) -> ActronAirZone:
+    index = {t: i for i, t in titled_zones(status)}
+    return status.remote_zone_info[index[title]]
+
+
 async def _switch_zones(status: ActronAirStatus, params: dict, state: DeviceState) -> bool:
     """Command only the zones that differ. False when every zone is already as asked."""
     names, enabled = list(params["zones"]), bool(params["enabled"])
     check_zones(names, state)
-    index = {title: i for i, title in titled_zones(status)}
     differ = [name for name in names if state.enabled_zones[name] != enabled]
     for name in differ:
-        await status.remote_zone_info[index[name]].enable(enabled)
+        await _zone(status, name).enable(enabled)
     return bool(differ)
+
+
+async def _set_zone_temperature(status: ActronAirStatus, params: dict, state: DeviceState) -> bool:
+    """Check the range first: the library clamps an out-of-range value and sends it."""
+    title, value = str(params["zone"]), float(params["temperature_c"])
+    check_zone_range(title, value, state)
+    await _zone(status, title).set_temperature(value)
+    return True
 
 
 async def _dispatch(status: ActronAirStatus, action_id: str, params: dict, state: DeviceState) -> bool:
     """Send the command. False when nothing needed sending."""
     if action_id == "set_zones":
         return await _switch_zones(status, params, state)
+    if action_id == "set_zone_temperature":
+        return await _set_zone_temperature(status, params, state)
     settings = status.user_aircon_settings
     if action_id == "system_off":
         await settings.set_system_mode(AC_MODE_OFF)

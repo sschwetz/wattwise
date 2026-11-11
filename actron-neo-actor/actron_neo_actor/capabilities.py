@@ -46,6 +46,9 @@ def _actions(modes: list[str], zones: list[str], limits: tuple[float, float]) ->
     fan = {"name": "fan_mode", "label": "Fan speed", "type": "choice", "options": _options(FAN_MODES, _fan_label)}
     zone_list = {"name": "zones", "label": "Zones", "type": "multi_choice", "options": _options(zones, _as_is)}
     enabled = {"name": "enabled", "label": "Zones on", "type": "bool"}
+    zone = {"name": "zone", "label": "Zone", "type": "choice", "options": _options(zones, _as_is)}
+    # The unit-wide limits; the narrower range a zone accepts follows the main setpoint at run time.
+    zone_temperature = [zone, dict(temperature)]
     return [
         {"id": "system_off", "label": "Turn off", "restorable": True, "params": []},
         {"id": "system_on", "label": "Turn on", "restorable": True, "params": [_mode_param(modes)]},
@@ -53,6 +56,7 @@ def _actions(modes: list[str], zones: list[str], limits: tuple[float, float]) ->
         {"id": "set_temperature", "label": "Set temperature", "restorable": True, "params": [temperature]},
         {"id": "set_fan_mode", "label": "Set fan speed", "restorable": True, "params": [fan]},
         {"id": "set_zones", "label": "Switch zones", "restorable": True, "params": [zone_list, enabled]},
+        {"id": "set_zone_temperature", "label": "Set zone temperature", "restorable": True, "params": zone_temperature},
     ]
 
 

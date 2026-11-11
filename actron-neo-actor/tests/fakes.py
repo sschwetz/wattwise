@@ -76,10 +76,14 @@ def raw_state(
 
 
 def _set_path(state: dict[str, Any], dotted: str, value: Any) -> None:
+    """Set a value at a command key. A parent may index a list: "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC"."""
     *parents, leaf = dotted.split(".")
     node = state
     for key in parents:
-        node = node.setdefault(key, {})
+        name, _, index = key.partition("[")
+        node = node.setdefault(name, {})
+        if index:
+            node = node[int(index.rstrip("]"))]
     node[leaf] = value
 
 
