@@ -9,5 +9,6 @@
   "message": null,
   "attempts": 0,
   "parent_run_id": null,
-  "snapshot": {"is_on": true, "mode": "COOL"}
+  "snapshot": {"is_on": true, "mode": "COOL"},
+  "steps": null
 }

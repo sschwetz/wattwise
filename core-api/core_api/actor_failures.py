@@ -1,6 +1,6 @@
 """The current actor failures at a site, for the Dashboard tile and the watchdog job.
 
-A failure is current while its cause holds: a failed action run until a later
+A failure is current while its cause holds: a failed or partial action run until a later
 run of the same schedule ends ok, skipped or overridden, and a failed restore
 until a later run ends ok or overridden (a skip leaves the unit as it was); a held-off unit until
 its restore finishes; a quiet actor until it reports again; a lost sign-in
@@ -31,6 +31,7 @@ SILENT_AFTER = datetime.timedelta(minutes=5)
 # conditions-only restore whose condition never holds, both restore a day after the trigger.
 RESTORE_CAP = datetime.timedelta(hours=24)
 _CLEARS_ANY = (RunOutcome.OK, RunOutcome.OVERRIDDEN)
+_FAILED_OUTCOMES = (RunOutcome.FAILED, RunOutcome.PARTIAL)
 
 
 @dataclass(frozen=True)
@@ -114,7 +115,7 @@ def _failed_runs(db: Session, instance: ActorInstance) -> list[ActorFailure]:
         .where(
             ActorSchedule.instance_id == instance.id,
             ActorRun.kind.in_((RunKind.ACTION, RunKind.RESTORE)),
-            ActorRun.outcome == RunOutcome.FAILED,
+            ActorRun.outcome.in_(_FAILED_OUTCOMES),
             ~cleared,
         )
         .order_by(ActorRun.trigger_at, ActorRun.id)
@@ -124,7 +125,10 @@ def _failed_runs(db: Session, instance: ActorInstance) -> list[ActorFailure]:
 
 
 def _run_failed(instance: ActorInstance, run: ActorRun, schedule: ActorSchedule) -> ActorFailure:
-    what = "The restore failed" if run.kind == RunKind.RESTORE else "The action failed"
+    if run.kind == RunKind.RESTORE:
+        what = "The restore failed"
+    else:
+        what = "The action partly failed" if run.outcome == RunOutcome.PARTIAL else "The action failed"
     message = f"{what}: {run.message}" if run.message else what
     since = as_utc(run.finished_at or run.trigger_at)
     return ActorFailure("run_failed", instance.id, schedule.id, schedule.name, message, since)

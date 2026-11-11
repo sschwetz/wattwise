@@ -321,3 +321,60 @@ def test_override_keeps_snapshot_and_attempts(http, db, inst):
     assert r.status_code == 200
     body = r.json()
     assert (body["outcome"], body["attempts"], body["snapshot"]) == ("overridden", 2, {"mode": "COOL"})
+
+
+STEPS = [
+    {"index": 0, "action_id": "set_mode", "params": {"mode": "off"}, "outcome": "ok", "message": None, "attempts": 1},
+    {"index": 1, "action_id": "set_fan", "params": {}, "outcome": "failed", "message": "no reply", "attempts": 3},
+]
+
+
+def _finish_partial(http, inst, s, **extra):
+    run = _create(http, inst, s).json()
+    path = _url(inst, f"/runs/{run['id']}")
+    http.patch(path, json={"outcome": "running"}, headers=HEADERS)
+    return path, http.patch(path, json={"outcome": "partial", "message": "fan failed", **extra}, headers=HEADERS)
+
+
+def test_partial_run_is_unfinished_until_restored(http, db, inst):
+    s = _schedule(db, inst)
+    _, done = _finish_partial(http, inst, s)
+    assert done.json()["outcome"] == "partial"
+    listed = http.get(_url(inst), params={"unfinished": "true"}, headers=HEADERS).json()
+    assert [x["id"] for x in listed] == [done.json()["id"]]
+    rest = _create(http, inst, s, kind="restore", parent_run_id=done.json()["id"]).json()
+    http.patch(_url(inst, f"/runs/{rest['id']}"), json={"outcome": "ok"}, headers=HEADERS)
+    assert http.get(_url(inst), params={"unfinished": "true"}, headers=HEADERS).json() == []
+
+
+def test_partial_run_emails_when_notify_email(http, db, inst, user, fake_email_sender):
+    _finish_partial(http, inst, _schedule(db, inst, notify=True))
+    assert len(fake_email_sender.sent) == 1
+    assert fake_email_sender.sent[0][0] == user.email
+
+
+def test_run_update_stores_steps(http, db, inst):
+    _, done = _finish_partial(http, inst, _schedule(db, inst), steps=STEPS)
+    assert done.json()["steps"] == STEPS
+    db.expire_all()
+    assert db.get(ActorRun, done.json()["id"]).steps == STEPS
+
+
+def test_run_update_rejects_bad_step(http, db, inst):
+    run = _create(http, inst, _schedule(db, inst)).json()
+    bad = [{**STEPS[0], "outcome": "skipped"}]
+    r = http.patch(_url(inst, f"/runs/{run['id']}"), json={"outcome": "failed", "steps": bad}, headers=HEADERS)
+    assert r.status_code == 422
+
+
+def test_partial_cannot_return_to_pending(http, db, inst):
+    path, _ = _finish_partial(http, inst, _schedule(db, inst))
+    r = http.patch(path, json={"outcome": "pending"}, headers=HEADERS)
+    assert (r.status_code, r.json()["code"]) == (409, "run_finished")
+
+
+@pytest.mark.parametrize("outcome", ["ok", "failed", "overridden"])
+def test_partial_run_is_never_changed(http, db, inst, outcome):
+    path, _ = _finish_partial(http, inst, _schedule(db, inst))
+    r = http.patch(path, json={"outcome": outcome}, headers=HEADERS)
+    assert (r.status_code, r.json()["code"]) == (409, "run_finished")

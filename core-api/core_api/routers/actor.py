@@ -25,7 +25,7 @@ router = APIRouter(prefix="/actor", tags=["actor"])
 
 # A run with one of these outcomes is finished. The one change still allowed is
 # an ok action run becoming overridden (see _is_override).
-_TERMINAL = {RunOutcome.OK, RunOutcome.SKIPPED, RunOutcome.FAILED, RunOutcome.OVERRIDDEN}
+_TERMINAL = {RunOutcome.OK, RunOutcome.PARTIAL, RunOutcome.SKIPPED, RunOutcome.FAILED, RunOutcome.OVERRIDDEN}
 
 
 class ActorInstanceOut(BaseModel):
@@ -273,7 +273,7 @@ def update_actor_run(
     if payload.outcome == RunOutcome.PENDING:
         raise AppError(422, "invalid_outcome", "A run cannot return to pending")
     _transition_run(db, run, payload, datetime.datetime.now(datetime.UTC))
-    if payload.outcome == RunOutcome.FAILED:
+    if payload.outcome in (RunOutcome.FAILED, RunOutcome.PARTIAL):
         _email_failure(db, run, email_sender)
     return run
 
@@ -308,10 +308,12 @@ def _transition_run(db: Session, run: ActorRun, payload: RunUpdate, now: datetim
     """Apply the update in one conditional UPDATE so a concurrent caller cannot
     claim twice or rewrite a finished run. Zero matched rows means it lost."""
     overriding = _is_override(run, payload.outcome)
-    # An override keeps the snapshot and attempts of the action it overrides.
-    fields = ("message",) if overriding else ("message", "attempts", "snapshot")
+    # An override keeps the snapshot, attempts and steps of the action it overrides.
+    fields = ("message",) if overriding else ("message", "attempts", "snapshot", "steps")
     values: dict = {"outcome": payload.outcome}
     values.update({f: getattr(payload, f) for f in fields if f in payload.model_fields_set})
+    if values.get("steps") is not None:
+        values["steps"] = [step.model_dump() for step in payload.steps or []]
     allowed: tuple[RunOutcome, ...]
     if payload.outcome == RunOutcome.RUNNING:
         values["started_at"] = now
@@ -349,8 +351,9 @@ def _email_failure(db: Session, run: ActorRun, email_sender: EmailSender) -> Non
     if site is None or owner is None:
         return
     when = site_local_time(run.finished_at or run.trigger_at, site)
+    verb = "partly failed" if run.outcome == RunOutcome.PARTIAL else "failed"
     body = (
-        f'The schedule "{schedule.name}" failed at {when} for the site "{site.name}".\n\n'
+        f'The schedule "{schedule.name}" {verb} at {when} for the site "{site.name}".\n\n'
         f"What went wrong: {run.message or 'no details were reported'}\n"
     )
     try_send_email(email_sender, owner.email, f'Schedule failed: {schedule.name}', body, "actor run failure")

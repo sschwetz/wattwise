@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, aliased
 
 from core_api.models.actors import ActorRun, ActorSchedule, RunKind, RunOutcome
 
-_OPEN_ACTION_OUTCOMES = (RunOutcome.PENDING, RunOutcome.RUNNING, RunOutcome.OK)
+_OPEN_ACTION_OUTCOMES = (RunOutcome.PENDING, RunOutcome.RUNNING, RunOutcome.OK, RunOutcome.PARTIAL)
 _CLOSING_RESTORE_OUTCOMES = (RunOutcome.OK, RunOutcome.SKIPPED, RunOutcome.FAILED)
 
 
@@ -17,7 +17,7 @@ def _restore_enabled(spec: object) -> bool:
 
 def unfinished_action_runs(db: Session, instance_id: int) -> list[ActorRun]:
     """Action runs on this instance that still owe a restore: outcome pending,
-    running or ok, with no restore child that is ok, skipped or failed. Runs of
+    running, ok or partial, with no restore child that is ok, skipped or failed. Runs of
     a schedule with restore disabled never get a restore, so they are left out."""
     restore = aliased(ActorRun)
     closed = exists().where(

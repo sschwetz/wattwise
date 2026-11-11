@@ -649,3 +649,17 @@ def test_patch_actions_refused_while_held_off(http, db, site):
     sched, _ = _held_schedule(http, db, site)
     r = http.patch(f"{_base(site)}/schedules/{sched.id}", json={"actions": [ACTION, {"id": "fan_only", "params": {}}]})
     assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
+
+
+def test_partial_run_blocks_delete_with_unit_held_off(http, db, site):
+    inst = _instance(db, site)
+    sched = _db_schedule(db, inst)
+    run = _open_run(db, sched)
+    run.outcome = RunOutcome.PARTIAL
+    run.steps = [{"index": 0, "action_id": "a", "params": {}, "outcome": "failed", "message": None, "attempts": 1}]
+    db.commit()
+    for path in (f"/schedules/{sched.id}", f"/instances/{inst.id}"):
+        r = http.delete(f"{_base(site)}{path}")
+        assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
+    [listed] = http.get(f"{_base(site)}/runs").json()
+    assert listed["outcome"] == "partial" and listed["steps"] == run.steps

@@ -181,11 +181,23 @@ class RunCreate(_Strict):
     snapshot: dict | None = None
 
 
+class StepResult(_Strict):
+    """What one action of a schedule did in a run."""
+
+    index: int = Field(ge=0)
+    action_id: str
+    params: dict
+    outcome: Literal["ok", "failed"]
+    message: str | None = None
+    attempts: int = Field(ge=0)
+
+
 class RunUpdate(_Strict):
     outcome: RunOutcome
     message: str | None = None
     attempts: int | None = Field(default=None, ge=0)
     snapshot: dict | None = None
+    steps: list[StepResult] | None = None
 
 
 class RunOut(BaseModel):
@@ -202,6 +214,7 @@ class RunOut(BaseModel):
     attempts: int
     parent_run_id: int | None
     snapshot: dict | None
+    steps: list[dict] | None
 
 
 # Owner-facing API (web app)

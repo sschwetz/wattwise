@@ -290,3 +290,12 @@ def test_next_local_time_on_the_dst_end_day_takes_the_first_pass():
     assert first == datetime.datetime(2026, 4, 4, 15, 30, tzinfo=UTC)  # 02:30 AEDT
     second = next_local_time(first + datetime.timedelta(minutes=1), "02:30", tz)
     assert second == datetime.datetime(2026, 4, 4, 16, 30, tzinfo=UTC)  # 02:30 AEST, the repeated hour
+
+
+def test_partial_run_shows_in_failures_until_later_ok(db, site):
+    schedule = make_schedule(db, make_instance(db, site))
+    make_run(db, schedule, NOW - datetime.timedelta(hours=2), RunOutcome.PARTIAL)
+    [failure] = [f for f in current_failures(db, site.id, NOW) if f.kind == "run_failed"]
+    assert failure.message == "The action partly failed: unit did not answer"
+    make_run(db, schedule, NOW - datetime.timedelta(hours=1), RunOutcome.OK, kind=RunKind.TEST)
+    assert "run_failed" not in kinds(db, site)

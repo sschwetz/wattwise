@@ -9,5 +9,6 @@
   "message": "restored power",
   "attempts": 1,
   "parent_run_id": 12,
-  "snapshot": null
+  "snapshot": null,
+  "steps": null
 }
