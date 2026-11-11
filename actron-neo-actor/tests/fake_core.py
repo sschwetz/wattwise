@@ -41,7 +41,7 @@ class FakeCore:
 
     def add_run(self, **fields: object) -> Run:
         base = {"started_at": None, "finished_at": None, "message": None, "attempts": 0, "parent_run_id": None,
-                "snapshot": None, "outcome": "pending"}
+                "snapshot": None, "steps": None, "outcome": "pending"}
         run = Run(id=self._next_id, **{**base, **fields})  # type: ignore[arg-type]
         self._next_id += 1
         self.runs[run.id] = run
@@ -113,6 +113,7 @@ class FakeCore:
         message: str | None = None,
         attempts: int | None = None,
         snapshot: dict | None = None,
+        steps: list[dict] | None = None,
     ) -> Run:
         self._enter("update_run", instance_id)
         self.updates.append((run_id, outcome, snapshot))
@@ -123,7 +124,7 @@ class FakeCore:
         if outcome == "running" and run.outcome != "pending":
             raise CoreApiConflict("Failed to update run: 409", "run_not_pending")
         changes: dict = {"outcome": outcome}
-        given = {"message": message, "attempts": attempts, "snapshot": snapshot}
+        given = {"message": message, "attempts": attempts, "snapshot": snapshot, "steps": steps}
         changes.update({k: v for k, v in given.items() if v is not None})
         if outcome == "running":
             changes["started_at"] = self.clock()

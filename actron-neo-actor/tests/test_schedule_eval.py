@@ -45,7 +45,7 @@ def make_schedule(trigger: Trigger, *, created_at=None, enabled=True, rest=None)
         created_at=created_at or utc(2026, 1, 1),
         trigger=trigger,
         conditions=[],
-        action=ActionSpec("turn_on"),
+        actions=[ActionSpec("turn_on")],
         restore=rest or restore(),
         retry=RetrySpec(3, 60, 30),
     )

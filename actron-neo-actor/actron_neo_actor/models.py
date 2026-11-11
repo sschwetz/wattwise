@@ -99,6 +99,12 @@ class ActionSpec:
         return cls(id=data["id"], params=dict(data.get("params") or {}))
 
 
+def _parse_actions(data: dict) -> list[ActionSpec]:
+    """`actions` when present, else the single legacy `action` as a one-item list."""
+    raw = data["actions"] if "actions" in data else [data["action"]]
+    return [ActionSpec.from_json(a) for a in raw]
+
+
 @dataclass(frozen=True)
 class RestoreSpec:
     enabled: bool
@@ -141,9 +147,14 @@ class Schedule:
     created_at: datetime.datetime
     trigger: Trigger
     conditions: list[Condition]
-    action: ActionSpec
+    actions: list[ActionSpec]
     restore: RestoreSpec
     retry: RetrySpec
+
+    @property
+    def action(self) -> ActionSpec:
+        """The first action. Callers that run one action use this until they run the whole list."""
+        return self.actions[0]
 
     @classmethod
     def from_json(cls, data: dict, instance_id: int) -> Schedule:
@@ -157,7 +168,7 @@ class Schedule:
             created_at=parse_utc(data["created_at"]),
             trigger=Trigger.from_json(data["trigger"]),
             conditions=[Condition.from_json(c) for c in data["conditions"]],
-            action=ActionSpec.from_json(data["action"]),
+            actions=_parse_actions(data),
             restore=RestoreSpec.from_json(data["restore"]),
             retry=RetrySpec.from_json(data["retry"]),
         )
@@ -209,6 +220,7 @@ class Run:
     attempts: int
     parent_run_id: int | None
     snapshot: dict | None
+    steps: list[dict] | None = None
 
     @classmethod
     def from_json(cls, data: dict) -> Run:
@@ -224,4 +236,5 @@ class Run:
             attempts=data["attempts"],
             parent_run_id=data["parent_run_id"],
             snapshot=data["snapshot"],
+            steps=data.get("steps"),
         )

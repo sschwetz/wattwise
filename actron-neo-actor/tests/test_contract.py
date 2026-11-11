@@ -108,3 +108,32 @@ def test_readings_request_has_the_contract_shape():
     route = respx.put(f"{BASE}/instances/1/readings").respond(204)
     client().put_readings(1, state_from_status(status(), START).to_payload())
     assert_same_shape(json.loads(route.calls.last.request.content), fixture("readings_request.json"))
+
+
+@respx.mock
+def test_schedule_reads_actions_list():
+    body = fixture("schedules_list_entry.json")
+    body["actions"].append({"id": "set_mode", "params": {"mode": "COOL"}})
+    respx.get(f"{BASE}/instances/1/schedules").respond(json=[body])
+    [schedule] = client().get_schedules(1)
+    assert [a.id for a in schedule.actions] == ["set_zones", "set_mode"]
+    assert schedule.action.id == "set_zones"
+
+
+@respx.mock
+def test_schedule_falls_back_to_single_action():
+    body = fixture("schedules_list_entry.json")
+    del body["actions"]
+    respx.get(f"{BASE}/instances/1/schedules").respond(json=[body])
+    [schedule] = client().get_schedules(1)
+    assert [a.id for a in schedule.actions] == ["set_zones"]
+
+
+@respx.mock
+def test_run_parses_steps_and_old_runs_without_them():
+    step = {"index": 0, "action_id": "set_zones", "params": {}, "outcome": "ok", "message": None, "attempts": 1}
+    body = {**fixture("run_list_item.json"), "steps": [step]}
+    old = {k: v for k, v in fixture("run_list_item.json").items() if k != "steps"}
+    respx.get(f"{BASE}/instances/1/runs").respond(json=[body, old, fixture("run_created.json")])
+    with_steps, without, null = client().list_recent_runs(1, START)
+    assert (with_steps.steps, without.steps, null.steps) == ([step], None, None)

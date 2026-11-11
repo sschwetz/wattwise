@@ -54,9 +54,10 @@ class AsyncCore:
         message: str | None = None,
         attempts: int | None = None,
         snapshot: dict | None = None,
+        steps: list[dict] | None = None,
     ) -> Run:
         return await asyncio.to_thread(
-            self._client.update_run, instance_id, run_id, outcome, message, attempts, snapshot
+            self._client.update_run, instance_id, run_id, outcome, message, attempts, snapshot, steps
         )
 
     async def list_unfinished_runs(self, instance_id: int) -> list[Run]:

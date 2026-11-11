@@ -70,9 +70,10 @@ async def update(
     *,
     attempts: int | None = None,
     snapshot: dict | None = None,
+    steps: list[dict] | None = None,
 ) -> Run | None:
     try:
-        return await env.core.update_run(env.instance_id, run.id, outcome, message, attempts, snapshot)
+        return await env.core.update_run(env.instance_id, run.id, outcome, message, attempts, snapshot, steps)
     except CoreApiConflict:
         return None
 

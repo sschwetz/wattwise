@@ -79,7 +79,7 @@ def schedule(
         created_at=CREATED,
         trigger=trigger or Trigger("window_start", window_id=WINDOW_ID),
         conditions=conditions or [],
-        action=action or ActionSpec("system_off"),
+        actions=[action or ActionSpec("system_off")],
         restore=restore or restore_spec(),
         retry=retry or RetrySpec(3, 10, 5),
     )

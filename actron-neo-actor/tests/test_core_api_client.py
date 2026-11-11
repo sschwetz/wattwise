@@ -205,6 +205,16 @@ def test_update_run_sends_only_given_fields(client):
 
 
 @respx.mock
+def test_update_run_sends_steps_only_when_given(client):
+    route = respx.patch(f"{BASE}/api/v1/actor/instances/1/runs/7").respond(json=RUN_JSON)
+    client.update_run(1, 7, "ok")
+    assert "steps" not in json.loads(route.calls.last.request.content)
+    steps = [{"index": 0, "action_id": "set_mode", "params": {}, "outcome": "ok", "message": None, "attempts": 1}]
+    client.update_run(1, 7, "partial", steps=steps)
+    assert json.loads(route.calls.last.request.content) == {"outcome": "partial", "steps": steps}
+
+
+@respx.mock
 def test_update_run_409_raises_conflict(client):
     respx.patch(f"{BASE}/api/v1/actor/instances/1/runs/7").respond(409, json={"code": "run_finished", "message": "m"})
     with pytest.raises(CoreApiConflict) as caught:
