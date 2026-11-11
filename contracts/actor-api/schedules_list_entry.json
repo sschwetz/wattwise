@@ -6,6 +6,9 @@
   "conditions": [
     {"reading": "outdoor_temp_c", "op": "gt", "value": 30.0, "target": null, "enabled": true}
   ],
+  "actions": [
+    {"id": "set_zones", "params": {"zones": ["Family", "Kids"], "enabled": false}}
+  ],
   "action": {"id": "set_zones", "params": {"zones": ["Family", "Kids"], "enabled": false}},
   "restore": {
     "enabled": true,

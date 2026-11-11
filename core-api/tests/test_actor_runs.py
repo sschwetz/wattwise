@@ -36,7 +36,7 @@ def _instance(db, site) -> ActorInstance:
 
 def _schedule(db, instance, name="Cool down", notify=False) -> ActorSchedule:
     s = ActorSchedule(instance_id=instance.id, name=name, enabled=True, trigger={"type": "time", "time": "10:00"},
-                      conditions=[], action={"id": "set_mode"}, restore={"enabled": True}, retry={},
+                      conditions=[], actions=[{"id": "set_mode"}], restore={"enabled": True}, retry={},
                       notify_email=notify)
     db.add(s)
     db.commit()

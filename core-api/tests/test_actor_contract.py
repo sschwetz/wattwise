@@ -78,7 +78,7 @@ def _url(instance: ActorInstance, suffix: str) -> str:
 
 
 def _schedule_id(http, site, inst) -> int:
-    body = {k: v for k, v in fixture("schedules_list_entry.json").items() if k not in ("id", "created_at")}
+    body = {k: v for k, v in fixture("schedules_list_entry.json").items() if k not in ("id", "created_at", "action")}
     r = http.post(f"/api/v1/sites/{site.id}/actors/schedules", json={**body, "instance_id": inst.id})
     assert r.status_code == 201, r.text
     return r.json()["id"]

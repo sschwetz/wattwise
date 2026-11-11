@@ -31,7 +31,7 @@ def make_instance(db, site, *, last_seen_at=NOW, **kw) -> ActorInstance:
 def make_schedule(db, instance, *, restore=None, trigger=None, give_up=15, notify=False) -> ActorSchedule:
     schedule = ActorSchedule(
         instance_id=instance.id, name="Peak off", trigger=trigger or {"type": "time", "time": "10:00"},
-        conditions=[], action=ACTION, restore=restore or {"enabled": True, "when": "after_minutes", "minutes": 60},
+        conditions=[], actions=[ACTION], restore=restore or {"enabled": True, "when": "after_minutes", "minutes": 60},
         retry={"give_up_minutes": give_up}, notify_email=notify,
     )
     db.add(schedule)

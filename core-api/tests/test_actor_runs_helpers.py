@@ -15,7 +15,7 @@ def schedule(db, site) -> ActorSchedule:
     instance = ActorInstance(site_id=site.id, provider="actron_neo", config={})
     db.add(instance)
     db.flush()
-    s = ActorSchedule(instance_id=instance.id, name="s", trigger={}, conditions=[], action={}, restore={}, retry={})
+    s = ActorSchedule(instance_id=instance.id, name="s", trigger={}, conditions=[], actions=[{}], restore={}, retry={})
     db.add(s)
     db.commit()
     return s

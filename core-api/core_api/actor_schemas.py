@@ -12,6 +12,7 @@ from pydantic import (
     ConfigDict,
     Field,
     PlainSerializer,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -269,7 +270,7 @@ class ScheduleCreate(_Strict):
     enabled: bool = True
     trigger: TriggerSpec
     conditions: list[ConditionSpec] = Field(default_factory=list)
-    action: ActionSpec
+    actions: list[ActionSpec] = Field(min_length=1, max_length=8)
     restore: RestoreSpec = Field(default_factory=RestoreSpec)
     retry: RetrySpec = Field(default_factory=RetrySpec)
     notify_email: bool = False
@@ -282,7 +283,7 @@ class SchedulePatch(_Strict):
     enabled: bool | None = None
     trigger: dict | None = None
     conditions: list | None = None
-    action: dict | None = None
+    actions: list | None = None
     restore: dict | None = None
     retry: dict | None = None
     notify_email: bool | None = None
@@ -297,10 +298,16 @@ class ScheduleView(BaseModel):
     enabled: bool
     trigger: dict
     conditions: StoredConditions
-    action: dict
+    actions: list[dict]
     restore: StoredRestore
     retry: dict
     notify_email: bool
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def action(self) -> dict:
+        """The first action, kept for one release for clients that read a single action."""
+        return self.actions[0]
 
 
 class RunListItem(RunOut):

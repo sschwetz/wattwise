@@ -77,7 +77,7 @@ def test_disabled_site_403(http, db, instance, site):
 
 
 def test_disabled_instance_with_unfinished_action_run_allowed(http, db, instance, site):
-    s = ActorSchedule(instance_id=instance.id, name="s", trigger={}, conditions=[], action={}, restore={}, retry={})
+    s = ActorSchedule(instance_id=instance.id, name="s", trigger={}, conditions=[], actions=[{}], restore={}, retry={})
     db.add(s)
     db.flush()
     db.add(ActorRun(schedule_id=s.id, kind=RunKind.ACTION, outcome=RunOutcome.OK,

@@ -39,7 +39,7 @@ def _instance(db, site, provider=PROVIDER, **kw) -> ActorInstance:
 
 def _schedule(db, instance, name="s", enabled=True) -> ActorSchedule:
     s = ActorSchedule(instance_id=instance.id, name=name, enabled=enabled, trigger={"type": "time", "time": "10:00"},
-                      conditions=[], action={"id": "set_mode"}, restore={"enabled": True}, retry={})
+                      conditions=[], actions=[{"id": "set_mode"}], restore={"enabled": True}, retry={})
     db.add(s)
     db.commit()
     return s
@@ -133,6 +133,7 @@ def test_schedules_exclude_disabled_unless_unfinished_run(http, db, site):
     _open_run(db, held)
     r = http.get(f"/api/v1/actor/instances/{i.id}/schedules", headers=HEADERS)
     assert [s["id"] for s in r.json()] == [on.id, held.id]
+    assert r.json()[0]["actions"] == [{"id": "set_mode"}]
     assert r.json()[0]["action"] == {"id": "set_mode"}
 
 
@@ -221,7 +222,7 @@ def test_schedule_response_shape_is_pinned(http, db, site):
     r = http.get(f"/api/v1/actor/instances/{i.id}/schedules", headers=HEADERS)
     [body] = r.json()
     assert set(body) == {
-        "id", "name", "enabled", "trigger", "conditions", "action", "restore", "retry", "notify_email", "created_at",
+        "id", "name", "enabled", "trigger", "conditions", "actions", "action", "restore", "retry", "notify_email", "created_at",
     }
     created = datetime.datetime.fromisoformat(body["created_at"])
     assert created.utcoffset() == datetime.timedelta(0)
@@ -273,3 +274,13 @@ def test_invalid_discovered_config_does_not_echo_the_sign_in_code(http, db, site
     assert r.status_code == 422
     assert SIGN_IN_CODE not in r.text and "example.com" not in r.text
     assert SIGN_IN_CODE not in caplog.text and "example.com" not in caplog.text
+
+
+def test_actor_schedules_return_actions_and_first_action(http, db, site):
+    i = _instance(db, site)
+    s = _schedule(db, i)
+    s.actions = [{"id": "set_mode", "params": {"mode": "off"}}, {"id": "fan_only", "params": {}}]
+    db.commit()
+    [entry] = http.get(f"/api/v1/actor/instances/{i.id}/schedules", headers=HEADERS).json()
+    assert entry["actions"] == s.actions
+    assert entry["action"] == s.actions[0]

@@ -77,14 +77,14 @@ def _window(db, site) -> DemandWindow:
 
 def _body(instance, **kw) -> dict:
     body = {"instance_id": instance.id, "name": "Peak off", "trigger": {"type": "time", "time": "10:00"},
-            "action": ACTION, "restore": {"when": "after_minutes", "minutes": 60}}
+            "actions": [ACTION], "restore": {"when": "after_minutes", "minutes": 60}}
     body.update(kw)
     return body
 
 
 def _db_schedule(db, instance, name="s", enabled=True) -> ActorSchedule:
     s = ActorSchedule(instance_id=instance.id, name=name, enabled=enabled, trigger={"type": "time", "time": "10:00"},
-                      conditions=[], action=ACTION, restore={"enabled": True, "when": "after_minutes", "minutes": 60},
+                      conditions=[], actions=[ACTION], restore={"enabled": True, "when": "after_minutes", "minutes": 60},
                       retry={})
     db.add(s)
     db.commit()
@@ -142,8 +142,8 @@ def test_schedule_validated_against_capabilities(http, db, site):
     ok = http.post(f"{_base(site)}/schedules", json=_body(inst))
     assert ok.status_code == 201
     stored = db.get(ActorSchedule, ok.json()["id"])
-    assert stored.action == ACTION and stored.restore["when"] == "after_minutes"
-    bad = http.post(f"{_base(site)}/schedules", json=_body(inst, action={"id": "nope", "params": {}}))
+    assert stored.actions == [ACTION] and stored.restore["when"] == "after_minutes"
+    bad = http.post(f"{_base(site)}/schedules", json=_body(inst, actions=[{"id": "nope", "params": {}}]))
     assert (bad.status_code, bad.json()["code"]) == (422, "invalid_schedule")
     bad_cond = http.post(f"{_base(site)}/schedules", json=_body(
         inst, restore={"when": "after_minutes", "minutes": 60,
@@ -180,10 +180,10 @@ def test_schedule_rejects_foreign_window_id(http, db, site, user):
 def test_patch_schedule_revalidates(http, db, site):
     inst = _instance(db, site)
     sid = http.post(f"{_base(site)}/schedules", json=_body(inst)).json()["id"]
-    r = http.patch(f"{_base(site)}/schedules/{sid}", json={"action": {"id": "nope", "params": {}}})
+    r = http.patch(f"{_base(site)}/schedules/{sid}", json={"actions": [{"id": "nope", "params": {}}]})
     assert r.status_code == 422
     r = http.patch(f"{_base(site)}/schedules/{sid}", json={"name": "Renamed", "notify_email": True})
-    assert r.status_code == 200 and r.json()["name"] == "Renamed" and r.json()["action"] == ACTION
+    assert r.status_code == 200 and r.json()["name"] == "Renamed" and r.json()["actions"] == [ACTION] and r.json()["action"] == ACTION
 
 
 OFF = {"reading": "mystery", "op": "gt", "value": 1, "enabled": False}
@@ -402,7 +402,7 @@ def _held_schedule(http, db, site):
 
 HELD_CHANGES = [
     {"trigger": {"type": "time", "time": "11:00"}},
-    {"action": {"id": "fan_only", "params": {}}},
+    {"actions": [{"id": "fan_only", "params": {}}]},
     {"restore": {"when": "after_minutes", "minutes": 30}},
 ]
 
@@ -436,7 +436,7 @@ def test_patch_other_fields_accepted_while_held_off(http, db, site, change):
 
 def test_full_body_patch_with_unchanged_spec_accepted_while_held_off(http, db, site):
     sched, body = _held_schedule(http, db, site)
-    full = {k: v for k, v in body.items() if k not in ("id", "instance_id")}
+    full = {k: v for k, v in body.items() if k not in ("id", "instance_id", "action")}
     full["name"] = "Renamed"
     r = http.patch(f"{_base(site)}/schedules/{sched.id}", json=full)
     assert r.status_code == 200 and r.json()["name"] == "Renamed"
@@ -602,3 +602,50 @@ def test_instance_view_cannot_be_built_from_the_row_directly(db, site):
     inst = _instance(db, site, auth_state=PENDING)
     with pytest.raises(ValidationError):
         ActorInstanceView.model_validate(inst)
+
+
+def test_create_schedule_with_two_actions(http, db, site):
+    inst = _instance(db, site, caps=CAPS_TWO)
+    second = {"id": "fan_only", "params": {}}
+    r = http.post(f"{_base(site)}/schedules", json=_body(inst, actions=[ACTION, second]))
+    assert r.status_code == 201
+    assert r.json()["actions"] == [ACTION, second]
+    assert r.json()["action"] == ACTION
+    assert db.get(ActorSchedule, r.json()["id"]).actions == [ACTION, second]
+
+
+@pytest.mark.parametrize("count", [0, 9])
+def test_create_schedule_rejects_zero_and_nine_actions(http, db, site, count):
+    inst = _instance(db, site)
+    r = http.post(f"{_base(site)}/schedules", json=_body(inst, actions=[ACTION] * count))
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
+
+
+def test_create_schedule_rejects_one_invalid_action_of_three(http, db, site):
+    inst = _instance(db, site, caps=CAPS_TWO)
+    actions = [ACTION, {"id": "fan_only", "params": {}}, {"id": "nope", "params": {}}]
+    r = http.post(f"{_base(site)}/schedules", json=_body(inst, actions=actions))
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
+    assert "actions[2]" in r.json()["message"]
+    actions[1] = {"id": "fan_only", "params": {"speed": 1}}
+    actions[2] = ACTION
+    r = http.post(f"{_base(site)}/schedules", json=_body(inst, actions=actions))
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
+    assert "actions[1]" in r.json()["message"]
+
+
+def test_patch_actions_replaces_whole_list(http, db, site):
+    inst = _instance(db, site, caps=CAPS_TWO)
+    two = [ACTION, {"id": "fan_only", "params": {}}]
+    sid = http.post(f"{_base(site)}/schedules", json=_body(inst, actions=two)).json()["id"]
+    only = [{"id": "fan_only", "params": {}}]
+    r = http.patch(f"{_base(site)}/schedules/{sid}", json={"actions": only})
+    assert r.status_code == 200
+    assert r.json()["actions"] == only and r.json()["action"] == only[0]
+    assert db.get(ActorSchedule, sid).actions == only
+
+
+def test_patch_actions_refused_while_held_off(http, db, site):
+    sched, _ = _held_schedule(http, db, site)
+    r = http.patch(f"{_base(site)}/schedules/{sched.id}", json={"actions": [ACTION, {"id": "fan_only", "params": {}}]})
+    assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")

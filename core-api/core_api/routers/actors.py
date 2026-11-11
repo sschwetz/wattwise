@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Body, Depends, Query, Response, status
 from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -29,10 +29,10 @@ from core_api.models.identity import Site, User
 
 router = APIRouter(prefix="/sites/{site_id}/actors", tags=["actors"])
 
-_SCHEDULE_FIELDS = ("name", "enabled", "trigger", "conditions", "action", "restore", "retry", "notify_email")
+_SCHEDULE_FIELDS = ("name", "enabled", "trigger", "conditions", "actions", "restore", "retry", "notify_email")
 # Changing one of these while the schedule holds the unit off would change how
 # or when the unit is put back, so it is refused until the restore finishes.
-_HELD_FIELDS = ("trigger", "action", "restore")
+_HELD_FIELDS = ("trigger", "actions", "restore")
 
 
 def _instance_of_site(db: Session, site: Site, instance_id: int) -> ActorInstance:
@@ -67,7 +67,7 @@ def _refuse_if_held_off(db: Session, instance_id: int, schedule_id: int | None =
 
 
 def _stored_spec(schedule: ActorSchedule) -> dict:
-    """The stored trigger, action and restore as the schema dumps them, so defaults compare equal.
+    """The stored trigger, actions and restore as the schema dumps them, so defaults compare equal.
     A stored spec the schema no longer accepts is compared as stored."""
     stored = {f: getattr(schedule, f) for f in _SCHEDULE_FIELDS}
     try:
@@ -85,7 +85,7 @@ def _refuse_held_spec_change(db: Session, schedule: ActorSchedule, parsed: Sched
         raise AppError(
             409,
             "unit_held_off",
-            "This schedule is holding the unit off. Change its trigger, action or restore after the unit is put back.",
+            "This schedule is holding the unit off. Change its trigger, actions or restore after the unit is put back.",
         )
 
 
@@ -190,8 +190,10 @@ def list_schedules(site: Site = Depends(require_site_access), db: Session = Depe
 
 @router.post("/schedules", response_model=ScheduleView, status_code=status.HTTP_201_CREATED)
 def create_schedule(
-    payload: ScheduleCreate, site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
+    body: dict = Body(...), site: Site = Depends(require_site_owner), db: Session = Depends(get_db_session)
 ):
+    # Parsed here, not by FastAPI, so a bad list length is an invalid_schedule like every other bad schedule.
+    payload = parse_schedule(body)
     instance = _instance_of_site(db, site, payload.instance_id)
     validate_schedule(db, site.id, instance, payload)
     schedule = ActorSchedule(

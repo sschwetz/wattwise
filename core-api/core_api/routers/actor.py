@@ -4,7 +4,7 @@ import datetime
 from typing import cast
 
 from fastapi import APIRouter, Depends, Header, status
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, computed_field
 from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -56,11 +56,17 @@ class ActorScheduleOut(BaseModel):
     enabled: bool
     trigger: dict
     conditions: StoredConditions
-    action: dict
+    actions: list[dict]
     restore: StoredRestore
     retry: dict
     notify_email: bool
     created_at: AwareUtc
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def action(self) -> dict:
+        """The first action, kept for one release for actors that read a single action."""
+        return self.actions[0]
 
 
 class WindowOccurrenceOut(BaseModel):

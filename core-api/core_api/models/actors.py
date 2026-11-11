@@ -23,6 +23,7 @@ class RunOutcome(str, enum.Enum):
     SKIPPED = "skipped"
     FAILED = "failed"
     OVERRIDDEN = "overridden"
+    PARTIAL = "partial"
 
 
 class ActorInstance(Base):
@@ -56,7 +57,8 @@ class ActorSchedule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     trigger: Mapped[dict] = mapped_column(JSON, nullable=False)
     conditions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    action: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # Ordered list of {id, params}, 1 to 8 entries.
+    actions: Mapped[list] = mapped_column(JSON, nullable=False)
     restore: Mapped[dict] = mapped_column(JSON, nullable=False)
     retry: Mapped[dict] = mapped_column(JSON, nullable=False)
     notify_email: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -87,5 +89,7 @@ class ActorRun(Base):
     parent_run_id: Mapped[int | None] = mapped_column(ForeignKey("actor_runs.id"), nullable=True, index=True)
     # State saved before acting.
     snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Per-action results of a multi-action run.
+    steps: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Set when the watchdog has emailed about this run.
     watchdog_notified_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -49,12 +49,21 @@ def _check_window_end_restore(schedule: ScheduleCreate) -> None:
         )
 
 
+def _check_actions(capabilities: Capabilities, schedule: ScheduleCreate) -> None:
+    """Check each action in order, naming the entry that fails."""
+    for index, action in enumerate(schedule.actions):
+        try:
+            validate_action_against(capabilities, action)
+        except AppError as exc:
+            raise AppError(exc.status_code, exc.code, f"actions[{index}]: {exc.message}") from exc
+
+
 def validate_schedule(db: Session, site_id: int, instance: ActorInstance, schedule: ScheduleCreate) -> None:
-    """Check the action, every condition and the trigger window against the instance and site."""
+    """Check every action, every condition and the trigger window against the instance and site."""
     if not instance.capabilities:
         raise AppError(422, "no_capabilities", "This actor has not declared its capabilities yet")
     capabilities = Capabilities.model_validate(instance.capabilities)
-    validate_action_against(capabilities, schedule.action)
+    _check_actions(capabilities, schedule)
     conditions = [*schedule.conditions, *schedule.restore.only_if, *schedule.restore.early_if]
     validate_conditions_against(capabilities, set(SITE_READING_IDS), conditions)
     _check_window_belongs_to_site(db, site_id, schedule)
