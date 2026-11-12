@@ -6,7 +6,7 @@ import type { ActorRun, RunOutcome } from "./types";
 function run(id: number, overrides: Partial<ActorRun> = {}): ActorRun {
   return {
     id, schedule_id: 2, kind: "action", trigger_at: "2026-11-05T03:00:00Z", started_at: null, finished_at: null,
-    outcome: "ok", message: null, attempts: 1, parent_run_id: null, snapshot: null, ...overrides,
+    outcome: "ok", message: null, attempts: 1, parent_run_id: null, snapshot: null, steps: null, ...overrides,
   };
 }
 

@@ -34,11 +34,13 @@ function canonical(value: unknown, field: string): Canonical {
   return null;
 }
 
-/** Condition rows without their `key`, which only tells React the rows apart. */
+/** Condition rows and action cards without their `key`, which only tells React them apart.
+ * The cards stay in order, so moving one counts as a change. */
 function withoutRowKeys(form: ScheduleFormState) {
   const strip = (rows: ConditionRow[]) => rows.map(({ key: _key, ...row }) => row);
   const { restore } = form;
-  return { ...form, conditions: strip(form.conditions), restore: { ...restore, onlyIf: strip(restore.onlyIf), earlyIf: strip(restore.earlyIf) } };
+  const actions = form.actions.map(({ key: _key, ...card }) => card);
+  return { ...form, actions, conditions: strip(form.conditions), restore: { ...restore, onlyIf: strip(restore.onlyIf), earlyIf: strip(restore.earlyIf) } };
 }
 
 function canonicalForm(form: ScheduleFormState): string {

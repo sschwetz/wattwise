@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { ConditionsEditor } from "./ConditionsEditor";
 import { type EditorModel, invalidProps } from "./editorModel";
-import { conditionReadings, findAction, type RestoreForm, type RestoreWhen, restoreOptions } from "./scheduleForm";
+import { allRestorable, conditionReadings, type RestoreForm, type RestoreWhen, restoreOptions } from "./scheduleForm";
 import { FieldError, Step } from "./Step";
 import { hintClass, inputClass, labelClass } from "./styles";
 
@@ -71,7 +71,7 @@ function RestoreConditions({ model }: { model: EditorModel }) {
 
 export function RestoreStep({ model }: { model: EditorModel }) {
   const change = restoreSetter(model);
-  const restorable = findAction(model.capabilities, model.form.actionId)?.restorable ?? false;
+  const restorable = allRestorable(model.form, model.capabilities);
   const enabled = restorable && model.form.restore.enabled;
   return (
     <Step number={5} title="When it ends">

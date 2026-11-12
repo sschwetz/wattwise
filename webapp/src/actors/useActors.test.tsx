@@ -42,7 +42,7 @@ function instance(auth_state: ActorInstance["auth_state"]): ActorInstance {
 
 const run: ActorRun = {
   id: 9, schedule_id: 3, kind: "test", trigger_at: "2026-11-05T00:00:00+00:00", started_at: null,
-  finished_at: null, outcome: "pending", message: null, attempts: 0, parent_run_id: null, snapshot: null,
+  finished_at: null, outcome: "pending", message: null, attempts: 0, parent_run_id: null, snapshot: null, steps: null,
 };
 
 beforeEach(() => {
@@ -82,7 +82,7 @@ describe("actor hooks", () => {
       instance_id: 1,
       name: "Evening",
       trigger: { type: "time" as const, time: "18:00", days_of_week: [0, 1] },
-      action: { id: "turn_off", params: {} },
+      actions: [{ id: "turn_off", params: {} }],
     };
     await act(async () => {
       await result.current.mutateAsync(body);
@@ -101,7 +101,7 @@ describe("actor hooks", () => {
     let caught: unknown;
     await act(async () => {
       caught = await result.current
-        .mutateAsync({ instance_id: 1, name: "x", trigger: { type: "price_above", c_per_kwh: 5 }, action: { id: "a", params: {} } })
+        .mutateAsync({ instance_id: 1, name: "x", trigger: { type: "price_above", c_per_kwh: 5 }, actions: [{ id: "a", params: {} }] })
         .catch((e: unknown) => e);
     });
     expect(caught).toBeInstanceOf(ApiError);

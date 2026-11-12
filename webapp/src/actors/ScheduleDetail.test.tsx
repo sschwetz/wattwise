@@ -19,7 +19,7 @@ const instance: ActorInstance = {
 
 const schedule: ActorSchedule = {
   id: 21, instance_id: 3, name: "Peak off", enabled: true,
-  trigger: { type: "time", time: "16:00", days_of_week: [1] }, conditions: [], action: { id: "system_off", params: {} },
+  trigger: { type: "time", time: "16:00", days_of_week: [1] }, conditions: [], actions: [{ id: "system_off", params: {} }],
   restore: { enabled: false, when: "window_end", minutes: null, time: null, only_if: [], early_if: [] },
   retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 }, notify_email: false,
 };
@@ -27,7 +27,7 @@ const schedule: ActorSchedule = {
 function run(id: number, outcome: ActorRun["outcome"]): ActorRun {
   return {
     id, schedule_id: 21, kind: "action", trigger_at: "2026-11-05T03:00:00Z", started_at: null, finished_at: null,
-    outcome, message: null, attempts: 1, parent_run_id: null, snapshot: null,
+    outcome, message: null, attempts: 1, parent_run_id: null, snapshot: null, steps: null,
   };
 }
 

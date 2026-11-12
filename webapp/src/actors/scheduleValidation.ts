@@ -2,11 +2,13 @@
 import type { Capabilities, ParamDecl } from "./types";
 import {
   conditionReadings,
+  MAX_ACTIONS,
   findAction,
   HHMM,
   isWindowTrigger,
   parseNumber,
   parseWhole,
+  type ActionForm,
   type ConditionRow,
   type FormParam,
   type FormParamValue,
@@ -57,15 +59,22 @@ function paramError(decl: ParamDecl, param: FormParam | undefined): string | nul
   return picked.length > 0 && picked.every((v) => allowed.has(v)) ? null : `Tick at least one option for ${decl.label}.`;
 }
 
-function actionErrors(form: ScheduleFormState, capabilities: Capabilities): FormErrors {
-  const action = findAction(capabilities, form.actionId);
-  if (!action) return { action: "Pick an action this device supports." };
+function cardErrors(card: ActionForm, capabilities: Capabilities): FormErrors {
+  const prefix = `actions.${card.key}`;
+  const action = findAction(capabilities, card.actionId);
+  if (!action) return { [`${prefix}.action`]: "Pick an action this device supports." };
   const errors: FormErrors = {};
   for (const decl of action.params) {
-    const message = paramError(decl, form.params[decl.name]);
-    if (message) errors[`param.${decl.name}`] = message;
+    const message = paramError(decl, card.params[decl.name]);
+    if (message) errors[`${prefix}.param.${decl.name}`] = message;
   }
   return errors;
+}
+
+function actionErrors(form: ScheduleFormState, capabilities: Capabilities): FormErrors {
+  if (form.actions.length === 0) return { actions: "Add an action." };
+  if (form.actions.length > MAX_ACTIONS) return { actions: `Use at most ${MAX_ACTIONS} actions.` };
+  return Object.assign({}, ...form.actions.map((c) => cardErrors(c, capabilities)));
 }
 
 /** True when the row's target is one the reading still offers, or the row has no target. */

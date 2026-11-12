@@ -2,7 +2,7 @@
 // core-api/core_api/actor_schemas.py (ScheduleCreate and its specs) and the
 // capability checks from actor_capabilities.py. Returns every problem found.
 import type { SchedulePayload } from "./scheduleForm";
-import type { ActionParamValue, Capabilities, ConditionSpec, ParamDecl } from "./types";
+import type { ActionParamValue, ActionSpec, Capabilities, ConditionSpec, ParamDecl } from "./types";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const SITE_READING_IDS = new Set(["outdoor_temp_c", "battery_soc_pct", "price_c_per_kwh"]);
@@ -53,18 +53,25 @@ function paramProblem(p: ParamDecl, v: ActionParamValue): string | null {
   return typeof v === "boolean" ? null : `param ${p.name}: not a bool`;
 }
 
-function actionProblems(caps: Capabilities, body: SchedulePayload): string[] {
-  const decl = caps.actions.find((a) => a.id === body.action.id);
-  if (!decl) return [`action ${body.action.id} not supported`];
-  const problems = Object.keys(body.action.params).filter((k) => !decl.params.some((p) => p.name === k)).map((k) => `action has no parameter ${k}`);
+function entryProblems(caps: Capabilities, action: ActionSpec): string[] {
+  const decl = caps.actions.find((a) => a.id === action.id);
+  if (!decl) return [`action ${action.id} not supported`];
+  const problems = Object.keys(action.params).filter((k) => !decl.params.some((p) => p.name === k)).map((k) => `action has no parameter ${k}`);
   for (const p of decl.params) {
-    if (!(p.name in body.action.params)) problems.push(`action is missing parameter ${p.name}`);
+    if (!(p.name in action.params)) problems.push(`action is missing parameter ${p.name}`);
     else {
-      const problem = paramProblem(p, body.action.params[p.name]);
+      const problem = paramProblem(p, action.params[p.name]);
       if (problem) problems.push(problem);
     }
   }
   return problems;
+}
+
+/** 1 to 8 entries, each checked against the capabilities, errors prefixed `actions[i]`. */
+function actionProblems(caps: Capabilities, body: SchedulePayload): string[] {
+  const { actions } = body;
+  if (actions.length < 1 || actions.length > 8) return [`actions: needs 1 to 8 entries, got ${actions.length}`];
+  return actions.flatMap((a, i) => entryProblems(caps, a).map((m) => `actions[${i}]: ${m}`));
 }
 
 function restoreProblems(body: SchedulePayload): string[] {

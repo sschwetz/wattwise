@@ -57,7 +57,7 @@ const saved: ActorSchedule = {
   id: 21, instance_id: 3, name: "Peak off", enabled: true,
   trigger: { type: "window_start", window_id: 11 },
   conditions: [{ reading: "outdoor_temp_c", op: "gt", value: 30, target: null }],
-  action: { id: "set_temperature", params: { temperature_c: 26 } },
+  actions: [{ id: "set_temperature", params: { temperature_c: 26 } }],
   restore: { enabled: true, when: "window_end", minutes: null, time: null, only_if: [], early_if: [] },
   retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 },
   notify_email: false,
@@ -257,7 +257,7 @@ describe("ScheduleEditor", () => {
       enabled: true,
       trigger: { type: "window_start", window_id: 11 },
       conditions: [{ reading: "outdoor_temp_c", op: "gt", value: 30, enabled: true }],
-      action: { id: "set_zones", params: { zones: ["Bed 1"], enabled: false } },
+      actions: [{ id: "set_zones", params: { zones: ["Bed 1"], enabled: false } }],
       restore: { enabled: true, when: "window_end", minutes: null, time: null, only_if: [], early_if: [] },
       retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 },
       notify_email: true,
@@ -290,7 +290,7 @@ describe("ScheduleEditor", () => {
       ...rest,
       enabled: false,
       conditions: [{ reading: "outdoor_temp_c", op: "gt", value: 30, enabled: true }],
-      action: { id: "set_temperature", params: { temperature_c: 24 } },
+      actions: [{ id: "set_temperature", params: { temperature_c: 24 } }],
     });
   });
 
@@ -444,26 +444,26 @@ describe("ScheduleEditor", () => {
 
   it("a schedule with a removed param saves without the stale key", async () => {
     const user = userEvent.setup();
-    renderDetail({ ...saved, action: { id: "set_temperature", params: { temperature_c: 26, fan_mode: "HIGH" } } });
+    renderDetail({ ...saved, actions: [{ id: "set_temperature", params: { temperature_c: 26, fan_mode: "HIGH" } }] });
     await ready();
     await user.click(screen.getByRole("button", { name: "Save schedule" }));
     expect(await screen.findByText(/Saved/)).toBeInTheDocument();
-    expect(body("PATCH").action).toEqual({ id: "set_temperature", params: { temperature_c: 26 } });
+    expect(body("PATCH").actions).toEqual([{ id: "set_temperature", params: { temperature_c: 26 } }]);
   });
 
   it("a schedule with an added param shows the default and saves it", async () => {
     const user = userEvent.setup();
-    renderDetail({ ...saved, action: { id: "system_on", params: {} } });
+    renderDetail({ ...saved, actions: [{ id: "system_on", params: {} }] });
     await ready();
     expect(screen.getByRole("combobox", { name: "Mode" })).toHaveValue("COOL");
     await user.click(screen.getByRole("button", { name: "Save schedule" }));
     expect(await screen.findByText(/Saved/)).toBeInTheDocument();
-    expect(body("PATCH").action).toEqual({ id: "system_on", params: { mode: "COOL" } });
+    expect(body("PATCH").actions).toEqual([{ id: "system_on", params: { mode: "COOL" } }]);
   });
 
   it("a stored choice that is no longer offered is shown as such and blocks saving", async () => {
     const user = userEvent.setup();
-    renderDetail({ ...saved, action: { id: "system_on", params: { mode: "DRY" } } });
+    renderDetail({ ...saved, actions: [{ id: "system_on", params: { mode: "DRY" } }] });
     await ready();
     const mode = screen.getByRole("combobox", { name: "Mode" });
     expect(mode).toHaveValue("DRY");
@@ -475,7 +475,7 @@ describe("ScheduleEditor", () => {
 
   it("an undeclared action still renders and blocks saving", async () => {
     const user = userEvent.setup();
-    renderDetail({ ...saved, action: { id: "gone", params: { level: 3 } } });
+    renderDetail({ ...saved, actions: [{ id: "gone", params: { level: 3 } }] });
     await ready();
     expect(screen.getByRole("combobox", { name: "Action" })).toHaveDisplayValue("gone (not offered by this device)");
     await user.click(screen.getByRole("button", { name: "Save schedule" }));

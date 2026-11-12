@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  addAction,
   addCondition,
   alignParams,
+  applyRestorable,
   conditionReadings,
   emptyForm,
   fromSchedule,
+  MAX_ACTIONS,
+  moveAction,
+  removeAction,
   resetActionParams,
   restoreOptions,
   setTriggerType,
@@ -56,7 +61,7 @@ function payload(trigger: TriggerSpec): SchedulePayload {
       { reading: "outdoor_temp_c", op: "gt", value: 30, enabled: true },
       { reading: "zone_temp_c", op: "lt", value: 18.5, target: "Bed 1", enabled: true },
     ],
-    action: { id: "set_zones", params: { zones: ["Lounge"], enabled: false } },
+    actions: [{ id: "set_zones", params: { zones: ["Lounge"], enabled: false } }],
     restore: {
       enabled: true, when: "after_minutes", minutes: 45, time: null,
       only_if: [{ reading: "battery_soc_pct", op: "gt", value: 20, enabled: true }],
@@ -93,7 +98,7 @@ describe("toPayload and fromSchedule round-trip", () => {
   it("keeps a restore at a set time and a number param", () => {
     const p: SchedulePayload = {
       ...payload({ type: "time", time: "16:00", days_of_week: [0, 1, 2, 3, 4, 5, 6] }),
-      action: { id: "set_temperature", params: { temperature_c: 24 } },
+      actions: [{ id: "set_temperature", params: { temperature_c: 24 } }],
       restore: { enabled: false, when: "at_time", minutes: null, time: "21:00", only_if: [], early_if: [] },
     };
     expect(toPayload(fromSchedule(p), caps)).toEqual(p);
@@ -175,8 +180,7 @@ describe("emptyForm picks defaults from capabilities", () => {
     expect(form.trigger.type).toBe("window_start");
     expect(form.trigger.windowId).toBe("11");
     expect(form.trigger.days).toEqual([0, 1, 2, 3, 4, 5, 6]);
-    expect(form.actionId).toBe("system_off");
-    expect(form.params).toEqual({});
+    expect(form.actions).toMatchObject([{ actionId: "system_off", params: {} }]);
     expect(form.conditions).toEqual([]);
     expect(form.restore).toMatchObject({ enabled: true, when: "window_end" });
     expect(form.retry).toEqual({ maxAttempts: "3", intervalSeconds: "30", giveUpMinutes: "15" });
@@ -191,26 +195,26 @@ describe("emptyForm picks defaults from capabilities", () => {
 
   it("starts with the first action's default params", () => {
     const form = emptyForm({ ...caps, actions: caps.actions.slice(1) }, context);
-    expect(form.actionId).toBe("system_on");
-    expect(toPayload({ ...form, name: "x" }, caps).action).toEqual({ id: "system_on", params: { mode: "COOL" } });
+    expect(form.actions[0].actionId).toBe("system_on");
+    expect(toPayload({ ...form, name: "x" }, caps).actions).toEqual([{ id: "system_on", params: { mode: "COOL" } }]);
   });
 });
 
 describe("changing action resets params", () => {
   it("replaces the params with the new action's defaults", () => {
     const form = fromSchedule(payload(triggers[0]));
-    const next = resetActionParams(form, caps.actions[2]);
-    expect(next.actionId).toBe("set_temperature");
-    expect(toPayload(next, caps).action).toEqual({ id: "set_temperature", params: { temperature_c: 20 } });
+    const next = resetActionParams(form, form.actions[0].key, caps.actions[2]);
+    expect(next.actions[0].actionId).toBe("set_temperature");
+    expect(toPayload(next, caps).actions).toEqual([{ id: "set_temperature", params: { temperature_c: 20 } }]);
   });
 
   it("gives multi_choice no ticks and bool false", () => {
-    const next = resetActionParams(emptyForm(caps, context), caps.actions[3]);
-    expect(toPayload(next, caps).action.params).toEqual({ zones: [], enabled: false });
+    const next = resetActionParams(emptyForm(caps, context), 0, caps.actions[3]);
+    expect(toPayload(next, caps).actions[0].params).toEqual({ zones: [], enabled: false });
   });
 
   it("turns restore off for an action that cannot be restored", () => {
-    const next = resetActionParams(emptyForm(caps, context), caps.actions[4]);
+    const next = resetActionParams(emptyForm(caps, context), 0, caps.actions[4]);
     expect(next.restore.enabled).toBe(false);
   });
 });
@@ -250,19 +254,19 @@ describe("validateForm", () => {
   });
 
   it("rejects out-of-range numbers", () => {
-    const form = resetActionParams(valid(), caps.actions[2]);
-    form.params.temperature_c = { kind: "number", text: "31" };
-    expect(validateForm(form, caps)["param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
-    form.params.temperature_c = { kind: "number", text: "9.5" };
-    expect(validateForm(form, caps)["param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
+    const form = resetActionParams(valid(), 0, caps.actions[2]);
+    form.actions[0].params.temperature_c = { kind: "number", text: "31" };
+    expect(validateForm(form, caps)["actions.0.param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
+    form.actions[0].params.temperature_c = { kind: "number", text: "9.5" };
+    expect(validateForm(form, caps)["actions.0.param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
   });
 
   it("rejects empty required params", () => {
-    const form = resetActionParams(valid(), caps.actions[2]);
-    form.params.temperature_c = { kind: "number", text: "" };
-    expect(validateForm(form, caps)["param.temperature_c"]).toBe("Enter a number for Temperature.");
-    const zonesForm = resetActionParams(valid(), caps.actions[3]);
-    expect(validateForm(zonesForm, caps)["param.zones"]).toBe("Tick at least one option for Zones.");
+    const form = resetActionParams(valid(), 0, caps.actions[2]);
+    form.actions[0].params.temperature_c = { kind: "number", text: "" };
+    expect(validateForm(form, caps)["actions.0.param.temperature_c"]).toBe("Enter a number for Temperature.");
+    const zonesForm = resetActionParams(valid(), 0, caps.actions[3]);
+    expect(validateForm(zonesForm, caps)["actions.0.param.zones"]).toBe("Tick at least one option for Zones.");
   });
 
   it("rejects a bad HH:MM", () => {
@@ -326,8 +330,8 @@ describe("validateForm", () => {
 
   it("rejects an action the actor does not declare", () => {
     const form = valid();
-    form.actionId = "gone";
-    expect(validateForm(form, caps).action).toBe("Pick an action this device supports.");
+    form.actions[0].actionId = "gone";
+    expect(validateForm(form, caps)["actions.0.action"]).toBe("Pick an action this device supports.");
   });
 });
 
@@ -366,41 +370,123 @@ describe("with restore off, hidden fields never make the payload rejectable", ()
 
 describe("alignParams matches the stored params to the declaration", () => {
   const stored = (params: Record<string, string | number | boolean | string[]>, id = "set_zones") =>
-    fromSchedule({ ...payload(triggers[2]), action: { id, params } });
+    fromSchedule({ ...payload(triggers[2]), actions: [{ id, params }] });
 
   it("drops a param the actor no longer declares", () => {
     const form = alignParams(stored({ zones: ["Lounge"], enabled: true, speed: "HIGH" }), caps);
-    expect(toPayload(form, caps).action.params).toEqual({ zones: ["Lounge"], enabled: true });
+    expect(toPayload(form, caps).actions[0].params).toEqual({ zones: ["Lounge"], enabled: true });
   });
 
   it("fills in the default for a newly declared param", () => {
     const form = alignParams(stored({ zones: ["Lounge"] }), caps);
-    expect(toPayload(form, caps).action.params).toEqual({ zones: ["Lounge"], enabled: false });
+    expect(toPayload(form, caps).actions[0].params).toEqual({ zones: ["Lounge"], enabled: false });
   });
 
   it("uses the default when a stored value has the wrong type", () => {
     const form = alignParams(stored({ temperature_c: "warm" }, "set_temperature"), caps);
-    expect(toPayload(form, caps).action.params).toEqual({ temperature_c: 20 });
+    expect(toPayload(form, caps).actions[0].params).toEqual({ temperature_c: 20 });
   });
 
   it("keeps a choice that is no longer offered so validateForm can flag it", () => {
     const form = alignParams(stored({ mode: "DRY" }, "system_on"), caps);
-    expect(form.params.mode).toEqual({ kind: "value", value: "DRY" });
-    expect(validateForm(form, caps)["param.mode"]).toBe('Mode "DRY" is no longer offered by the device. Pick another option.');
+    expect(form.actions[0].params.mode).toEqual({ kind: "value", value: "DRY" });
+    expect(validateForm(form, caps)["actions.0.param.mode"]).toBe('Mode "DRY" is no longer offered by the device. Pick another option.');
   });
 
   it("drops zones the device no longer has", () => {
     const form = alignParams(stored({ zones: ["Lounge", "Garage"], enabled: true }), caps);
-    expect(toPayload(form, caps).action.params).toEqual({ zones: ["Lounge"], enabled: true });
+    expect(toPayload(form, caps).actions[0].params).toEqual({ zones: ["Lounge"], enabled: true });
   });
 
   it("leaves an undeclared action as stored", () => {
     const form = stored({ level: 3 }, "gone");
-    expect(alignParams(form, caps)).toBe(form);
+    expect(alignParams(form, caps)).toEqual(form);
   });
 
   it("toPayload sends only declared param names", () => {
     const form = stored({ zones: ["Lounge"], enabled: true, speed: "HIGH" });
-    expect(Object.keys(toPayload(form, caps).action.params)).toEqual(["zones", "enabled"]);
+    expect(Object.keys(toPayload(form, caps).actions[0].params)).toEqual(["zones", "enabled"]);
+  });
+});
+
+describe("a schedule with a list of actions", () => {
+  const two = (): SchedulePayload => ({
+    ...payload(triggers[2]),
+    actions: [
+      { id: "set_temperature", params: { temperature_c: 24 } },
+      { id: "set_zones", params: { zones: ["Lounge"], enabled: true } },
+      { id: "system_off", params: {} },
+    ],
+  });
+  const keys = (form: ScheduleFormState) => form.actions.map((a) => a.key);
+  const ids = (form: ScheduleFormState) => form.actions.map((a) => a.actionId);
+
+  it("test_form_from_schedule_builds_one_card_per_action", () => {
+    const form = fromSchedule(two());
+    expect(ids(form)).toEqual(["set_temperature", "set_zones", "system_off"]);
+    expect(new Set(keys(form)).size).toBe(3);
+    expect(form.actions[0].params.temperature_c).toEqual({ kind: "number", text: "24" });
+  });
+
+  it("test_payload_sends_actions_in_order", () => {
+    const p = two();
+    const body = toPayload(fromSchedule(p), caps);
+    expect(body.actions).toEqual(p.actions);
+    expect(body).not.toHaveProperty("action");
+    expect(serverProblems(caps, body)).toEqual([]);
+  });
+
+  it("test_add_remove_move_keep_stable_keys", () => {
+    const form = fromSchedule(two());
+    const [a, b, c] = keys(form);
+    const added = addAction(form, caps);
+    const d = added.actions[3].key;
+    expect([a, b, c]).not.toContain(d);
+    expect(added.actions[3]).toMatchObject({ actionId: "system_off", params: {} });
+    const moved = moveAction(added, c, -1);
+    expect(keys(moved)).toEqual([a, c, b, d]);
+    expect(ids(moved)).toEqual(["set_temperature", "system_off", "set_zones", "system_off"]);
+    expect(keys(moveAction(moved, a, -1))).toEqual([a, c, b, d]);
+    expect(keys(moveAction(moved, d, 1))).toEqual([a, c, b, d]);
+    expect(keys(removeAction(moved, c))).toEqual([a, b, d]);
+    expect(keys(removeAction(moved, 99))).toEqual([a, c, b, d]);
+  });
+
+  it("test_cannot_remove_the_last_action", () => {
+    const form = emptyForm(caps, context);
+    expect(removeAction(form, form.actions[0].key)).toBe(form);
+  });
+
+  it("test_cannot_add_a_ninth_action", () => {
+    let form = emptyForm(caps, context);
+    for (let i = 1; i < MAX_ACTIONS; i += 1) form = addAction(form, caps);
+    expect(form.actions).toHaveLength(MAX_ACTIONS);
+    expect(addAction(form, caps)).toBe(form);
+  });
+
+  it("test_validation_reports_the_card_with_the_bad_param", () => {
+    const form = fromSchedule(two());
+    const second = form.actions[1].key;
+    form.actions[1].params.zones = { kind: "value", value: [] };
+    const errors = validateForm(form, caps);
+    expect(Object.keys(errors)).toEqual([`actions.${second}.param.zones`]);
+  });
+
+  it("flags an empty list under the actions key", () => {
+    expect(validateForm({ ...emptyForm(caps, context), name: "x", actions: [] }, caps).actions).toBeDefined();
+  });
+
+  it("keeps restore on only when every action can be restored", () => {
+    const form = { ...fromSchedule(two()), actions: [...fromSchedule(two()).actions, { key: 9, actionId: "beep", params: {} }] };
+    expect(applyRestorable(form, caps).restore.enabled).toBe(false);
+    expect(applyRestorable(fromSchedule(two()), caps).restore.enabled).toBe(true);
+  });
+
+  it("the server rules refuse no actions, nine actions and a bad entry, naming the entry", () => {
+    const p = two();
+    expect(serverProblems(caps, { ...p, actions: [] })).not.toEqual([]);
+    expect(serverProblems(caps, { ...p, actions: Array(9).fill(p.actions[2]) })).not.toEqual([]);
+    const bad = { ...p, actions: [p.actions[0], { id: "set_temperature", params: { temperature_c: 99 } }] };
+    expect(serverProblems(caps, bad).filter((m) => m.startsWith("actions[1]"))).toHaveLength(1);
   });
 });

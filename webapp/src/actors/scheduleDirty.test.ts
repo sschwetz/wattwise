@@ -15,7 +15,7 @@ const saved: SchedulePayload = {
   instance_id: 3, name: "Peak off", enabled: true,
   trigger: { type: "time", time: "06:30", days_of_week: [0, 2, 4] },
   conditions: [{ reading: "indoor_temp_c", op: "gt", value: 30, enabled: true }],
-  action: { id: "set_temperature", params: { temperature_c: 26 } },
+  actions: [{ id: "set_temperature", params: { temperature_c: 26 } }],
   restore: { enabled: true, when: "after_minutes", minutes: 45, time: null, only_if: [], early_if: [] },
   retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 },
   notify_email: false,
@@ -43,7 +43,7 @@ describe("isDirty", () => {
     expect(edit((f) => ({ ...f, enabled: false }))).toBe(true);
     expect(edit((f) => ({ ...f, trigger: { ...f.trigger, time: "07:00" } }))).toBe(true);
     expect(edit((f) => ({ ...f, retry: { ...f.retry, maxAttempts: "4" } }))).toBe(true);
-    expect(edit((f) => ({ ...f, params: { temperature_c: { kind: "number", text: "25" } } }))).toBe(true);
+    expect(edit((f) => ({ ...f, actions: [{ ...f.actions[0], params: { temperature_c: { kind: "number", text: "25" } } }] }))).toBe(true);
     expect(edit((f) => ({ ...f, conditions: addCondition(f.conditions, [{ id: "indoor_temp_c", label: "", unit: null, type: "number", targets: null }]) }))).toBe(true);
   });
 
@@ -51,7 +51,7 @@ describe("isDirty", () => {
     expect(edit((f) => ({ ...f, name: "  Peak off " }))).toBe(false);
     expect(edit((f) => ({ ...f, retry: { ...f.retry, intervalSeconds: "30.0" } }))).toBe(false);
     expect(edit((f) => ({ ...f, retry: { ...f.retry, intervalSeconds: " 30 " } }))).toBe(false);
-    expect(edit((f) => ({ ...f, params: { temperature_c: { kind: "number", text: "26.00" } } }))).toBe(false);
+    expect(edit((f) => ({ ...f, actions: [{ ...f.actions[0], params: { temperature_c: { kind: "number", text: "26.00" } } }] }))).toBe(false);
     expect(edit((f) => ({ ...f, conditions: f.conditions.map((c) => ({ ...c, value: "3e1" })) }))).toBe(false);
   });
 
@@ -89,16 +89,28 @@ describe("isDirty", () => {
   });
 
   it("counts a zone toggled on or off, and not a zone toggled off and back on", () => {
-    const zoned = fromSchedule({ ...saved, action: { id: "set_zones", params: { zones: ["Lounge", "Study"] } } });
-    const zones = (value: string[]) => ({ ...zoned, params: { ...zoned.params, zones: { kind: "value" as const, value } } });
+    const zoned = fromSchedule({ ...saved, actions: [{ id: "set_zones", params: { zones: ["Lounge", "Study"] } }] });
+    const zones = (value: string[]) => ({ ...zoned, actions: [{ ...zoned.actions[0], params: { zones: { kind: "value" as const, value } } }] });
     expect(isDirty(zones(["Lounge"]), zoned)).toBe(true);
     expect(isDirty(zones(["Lounge", "Study", "Bed 1"]), zoned)).toBe(true);
     expect(isDirty(zones(["Study", "Lounge"]), zoned)).toBe(false);
   });
 
   it("counts a change to a param named key", () => {
-    const keyed = fromSchedule({ ...saved, action: { id: "custom", params: { key: "a" } } });
-    expect(isDirty({ ...keyed, params: { key: { kind: "value", value: "b" } } }, keyed)).toBe(true);
+    const keyed = fromSchedule({ ...saved, actions: [{ id: "custom", params: { key: "a" } }] });
+    expect(isDirty({ ...keyed, actions: [{ ...keyed.actions[0], params: { key: { kind: "value", value: "b" } } }] }, keyed)).toBe(true);
+  });
+
+  it("test_dirty_check_sees_a_reordered_list", () => {
+    const list = fromSchedule({
+      ...saved,
+      actions: [{ id: "set_temperature", params: { temperature_c: 26 } }, { id: "system_off", params: {} }],
+    });
+    const reordered = { ...list, actions: [list.actions[1], list.actions[0]] };
+    expect(isDirty(reordered, list)).toBe(true);
+    expect(isDirty(structuredClone(list), list)).toBe(false);
+    const rekeyed = { ...list, actions: list.actions.map((a) => ({ ...a, key: a.key + 10 })) };
+    expect(isDirty(rekeyed, list)).toBe(false);
   });
 
   it("is false again once the edit is undone", () => {

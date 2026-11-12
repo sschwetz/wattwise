@@ -90,6 +90,9 @@ export interface DeviceStatePayload {
   outdoor_temp_c: number | null;
   humidity_pct: number | null;
   zone_temps_c: Record<string, number>;
+  /** Per-zone setpoint and the range the zone allows, keyed by zone name. Absent from older actors. */
+  zone_setpoints_c?: Record<string, number>;
+  zone_ranges_c?: Record<string, [number, number]>;
   updated_at: string;
   setpoint_min_c: number;
   setpoint_max_c: number;
@@ -131,20 +134,21 @@ export interface ActorSchedule {
   enabled: boolean;
   trigger: TriggerSpec;
   conditions: ConditionSpec[];
-  action: ActionSpec;
+  /** One to eight actions, run in order. */
+  actions: ActionSpec[];
   restore: RestoreSpec;
   retry: RetrySpec;
   notify_email: boolean;
 }
 
-/** Create payload. Any field except instance_id, name, trigger and action may be left out. */
+/** Create payload. Any field except instance_id, name, trigger and actions may be left out. */
 export interface ScheduleBody {
   instance_id: number;
   name: string;
   enabled?: boolean;
   trigger: TriggerSpec;
   conditions?: ConditionSpec[];
-  action: ActionSpec;
+  actions: ActionSpec[];
   restore?: Partial<RestoreSpec>;
   retry?: Partial<RetrySpec>;
   notify_email?: boolean;
@@ -154,7 +158,17 @@ export interface ScheduleBody {
 export type SchedulePatchBody = Partial<Omit<ScheduleBody, "instance_id">>;
 
 export type RunKind = "action" | "restore" | "test";
-export type RunOutcome = "pending" | "running" | "ok" | "skipped" | "failed" | "overridden";
+export type RunOutcome = "pending" | "running" | "ok" | "skipped" | "failed" | "overridden" | "partial";
+
+/** One action of a run: whether it worked, the params it ran with and how many tries it took. */
+export interface RunStep {
+  index: number;
+  action_id: string;
+  params: Record<string, ActionParamValue>;
+  outcome: "ok" | "failed";
+  message: string | null;
+  attempts: number;
+}
 
 export interface ActorRun {
   id: number;
@@ -168,6 +182,7 @@ export interface ActorRun {
   attempts: number;
   parent_run_id: number | null;
   snapshot: Record<string, unknown> | null;
+  steps: RunStep[] | null;
 }
 
 export interface ActorRunListItem extends ActorRun {

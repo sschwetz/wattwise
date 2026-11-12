@@ -59,7 +59,8 @@ export function ScheduleRunHistory({ site, schedule, instance }: {
   instance: ActorInstance;
 }) {
   const runs = useScheduleRuns(site.id, schedule.id);
-  const actionLabel = instance.capabilities?.actions.find((a) => a.id === schedule.action.id)?.label ?? schedule.action.id;
+  const declared = instance.capabilities?.actions ?? [];
+  const actionLabel = schedule.actions.map((spec) => declared.find((a) => a.id === spec.id)?.label ?? spec.id).join(", then ");
   if (runs.isError) return <section className={cardClass}><QueryError error={runs.error} fallback="Could not load the run history." onRetry={() => void runs.refetch()} /></section>;
   if (!runs.data) return <section className={cardClass}><Spinner /></section>;
   return <RunHistory runs={runs.data} timezone={site.timezone} actionLabel={actionLabel} />;

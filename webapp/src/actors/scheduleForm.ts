@@ -4,6 +4,7 @@
 import type {
   ActionDecl,
   ActionParamValue,
+  ActionSpec,
   ActorSchedule,
   Capabilities,
   ConditionSpec,
@@ -58,14 +59,22 @@ export interface RetryForm {
   giveUpMinutes: string;
 }
 
+/** One action card. `key` tells React the cards apart and does not go to the server. */
+export interface ActionForm {
+  key: number;
+  actionId: string;
+  params: Record<string, FormParam>;
+}
+
+export const MAX_ACTIONS = 8;
+
 export interface ScheduleFormState {
   instanceId: number;
   name: string;
   enabled: boolean;
   trigger: TriggerForm;
   conditions: ConditionRow[];
-  actionId: string;
-  params: Record<string, FormParam>;
+  actions: ActionForm[];
   restore: RestoreForm;
   retry: RetryForm;
   notifyEmail: boolean;
@@ -133,14 +142,45 @@ function defaultParams(action: ActionDecl | undefined): Record<string, FormParam
   return Object.fromEntries((action?.params ?? []).map((p) => [p.name, defaultParam(p)]));
 }
 
-/** Switch to `action` with its default params. Restore stays as it was, or goes off if the action cannot be restored. */
-export function resetActionParams(form: ScheduleFormState, action: ActionDecl): ScheduleFormState {
-  return {
-    ...form,
-    actionId: action.id,
-    params: defaultParams(action),
-    restore: { ...form.restore, enabled: form.restore.enabled && action.restorable },
-  };
+function newCard(key: number, action: ActionDecl | undefined): ActionForm {
+  return { key, actionId: action?.id ?? "", params: defaultParams(action) };
+}
+
+function nextKey(cards: ActionForm[]): number {
+  return cards.reduce((max, c) => Math.max(max, c.key + 1), 0);
+}
+
+function mapCard(form: ScheduleFormState, key: number, change: (card: ActionForm) => ActionForm): ScheduleFormState {
+  return { ...form, actions: form.actions.map((c) => (c.key === key ? change(c) : c)) };
+}
+
+/** Switch card `key` to `action` with its default params. Restore stays as it was, or goes off if the action cannot be restored. */
+export function resetActionParams(form: ScheduleFormState, key: number, action: ActionDecl): ScheduleFormState {
+  const next = mapCard(form, key, (c) => ({ ...c, actionId: action.id, params: defaultParams(action) }));
+  return { ...next, restore: { ...form.restore, enabled: form.restore.enabled && action.restorable } };
+}
+
+/** Add a card with the first declared action, unless the schedule already has MAX_ACTIONS. */
+export function addAction(form: ScheduleFormState, capabilities: Capabilities): ScheduleFormState {
+  if (form.actions.length >= MAX_ACTIONS) return form;
+  const card = newCard(nextKey(form.actions), capabilities.actions[0]);
+  return { ...form, actions: [...form.actions, card] };
+}
+
+/** Drop card `key`. The last card stays, because a schedule needs an action. */
+export function removeAction(form: ScheduleFormState, key: number): ScheduleFormState {
+  if (form.actions.length <= 1 || !form.actions.some((c) => c.key === key)) return form;
+  return { ...form, actions: form.actions.filter((c) => c.key !== key) };
+}
+
+/** Swap card `key` with the one before (-1) or after (1) it. Does nothing at either end. */
+export function moveAction(form: ScheduleFormState, key: number, by: -1 | 1): ScheduleFormState {
+  const from = form.actions.findIndex((c) => c.key === key);
+  const to = from + by;
+  if (from < 0 || to < 0 || to >= form.actions.length) return form;
+  const cards = [...form.actions];
+  [cards[from], cards[to]] = [cards[to], cards[from]];
+  return { ...form, actions: cards };
 }
 
 /** A stored value kept only when it has the shape the declared type needs. Multi-choice
@@ -160,15 +200,23 @@ function alignParam(decl: ParamDecl, stored: FormParam | undefined): FormParam {
 
 /** Rebuild the params from the declaration: declared names only, stored values where they fit, defaults for the rest. */
 export function alignParams(form: ScheduleFormState, capabilities: Capabilities): ScheduleFormState {
-  const action = findAction(capabilities, form.actionId);
-  if (!action) return form;
-  return { ...form, params: Object.fromEntries(action.params.map((p) => [p.name, alignParam(p, form.params[p.name])])) };
+  const align = (card: ActionForm): ActionForm => {
+    const action = findAction(capabilities, card.actionId);
+    if (!action) return card;
+    return { ...card, params: Object.fromEntries(action.params.map((p) => [p.name, alignParam(p, card.params[p.name])])) };
+  };
+  return { ...form, actions: form.actions.map(align) };
 }
 
-/** Turn restore off when the chosen action declares it cannot be restored. */
+/** True when every card names an action the device declares as restorable. */
+export function allRestorable(form: ScheduleFormState, capabilities: Capabilities): boolean {
+  return form.actions.every((c) => findAction(capabilities, c.actionId)?.restorable ?? false);
+}
+
+/** Turn restore off when a chosen action declares it cannot be restored. */
 export function applyRestorable(form: ScheduleFormState, capabilities: Capabilities): ScheduleFormState {
-  const action = findAction(capabilities, form.actionId);
-  if (!action || action.restorable || !form.restore.enabled) return form;
+  const blocked = form.actions.some((c) => findAction(capabilities, c.actionId)?.restorable === false);
+  if (!blocked || !form.restore.enabled) return form;
   return { ...form, restore: { ...form.restore, enabled: false } };
 }
 
@@ -209,8 +257,7 @@ export function emptyForm(
     enabled: true,
     trigger: { type: windowed ? "window_start" : "time", windowId: windowed ? String(context.firstWindowId) : "", time: "", days: [...ALL_DAYS], price: "", ...emptyLevel() },
     conditions: [],
-    actionId: action?.id ?? "",
-    params: defaultParams(action),
+    actions: [newCard(0, action)],
     restore: {
       enabled: action?.restorable ?? false,
       when: windowed ? "window_end" : "after_minutes",
@@ -248,6 +295,10 @@ function formParam(value: ActionParamValue): FormParam {
   return { kind: "value", value: Array.isArray(value) ? [...value] : value };
 }
 
+function actionCard(spec: ActionSpec, key: number): ActionForm {
+  return { key, actionId: spec.id, params: Object.fromEntries(Object.entries(spec.params).map(([k, v]) => [k, formParam(v)])) };
+}
+
 export function fromSchedule(schedule: SchedulePayload): ScheduleFormState {
   const { restore, retry } = schedule;
   return {
@@ -256,8 +307,7 @@ export function fromSchedule(schedule: SchedulePayload): ScheduleFormState {
     enabled: schedule.enabled,
     trigger: triggerForm(schedule.trigger),
     conditions: conditionRows(schedule.conditions),
-    actionId: schedule.action.id,
-    params: Object.fromEntries(Object.entries(schedule.action.params).map(([k, v]) => [k, formParam(v)])),
+    actions: schedule.actions.map(actionCard),
     restore: {
       enabled: restore.enabled,
       when: restore.when,
@@ -340,10 +390,11 @@ function restorePayload(r: RestoreForm, capabilities: Capabilities): RestoreSpec
 }
 
 /** Only the params the action declares; an undeclared action keeps what it has (validateForm blocks it). */
-function paramsPayload(form: ScheduleFormState, capabilities: Capabilities): Record<string, ActionParamValue> {
-  const declared = findAction(capabilities, form.actionId)?.params.map((p) => p.name);
-  const names = declared ?? Object.keys(form.params);
-  return Object.fromEntries(names.flatMap((name) => (form.params[name] ? [[name, paramValue(form.params[name])]] : [])));
+function actionPayload(card: ActionForm, capabilities: Capabilities): ActionSpec {
+  const declared = findAction(capabilities, card.actionId)?.params.map((p) => p.name);
+  const names = declared ?? Object.keys(card.params);
+  const params = Object.fromEntries(names.flatMap((name) => (card.params[name] ? [[name, paramValue(card.params[name])]] : [])));
+  return { id: card.actionId, params };
 }
 
 export function toPayload(form: ScheduleFormState, capabilities: Capabilities): SchedulePayload {
@@ -354,7 +405,7 @@ export function toPayload(form: ScheduleFormState, capabilities: Capabilities): 
     enabled: form.enabled,
     trigger: triggerPayload(form.trigger),
     conditions: conditionsPayload(form.conditions),
-    action: { id: form.actionId, params: paramsPayload(form, capabilities) },
+    actions: form.actions.map((c) => actionPayload(c, capabilities)),
     restore: restorePayload(form.restore, capabilities),
     retry: { max_attempts: Number(retry.maxAttempts), interval_seconds: Number(retry.intervalSeconds), give_up_minutes: Number(retry.giveUpMinutes) },
     notify_email: form.notifyEmail,

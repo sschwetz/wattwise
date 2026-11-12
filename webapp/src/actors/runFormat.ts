@@ -38,6 +38,7 @@ export const OUTCOME_LABEL: Record<RunOutcome, string> = {
   skipped: "Skipped",
   failed: "Failed",
   overridden: "You took over",
+  partial: "Partly done",
   pending: "Queued",
   running: "Running",
 };
@@ -58,6 +59,7 @@ export const OUTCOME_TONE: Record<RunOutcome, string> = {
   skipped: "bg-solar-soft text-solar",
   failed: "bg-danger-soft text-danger",
   overridden: "bg-surface-2 text-ink-muted",
+  partial: "bg-solar-soft text-solar",
   pending: "bg-surface-2 text-ink-muted",
   running: "bg-surface-2 text-ink-muted",
 };
