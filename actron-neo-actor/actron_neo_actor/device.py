@@ -38,6 +38,8 @@ from actron_neo_actor.device_snapshot import (
 from actron_neo_actor.device_snapshot import matches_action as _matches_action
 from actron_neo_actor.device_snapshot import snapshot_for as _snapshot_for
 from actron_neo_actor.device_state import DeviceState, clamp_setpoint, state_from_status, titled_zones
+from actron_neo_actor.models import ActionSpec
+from actron_neo_actor.snapshots import snapshot_for_all
 
 __all__ = ["ActronDevice", "Device", "DeviceAuthError", "DeviceError", "DeviceState", "RestoreResult"]
 
@@ -57,6 +59,7 @@ class Device(Protocol):
     async def refresh(self) -> DeviceState: ...
     def capabilities(self) -> dict: ...
     def snapshot_for(self, action_id: str, params: dict) -> dict: ...
+    def snapshot_for_all(self, actions: list[ActionSpec]) -> dict: ...
     async def apply(self, action_id: str, params: dict) -> None: ...
     async def restore(self, snapshot: dict, current: DeviceState) -> RestoreResult: ...
     def matches_action(self, action_id: str, params: dict, state: DeviceState) -> bool: ...
@@ -84,6 +87,8 @@ class _Push:
 
 def _zone(status: ActronAirStatus, title: str) -> ActronAirZone:
     index = {t: i for i, t in titled_zones(status)}
+    if title not in index:
+        raise DeviceError(f"unknown zone: {title}")
     return status.remote_zone_info[index[title]]
 
 
@@ -97,11 +102,17 @@ async def _switch_zones(status: ActronAirStatus, params: dict, state: DeviceStat
     return bool(differ)
 
 
-async def _set_zone_temperature(status: ActronAirStatus, params: dict, state: DeviceState) -> bool:
-    """Check the range first: the library clamps an out-of-range value and sends it."""
+async def _set_zone_temperature(status: ActronAirStatus, params: dict) -> bool:
+    """Check the range first: the library clamps an out-of-range value and sends it.
+
+    The range comes from the live status, the values the library clamps with. The
+    library updates the status after each send, so an earlier command in the same
+    batch (a main setpoint restore) has already moved it; the cached state has not."""
     title, value = str(params["zone"]), float(params["temperature_c"])
-    check_zone_range(title, value, state)
-    await _zone(status, title).set_temperature(value)
+    zone = _zone(status, title)
+    unit_setpoint = float(status.user_aircon_settings.current_setpoint)
+    check_zone_range(title, value, (float(zone.min_temp), float(zone.max_temp)), unit_setpoint)
+    await zone.set_temperature(value)
     return True
 
 
@@ -110,7 +121,7 @@ async def _dispatch(status: ActronAirStatus, action_id: str, params: dict, state
     if action_id == "set_zones":
         return await _switch_zones(status, params, state)
     if action_id == "set_zone_temperature":
-        return await _set_zone_temperature(status, params, state)
+        return await _set_zone_temperature(status, params)
     settings = status.user_aircon_settings
     if action_id == "system_off":
         await settings.set_system_mode(AC_MODE_OFF)
@@ -162,6 +173,10 @@ class ActronDevice:
     def snapshot_for(self, action_id: str, params: dict) -> dict:
         return _snapshot_for(action_id, params, self._require_state())
 
+    def snapshot_for_all(self, actions: list[ActionSpec]) -> dict:
+        """The list-form snapshot for a run of `actions`, read from the state before any command."""
+        return snapshot_for_all(actions, self._require_state())
+
     async def refresh(self) -> DeviceState:
         """Poll the cloud once and return the new state. Raises DeviceError."""
         try:
@@ -185,7 +200,8 @@ class ActronDevice:
         await self._run([(action_id, params)])
 
     async def restore(self, snapshot: dict, current: DeviceState) -> RestoreResult:
-        """Put back what `snapshot_for` saved, leaving alone each field the owner has changed since."""
+        """Put back what `snapshot_for` or `snapshot_for_all` saved, leaving alone each field the owner
+        has changed since. All commands go in one batch, main unit fields first."""
         plan = plan_restore(snapshot, current)
         if plan.commands:
             await self._run(plan.commands)

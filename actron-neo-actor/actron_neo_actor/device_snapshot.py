@@ -1,12 +1,23 @@
 """What each action sets, what it saves first, and how to put it back.
 
-Snapshot shape (Core API stores it as opaque JSON on the action run):
+Snapshot shapes (Core API stores them as opaque JSON on the action run). A run
+of several actions saves the list form, one entry per action in schedule order;
+runs from before schedules held a list saved a single entry. Restore accepts both.
 
-    {
+    {"actions": [<entry>, ...]}     # list form, every entry read before any command is sent
+
+    {                               # an entry, or a whole single-entry snapshot
         "action": "<action id>",
         "applied": {...},   # what the action set, to tell the actor's change from the owner's
         "saved": {...},     # the values before the action, which restore puts back
     }
+
+When two entries cover the same field, restore puts back the earlier entry's
+`saved` value (the value before the run) and compares the unit with the later
+entry's `applied` value (what the run left). Main unit fields go back first, in
+the order power, setpoint, fan_mode, then zones on/off and zone setpoints: a
+zone's old setpoint was valid for the old main setpoint. The setpoints restored
+are those for the mode the unit is in once power and mode are back.
 
 By action:
 
@@ -34,12 +45,13 @@ The set_temperature `setpoint_c` is the clamped value the unit ends up at
 (see device_state.clamp_setpoint), not the value requested. The library
 clamps a zone setpoint too, but set_zone_temperature refuses a value outside
 the zone's range instead (see check_zone_range), so its `setpoint_c` is the
-value requested.
+value requested. The range is read when the command is sent, because an
+earlier command in the same batch can move it.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from actron_neo_actor.device_state import HEAT, DeviceState, active_setpoint, base_fan_mode, clamp_setpoint
 
@@ -48,6 +60,8 @@ SETPOINT_TOLERANCE_C = 0.05
 RANGE_EPSILON_C = 1e-6
 POWER_ACTIONS = frozenset({"system_off", "system_on", "set_mode"})
 ACTIONS = POWER_ACTIONS | {"set_temperature", "set_fan_mode", "set_zones", "set_zone_temperature"}
+# Restore order for the fields of a list-form snapshot. Zone setpoints ("zone_temp:<title>") go last.
+_FIELD_ORDER = {"power": 0, "setpoint": 1, "fan_mode": 2, "zones": 3}
 
 Command = tuple[str, dict]
 
@@ -89,15 +103,15 @@ def _check_zone_known(zone: str, state: DeviceState) -> None:
         raise DeviceError(f"unknown zone: {zone}")
 
 
-def check_zone_range(zone: str, value: float, state: DeviceState) -> None:
-    """Refuse a zone setpoint outside the range the unit accepts now.
+def check_zone_range(zone: str, value: float, zone_range: tuple[float, float], unit_setpoint: float) -> None:
+    """Refuse a zone setpoint outside `zone_range`, the (min, max) the unit accepts now.
     The library's `zone.set_temperature` would clamp it and send it anyway."""
-    _check_zone_known(zone, state)
-    low, high = state.zone_ranges_c[zone]
+    low, high = zone_range
     if low - RANGE_EPSILON_C <= value <= high + RANGE_EPSILON_C:
         return
-    unit = active_setpoint(state)
-    raise DeviceError(f"{zone} {value:.1f}°C is outside {low:.1f}–{high:.1f}°C (the unit is set to {unit:.1f}°C)")
+    raise DeviceError(
+        f"{zone} {value:.1f}°C is outside {low:.1f}–{high:.1f}°C (the unit is set to {unit_setpoint:.1f}°C)"
+    )
 
 
 def _near(current: float | None, target: float) -> bool:
@@ -189,19 +203,32 @@ def _saved_for_mode(saved: dict, current: DeviceState) -> float:
     return saved["heat_setpoint_c"] if current.mode.upper() == HEAT else saved["cool_setpoint_c"]
 
 
-def _plan_setpoint(applied: dict, saved: dict, current: DeviceState) -> RestorePlan:
+def _after_power(commands: list[Command], current: DeviceState) -> DeviceState:
+    """The unit as the power restore will leave it, for planning the setpoints sent after it."""
+    for action_id, params in commands:
+        if action_id == "system_off":
+            return replace(current, is_on=False)
+        mode = str(params["mode"])
+        heat = mode.upper() == HEAT
+        zones = {zone: h if heat else c for zone, (c, h) in current.zone_cool_heat_c.items()}
+        return replace(current, is_on=True, mode=mode, zone_setpoints_c=zones)
+    return current
+
+
+def _plan_setpoint(applied: dict, saved: dict, current: DeviceState, target: DeviceState) -> RestorePlan:
+    """The owner check reads `current`; the value sent is the saved one for `target`'s mode."""
     owner_changed = not _near(active_setpoint(current), applied["setpoint_c"])
-    command: Command = ("set_temperature", {"temperature_c": _saved_for_mode(saved, current)})
-    return _single(RestorePlan(), "setpoint", owner_changed, command, current)
+    command: Command = ("set_temperature", {"temperature_c": _saved_for_mode(saved, target)})
+    return _single(RestorePlan(), "setpoint", owner_changed, command, target)
 
 
-def _plan_zone_setpoint(applied: dict, saved: dict, current: DeviceState) -> RestorePlan:
+def _plan_zone_setpoint(applied: dict, saved: dict, current: DeviceState, target: DeviceState) -> RestorePlan:
     """The restore command goes through the same range check as the action, so a saved value
     the unit would now clamp fails with the range message."""
     zone = applied["zone"]
     owner_changed = not _near(current.zone_setpoints_c.get(zone), applied["setpoint_c"])
-    command: Command = ("set_zone_temperature", {"zone": zone, "temperature_c": _saved_for_mode(saved, current)})
-    return _single(RestorePlan(), f"zone_temp:{zone}", owner_changed, command, current)
+    command: Command = ("set_zone_temperature", {"zone": zone, "temperature_c": _saved_for_mode(saved, target)})
+    return _single(RestorePlan(), f"zone_temp:{zone}", owner_changed, command, target)
 
 
 def _plan_fan(applied: dict, saved: dict, current: DeviceState) -> RestorePlan:
@@ -225,19 +252,66 @@ def _plan_zones(applied: dict, saved: dict, current: DeviceState) -> RestorePlan
     return plan
 
 
+def entries(snapshot: dict) -> list[dict]:
+    """The entries of a list-form snapshot, or a single-entry snapshot as a list of one."""
+    return list(snapshot["actions"]) if "actions" in snapshot else [snapshot]
+
+
+def _field(entry: dict) -> str:
+    action_id = entry["action"]
+    if action_id in POWER_ACTIONS:
+        return "power"
+    if action_id == "set_zone_temperature":
+        return f"zone_temp:{entry['applied']['zone']}"
+    names = {"set_temperature": "setpoint", "set_fan_mode": "fan_mode", "set_zones": "zones"}
+    if action_id in names:
+        return names[action_id]
+    raise DeviceError(f"malformed snapshot: unknown action {action_id!r}")
+
+
+def _combine(earlier: dict, later: dict) -> dict:
+    """Two entries on one field: applied values from the later entry win, saved values from the earlier."""
+    if later["action"] == "set_zones":
+        applied = {"zones": {**earlier["applied"]["zones"], **later["applied"]["zones"]}}
+        saved = {"zones": {**later["saved"]["zones"], **earlier["saved"]["zones"]}}
+    else:
+        applied, saved = {**earlier["applied"], **later["applied"]}, earlier["saved"]
+    return {"action": later["action"], "applied": applied, "saved": saved}
+
+
+def merge_entries(found: list[dict]) -> list[tuple[str, dict]]:
+    """One entry per field, in restore order. Zone setpoints keep their schedule order."""
+    merged: dict[str, dict] = {}
+    for entry in found:
+        name = _field(entry)
+        merged[name] = _combine(merged[name], entry) if name in merged else entry
+    return sorted(merged.items(), key=lambda item: _FIELD_ORDER.get(item[0], len(_FIELD_ORDER)))
+
+
+def _plan_entry(entry: dict, current: DeviceState, target: DeviceState) -> RestorePlan:
+    action_id, applied, saved = entry["action"], entry["applied"], entry["saved"]
+    if action_id in POWER_ACTIONS:
+        return _plan_power(applied, saved, current)
+    if action_id == "set_temperature":
+        return _plan_setpoint(applied, saved, current, target)
+    if action_id == "set_fan_mode":
+        return _plan_fan(applied, saved, current)
+    if action_id == "set_zones":
+        return _plan_zones(applied, saved, current)
+    return _plan_zone_setpoint(applied, saved, current, target)
+
+
 def plan_restore(snapshot: dict, current: DeviceState) -> RestorePlan:
+    """Plan the restore of either snapshot shape; see the module docstring for the rules."""
     try:
-        action_id, applied, saved = snapshot["action"], snapshot["applied"], snapshot["saved"]
-        if action_id in POWER_ACTIONS:
-            return _plan_power(applied, saved, current)
-        if action_id == "set_temperature":
-            return _plan_setpoint(applied, saved, current)
-        if action_id == "set_fan_mode":
-            return _plan_fan(applied, saved, current)
-        if action_id == "set_zones":
-            return _plan_zones(applied, saved, current)
-        if action_id == "set_zone_temperature":
-            return _plan_zone_setpoint(applied, saved, current)
+        plan, target = RestorePlan(), current
+        for name, entry in merge_entries(entries(snapshot)):
+            part = _plan_entry(entry, current, target)
+            plan.commands += part.commands
+            plan.restored += part.restored
+            plan.skipped += part.skipped
+            if name == "power":
+                target = _after_power(part.commands, current)
+        return plan
     except (KeyError, TypeError, AttributeError) as err:
         raise DeviceError(f"malformed snapshot: {type(err).__name__} {err}") from err
-    raise DeviceError(f"malformed snapshot: unknown action {action_id!r}")

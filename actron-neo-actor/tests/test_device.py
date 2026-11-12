@@ -13,6 +13,7 @@ from actron_neo_api.rt import RealtimeConnectionState
 from actron_neo_actor.capabilities import build_capabilities
 from actron_neo_actor.config import Settings
 from actron_neo_actor.device import ActronDevice, DeviceError, DeviceState, RestoreResult
+from actron_neo_actor.models import ActionSpec
 from actron_neo_actor.unit_checks import restore_message
 from tests.fakes import SERIAL, START, FakeActronApi, FakeClock, raw_state
 
@@ -888,3 +889,116 @@ def test_restore_message_words_a_zone_temperature_field():
     assert restore_message(result) == (
         "restored zone Study temperature; left alone because the owner changed them: zone Lounge"
     )
+
+
+# Several actions: one snapshot, one restore
+
+
+def _act_all(device: ActronDevice, actions: list[ActionSpec]) -> dict:
+    snapshot = device.snapshot_for_all(actions)
+    for action in actions:
+        run(device.apply(action.id, action.params))
+    return snapshot
+
+
+def test_two_actions_on_one_field_restore_the_value_from_before_the_run():
+    device, _, _ = make()
+    run(device.refresh())
+    temps = [ActionSpec("set_temperature", {"temperature_c": 25}), ActionSpec("set_temperature", {"temperature_c": 26})]
+    snapshot = _act_all(device, temps)
+    # The unit shows 26, the value the run applied last, so the owner has not changed it.
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["setpoint"], skipped=[])
+    assert device.state().cool_setpoint_c == 23.0
+
+
+def test_restore_puts_main_setpoint_back_before_zone_setpoints():
+    api = study_unit()
+    api.device["RemoteZoneInfo"][0]["TemperatureSetpoint_Cool_oC"] = 21.0
+    device, _, _ = make(api)
+    run(device.refresh())
+    actions = [
+        ActionSpec("set_zone_temperature", {"zone": "Study", "temperature_c": 24.0}),
+        ActionSpec("set_temperature", {"temperature_c": 26}),
+    ]
+    snapshot = _act_all(device, actions)
+    sent = len(api.commands)
+    # Zone 21.0 is outside 24.0–28.0 until the main setpoint is back at 22.0.
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["setpoint", "zone_temp:Study"], skipped=[])
+    assert api.commands[sent:] == [
+        {"type": "set-settings", "UserAirconSettings.TemperatureSetpoint_Cool_oC": 22.0},
+        {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 21.0},
+    ]
+    assert device.state().zone_setpoints_c["Study"] == 21.0
+
+
+def test_restore_leaves_a_field_the_owner_changed():
+    device, api, _ = make()
+    run(device.refresh())
+    actions = [ActionSpec("set_temperature", {"temperature_c": 26}), ActionSpec("set_fan_mode", {"fan_mode": "LOW"})]
+    snapshot = _act_all(device, actions)
+    api.owner_sets("UserAirconSettings.FanMode", "HIGH+CONT")
+    current = run(device.refresh())
+    result = run(device.restore(snapshot, current))
+    assert result == RestoreResult(restored=["setpoint"], skipped=["fan_mode"])
+    assert device.state().cool_setpoint_c == 23.0
+    assert device.state().fan_mode == "HIGH+CONT"
+
+
+def test_restore_puts_the_setpoint_back_for_the_mode_the_power_restore_leaves():
+    device, _, _ = make()
+    run(device.refresh())
+    actions = [ActionSpec("set_mode", {"mode": "HEAT"}), ActionSpec("set_temperature", {"temperature_c": 25})]
+    snapshot = _act_all(device, actions)
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["power", "setpoint"], skipped=[])
+    # Back in COOL, the cool setpoint is the one in use; the saved heat value must not land on it.
+    state = device.state()
+    assert (state.mode, state.cool_setpoint_c) == ("COOL", 23.0)
+
+
+def _setpoint_then_zone(main_saved: float, zone_saved: float) -> dict:
+    """A list snapshot whose restore sends the main setpoint, then the Study setpoint, in one batch."""
+    return {
+        "actions": [
+            {
+                "action": "set_temperature",
+                "applied": {"setpoint_c": 26.0},
+                "saved": {"cool_setpoint_c": main_saved, "heat_setpoint_c": main_saved},
+            },
+            {
+                "action": "set_zone_temperature",
+                "applied": {"zone": "Study", "setpoint_c": 27.0},
+                "saved": {"zone": "Study", "cool_setpoint_c": zone_saved, "heat_setpoint_c": zone_saved},
+            },
+        ]
+    }
+
+
+def _study_at_26_and_27() -> tuple[ActronDevice, FakeActronApi]:
+    api = study_unit(cool_c=26.0)  # zone range 24.0 to 28.0
+    api.device["RemoteZoneInfo"][0]["TemperatureSetpoint_Cool_oC"] = 27.0
+    device, _, _ = make(api)
+    run(device.refresh())
+    return device, api
+
+
+def test_zone_range_is_read_after_an_earlier_command_in_the_same_batch_moves_it():
+    device, api = _study_at_26_and_27()
+    # 29.0 is outside the cached 24.0–28.0, inside 27.0–30.0 once the main setpoint is 29.0.
+    run(device.restore(_setpoint_then_zone(29.0, 29.0), device.state()))
+    assert api.commands == [
+        {"type": "set-settings", "UserAirconSettings.TemperatureSetpoint_Cool_oC": 29.0},
+        {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 29.0},
+    ]
+    assert device.state().zone_setpoints_c["Study"] == 29.0
+
+
+def test_zone_range_after_an_earlier_command_refuses_a_value_the_cached_range_allowed():
+    device, api = _study_at_26_and_27()
+    # 25.0 is inside the cached 24.0–28.0, outside 20.0–24.0 once the main setpoint is 22.0.
+    with pytest.raises(DeviceError) as excinfo:
+        run(device.restore(_setpoint_then_zone(22.0, 25.0), device.state()))
+    assert str(excinfo.value) == "Study 25.0°C is outside 20.0–24.0°C (the unit is set to 22.0°C)"
+    assert api.commands == [{"type": "set-settings", "UserAirconSettings.TemperatureSetpoint_Cool_oC": 22.0}]

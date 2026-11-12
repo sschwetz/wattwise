@@ -3,17 +3,28 @@
 from __future__ import annotations
 
 from actron_neo_actor.device import Device, DeviceState, RestoreResult
+from actron_neo_actor.device_snapshot import entries
 from actron_neo_actor.models import ActionSpec
 
 
-def owner_changed(device: Device, action: ActionSpec, snapshot: dict | None, state: DeviceState) -> bool:
-    """True when the unit no longer shows what the action set, so the owner has taken over.
+def owner_changed(device: Device, actions: list[ActionSpec], snapshot: dict | None, state: DeviceState) -> bool:
+    """True when the unit shows none of the actions any more, so the owner has taken over.
 
-    A zone action is taken over only when every zone the actor changed is back
+    `actions` pair in order with the snapshot's entries, so pass only the actions
+    that ran and the matching snapshot (snapshots.ok_actions and restorable).
+    """
+    found = entries(snapshot) if snapshot else []
+    return all(
+        _action_gone(device, action, found[i] if i < len(found) else None, state) for i, action in enumerate(actions)
+    )
+
+
+def _action_gone(device: Device, action: ActionSpec, entry: dict | None, state: DeviceState) -> bool:
+    """A zone action is taken over only when every zone the actor changed is back
     the way the owner wants it. While some are still as the actor left them, the
     restore puts those back and leaves the owner's zones alone, field by field.
     """
-    applied = ((snapshot or {}).get("applied") or {}).get("zones") if action.id == "set_zones" else None
+    applied = ((entry or {}).get("applied") or {}).get("zones") if action.id == "set_zones" else None
     if applied:
         return all(state.enabled_zones.get(zone) != value for zone, value in applied.items())
     return not device.matches_action(action.id, action.params, state)

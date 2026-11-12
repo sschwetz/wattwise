@@ -34,7 +34,7 @@ async def _check_override(env: Env, view: TickView, run: Run) -> None:
         return
     if env.clock() - run.finished_at < CONFIRM_WINDOW:
         return
-    if not owner_changed(env.device, schedule.action, run.snapshot, state):
+    if not owner_changed(env.device, [schedule.action], run.snapshot, state):
         return
     async with env.runs_lock:
         if view.unfinished_run(run.id) is None:
