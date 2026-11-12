@@ -31,6 +31,14 @@ const caps: Capabilities = {
         { ...none, name: "enabled", label: "Zones on", type: "bool" },
       ],
     },
+    {
+      id: "set_zone_temperature", label: "Set zone temperature", restorable: true,
+      params: [
+        { ...none, name: "zone", label: "Zone", type: "choice", options: zones },
+        { ...none, name: "temperature_c", label: "Zone target", type: "number", min: 10, max: 30, unit: "C" },
+      ],
+    },
+    { id: "beep", label: "Beep", restorable: false, params: [] },
   ],
   readings: [
     { id: "indoor_temp_c", label: "Indoor temperature", unit: "C", type: "number", target_options: null },
@@ -86,12 +94,12 @@ function mockApi(next: Api = {}) {
   });
 }
 
-function renderDetail(schedule: ActorSchedule | null, canEdit = true) {
+function renderDetail(schedule: ActorSchedule | null, canEdit = true, shown: ActorInstance = instance) {
   const onSelect = vi.fn();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <ScheduleDetail siteId={7} schedule={schedule} instance={instance} canEdit={canEdit} onSelect={onSelect} />
+      <ScheduleDetail siteId={7} schedule={schedule} instance={shown} canEdit={canEdit} onSelect={onSelect} />
     </QueryClientProvider>,
   );
   return { onSelect };
@@ -122,7 +130,7 @@ describe("ScheduleEditor", () => {
     renderDetail(null);
     await ready();
     const options = within(screen.getByRole("combobox", { name: "Action" })).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual(["Turn off", "Turn on", "Set temperature", "Switch zones"]);
+    expect(options.map((o) => o.textContent)).toEqual(["Turn off", "Turn on", "Set temperature", "Switch zones", "Set zone temperature", "Beep"]);
   });
 
   it("changing action resets params", async () => {
@@ -537,5 +545,116 @@ describe("ScheduleEditor", () => {
     expect(tick()).not.toBeChecked();
     expect(within(onlyIf()).getByRole("combobox", { name: "Reading 1" })).toHaveValue("outdoor_temp_c");
     expect(within(onlyIf()).getByRole("spinbutton", { name: "Value 1" })).toHaveValue(30);
+  });
+
+  describe("action list", () => {
+    const cards = () => screen.getAllByRole("group", { name: /^Action \d+$/ });
+    const card = (n: number) => screen.getByRole("group", { name: `Action ${n}` });
+    const save = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: "Save schedule" }));
+
+    it("adds a second action card", async () => {
+      const user = userEvent.setup();
+      renderDetail(saved);
+      await ready();
+      expect(cards()).toHaveLength(1);
+      await user.click(screen.getByRole("button", { name: "Add action" }));
+      expect(cards()).toHaveLength(2);
+      expect(within(card(2)).getByRole("combobox", { name: "Action" })).toHaveValue("system_off");
+    });
+
+    it("removes a card but not the last", async () => {
+      const user = userEvent.setup();
+      renderDetail(saved);
+      await ready();
+      expect(screen.getByRole("button", { name: "Remove action 1" })).toBeDisabled();
+      await user.click(screen.getByRole("button", { name: "Add action" }));
+      await user.click(screen.getByRole("button", { name: "Remove action 2" }));
+      expect(cards()).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Remove action 1" })).toBeDisabled();
+    });
+
+    it("moves a card down and the payload order follows", async () => {
+      const user = userEvent.setup();
+      renderDetail(saved);
+      await ready();
+      await user.click(screen.getByRole("button", { name: "Add action" }));
+      expect(screen.getByRole("button", { name: "Move action 1 up" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Move action 2 down" })).toBeDisabled();
+      await user.click(screen.getByRole("button", { name: "Move action 1 down" }));
+      expect(within(card(1)).getByRole("combobox", { name: "Action" })).toHaveValue("system_off");
+      await save(user);
+      expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+      expect(body("PATCH").actions).toEqual([{ id: "system_off", params: {} }, { id: "set_temperature", params: { temperature_c: 26 } }]);
+    });
+
+    it("shows the error on the card it belongs to", async () => {
+      const user = userEvent.setup();
+      renderDetail(saved);
+      await ready();
+      await user.click(screen.getByRole("button", { name: "Add action" }));
+      await user.selectOptions(within(card(2)).getByRole("combobox", { name: "Action" }), "set_temperature");
+      await user.clear(within(card(2)).getByRole("spinbutton", { name: /Temperature/ }));
+      await save(user);
+      expect(within(card(2)).getByText("Enter a number for Temperature.")).toBeInTheDocument();
+      expect(within(card(1)).queryByText(/Enter a number/)).not.toBeInTheDocument();
+      expect(writes("PATCH")).toHaveLength(0);
+    });
+
+    it("shows the allowed range hint for a zone temperature card", async () => {
+      const user = userEvent.setup();
+      const readings = { zone_ranges_c: { Lounge: [18, 26.5] } } as unknown as ActorInstance["latest_readings"];
+      renderDetail(saved, true, { ...instance, latest_readings: readings });
+      await ready();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Action" }), "set_zone_temperature");
+      expect(screen.getByText("Allowed now: 18–26.5°C")).toBeInTheDocument();
+      expect(screen.getByText("Order matters: an earlier temperature change moves this range.")).toBeInTheDocument();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Zone" }), "Study");
+      expect(screen.queryByText(/Allowed now/)).not.toBeInTheDocument();
+      expect(screen.getByText(/Order matters/)).toBeInTheDocument();
+    });
+
+    it("shows only the order line when there are no readings", async () => {
+      const user = userEvent.setup();
+      renderDetail(saved);
+      await ready();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Action" }), "set_zone_temperature");
+      expect(screen.queryByText(/Allowed now/)).not.toBeInTheDocument();
+      expect(screen.getByText(/Order matters/)).toBeInTheDocument();
+    });
+
+    it("hides Add action at eight cards", async () => {
+      const user = userEvent.setup();
+      renderDetail(saved);
+      await ready();
+      for (let i = 1; i < 8; i += 1) await user.click(screen.getByRole("button", { name: "Add action" }));
+      expect(cards()).toHaveLength(8);
+      expect(screen.queryByRole("button", { name: "Add action" })).not.toBeInTheDocument();
+    });
+
+    it("keeps the error for an invalid second card visible after Save", async () => {
+      const user = userEvent.setup();
+      renderDetail(saved);
+      await ready();
+      await user.click(screen.getByRole("button", { name: "Add action" }));
+      await user.selectOptions(within(card(2)).getByRole("combobox", { name: "Action" }), "set_zones");
+      await save(user);
+      expect(within(card(2)).getByText("Tick at least one option for Zones.")).toBeInTheDocument();
+      expect(writes("PATCH")).toHaveLength(0);
+    });
+
+    it("turns restore off and disables it when a card cannot be restored", async () => {
+      const user = userEvent.setup();
+      renderDetail(saved);
+      await ready();
+      const restore = () => screen.getByRole("checkbox", { name: "Put it back how it was before" });
+      expect(restore()).toBeChecked();
+      await user.click(screen.getByRole("button", { name: "Add action" }));
+      await user.selectOptions(within(card(2)).getByRole("combobox", { name: "Action" }), "beep");
+      expect(restore()).toBeDisabled();
+      expect(restore()).not.toBeChecked();
+      await save(user);
+      expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+      expect(body("PATCH").restore.enabled).toBe(false);
+    });
   });
 });

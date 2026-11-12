@@ -154,17 +154,25 @@ function mapCard(form: ScheduleFormState, key: number, change: (card: ActionForm
   return { ...form, actions: form.actions.map((c) => (c.key === key ? change(c) : c)) };
 }
 
-/** Switch card `key` to `action` with its default params. Restore stays as it was, or goes off if the action cannot be restored. */
-export function resetActionParams(form: ScheduleFormState, key: number, action: ActionDecl): ScheduleFormState {
+/** Turn restore off unless every card can be restored. Returns the same form when nothing changes. */
+function syncRestore(form: ScheduleFormState, capabilities: Capabilities): ScheduleFormState {
+  if (!form.restore.enabled || allRestorable(form, capabilities)) return form;
+  return { ...form, restore: { ...form.restore, enabled: false } };
+}
+
+/** Switch card `key` to `action` with its default params. Restore stays as it was, or goes off if any card cannot be restored.
+ * An unknown key leaves the form as it was. */
+export function resetActionParams(form: ScheduleFormState, key: number, action: ActionDecl, capabilities: Capabilities): ScheduleFormState {
+  if (!form.actions.some((c) => c.key === key)) return form;
   const next = mapCard(form, key, (c) => ({ ...c, actionId: action.id, params: defaultParams(action) }));
-  return { ...next, restore: { ...form.restore, enabled: form.restore.enabled && action.restorable } };
+  return syncRestore(next, capabilities);
 }
 
 /** Add a card with the first declared action, unless the schedule already has MAX_ACTIONS. */
 export function addAction(form: ScheduleFormState, capabilities: Capabilities): ScheduleFormState {
   if (form.actions.length >= MAX_ACTIONS) return form;
   const card = newCard(nextKey(form.actions), capabilities.actions[0]);
-  return { ...form, actions: [...form.actions, card] };
+  return syncRestore({ ...form, actions: [...form.actions, card] }, capabilities);
 }
 
 /** Drop card `key`. The last card stays, because a schedule needs an action. */

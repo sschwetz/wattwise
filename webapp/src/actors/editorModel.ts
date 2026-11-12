@@ -1,4 +1,4 @@
-import type { Capabilities } from "./types";
+import type { Capabilities, DeviceStatePayload } from "./types";
 import type { ScheduleFormState } from "./scheduleForm";
 import type { FormErrors } from "./scheduleValidation";
 
@@ -9,6 +9,8 @@ export interface EditorModel {
   errors: FormErrors;
   capabilities: Capabilities;
   canEdit: boolean;
+  /** The unit's latest readings, or null before the actor has reported any. */
+  readings: DeviceStatePayload | null;
 }
 
 /** "C" is sent by the actor for degrees Celsius. */

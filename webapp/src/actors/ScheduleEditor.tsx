@@ -98,7 +98,7 @@ function useEditorForm(setup: EditorSetup, actions: EditorActions) {
   const { canEdit, capabilities } = setup;
   const reportDirty = useReportDirty(canEdit && isDirty(form, baseline));
   const errors = submitted ? validateForm(form, capabilities) : {};
-  const model: EditorModel = { form, setForm, errors, capabilities, canEdit };
+  const model: EditorModel = { form, setForm, errors, capabilities, canEdit, readings: setup.instance.latest_readings };
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();

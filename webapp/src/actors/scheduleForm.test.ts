@@ -203,19 +203,31 @@ describe("emptyForm picks defaults from capabilities", () => {
 describe("changing action resets params", () => {
   it("replaces the params with the new action's defaults", () => {
     const form = fromSchedule(payload(triggers[0]));
-    const next = resetActionParams(form, form.actions[0].key, caps.actions[2]);
+    const next = resetActionParams(form, form.actions[0].key, caps.actions[2], caps);
     expect(next.actions[0].actionId).toBe("set_temperature");
     expect(toPayload(next, caps).actions).toEqual([{ id: "set_temperature", params: { temperature_c: 20 } }]);
   });
 
   it("gives multi_choice no ticks and bool false", () => {
-    const next = resetActionParams(emptyForm(caps, context), 0, caps.actions[3]);
+    const next = resetActionParams(emptyForm(caps, context), 0, caps.actions[3], caps);
     expect(toPayload(next, caps).actions[0].params).toEqual({ zones: [], enabled: false });
   });
 
   it("turns restore off for an action that cannot be restored", () => {
-    const next = resetActionParams(emptyForm(caps, context), 0, caps.actions[4]);
+    const next = resetActionParams(emptyForm(caps, context), 0, caps.actions[4], caps);
     expect(next.restore.enabled).toBe(false);
+  });
+
+  it("keeps restore off when another card cannot be restored", () => {
+    const base = emptyForm(caps, context);
+    const two = { ...base, actions: [...base.actions, { key: 1, actionId: "beep", params: {} }], restore: { ...base.restore, enabled: true } };
+    const next = resetActionParams(two, 0, caps.actions[1], caps);
+    expect(next.restore.enabled).toBe(false);
+  });
+
+  it("leaves the form alone for an unknown key", () => {
+    const form = { ...emptyForm(caps, context), restore: { ...emptyForm(caps, context).restore, enabled: true } };
+    expect(resetActionParams(form, 99, caps.actions[4], caps)).toBe(form);
   });
 });
 
@@ -254,7 +266,7 @@ describe("validateForm", () => {
   });
 
   it("rejects out-of-range numbers", () => {
-    const form = resetActionParams(valid(), 0, caps.actions[2]);
+    const form = resetActionParams(valid(), 0, caps.actions[2], caps);
     form.actions[0].params.temperature_c = { kind: "number", text: "31" };
     expect(validateForm(form, caps)["actions.0.param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
     form.actions[0].params.temperature_c = { kind: "number", text: "9.5" };
@@ -262,10 +274,10 @@ describe("validateForm", () => {
   });
 
   it("rejects empty required params", () => {
-    const form = resetActionParams(valid(), 0, caps.actions[2]);
+    const form = resetActionParams(valid(), 0, caps.actions[2], caps);
     form.actions[0].params.temperature_c = { kind: "number", text: "" };
     expect(validateForm(form, caps)["actions.0.param.temperature_c"]).toBe("Enter a number for Temperature.");
-    const zonesForm = resetActionParams(valid(), 0, caps.actions[3]);
+    const zonesForm = resetActionParams(valid(), 0, caps.actions[3], caps);
     expect(validateForm(zonesForm, caps)["actions.0.param.zones"]).toBe("Tick at least one option for Zones.");
   });
 
