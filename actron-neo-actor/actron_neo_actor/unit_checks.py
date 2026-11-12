@@ -11,7 +11,7 @@ def owner_changed(device: Device, actions: list[ActionSpec], snapshot: dict | No
     """True when the unit shows none of the actions any more, so the owner has taken over.
 
     `actions` pair in order with the snapshot's entries, so pass only the actions
-    that ran and the matching snapshot (snapshots.ok_actions and restorable).
+    that ran and the matching snapshot (snapshots.step_actions and restorable).
     """
     found = entries(snapshot) if snapshot else []
     return all(

@@ -66,6 +66,7 @@ def schedule(
     instance_id: int = 1,
     trigger: Trigger | None = None,
     action: ActionSpec | None = None,
+    actions: list[ActionSpec] | None = None,
     conditions: list[Condition] | None = None,
     restore: RestoreSpec | None = None,
     retry: RetrySpec | None = None,
@@ -79,7 +80,7 @@ def schedule(
         created_at=CREATED,
         trigger=trigger or Trigger("window_start", window_id=WINDOW_ID),
         conditions=conditions or [],
-        actions=[action or ActionSpec("system_off")],
+        actions=actions or [action or ActionSpec("system_off")],
         restore=restore or restore_spec(),
         retry=retry or RetrySpec(3, 10, 5),
     )

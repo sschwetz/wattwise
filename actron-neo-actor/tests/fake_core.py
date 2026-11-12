@@ -17,7 +17,7 @@ from collections.abc import Callable
 from actron_neo_actor.core_api_client import CoreApiConflict, CoreApiError
 from actron_neo_actor.models import Context, Instance, Run, Schedule
 
-TERMINAL = {"ok", "skipped", "failed", "overridden"}
+TERMINAL = {"ok", "partial", "skipped", "failed", "overridden"}
 CLOSING_RESTORE = {"ok", "skipped", "failed"}
 
 
@@ -144,7 +144,7 @@ class FakeCore:
             schedule = self._schedule(run.schedule_id)
             closed = any(r.parent_run_id == run.id and r.kind == "restore" and r.outcome in CLOSING_RESTORE
                          for r in self.runs.values())
-            if run.kind == "action" and run.outcome in ("pending", "running", "ok") and not closed:
+            if run.kind == "action" and run.outcome in ("pending", "running", "ok", "partial") and not closed:
                 if schedule is not None and schedule.restore.enabled:
                     found.append(run)
         return found

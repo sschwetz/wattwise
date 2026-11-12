@@ -35,6 +35,16 @@ def restorable(snapshot: dict | None, steps: list[dict] | None) -> dict | None:
     return {"actions": kept} if kept else None
 
 
+def step_actions(steps: list[dict]) -> list[ActionSpec]:
+    """The actions of the `ok` steps in index order, as they ran: they pair with the entries `restorable`
+    keeps even after the schedule is edited."""
+    try:
+        ok = sorted((s for s in steps if s.get("outcome") == "ok"), key=lambda s: int(s["index"]))
+        return [ActionSpec(str(s["action_id"]), dict(s.get("params") or {})) for s in ok]
+    except (KeyError, TypeError, ValueError, AttributeError) as err:
+        raise DeviceError(f"malformed steps: {type(err).__name__}") from err
+
+
 def ok_actions(actions: list[ActionSpec], steps: list[dict] | None) -> list[ActionSpec]:
     """The actions whose step is `ok`, in order, to pair with the entries `restorable` keeps."""
     if steps is None:

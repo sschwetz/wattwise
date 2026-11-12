@@ -11,7 +11,8 @@ from actron_neo_actor.device import DeviceState
 from actron_neo_actor.models import Context, Run, Schedule
 
 STALE_AFTER = datetime.timedelta(minutes=5)
-OPEN_ACTION = ("pending", "running", "ok")
+HOLDING = ("ok", "partial")  # finished action runs that changed the unit and owe a restore
+OPEN_ACTION = ("pending", "running", *HOLDING)
 CLOSING_RESTORE = ("ok", "skipped", "failed")
 OPEN = ("pending", "running")
 

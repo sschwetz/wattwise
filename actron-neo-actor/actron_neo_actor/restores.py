@@ -11,12 +11,13 @@ import dataclasses
 import datetime
 
 from actron_neo_actor.actions import finish
-from actron_neo_actor.device import CONFIRM_SECONDS, RestoreResult
+from actron_neo_actor.device import CONFIRM_SECONDS, DeviceError, DeviceState, RestoreResult
 from actron_neo_actor.executor import Attempt, Env, create, current_state_restore, record, update, with_retries
 from actron_neo_actor.models import RetrySpec, Run, Schedule
 from actron_neo_actor.schedule_eval import early_restore_due, restore_gate_passes, restore_time
+from actron_neo_actor.snapshots import restorable, step_actions
 from actron_neo_actor.unit_checks import owner_changed, restore_message
-from actron_neo_actor.view import TickView, sensed
+from actron_neo_actor.view import HOLDING, TickView, sensed
 
 CONFIRM_WINDOW = datetime.timedelta(seconds=CONFIRM_SECONDS)
 OWNER_CHANGED = "owner changed the unit"
@@ -29,12 +30,13 @@ async def watch_for_override(env: Env, view: TickView) -> None:
 
 
 async def _check_override(env: Env, view: TickView, run: Run) -> None:
+    """Only an `ok` run is marked overridden; a `partial` run holds the unit until its restore."""
     schedule, state = view.schedules.get(run.schedule_id), env.device.state()
     if run.outcome != "ok" or run.finished_at is None or schedule is None or state is None:
         return
     if env.clock() - run.finished_at < CONFIRM_WINDOW:
         return
-    if not owner_changed(env.device, [schedule.action], run.snapshot, state):
+    if not _owner_took_over(env, run, schedule, state):
         return
     async with env.runs_lock:
         if view.unfinished_run(run.id) is None:
@@ -44,10 +46,21 @@ async def _check_override(env: Env, view: TickView, run: Run) -> None:
         view.note(changed or dataclasses.replace(run, outcome="overridden"))
 
 
+def _owner_took_over(env: Env, run: Run, schedule: Schedule, state: DeviceState) -> bool:
+    """The actions come from the run's ok steps, as they ran; a run from before steps were
+    recorded uses the schedule's. With no action left to watch, nothing was taken over."""
+    try:
+        actions = step_actions(run.steps) if run.steps is not None else schedule.actions
+        snapshot = restorable(run.snapshot, run.steps)
+    except DeviceError:
+        return False
+    return bool(actions) and owner_changed(env.device, actions, snapshot, state)
+
+
 async def run_restores(env: Env, view: TickView) -> None:
     for run in list(view.unfinished):
         schedule = view.schedules.get(run.schedule_id)
-        if run.outcome != "ok" or schedule is None:
+        if run.outcome not in HOLDING or schedule is None:
             continue
         at = _restore_due_at(env, view, schedule, run)
         if at is not None and await take(env, view, run):
@@ -85,19 +98,21 @@ async def _restore(env: Env, view: TickView, schedule: Schedule, run: Run, at: d
     if restore is None:
         return
     view.note(restore)
-    finished = await execute_restore(env, restore, run.snapshot, schedule.retry)
+    finished = await execute_restore(env, restore, run, schedule.retry)
     if finished is not None:
         view.note(finished)
 
 
-async def execute_restore(env: Env, restore: Run, snapshot: dict | None, retry: RetrySpec) -> Run | None:
-    """Claim the restore row if it is still pending, put the snapshot back with retries and finish it."""
+async def execute_restore(env: Env, restore: Run, parent: Run, retry: RetrySpec) -> Run | None:
+    """Claim the restore row if it is still pending, put back what the parent's ok steps changed
+    with retries and finish it."""
     if restore.outcome == "pending":
         claimed = await update(env, restore, "running")
         if claimed is None:
             return None
         restore = claimed
-    attempt: Attempt[RestoreResult] = await with_retries(env, retry, current_state_restore(env, snapshot))
+    op = current_state_restore(env, parent.snapshot, parent.steps)
+    attempt: Attempt[RestoreResult] = await with_retries(env, retry, op)
     message = restore_message(attempt.value) if attempt.ok and attempt.value is not None else None
     return await finish(env, restore, attempt, message)
 

@@ -1,5 +1,5 @@
-"""Test runs from the web app's "Test now": apply the schedule's action whatever its trigger
-and conditions say, hold it for `test_hold_seconds`, then restore."""
+"""Test runs from the web app's "Test now": apply the schedule's actions whatever its trigger
+and conditions say, hold them for `test_hold_seconds`, then restore."""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ import asyncio
 import datetime
 from collections.abc import Awaitable, Callable
 
-from actron_neo_actor.actions import OTHER_ACTIVE, claim_and_apply, finish
+from actron_neo_actor.actions import OTHER_ACTIVE, claim_and_apply
 from actron_neo_actor.device import CONFIRM_SECONDS, RestoreResult
 from actron_neo_actor.executor import Attempt, Clock, Cutoff, Env, current_state_restore, update, with_retries
 from actron_neo_actor.models import Run, Schedule
+from actron_neo_actor.run_steps import RunResult, finish_run
 from actron_neo_actor.unit_checks import restore_message
 from actron_neo_actor.view import TickView
 
@@ -94,26 +95,30 @@ async def triage(env: Env, view: TickView, run: Run) -> Schedule | None:
 
 
 async def run_test(env: Env, run: Run, schedule: Schedule, hold_seconds: int, control: TestControl) -> None:
-    applied = await claim_and_apply(env, run, schedule.action, schedule.retry, control.commit, control.latest_start)
+    applied = await claim_and_apply(env, run, schedule.actions, schedule.retry, control.commit, control.latest_start)
     if applied is None:
         return
-    claimed, attempt = applied
-    # After a stop the restore runs even when the apply failed, in case the command lands late.
-    if not schedule.restore.enabled or not (attempt.ok or control.stopping):
-        await finish(env, claimed, attempt, RESTORE_OFF)
+    claimed, result = applied
+    held = result.ok_count > 0
+    # After a stop the restore runs even when no action worked, in case a command lands late.
+    if not schedule.restore.enabled or not (held or control.stopping):
+        await finish_run(env, claimed, result, RESTORE_OFF)
         return
-    cut = await control.hold(env.sleep, hold_seconds) if attempt.ok else False
-    restored = await _restore(env, schedule, claimed.snapshot, control.latest_start)
-    outcome = "ok" if attempt.ok and restored.ok else "failed"
-    message = _test_message(attempt, restored, cut, control.stopping)
-    await update(env, claimed, outcome, message, attempts=attempt.attempts + restored.attempts)
+    cut = await control.hold(env.sleep, hold_seconds) if held else False
+    steps = None if control.stopping else result.steps_json()  # after a stop, put back every action
+    restored = await _restore(env, schedule, claimed.snapshot, steps, control.latest_start)
+    outcome = result.outcome if restored.ok else "failed"
+    message = _test_message(result, restored, cut, control.stopping)
+    attempts = result.attempts + restored.attempts
+    await update(env, claimed, outcome, message, attempts=attempts, steps=result.steps_json())
 
 
-def _test_message(attempt: Attempt, restored: Attempt[RestoreResult], cut: bool, stopping: bool) -> str:
-    if not attempt.ok:
-        lead = f"{attempt.failure()}; the actor stopped"
+def _test_message(result: RunResult, restored: Attempt[RestoreResult], cut: bool, stopping: bool) -> str:
+    if result.ok_count == 0:
+        lead = f"{result.message()}; the actor stopped"
         return _outcome_message(f"{lead}, then", f"{lead}, and the restore", restored)
-    message = _outcome_message("applied, then", "applied, but the restore", restored)
+    done = result.message("applied")
+    message = _outcome_message(f"{done}, then", f"{done}, but the restore", restored)
     if restored.ok and cut:
         return f"{message} early because the actor stopped"
     if not restored.ok and stopping:
@@ -133,9 +138,13 @@ async def finish_interrupted(env: Env, view: TickView, run: Run) -> None:
 
 
 async def _restore(
-    env: Env, schedule: Schedule, snapshot: dict | None, latest_start: Cutoff | None = None
+    env: Env,
+    schedule: Schedule,
+    snapshot: dict | None,
+    steps: list[dict] | None = None,
+    latest_start: Cutoff | None = None,
 ) -> Attempt[RestoreResult]:
-    op = current_state_restore(env, snapshot)
+    op = current_state_restore(env, snapshot, steps)
     return await with_retries(env, schedule.retry, op, latest_start=latest_start)
 
 

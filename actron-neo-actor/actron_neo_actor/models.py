@@ -151,11 +151,6 @@ class Schedule:
     restore: RestoreSpec
     retry: RetrySpec
 
-    @property
-    def action(self) -> ActionSpec:
-        """The first action. Callers that run one action use this until they run the whole list."""
-        return self.actions[0]
-
     @classmethod
     def from_json(cls, data: dict, instance_id: int) -> Schedule:
         """Core API does not send instance_id; the caller knows it from the URL."""

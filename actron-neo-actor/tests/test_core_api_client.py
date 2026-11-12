@@ -126,7 +126,7 @@ def test_get_schedules_parses_nested_specs(client):
     assert schedule.conditions[0].op == "gt"
     assert schedule.conditions[0].enabled is True
     assert schedule.restore.only_if[0].enabled is False
-    assert schedule.action.params["zones"] == ["a"]
+    assert schedule.actions[0].params["zones"] == ["a"]
     assert schedule.restore.when == "after_minutes" and schedule.restore.minutes == 30
     assert schedule.retry.give_up_minutes == 15
     assert schedule.created_at == datetime.datetime(2026, 11, 1, tzinfo=UTC)

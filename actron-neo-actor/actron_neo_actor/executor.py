@@ -17,6 +17,7 @@ from actron_neo_actor.async_core import AsyncCore
 from actron_neo_actor.core_api_client import CoreApiConflict
 from actron_neo_actor.device import Device, DeviceAuthError, DeviceError, DeviceState, RestoreResult
 from actron_neo_actor.models import ActionSpec, RetrySpec, Run
+from actron_neo_actor.snapshots import restorable
 
 SETTLE_SECONDS = 15
 
@@ -166,15 +167,19 @@ async def apply_with_retries(
     return attempt
 
 
-def current_state_restore(env: Env, snapshot: dict | None) -> Callable[[], Awaitable[RestoreResult]]:
-    """An op that restores `snapshot` against the state synced at the moment it runs."""
+def current_state_restore(
+    env: Env, snapshot: dict | None, steps: list[dict] | None = None
+) -> Callable[[], Awaitable[RestoreResult]]:
+    """An op that restores the part of `snapshot` whose steps are ok (see snapshots.restorable)
+    against the state synced at the moment it runs."""
 
     async def op() -> RestoreResult:
         state = env.device.state()
-        if snapshot is None:
+        target = restorable(snapshot, steps)
+        if target is None:
             raise DeviceError("no snapshot to restore")
         if state is None:
             raise DeviceError("no device state yet")
-        return await env.device.restore(snapshot, state)
+        return await env.device.restore(target, state)
 
     return op

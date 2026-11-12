@@ -45,8 +45,8 @@ def test_window_start_turns_unit_off_and_records_ok():
         await h.tick()
         action = only(h.core.of("action"))
         assert (action.outcome, action.trigger_at, action.attempts) == ("ok", WINDOW_START, 1)
-        assert action.snapshot == {"action": "system_off", "applied": {"is_on": False},
-                                   "saved": {"is_on": True, "mode": "COOL"}}
+        assert action.snapshot == {"actions": [{"action": "system_off", "applied": {"is_on": False},
+                                                "saved": {"is_on": True, "mode": "COOL"}}]}
         # The snapshot went to Core API with the claim, before the command.
         assert h.core.updates[0] == (action.id, "running", action.snapshot)
         assert power_commands(h.api) == ["OFF"]
@@ -74,7 +74,7 @@ def test_unit_already_off_at_start_gets_off_restore():
         await h.tick()
         action = only(h.core.of("action"))
         assert action.outcome == "ok"
-        assert action.snapshot["saved"]["is_on"] is False
+        assert action.snapshot["actions"][0]["saved"]["is_on"] is False
         await h.tick_at(WINDOW_END)
         restore = only(h.core.of("restore"))
         assert (restore.outcome, restore.message) == ("ok", "restored power")
@@ -486,7 +486,7 @@ def test_test_run_applies_then_restores_after_the_hold():
         await h.tick()
         done = h.core.runs[test.id]
         assert (done.outcome, done.message) == ("ok", "applied, then restored power")
-        assert done.snapshot is not None and done.snapshot["saved"]["is_on"] is True
+        assert done.snapshot is not None and done.snapshot["actions"][0]["saved"]["is_on"] is True
         assert power_commands(h.api) == ["OFF", "COOL"]
         assert 30 in h.clock.sleeps
 
@@ -786,5 +786,241 @@ def test_not_signed_in_does_nothing_with_the_unit():
         h.factory.signed_in = False
         await h.tick()
         assert h.core.runs == {} and h.factory.devices == []
+
+    run(scenario())
+
+
+# Lists of actions
+
+STUDY_ZONES: list[tuple[str, bool, float]] = [("Study", True, 21.0), ("Lounge", True, 23.0)]
+FAN_LOW = ActionSpec("set_fan_mode", {"fan_mode": "LOW"})
+STUDY_28 = ActionSpec("set_zone_temperature", {"zone": "Study", "temperature_c": 28.0})
+LOUNGE_OFF = ActionSpec("set_zones", {"zones": ["Lounge"], "enabled": False})
+STUDY_28_FAILED = "failed after 1 attempt: Study 28.0°C is outside 20.0–24.0°C (the unit is set to 22.0°C)"
+ONE_TRY = RetrySpec(1, 10, 5)
+CONFIRMED = "confirmed after a restart"
+REAPPLIED = "applied after a restart"
+
+
+def study_api() -> FakeActronApi:
+    """Main setpoint 22.0 with a zone variance of 2.0, so a zone may be set from 20.0 to 24.0."""
+    raw = raw_state(cool_c=22.0, heat_c=22.0, zones=STUDY_ZONES)
+    raw["UserAirconSettings"]["ZoneTemperatureSetpointVariance_oC"] = 2.0
+    return FakeActronApi(raw)
+
+
+def step(index: int, action: ActionSpec, outcome: str = "ok", message: str | None = None, attempts: int = 1) -> dict:
+    return {"index": index, "action_id": action.id, "params": action.params, "outcome": outcome,
+            "message": message, "attempts": attempts}
+
+
+def partial_harness() -> Harness:
+    """Three actions where the middle one asks for a zone setpoint the unit refuses."""
+    return harness([schedule(actions=[FAN_LOW, STUDY_28, LOUNGE_OFF], retry=ONE_TRY)], api=study_api())
+
+
+def test_all_actions_ok_gives_ok():
+    async def scenario() -> None:
+        actions = [FAN_LOW, ActionSpec("set_temperature", {"temperature_c": 25.0}), LOUNGE_OFF]
+        h = harness([schedule(actions=actions)], api=study_api())
+        await h.tick()
+        action = only(h.core.of("action"))
+        assert (action.outcome, action.message, action.attempts) == ("ok", None, 3)
+        assert action.steps == [step(i, a) for i, a in enumerate(actions)]
+        assert h.api.device["UserAirconSettings"]["FanMode"] == "LOW+CONT"
+        await h.tick_at(WINDOW_END)
+        assert only(h.core.of("restore")).outcome == "ok"
+        settings = h.api.device["UserAirconSettings"]
+        assert (settings["FanMode"], settings["TemperatureSetpoint_Cool_oC"]) == ("AUTO+CONT", 22.0)
+        assert settings["EnabledZones"] == [True, True]
+
+    run(scenario())
+
+
+def test_middle_action_fails_and_the_rest_still_run():
+    async def scenario() -> None:
+        h = partial_harness()
+        await h.tick()
+        action = only(h.core.of("action"))
+        assert (action.outcome, action.attempts) == ("partial", 3)
+        assert action.message == f"2 of 3 ran. Failed: set_zone_temperature Study 28.0: {STUDY_28_FAILED}"
+        assert action.steps == [step(0, FAN_LOW), step(1, STUDY_28, "failed", STUDY_28_FAILED), step(2, LOUNGE_OFF)]
+        assert h.api.device["UserAirconSettings"]["EnabledZones"] == [True, False]
+
+    run(scenario())
+
+
+def test_all_actions_fail_gives_failed_and_no_restore():
+    async def scenario() -> None:
+        h = harness([schedule(actions=[ActionSpec("system_off"), FAN_LOW], retry=ONE_TRY)])
+        h.api.respond_to_commands = False
+        await h.tick()
+        action = only(h.core.of("action"))
+        assert (action.outcome, action.attempts) == ("failed", 2)
+        assert action.message == ("0 of 2 ran. Failed: system_off: failed after 1 attempt: not confirmed; "
+                                  "set_fan_mode LOW: failed after 1 attempt: not confirmed")
+        assert [s["outcome"] for s in action.steps] == ["failed", "failed"]
+        h.api.respond_to_commands = True
+        await h.tick_at(WINDOW_END)
+        await h.tick_at(WINDOW_END + MIN)
+        assert h.core.of("restore") == []
+        assert h.core.list_unfinished_runs(1) == []
+
+    run(scenario())
+
+
+def test_snapshot_is_saved_with_the_claim_before_any_command():
+    async def scenario() -> None:
+        actions = [ActionSpec("set_mode", {"mode": "HEAT"}), ActionSpec("set_temperature", {"temperature_c": 25.0})]
+        h = harness([schedule(actions=actions)])
+        seen: list[list[str]] = []
+        send = h.api.send_command
+
+        async def recording(serial: str, command: dict[str, Any]) -> None:
+            seen.append([outcome for _, outcome, _ in h.core.updates])
+            await send(serial, command)
+
+        h.api.send_command = recording  # type: ignore[method-assign]
+        await h.tick()
+        action = only(h.core.of("action"))
+        assert action.outcome == "ok"
+        assert seen[0] == ["running"]
+        assert h.core.updates[0] == (action.id, "running", action.snapshot)
+        # Both entries were read from the unit before the mode changed.
+        assert [e["saved"] for e in action.snapshot["actions"]] == [
+            {"is_on": True, "mode": "COOL"}, {"cool_setpoint_c": 23.0, "heat_setpoint_c": 21.0}]
+
+    run(scenario())
+
+
+def test_give_up_marks_unstarted_actions_failed_with_gave_up():
+    async def scenario() -> None:
+        actions = [ActionSpec("system_off"), FAN_LOW, LOUNGE_OFF]
+        h = harness([schedule(actions=actions, retry=RetrySpec(10, 60, 2))], api=study_api())
+        h.api.respond_to_commands = False
+        await h.tick()
+        action = only(h.core.of("action"))
+        # The first action's two tries and its settle check use up the 2 minutes.
+        assert (action.outcome, action.attempts) == ("failed", 2)
+        assert action.steps[1:] == [step(1, FAN_LOW, "failed", "gave up", 0),
+                                    step(2, LOUNGE_OFF, "failed", "gave up", 0)]
+        assert power_commands(h.api) == ["OFF", "OFF"]
+        assert all("UserAirconSettings.FanMode" not in c for c in h.api.commands)
+
+    run(scenario())
+
+
+def test_partial_run_restores_only_ok_steps():
+    async def scenario() -> None:
+        h = partial_harness()
+        await h.tick()
+        assert only(h.core.of("action")).outcome == "partial"
+        sent = len(h.api.commands)
+        await h.tick_at(WINDOW_END)
+        restore = only(h.core.of("restore"))
+        assert (restore.outcome, restore.message) == ("ok", "restored fan_mode, zone Lounge")
+        assert all("RemoteZoneInfo" not in key for c in h.api.commands[sent:] for key in c)
+        settings = h.api.device["UserAirconSettings"]
+        assert (settings["FanMode"], settings["EnabledZones"]) == ("AUTO+CONT", [True, True])
+
+    run(scenario())
+
+
+def test_partial_run_is_never_marked_overridden():
+    async def scenario() -> None:
+        h = partial_harness()
+        await h.tick()
+        action = only(h.core.of("action"))
+        h.clock.current = START + 2 * MIN
+        h.api.owner_sets("UserAirconSettings.FanMode", "HIGH")
+        h.api.owner_sets("UserAirconSettings.EnabledZones", [True, True])
+        await h.api.push()
+        await h.worker.idle()
+        await h.tick_at(START + 3 * MIN)
+        assert h.core.runs[action.id].outcome == "partial"
+        await h.tick_at(WINDOW_END)
+        restore = only(h.core.of("restore"))
+        assert restore.outcome == "ok"
+        assert restore.message == "left alone because the owner changed them: fan_mode, zone Lounge"
+
+    run(scenario())
+
+
+def test_override_check_pairs_actions_from_the_run_steps():
+    async def scenario() -> None:
+        # The schedule now says system_off, but the run set the fan to LOW before the owner edited it.
+        h = harness(api=FakeActronApi(raw_state(fan_mode="LOW")))
+        snapshot = {"actions": [{"action": "set_fan_mode", "applied": {"fan_mode": "LOW"},
+                                 "saved": {"fan_mode": "AUTO+CONT"}}]}
+        action = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START, outcome="ok", attempts=1,
+                                started_at=START, finished_at=START, snapshot=snapshot, steps=[step(0, FAN_LOW)])
+        await h.tick_at(START + 2 * MIN)
+        assert h.core.runs[action.id].outcome == "ok"  # the unit still shows the fan the run set
+        h.api.owner_sets("UserAirconSettings.FanMode", "HIGH")
+        await h.api.push()
+        await h.tick_at(START + 3 * MIN)
+        assert h.core.runs[action.id].outcome == "overridden"
+
+    run(scenario())
+
+
+def test_legacy_run_with_single_snapshot_restores():
+    async def scenario() -> None:
+        h = harness(api=FakeActronApi(raw_state(is_on=False)))
+        snapshot = {"action": "system_off", "applied": {"is_on": False}, "saved": {"is_on": True, "mode": "COOL"}}
+        action = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START, outcome="ok", attempts=1,
+                                started_at=START, finished_at=START + MIN, snapshot=snapshot)
+        await h.tick_at(START + 30 * MIN)
+        assert h.core.runs[action.id].outcome == "ok"
+        await h.tick_at(WINDOW_END)
+        restore = only(h.core.of("restore"))
+        assert (restore.outcome, restore.message, restore.parent_run_id) == ("ok", "restored power", action.id)
+        assert power_commands(h.api) == ["COOL"]
+
+    run(scenario())
+
+
+def test_restart_after_third_of_four_actions_finishes_the_rest():
+    async def scenario() -> None:
+        actions = [FAN_LOW, ActionSpec("set_temperature", {"temperature_c": 25.0}),
+                   ActionSpec("set_zones", {"zones": ["Kids"], "enabled": True}), ActionSpec("system_off")]
+        zones = [("Family ", True, 24.0), ("Master", True, 23.5), ("Kids", True, 22.0)]
+        api = FakeActronApi(raw_state(fan_mode="LOW+CONT", cool_c=25.0, zones=zones))
+        h = harness([schedule(actions=actions)], api=api)
+        snapshot = {"actions": [
+            {"action": "set_fan_mode", "applied": {"fan_mode": "LOW"}, "saved": {"fan_mode": "AUTO+CONT"}},
+            {"action": "set_temperature", "applied": {"setpoint_c": 25.0},
+             "saved": {"cool_setpoint_c": 23.0, "heat_setpoint_c": 21.0}},
+            {"action": "set_zones", "applied": {"zones": {"Kids": True}}, "saved": {"zones": {"Kids": False}}},
+            {"action": "system_off", "applied": {"is_on": False}, "saved": {"is_on": True, "mode": "COOL"}},
+        ]}
+        claimed = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START, outcome="running",
+                                 started_at=START, snapshot=snapshot)
+        await h.tick_at(START + MIN)
+        done = h.core.runs[claimed.id]
+        assert (done.outcome, done.message, done.attempts) == ("ok", REAPPLIED, 1)
+        assert done.steps == [*(step(i, actions[i], message=CONFIRMED, attempts=0) for i in range(3)),
+                              step(3, actions[3], message=REAPPLIED)]
+        assert power_commands(h.api) == ["OFF"] and len(h.api.commands) == 1
+        await h.tick_at(WINDOW_END)
+        assert only(h.core.of("restore")).outcome == "ok"
+        settings = h.api.device["UserAirconSettings"]
+        assert (settings["isOn"], settings["FanMode"]) == (True, "AUTO+CONT")
+        assert (settings["EnabledZones"], settings["TemperatureSetpoint_Cool_oC"]) == ([True, True, False], 23.0)
+
+    run(scenario())
+
+
+def test_test_now_runs_every_action():
+    async def scenario() -> None:
+        h = harness([schedule(actions=[FAN_LOW, ActionSpec("system_off")])])
+        h.core.contexts[1] = dataclasses.replace(h.core.contexts[1], windows=[])
+        test = h.core.add_run(schedule_id=1, kind="test", trigger_at=START)
+        await h.tick()
+        done = h.core.runs[test.id]
+        assert (done.outcome, done.message) == ("ok", "applied, then restored power, fan_mode")
+        assert done.steps == [step(0, FAN_LOW), step(1, ActionSpec("system_off"))]
+        assert power_commands(h.api) == ["OFF", "COOL"]
+        assert h.api.device["UserAirconSettings"]["FanMode"] == "AUTO+CONT"
 
     run(scenario())

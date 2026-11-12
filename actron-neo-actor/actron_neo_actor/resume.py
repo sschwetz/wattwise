@@ -11,10 +11,11 @@ from __future__ import annotations
 import datetime
 
 from actron_neo_actor.executor import Env, apply_with_retries, settled, shows_action, update
-from actron_neo_actor.models import Run
+from actron_neo_actor.models import ActionSpec, RetrySpec, Run
 from actron_neo_actor.restores import execute_restore, take
+from actron_neo_actor.run_steps import RunResult, StepResult, finish_run, from_attempt
 from actron_neo_actor.test_runs import finish_interrupted
-from actron_neo_actor.view import OPEN, TickView
+from actron_neo_actor.view import HOLDING, OPEN, TickView
 
 NOT_STARTED = "the actor restarted before the run"
 CONFIRMED = "confirmed after a restart"
@@ -45,29 +46,36 @@ async def _resume_action(env: Env, view: TickView, run: Run) -> None:
 
 
 async def _carry_on(env: Env, view: TickView, run: Run) -> Run | None:
-    """A claimed action: done if the unit shows it, else applied again within the give-up time from its claim."""
+    """A claimed run: each action the unit shows counts as done, and each one it does not is applied
+    again within the give-up time from the claim. Steps are recorded only when a run finishes, so the
+    schedule's actions are the list to check."""
     schedule = view.schedules.get(run.schedule_id)
     if schedule is None or run.snapshot is None:
         return await update(env, run, "failed", NOT_CONFIRMED)
-    action, retry = schedule.action, schedule.retry
-    if await shows_action(env, action):
-        return await update(env, run, "ok", CONFIRMED)
     started = run.started_at or env.clock()
+    steps = [await _carry_on_step(env, i, action, schedule.retry, started) for i, action in enumerate(schedule.actions)]
+    ok_message = REAPPLIED if any(s.message == REAPPLIED for s in steps) else CONFIRMED
+    return await finish_run(env, run, RunResult(steps), ok_message)
+
+
+async def _carry_on_step(
+    env: Env, index: int, action: ActionSpec, retry: RetrySpec, started: datetime.datetime
+) -> StepResult:
+    if await shows_action(env, action):
+        return StepResult(index, action, True, CONFIRMED, 0)
     if env.clock() >= started + datetime.timedelta(minutes=retry.give_up_minutes):
         confirmed = await settled(env, action)
-        return await update(env, run, "ok" if confirmed else "failed", CONFIRMED if confirmed else NOT_CONFIRMED)
+        return StepResult(index, action, confirmed, CONFIRMED if confirmed else NOT_CONFIRMED, 0)
     attempt = await apply_with_retries(env, action, retry, started)
-    if attempt.ok:
-        return await update(env, run, "ok", REAPPLIED, attempts=attempt.attempts)
-    return await update(env, run, "failed", attempt.failure(), attempts=attempt.attempts)
+    return from_attempt(index, action, attempt, REAPPLIED)
 
 
 async def _resume_restore(env: Env, view: TickView, run: Run) -> None:
     parent, schedule = view.unfinished_run(run.parent_run_id), view.schedules.get(run.schedule_id)
-    if parent is None or parent.outcome != "ok" or schedule is None:
+    if parent is None or parent.outcome not in HOLDING or schedule is None:
         done = await update(env, run, "skipped", NOTHING_TO_RESTORE)
     elif await take(env, view, parent):
-        done = await execute_restore(env, run, parent.snapshot, schedule.retry)
+        done = await execute_restore(env, run, parent, schedule.retry)
     else:
         return
     if done is not None:

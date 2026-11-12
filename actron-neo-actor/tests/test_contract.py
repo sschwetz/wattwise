@@ -68,7 +68,7 @@ def test_instances_list_entry_parses():
 def test_schedules_list_entry_parses():
     respx.get(f"{BASE}/instances/1/schedules").respond(json=[fixture("schedules_list_entry.json")])
     [schedule] = client().get_schedules(1)
-    assert (schedule.trigger.days_of_week, schedule.action.id) == ([0, 1, 2, 3, 4], "set_zones")
+    assert (schedule.trigger.days_of_week, schedule.actions[0].id) == ([0, 1, 2, 3, 4], "set_zones")
     assert schedule.restore.early_if[0].target == "Family"
     assert schedule.created_at == datetime.datetime(2026, 11, 1, tzinfo=datetime.UTC)
 
@@ -117,7 +117,7 @@ def test_schedule_reads_actions_list():
     respx.get(f"{BASE}/instances/1/schedules").respond(json=[body])
     [schedule] = client().get_schedules(1)
     assert [a.id for a in schedule.actions] == ["set_zones", "set_mode"]
-    assert schedule.action.id == "set_zones"
+    assert schedule.actions[0].id == "set_zones"
 
 
 @respx.mock
