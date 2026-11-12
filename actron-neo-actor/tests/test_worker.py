@@ -1011,6 +1011,56 @@ def test_restart_after_third_of_four_actions_finishes_the_rest():
     run(scenario())
 
 
+SCHEDULE_CHANGED = "the schedule changed before the actor restarted"
+
+
+def test_restart_after_the_actions_were_edited_sends_nothing_and_restores_the_snapshot():
+    async def scenario() -> None:
+        # The claim saved [system_off, set_fan_mode LOW]; the owner then edited the schedule to set_mode HEAT.
+        api = FakeActronApi(raw_state(is_on=False, fan_mode="LOW+CONT"))
+        h = harness([schedule(action=ActionSpec("set_mode", {"mode": "HEAT"}))], api=api)
+        snapshot = {"actions": [
+            {"action": "system_off", "applied": {"is_on": False}, "saved": {"is_on": True, "mode": "COOL"}},
+            {"action": "set_fan_mode", "applied": {"fan_mode": "LOW"}, "saved": {"fan_mode": "AUTO+CONT"}},
+        ]}
+        claimed = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START, outcome="running",
+                                 started_at=START, snapshot=snapshot)
+        await h.tick_at(START + MIN)
+        done = h.core.runs[claimed.id]
+        assert (done.outcome, done.message, done.steps) == ("partial", SCHEDULE_CHANGED, None)
+        assert h.api.commands == []
+        await h.tick_at(START + 5 * MIN)
+        assert h.core.runs[claimed.id].outcome == "partial"  # never marked overridden
+        await h.tick_at(WINDOW_END)
+        assert only(h.core.of("restore")).outcome == "ok"
+        settings = h.api.device["UserAirconSettings"]
+        assert (settings["isOn"], settings["Mode"], settings["FanMode"]) == (True, "COOL", "AUTO+CONT")
+
+    run(scenario())
+
+
+def test_restart_after_a_zone_edit_sends_nothing_and_restores_the_snapshot_zones():
+    async def scenario() -> None:
+        # The claim saved set_zones Kids on; the owner then edited it to switch Master off.
+        zones = [("Family ", True, 24.0), ("Master", True, 23.5), ("Kids", True, 22.0)]
+        h = harness([schedule(action=ActionSpec("set_zones", {"zones": ["Master"], "enabled": False}))],
+                    api=FakeActronApi(raw_state(zones=zones)))
+        snapshot = {"actions": [
+            {"action": "set_zones", "applied": {"zones": {"Kids": True}}, "saved": {"zones": {"Kids": False}}},
+        ]}
+        claimed = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START, outcome="running",
+                                 started_at=START, snapshot=snapshot)
+        await h.tick_at(START + MIN)
+        done = h.core.runs[claimed.id]
+        assert (done.outcome, done.message, done.steps) == ("partial", SCHEDULE_CHANGED, None)
+        assert h.api.commands == []
+        await h.tick_at(WINDOW_END)
+        assert only(h.core.of("restore")).outcome == "ok"
+        assert h.api.device["UserAirconSettings"]["EnabledZones"] == [True, True, False]
+
+    run(scenario())
+
+
 def test_test_now_runs_every_action():
     async def scenario() -> None:
         h = harness([schedule(actions=[FAN_LOW, ActionSpec("system_off")])])

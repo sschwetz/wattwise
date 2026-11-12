@@ -14,6 +14,7 @@ from actron_neo_actor.executor import Env, apply_with_retries, settled, shows_ac
 from actron_neo_actor.models import ActionSpec, RetrySpec, Run
 from actron_neo_actor.restores import execute_restore, take
 from actron_neo_actor.run_steps import RunResult, StepResult, finish_run, from_attempt
+from actron_neo_actor.snapshots import snapshot_matches
 from actron_neo_actor.test_runs import finish_interrupted
 from actron_neo_actor.view import HOLDING, OPEN, TickView
 
@@ -22,6 +23,7 @@ CONFIRMED = "confirmed after a restart"
 REAPPLIED = "applied after a restart"
 NOT_CONFIRMED = "the actor restarted before the unit confirmed"
 NOTHING_TO_RESTORE = "nothing left to restore"
+SCHEDULE_CHANGED = "the schedule changed before the actor restarted"
 
 
 async def resume(env: Env, view: TickView, in_flight: set[int]) -> None:
@@ -48,10 +50,15 @@ async def _resume_action(env: Env, view: TickView, run: Run) -> None:
 async def _carry_on(env: Env, view: TickView, run: Run) -> Run | None:
     """A claimed run: each action the unit shows counts as done, and each one it does not is applied
     again within the give-up time from the claim. Steps are recorded only when a run finishes, so the
-    schedule's actions are the list to check."""
+    schedule's actions are the list to check.
+
+    When the actions were edited after the claim, nothing is sent: the run ends `partial` with no
+    steps, so the restore puts back the whole snapshot, field by field, and no override ends it."""
     schedule = view.schedules.get(run.schedule_id)
     if schedule is None or run.snapshot is None:
         return await update(env, run, "failed", NOT_CONFIRMED)
+    if not snapshot_matches(run.snapshot, schedule.actions):
+        return await update(env, run, "partial", SCHEDULE_CHANGED)
     started = run.started_at or env.clock()
     steps = [await _carry_on_step(env, i, action, schedule.retry, started) for i, action in enumerate(schedule.actions)]
     ok_message = REAPPLIED if any(s.message == REAPPLIED for s in steps) else CONFIRMED

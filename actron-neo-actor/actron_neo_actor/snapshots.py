@@ -7,7 +7,7 @@ See device_snapshot.py for the shapes and how restore combines entries.
 
 from __future__ import annotations
 
-from actron_neo_actor.device_snapshot import DeviceError, snapshot_for
+from actron_neo_actor.device_snapshot import DeviceError, entries, snapshot_for
 from actron_neo_actor.device_state import DeviceState
 from actron_neo_actor.models import ActionSpec
 
@@ -51,3 +51,28 @@ def ok_actions(actions: list[ActionSpec], steps: list[dict] | None) -> list[Acti
         return list(actions)
     ok = _ok_indexes(steps)
     return [action for i, action in enumerate(actions) if i in ok]
+
+
+def snapshot_matches(snapshot: dict, actions: list[ActionSpec]) -> bool:
+    """True when entry i was taken for actions[i]: the same action, the same zones, the same mode or fan.
+
+    A resumed run checks this before it sends anything: after an edit, a command could change a field
+    with no saved value, or a restore could pair an entry with the wrong action. A new setpoint value
+    for the same field still matches, because the entry restores that field either way."""
+    try:
+        found = entries(snapshot)
+        return len(found) == len(actions) and all(_entry_matches(e, a) for e, a in zip(found, actions, strict=True))
+    except (KeyError, TypeError, AttributeError):
+        return False
+
+
+def _entry_matches(entry: dict, action: ActionSpec) -> bool:
+    applied, params = entry["applied"], action.params
+    if entry["action"] != action.id:
+        return False
+    if action.id == "set_zones":
+        # `applied` lists only the zones the run changed, so each must still be in the action.
+        return set(applied["zones"]) <= set(params.get("zones") or [])
+    if action.id == "set_zone_temperature":
+        return applied["zone"] == params.get("zone")
+    return all(applied[key] == params.get(key) for key in ("mode", "fan_mode") if key in applied)
