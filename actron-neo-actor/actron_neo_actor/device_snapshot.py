@@ -16,8 +16,10 @@ When two entries cover the same field, restore puts back the earlier entry's
 `saved` value (the value before the run) and compares the unit with the later
 entry's `applied` value (what the run left). Main unit fields go back first, in
 the order power, setpoint, fan_mode, then zones on/off and zone setpoints: a
-zone's old setpoint was valid for the old main setpoint. The setpoints restored
-are those for the mode the unit is in once power and mode are back.
+zone's old setpoint was valid for the old main setpoint. The main setpoint goes
+back in the mode the run applied it in: before power and mode when the unit is
+on and still shows it in its current mode, else after them (see _plan_setpoint).
+Zone setpoints are restored for the mode the unit is in once power and mode are back.
 
 By action:
 
@@ -59,6 +61,8 @@ SETPOINT_TOLERANCE_C = 0.05
 # Room for float error at the range edges: 22.9 + 1.2 is 24.099999999999998.
 RANGE_EPSILON_C = 1e-6
 POWER_ACTIONS = frozenset({"system_off", "system_on", "set_mode"})
+# The library refuses a setpoint in FAN and OFF mode.
+SETPOINT_MODES = frozenset({"COOL", "HEAT", "AUTO"})
 ACTIONS = POWER_ACTIONS | {"set_temperature", "set_fan_mode", "set_zones", "set_zone_temperature"}
 # Restore order for the fields of a list-form snapshot. Zone setpoints ("zone_temp:<title>") go last.
 _FIELD_ORDER = {"power": 0, "setpoint": 1, "fan_mode": 2, "zones": 3}
@@ -82,6 +86,8 @@ class RestoreResult:
 
 @dataclass
 class RestorePlan:
+    # Sent and confirmed before `commands`, while the unit is still in the mode the run left.
+    early: list[Command] = field(default_factory=list)
     commands: list[Command] = field(default_factory=list)
     restored: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
@@ -216,9 +222,27 @@ def _after_power(commands: list[Command], current: DeviceState) -> DeviceState:
 
 
 def _plan_setpoint(applied: dict, saved: dict, current: DeviceState, target: DeviceState) -> RestorePlan:
-    """The owner check reads `current`; the value sent is the saved one for `target`'s mode."""
-    owner_changed = not _near(active_setpoint(current), applied["setpoint_c"])
-    command: Command = ("set_temperature", {"temperature_c": _saved_for_mode(saved, target)})
+    """Put the setpoint back in the mode the run applied it in.
+
+    `applied` was read before the run, so it may belong to the mode the unit is in
+    now or to the mode the power restore goes back to (`target`):
+    - The unit is on in a mode that takes a setpoint and shows the applied value:
+      send the saved value for that mode before power and mode go back. A unit that
+      is off falls through, since its setpoint may not take.
+    - Else `target`'s setpoint shows the applied value: send after power, for `target`'s mode.
+    - Else the owner has changed it.
+    """
+    if (
+        current.is_on
+        and current.mode.upper() in SETPOINT_MODES
+        and _near(active_setpoint(current), applied["setpoint_c"])
+    ):
+        command: Command = ("set_temperature", {"temperature_c": _saved_for_mode(saved, current)})
+        plan = _single(RestorePlan(), "setpoint", False, command, current)
+        plan.early, plan.commands = plan.commands, []
+        return plan
+    owner_changed = not _near(active_setpoint(target), applied["setpoint_c"])
+    command = ("set_temperature", {"temperature_c": _saved_for_mode(saved, target)})
     return _single(RestorePlan(), "setpoint", owner_changed, command, target)
 
 
@@ -307,6 +331,7 @@ def plan_restore(snapshot: dict, current: DeviceState) -> RestorePlan:
         plan, target = RestorePlan(), current
         for name, entry in merge_entries(entries(snapshot)):
             part = _plan_entry(entry, current, target)
+            plan.early += part.early
             plan.commands += part.commands
             plan.restored += part.restored
             plan.skipped += part.skipped

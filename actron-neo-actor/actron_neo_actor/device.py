@@ -201,10 +201,12 @@ class ActronDevice:
 
     async def restore(self, snapshot: dict, current: DeviceState) -> RestoreResult:
         """Put back what `snapshot_for` or `snapshot_for_all` saved, leaving alone each field the owner
-        has changed since. All commands go in one batch, main unit fields first."""
+        has changed since. Main unit fields go first. A setpoint that must go back before the
+        mode does is sent and confirmed in a batch of its own, since the final state no longer shows it."""
         plan = plan_restore(snapshot, current)
-        if plan.commands:
-            await self._run(plan.commands)
+        for batch in (plan.early, plan.commands):
+            if batch:
+                await self._run(batch)
         return RestoreResult(restored=plan.restored, skipped=plan.skipped)
 
     async def _run(self, commands: list[Command]) -> None:

@@ -946,16 +946,49 @@ def test_restore_leaves_a_field_the_owner_changed():
     assert device.state().fan_mode == "HIGH+CONT"
 
 
-def test_restore_puts_the_setpoint_back_for_the_mode_the_power_restore_leaves():
-    device, _, _ = make()
+def _mode_and_setpoints(device: ActronDevice) -> tuple[str, bool, float, float]:
+    state = device.state()
+    assert state is not None
+    return state.mode, state.is_on, state.cool_setpoint_c, state.heat_setpoint_c
+
+
+def test_restore_puts_a_setpoint_set_after_a_mode_change_back_before_the_mode():
+    device, api, _ = make()  # COOL, cool 23.0, heat 21.0
     run(device.refresh())
     actions = [ActionSpec("set_mode", {"mode": "HEAT"}), ActionSpec("set_temperature", {"temperature_c": 25})]
     snapshot = _act_all(device, actions)
+    sent = len(api.commands)
     result = run(device.restore(snapshot, device.state()))
     assert result == RestoreResult(restored=["power", "setpoint"], skipped=[])
-    # Back in COOL, the cool setpoint is the one in use; the saved heat value must not land on it.
-    state = device.state()
-    assert (state.mode, state.cool_setpoint_c) == ("COOL", 23.0)
+    # The heat setpoint goes back while the unit is still in HEAT, then the mode.
+    assert api.commands[sent] == {"type": "set-settings", "UserAirconSettings.TemperatureSetpoint_Heat_oC": 21.0}
+    assert _mode_and_setpoints(device) == ("COOL", True, 23.0, 21.0)
+
+
+def test_restore_puts_a_setpoint_set_before_a_mode_change_back_after_the_mode():
+    device, api, _ = make()  # COOL, cool 23.0, heat 21.0
+    run(device.refresh())
+    actions = [ActionSpec("set_temperature", {"temperature_c": 25}), ActionSpec("set_mode", {"mode": "HEAT"})]
+    snapshot = _act_all(device, actions)
+    sent = len(api.commands)
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["power", "setpoint"], skipped=[])
+    assert api.commands[-1] == {"type": "set-settings", "UserAirconSettings.TemperatureSetpoint_Cool_oC": 23.0}
+    assert len(api.commands) == sent + 2
+    assert _mode_and_setpoints(device) == ("COOL", True, 23.0, 21.0)
+
+
+def test_restore_puts_the_setpoint_back_after_power_when_the_run_left_the_unit_off():
+    device, api, _ = make()  # on in COOL, cool 23.0
+    run(device.refresh())
+    actions = [ActionSpec("system_off", {}), ActionSpec("set_temperature", {"temperature_c": 25})]
+    snapshot = _act_all(device, actions)
+    sent = len(api.commands)
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["power", "setpoint"], skipped=[])
+    assert api.commands[sent]["UserAirconSettings.isOn"] is True
+    assert api.commands[-1] == {"type": "set-settings", "UserAirconSettings.TemperatureSetpoint_Cool_oC": 23.0}
+    assert _mode_and_setpoints(device) == ("COOL", True, 23.0, 21.0)
 
 
 def _setpoint_then_zone(main_saved: float, zone_saved: float) -> dict:
