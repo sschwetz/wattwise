@@ -991,6 +991,67 @@ def test_restore_puts_the_setpoint_back_after_power_when_the_run_left_the_unit_o
     assert _mode_and_setpoints(device) == ("COOL", True, 23.0, 21.0)
 
 
+def _study_cool_22_heat_21() -> tuple[ActronDevice, FakeActronApi]:
+    """On in COOL; main 22.0 in both modes; Study cool 22.0, heat 21.0. Zone range 20.0 to 24.0."""
+    api = study_unit()
+    api.device["RemoteZoneInfo"][0]["TemperatureSetpoint_Heat_oC"] = 21.0
+    device, _, _ = make(api)
+    run(device.refresh())
+    return device, api
+
+
+def _study_zone(device: ActronDevice) -> tuple[str, bool, tuple[float, float]]:
+    state = device.state()
+    assert state is not None
+    return state.mode, state.is_on, state.zone_cool_heat_c["Study"]
+
+
+STUDY_23 = ActionSpec("set_zone_temperature", {"zone": "Study", "temperature_c": 23.0})
+
+
+def test_restore_puts_a_zone_setpoint_set_after_a_mode_change_back_before_the_mode():
+    device, api = _study_cool_22_heat_21()
+    snapshot = _act_all(device, [ActionSpec("set_mode", {"mode": "HEAT"}), STUDY_23])
+    assert _study_zone(device) == ("HEAT", True, (22.0, 23.0))
+    sent = len(api.commands)
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["power", "zone_temp:Study"], skipped=[])
+    assert api.commands[sent] == {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Heat_oC": 21.0}
+    assert _study_zone(device) == ("COOL", True, (22.0, 21.0))
+
+
+def test_restore_puts_a_zone_setpoint_set_before_a_mode_change_back_after_the_mode():
+    device, api = _study_cool_22_heat_21()
+    snapshot = _act_all(device, [STUDY_23, ActionSpec("set_mode", {"mode": "HEAT"})])
+    assert _study_zone(device) == ("HEAT", True, (23.0, 21.0))
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["power", "zone_temp:Study"], skipped=[])
+    assert api.commands[-1] == {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 22.0}
+    assert _study_zone(device) == ("COOL", True, (22.0, 21.0))
+
+
+def test_restore_sends_no_zone_setpoint_while_the_unit_is_in_fan_mode():
+    device, api = _study_cool_22_heat_21()
+    snapshot = _act_all(device, [STUDY_23, ActionSpec("set_mode", {"mode": "FAN"})])
+    sent = len(api.commands)
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["power", "zone_temp:Study"], skipped=[])
+    assert api.commands[sent]["UserAirconSettings.Mode"] == "COOL"
+    assert api.commands[-1] == {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 22.0}
+    assert _study_zone(device) == ("COOL", True, (22.0, 21.0))
+
+
+def test_restore_sends_no_zone_setpoint_while_the_unit_is_off():
+    device, api = _study_cool_22_heat_21()
+    snapshot = _act_all(device, [STUDY_23, ActionSpec("system_off", {})])
+    sent = len(api.commands)
+    result = run(device.restore(snapshot, device.state()))
+    assert result == RestoreResult(restored=["power", "zone_temp:Study"], skipped=[])
+    assert api.commands[sent]["UserAirconSettings.isOn"] is True
+    assert api.commands[-1] == {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 22.0}
+    assert _study_zone(device) == ("COOL", True, (22.0, 21.0))
+
+
 def _setpoint_then_zone(main_saved: float, zone_saved: float) -> dict:
     """A list snapshot whose restore sends the main setpoint, then the Study setpoint, in one batch."""
     return {

@@ -16,10 +16,11 @@ When two entries cover the same field, restore puts back the earlier entry's
 `saved` value (the value before the run) and compares the unit with the later
 entry's `applied` value (what the run left). Main unit fields go back first, in
 the order power, setpoint, fan_mode, then zones on/off and zone setpoints: a
-zone's old setpoint was valid for the old main setpoint. The main setpoint goes
-back in the mode the run applied it in: before power and mode when the unit is
-on and still shows it in its current mode, else after them (see _plan_setpoint).
-Zone setpoints are restored for the mode the unit is in once power and mode are back.
+zone's old setpoint was valid for the old main setpoint. The main and zone
+setpoints go back in the mode the run applied them in: before power and mode
+when the unit is on in COOL, HEAT or AUTO and still shows them in its current
+mode, else after them (see _plan_mode_setpoint). The commands that go first are
+sent and confirmed as their own batch, main setpoint before zone setpoints.
 
 By action:
 
@@ -53,6 +54,7 @@ earlier command in the same batch can move it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
 from actron_neo_actor.device_state import HEAT, DeviceState, active_setpoint, base_fan_mode, clamp_setpoint
@@ -221,38 +223,51 @@ def _after_power(commands: list[Command], current: DeviceState) -> DeviceState:
     return current
 
 
-def _plan_setpoint(applied: dict, saved: dict, current: DeviceState, target: DeviceState) -> RestorePlan:
-    """Put the setpoint back in the mode the run applied it in.
+def _plan_mode_setpoint(
+    name: str,
+    applied_c: float,
+    read: Callable[[DeviceState], float | None],
+    command_for: Callable[[DeviceState], Command],
+    states: tuple[DeviceState, DeviceState],
+) -> RestorePlan:
+    """Put a setpoint back in the mode the run applied it in. `states` is (current, target).
 
-    `applied` was read before the run, so it may belong to the mode the unit is in
-    now or to the mode the power restore goes back to (`target`):
-    - The unit is on in a mode that takes a setpoint and shows the applied value:
-      send the saved value for that mode before power and mode go back. A unit that
+    The applied value was read before the run, so it may belong to the mode the unit
+    is in now or to the mode the power restore goes back to (`target`):
+    - The unit is on in a mode that takes a setpoint and `read` shows the applied value:
+      send `command_for(current)` early, before power and mode go back. A unit that
       is off falls through, since its setpoint may not take.
-    - Else `target`'s setpoint shows the applied value: send after power, for `target`'s mode.
+    - Else `read(target)` shows the applied value: send `command_for(target)` after power.
     - Else the owner has changed it.
     """
-    if (
-        current.is_on
-        and current.mode.upper() in SETPOINT_MODES
-        and _near(active_setpoint(current), applied["setpoint_c"])
-    ):
-        command: Command = ("set_temperature", {"temperature_c": _saved_for_mode(saved, current)})
-        plan = _single(RestorePlan(), "setpoint", False, command, current)
+    current, target = states
+    if current.is_on and current.mode.upper() in SETPOINT_MODES and _near(read(current), applied_c):
+        plan = _single(RestorePlan(), name, False, command_for(current), current)
         plan.early, plan.commands = plan.commands, []
         return plan
-    owner_changed = not _near(active_setpoint(target), applied["setpoint_c"])
-    command = ("set_temperature", {"temperature_c": _saved_for_mode(saved, target)})
-    return _single(RestorePlan(), "setpoint", owner_changed, command, target)
+    owner_changed = not _near(read(target), applied_c)
+    return _single(RestorePlan(), name, owner_changed, command_for(target), target)
+
+
+def _plan_setpoint(applied: dict, saved: dict, current: DeviceState, target: DeviceState) -> RestorePlan:
+    def command_for(state: DeviceState) -> Command:
+        return ("set_temperature", {"temperature_c": _saved_for_mode(saved, state)})
+
+    return _plan_mode_setpoint("setpoint", applied["setpoint_c"], active_setpoint, command_for, (current, target))
 
 
 def _plan_zone_setpoint(applied: dict, saved: dict, current: DeviceState, target: DeviceState) -> RestorePlan:
-    """The restore command goes through the same range check as the action, so a saved value
-    the unit would now clamp fails with the range message."""
+    """The restore command goes through the same range check as the action, read from the live
+    status at send time, so a saved value the unit would now clamp fails with the range message."""
     zone = applied["zone"]
-    owner_changed = not _near(current.zone_setpoints_c.get(zone), applied["setpoint_c"])
-    command: Command = ("set_zone_temperature", {"zone": zone, "temperature_c": _saved_for_mode(saved, target)})
-    return _single(RestorePlan(), f"zone_temp:{zone}", owner_changed, command, target)
+
+    def read(state: DeviceState) -> float | None:
+        return state.zone_setpoints_c.get(zone)
+
+    def command_for(state: DeviceState) -> Command:
+        return ("set_zone_temperature", {"zone": zone, "temperature_c": _saved_for_mode(saved, state)})
+
+    return _plan_mode_setpoint(f"zone_temp:{zone}", applied["setpoint_c"], read, command_for, (current, target))
 
 
 def _plan_fan(applied: dict, saved: dict, current: DeviceState) -> RestorePlan:
