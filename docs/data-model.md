@@ -245,10 +245,10 @@ Three tables hold the [actors](actors.md) feature. The migration is `895863e431c
 | Table | Purpose |
 |---|---|
 | `actor_instances` | One signed-in device account at a site. Columns: `site_id`, `provider` (free text, `actron_neo` today), `name`, `enabled`, `config` (`EncryptedJSON`, holds the refresh token), `auth_state` (`EncryptedJSON`, holds the sign-in code and link), `capabilities`, `capabilities_updated_at`, `latest_readings`, `last_seen_at` (set when the actor reports readings). |
-| `actor_schedules` | One action on one instance: `instance_id`, `name`, `enabled`, `trigger`, `conditions`, `action`, `restore`, `retry`, `notify_email` (default false), `created_at`. |
-| `actor_runs` | One row per attempt: `schedule_id`, `kind`, `trigger_at`, `started_at`, `finished_at`, `outcome`, `message`, `attempts`, `parent_run_id`, `snapshot`, `watchdog_notified_at`. |
+| `actor_schedules` | One schedule on one instance, with 1 to 8 actions: `instance_id`, `name`, `enabled`, `trigger`, `conditions`, `actions`, `restore`, `retry`, `notify_email` (default false), `created_at`. |
+| `actor_runs` | One row per attempt: `schedule_id`, `kind`, `trigger_at`, `started_at`, `finished_at`, `outcome`, `message`, `attempts`, `steps`, `parent_run_id`, `snapshot`, `watchdog_notified_at`. |
 
-`kind` is `action`, `restore` or `test`. `outcome` is `pending`, `running`, `ok`, `skipped`, `failed` or `overridden`. Both are text with a `CHECK` constraint. A unique constraint on (`schedule_id`, `kind`, `trigger_at`) stops a restart or a second actor process from running the same trigger twice. `parent_run_id` is set on restore rows only, is indexed, and points at the action run that holds the snapshot. Deleting a schedule or instance deletes its runs; the API does this because the foreign keys have no cascade.
+`kind` is `action`, `restore` or `test`. `outcome` is `pending`, `running`, `ok`, `skipped`, `partial`, `failed` or `overridden`. Both are text with a `CHECK` constraint. A unique constraint on (`schedule_id`, `kind`, `trigger_at`) stops a restart or a second actor process from running the same trigger twice. `parent_run_id` is set on restore rows only, is indexed, and points at the action run that holds the snapshot. Deleting a schedule or instance deletes its runs; the API does this because the foreign keys have no cascade.
 
 `config` and `auth_state` are encrypted. Anyone holding the sign-in code could approve it for their own Actron account, so it is treated as a secret. `capabilities` and `latest_readings` are plain JSON and hold no secret: `latest_readings` is the unit's state without the raw status. The owner API never returns `config`, and returns the sign-in code and link to the site owner only.
 
@@ -275,11 +275,16 @@ Core API validates these on write with the models in [`actor_schemas.py`](../cor
 
 `op` is `gt` or `lt`. `target` names one of a reading's declared targets, such as a zone. `enabled` defaults to true; a row saved before the field existed counts as enabled. A row with `enabled: false` is kept and ignored.
 
-`action` names a declared action and gives every one of its params:
+`actions` is a list of 1 to 8 entries. Each entry names a declared action and gives every one of its params. The actor runs them in list order:
 
 ```json
-{ "id": "set_zones", "params": { "zones": ["Study"], "enabled": false } }
+[
+  { "id": "set_zones", "params": { "zones": ["Study"], "enabled": false } },
+  { "id": "set_zone_temperature", "params": { "zone": "Family", "temperature_c": 23.0 } }
+]
 ```
+
+The column was `action` (one entry) before the multi-action change, and the migration wrapped each stored value in a list of one. For one release, API responses also return `action`, equal to the first entry. Requests accept only `actions`.
 
 `restore` (the values below are the defaults where a default exists):
 
@@ -322,9 +327,18 @@ A param `type` is `number` (with optional `min`, `max`, `unit`), `choice`, `bool
 
 `auth_state` is `{ "user_code", "verification_uri", "expires_at" }` while the actor waits for approval, `{ "needs_sign_in": true }` after Actron rejects the stored token, and `null` otherwise. The owner API gives a viewer `{ "signing_in": true }` in place of the code shape, so a viewer never receives the code, the link or the expiry. That shape is never stored.
 
-`latest_readings` is the unit's state exactly as the actor sent it: `is_on`, `mode`, `fan_mode`, `cool_setpoint_c`, `heat_setpoint_c`, `enabled_zones` (zone name to boolean), `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `zone_temps_c`, `setpoint_min_c`, `setpoint_max_c` and `updated_at` (UTC).
+`latest_readings` is the unit's state exactly as the actor sent it: `is_on`, `mode`, `fan_mode`, `cool_setpoint_c`, `heat_setpoint_c`, `enabled_zones` (zone name to boolean), `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `zone_temps_c`, `zone_setpoints_c` (zone name to setpoint), `zone_ranges_c` (zone name to `[min, max]`), `setpoint_min_c`, `setpoint_max_c` and `updated_at` (UTC).
 
-`snapshot` on an action run is the actor's record of what it set and what it saved. The actor defines it, and Core API stores it as opaque JSON. The Actron actor writes `{ "action", "applied", "saved" }`.
+`steps` on an action run is a list with one entry per action, in list order. It is written while the run goes and when it ends:
+
+```json
+{ "index": 1, "action_id": "set_zone_temperature", "params": { "zone": "Study", "temperature_c": 28.0 },
+  "outcome": "failed", "message": "Study 28°C is outside 20.0–24.0°C (the unit is set to 22.0°C)", "attempts": 1 }
+```
+
+A step `outcome` is `ok` or `failed`. The run `outcome` follows from the steps: all `ok` gives `ok`, some of each gives `partial`, all `failed` gives `failed`. `ok` and `partial` runs owe a restore.
+
+`snapshot` on an action run is the actor's record of what it set and what it saved. The actor defines it, and Core API stores it as opaque JSON. The Actron actor builds it for all actions from the unit's state before it sends any command, and writes `{ "actions": [{ "action", "applied", "saved" }, ...] }`, one entry per action. Runs made before the upgrade hold the single-entry shape `{ "action", "applied", "saved" }`, and restore still accepts it.
 
 ## Retention
 

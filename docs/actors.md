@@ -52,7 +52,9 @@ Core API works out the demand window times so the actor does no time zone logic.
 
 ### Schedules
 
-A schedule has one trigger, optional conditions, one action, a restore rule and a retry rule. The JSON shapes are in [Data model](data-model.md#actor-tables).
+A schedule has one trigger, optional conditions, a list of 1 to 8 actions, a restore rule and a retry rule. All actions fire at the same trigger, behind the same conditions, and run in list order with no wait between them. The JSON shapes are in [Data model](data-model.md#actor-tables).
+
+Not in this version: per-action triggers, conditions or delays, conditional flow between actions ("only if the previous one worked"), per-zone mode, and per-zone fan speed. The unit's raw state showed no named zone fan field. Design: [multi-action schedules](superpowers/specs/2026-11-11-multi-action-schedules-design.md).
 
 | Trigger | Fires |
 |---|---|
@@ -65,7 +67,14 @@ Conditions ("only if") all have to pass or the run is skipped. A reading that is
 
 ### Restore
 
-An action that is `restorable` saves the fields it changes (the snapshot) before it acts, then puts them back.
+An action that is `restorable` saves the fields it changes (the snapshot) before it acts, then puts them back. The editor offers restore only when every action in the schedule is restorable.
+
+For a schedule with several actions, the actor builds the snapshot for all of them from the unit's state before it sends any command, and saves it with the claim. One restore run per action run puts back everything the run changed:
+
+- Only the actions whose step worked are restored.
+- Each field goes back to its value from before the run. When two actions set the same field, the earlier saved value wins. The owner-changed check compares the unit's current value with the value the run applied last.
+- Main unit fields go back before zone fields, because a zone's old setpoint was valid for the old main setpoint. Setpoints go back for the mode they were applied in.
+- A field the owner changed is left alone.
 
 | `restore.when` | Restore time |
 |---|---|
@@ -89,7 +98,7 @@ Every attempt is one row in `actor_runs`, with a `kind`, an `outcome` and a mess
 
 | Kind | Meaning |
 |---|---|
-| `action` | The schedule's action, created when a trigger comes due |
+| `action` | The schedule's actions, created as one run when a trigger comes due |
 | `restore` | Puts the unit back. `parent_run_id` points at the action run that holds the snapshot, and `trigger_at` is the restore time. |
 | `test` | Created by **Test now** in the web app |
 
@@ -97,10 +106,21 @@ Every attempt is one row in `actor_runs`, with a `kind`, an `outcome` and a mess
 |---|---|
 | `pending` | Created, not started |
 | `running` | The actor has claimed it |
-| `ok` | Done |
+| `ok` | Done. Every action worked. |
 | `skipped` | Not run, with the reason in `message` |
-| `failed` | Gave up, with the last error in `message` |
-| `overridden` | The owner changed the unit after the action |
+| `partial` | Some actions worked and some failed. `message` reads `2 of 3 ran. Failed: <action label>: <message>; ...`. |
+| `failed` | Gave up, with the last error in `message`. For an action run, every action failed. |
+| `overridden` | The owner changed the unit after an `ok` action run. A `partial` run is never marked overridden. |
+
+An action run records one result per action in its `steps` column: `index`, `action_id`, `params`, `outcome` (`ok` or `failed`), `message` and `attempts`. The run outcome follows from the steps:
+
+| Steps | Run outcome | Owes a restore |
+|---|---|---|
+| All `ok` | `ok` | Yes |
+| Some `ok`, some `failed` | `partial` | Yes, for the actions that worked |
+| All `failed` | `failed` | No |
+
+The actor runs the actions in list order. When one fails, the rest still run. Each action gets the schedule's retry rule (`max_attempts`, `interval_seconds`). `give_up_minutes` covers the whole run: an action not yet started when the time runs out is recorded as `failed` with the message `gave up`.
 
 ```mermaid
 flowchart TD
@@ -109,9 +129,10 @@ flowchart TD
     CREATE --> CHECK{"Another action run<br/>unfinished, or a condition fails?"}
     CHECK -- yes --> SKIP["skipped, with the reason"]
     CHECK -- no --> CLAIM["PATCH running, with the snapshot<br/>(409 if no longer pending)"]
-    CLAIM --> APPLY["Send the command, up to 3 tries by default.<br/>Confirm from the unit's state for 45 s."]
-    APPLY -- "confirmed" --> OK["ok<br/>The unit now owes a restore"]
-    APPLY -- "gave up" --> FAIL["failed"]
+    CLAIM --> APPLY["Send each action in order, up to 3 tries by default.<br/>Confirm from the unit's state for 45 s."]
+    APPLY -- "all confirmed" --> OK["ok<br/>The unit now owes a restore"]
+    APPLY -- "some confirmed" --> PART["partial<br/>The unit owes a restore"]
+    APPLY -- "none confirmed" --> FAIL["failed"]
     OK --> OWNER{"Owner changes the unit<br/>45 s or more after the action?"}
     OWNER -- yes --> OVER["overridden<br/>Restore row recorded as skipped: owner override"]
     OWNER -- no --> DUE{"Restore time reached,<br/>or early condition true?"}
@@ -125,11 +146,11 @@ Rules Core API enforces:
 
 - The unique key on (`schedule_id`, `kind`, `trigger_at`) makes a second create fail with 409 `duplicate_run`, so one process runs a trigger.
 - Claiming (`pending` to `running`) succeeds only while the row is still `pending`, otherwise 409 `run_not_pending`. Finishing succeeds only from `pending` or `running`, otherwise 409 `run_finished`. A run cannot go back to `pending` (422 `invalid_outcome`).
-- The one change allowed on a finished run is an `action` run going from `ok` to `overridden`. That change keeps the run's `snapshot` and `attempts`; only `message` can be set with it.
+- The one change allowed on a finished run is an `action` run going from `ok` to `overridden`; a `partial` run cannot be overridden. That change keeps the run's `snapshot` and `attempts`; only `message` can be set with it.
 - A restore run needs a `parent_run_id` that is an action run of the same schedule, otherwise 422 `invalid_parent`. Any other kind of run with a `parent_run_id` gets the same 422.
-- When an actor marks a run `failed` and the schedule has **Email me if it still fails** on, Core API emails the site owner at once through the mail relay. The actor cannot reach the relay.
+- When an actor marks a run `failed` or `partial` and the schedule has **Email me if it still fails** on, Core API emails the site owner at once through the mail relay. The actor cannot reach the relay.
 
-An action run is **unfinished** while its outcome is `pending`, `running` or `ok` and it has no restore row that ended `ok`, `skipped` or `failed`. A failed restore closes the action run. The actor does not retry it later, and the unit stays as it was. The failure shows on the Dashboard until a later run of the schedule ends `ok` or `overridden`.
+An action run is **unfinished** while its outcome is `pending`, `running`, `ok` or `partial` and it has no restore row that ended `ok`, `skipped` or `failed`. A failed restore closes the action run. The actor does not retry it later, and the unit stays as it was. The failure shows on the Dashboard until a later run of the schedule ends `ok` or `overridden`.
 
 Skip and failure messages the actor writes include `missed` (the actor was down for more than 10 minutes after the trigger), `another schedule is active` (schedules on one instance are not checked for overlap when saved, so the second one is skipped), `reading unavailable: <reading>`, a failed comparison such as `indoor_temp_c 24.0 is not above 27.0`, and `owner override`.
 
@@ -137,7 +158,7 @@ A trigger that is no more than 10 minutes old still runs. An older one that has 
 
 ### Test now
 
-**Test now** calls `POST /sites/{site_id}/actors/schedules/{schedule_id}/test`, which inserts a `test` run in outcome `pending`. Core API refuses with 409 when the actor would not run it: `site_disabled`, `instance_disabled`, `schedule_disabled`, `no_capabilities`, or `test_in_progress` while a test of that schedule is still pending or running. The actor claims it on its next tick (within about 30 seconds) and applies the action immediately, ignoring the trigger and the conditions. If the schedule restores, it puts the unit back after `TEST_HOLD_SECONDS` (default 30). If another action holds the unit, the test is skipped with `another schedule is active`, because it would save the actor's own change as the state to restore. A test run that waited more than 10 minutes, for example while the actor was down, is skipped with `expired` instead of being run.
+**Test now** calls `POST /sites/{site_id}/actors/schedules/{schedule_id}/test`, which inserts a `test` run in outcome `pending`. Core API refuses with 409 when the actor would not run it: `site_disabled`, `instance_disabled`, `schedule_disabled`, `no_capabilities`, or `test_in_progress` while a test of that schedule is still pending or running. The actor claims it on its next tick (within about 30 seconds) and applies every action immediately, in list order, ignoring the trigger and the conditions. If the schedule restores, it puts the unit back after `TEST_HOLD_SECONDS` (default 30). If another action holds the unit, the test is skipped with `another schedule is active`, because it would save the actor's own change as the state to restore. A test run that waited more than 10 minutes, for example while the actor was down, is skipped with `expired` instead of being run.
 
 ## The owner API
 
@@ -151,21 +172,23 @@ The sign-in code and link are shown to the site owner only. Every route that ret
 | `PATCH /instances/{id}` | Change `name` or `enabled` |
 | `DELETE /instances/{id}` | Delete the instance, its schedules and their run history |
 | `POST /instances/{id}/sign-in/reset` | Drop the stored refresh token so the actor starts a new sign-in |
-| `GET /schedules`, `POST /schedules` | List and create |
-| `PATCH /schedules/{id}` | Merges the fields sent into the stored schedule, then validates the whole. While this schedule holds the unit off, a change to `trigger`, `action` or `restore` is refused with 409 `unit_held_off`. |
+| `GET /schedules`, `POST /schedules` | List and create. Both take `actions` and reject an `action` key. `POST` takes the body as a raw dict and validates it as `PATCH` does, so the create body does not show in OpenAPI. |
+| `PATCH /schedules/{id}` | Merges the fields sent into the stored schedule, then validates the whole. While this schedule holds the unit off, a change to `trigger`, `actions` or `restore` is refused with 409 `unit_held_off`. |
 | `DELETE /schedules/{id}` | Delete the schedule and its run history |
 | `POST /schedules/{id}/test` | Queue a test run |
 | `GET /runs?limit=` | The site's newest runs with `schedule_name` (1 to 200, default 50) |
 | `GET /schedules/{id}/runs?limit=` | One schedule's newest runs |
 | `GET /failures` | The current failures. See [Failures](#failures). |
 
-Instances never include `config`, which holds the refresh token. A schedule that fails the capability check returns 422 `invalid_schedule`.
+Instances never include `config`, which holds the refresh token. A schedule that fails the capability check returns 422 `invalid_schedule`. The message for a problem in one action starts with `actions[i]`, where `i` is the entry's position. `PATCH` with `actions` replaces the whole list, which must hold 1 to 8 entries.
+
+For one release, schedule responses also carry `action`, which equals the first entry of `actions`, so Core API and the actor can deploy in either order. The actor reads `actions` first and falls back to `action`.
 
 Deleting a schedule or an instance deletes its run history, restore rows first because they point at their action run. Disabling keeps history. Delete returns 409 `unit_held_off` while an action run still owes a restore: for an instance, any of its runs, for a schedule, that schedule's runs.
 
 Sign-in reset returns the same 409 while the instance holds the unit off, except when its `auth_state` says `needs_sign_in`. Then the stored token no longer works, the actor cannot run the restore, and a new sign-in is the only way out. Once the new code is approved the actor restores from the snapshot stored on the action run.
 
-While a schedule holds the unit off, its name, `enabled`, conditions, retry and email setting can still be changed. Disabling it brings the restore forward. A full-body `PATCH` that sends the stored `trigger`, `action` and `restore` unchanged is accepted.
+While a schedule holds the unit off, its name, `enabled`, conditions, retry and email setting can still be changed. Disabling it brings the restore forward. A full-body `PATCH` that sends the stored `trigger`, `actions` and `restore` unchanged is accepted.
 
 ## Failures
 
@@ -173,8 +196,8 @@ While a schedule holds the unit off, its name, `enabled`, conditions, retry and 
 
 | Kind | Raised when | Cleared when |
 |---|---|---|
-| `run_failed` | The latest action or restore run of a schedule is `failed` | For a failed action, a later run of that schedule ends `ok`, `skipped` or `overridden` (a successful test run counts). For a failed restore, a later run ends `ok` or `overridden`; a skip does not clear it. |
-| `still_off` | An action run is unfinished and now is past its restore time plus the schedule's give-up minutes. For `conditions_only` the restore time is the 24-hour cap. | The restore finishes |
+| `run_failed` | The latest action or restore run of a schedule is `failed`, or the latest action run is `partial` | For a failed or partial action, a later run of that schedule ends `ok`, `skipped` or `overridden` (a successful test run counts). For a failed restore, a later run ends `ok` or `overridden`; a skip does not clear it. |
+| `still_off` | An action run is unfinished (including `partial`) and now is past its restore time plus the schedule's give-up minutes. For `conditions_only` the restore time is the 24-hour cap. | The restore finishes |
 | `actor_silent` | An action run is unfinished and the actor has not reported for more than 5 minutes (or never has, dated from the trigger). The actor stops its heartbeat when it loses sight of the unit, so a lost sign-in or a cloud outage raises this too. | The actor reports again |
 | `needs_sign_in` | The instance's `auth_state` says `needs_sign_in` | The stored token works again, or the owner starts a new sign-in. It has no start time. |
 
@@ -187,8 +210,11 @@ The watchdog job (`actor_watchdog` in [`scheduler.py`](../core-api/core_api/sche
 | Situation | What you see | Recovery |
 |---|---|---|
 | Actor container stopped while the unit is off | `actor_silent` after 5 minutes. The watchdog email goes out if the schedule has email on. | Start the container. It resumes the open runs from Core API and restores. |
-| Actor restarted mid-run | A run left `running` is finished from the unit's state: `ok` (`confirmed after a restart`), applied again within the give-up time, or `failed`. A `pending` run is `skipped: the actor restarted before the run`. | Automatic on the next tick |
-| Unit does not confirm a command | The run retries, then `failed: failed after N attempts: not confirmed`. A last look 15 seconds later counts a late command as `ok`. | Check the unit. Use **Test now** after fixing. |
+| Actor restarted mid-run | A run left `running` is finished from the unit's state. The actor checks each action and does not repeat one the unit already shows. The run ends `ok` (`confirmed after a restart`), `partial` or `failed`, with missing actions applied again within the give-up time. A `pending` run is `skipped: the actor restarted before the run`. | Automatic on the next tick |
+| Unit does not confirm a command | The action retries, then its step is `failed` with `failed after N attempts: not confirmed`. A last look 15 seconds later counts a late command as `ok`. | Check the unit. Use **Test now** after fixing. |
+| One action of several fails | The other actions still run. The run ends `partial` (`2 of 3 ran. Failed: ...`), shows on the Dashboard as a failure, and owes a restore for the actions that worked. | Read the failed step in the run history. Use **Test now** after fixing. |
+| Schedule edited while the actor was down mid-run | The actor sends nothing and the run ends `partial` with `the schedule changed before the actor restarted`. The restore then puts back the whole snapshot. | Automatic |
+| `set_zone_temperature` outside the allowed range | The action fails with the range in its message and sends nothing. | Change the temperature, or order the main setpoint change first |
 | Restore fails | `run_failed` on the Dashboard until a later run of the schedule ends `ok` or `overridden`. The unit stays as it is. | Turn the unit on by hand |
 | Owner turns the unit on during an off window | The action run becomes `overridden` ("You took over"). The restore is recorded as `skipped: owner override`. No email and no Dashboard entry. | None needed |
 | Condition gate never passes | The unit stays off. `still_off` appears after the restore time plus the give-up minutes. | Fix the condition, or turn the unit on |
@@ -233,6 +259,9 @@ flowchart LR
 | Set temperature (`set_temperature`) | `temperature_c`, within the unit's limits | Puts the saved setpoint back |
 | Set fan speed (`set_fan_mode`) | `fan_mode`: `AUTO`, `LOW`, `MED`, `HIGH` (not yet confirmed on a real unit) | Puts the saved speed back |
 | Switch zones (`set_zones`) | `zones` (by name), `enabled` | Puts back only the zones the action changed |
+| Set zone temperature (`set_zone_temperature`) | `zone` (a zone title), `temperature_c` | Puts back the zone's saved setpoint, after the main fields |
+
+The allowed range for `set_zone_temperature` comes from the library's zone limits: the unit's own limits for the current mode, narrowed to the main setpoint plus or minus the zone variance the unit reports. No number is hard-coded. The actor checks the range at send time against the live status. Outside it, the action fails and sends nothing, because the library would clamp the value and report success. The range depends on the main setpoint, so an earlier `set_temperature` in the same list moves it. A unit in `FAN` or `OFF` mode refuses zone setpoints, and the action fails with the library's text. The actor sends `zone_setpoints_c` and `zone_ranges_c` in its readings (`PUT .../readings`), and the editor shows the range from them as a hint.
 
 Readings for conditions: `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `is_on` (declared as an on/off reading, stored as 1 or 0; the editor shows "is On" or "is Off") and `zone_temp_c` (one target per zone). A zone whose sensor reports no temperature has no `zone_temp_c` reading, so a condition on it fails as unavailable. The actor does not expose the library's continuous, quiet, turbo or away modes.
 
@@ -281,4 +310,4 @@ An actor for another device is a new directory and a provider name. Core API and
 5. Never log tokens, codes or raw device status. Log the instance id and the exception type.
 6. Add the package to the matrix in `.github/workflows/ci.yml` and `publish-images.yml`, add a service to `docker-compose.yml` and `docker-compose.prod.yml` with `ACTOR_KEY` and a `stop_grace_period` long enough for a restore, and add the Dockerfile.
 
-What Core API checks for you: the key and provider on every call, that a schedule's action and conditions match the declared capabilities, that a schedule's demand window belongs to the site, that runs are unique per trigger, and the run state transitions above. It does not check that a command is safe for the device. That is the actor's job.
+What Core API checks for you: the key and provider on every call, that a schedule's actions and conditions match the declared capabilities, that a schedule's demand window belongs to the site, that runs are unique per trigger, and the run state transitions above. It does not check that a command is safe for the device. That is the actor's job.

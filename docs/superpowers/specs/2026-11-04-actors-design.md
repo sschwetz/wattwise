@@ -27,8 +27,9 @@ These are the builder's assumptions to keep the first version small. Mark any yo
 
 - Uploading or editing scripts through the web app. Actors are code the owner deploys.
 - Actors other than `actron-neo-actor`. The contract is general; only one implementation is built.
-- Several actions in one schedule. A schedule has one action and, optionally, its restore.
 - One schedule driving several devices. A schedule belongs to one actor instance.
+
+Several actions in one schedule were a non-goal here. They are covered by the [2026-11-11 multi-action schedules design](2026-11-11-multi-action-schedules-design.md).
 
 ## Anti-goals
 
