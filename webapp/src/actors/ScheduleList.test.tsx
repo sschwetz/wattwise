@@ -71,6 +71,26 @@ describe("ScheduleList last run", () => {
   });
 });
 
+describe("ScheduleList actions", () => {
+  it("detail and list name every action", async () => {
+    const multi = { ...schedule(1, "Peak off"), actions: [{ id: "system_off", params: {} }, { id: "set_mode", params: {} }, { id: "x", params: {} }] };
+    const caps = { version: 1 as const, actions: [{ id: "system_off", label: "Turn the system off", restorable: true, params: [] }], readings: [] };
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ScheduleList
+          site={{ id: 7, timezone: "UTC" }}
+          data={{ instances: [{ ...instance, capabilities: caps }], schedules: [multi, schedule(2, "Single")] }}
+          view={{ selected: null, onSelect: vi.fn(), canEdit: true }}
+        />
+      </QueryClientProvider>,
+    );
+    const row = screen.getByRole("button", { name: /Peak off/ });
+    expect(within(row).getByText("Turn the system off +2 more")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /Single/ })).getByText("Turn the system off")).toBeInTheDocument();
+  });
+});
+
 describe("ScheduleList polling", () => {
   afterEach(() => vi.useRealTimers());
 

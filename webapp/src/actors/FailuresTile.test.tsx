@@ -56,6 +56,14 @@ describe("FailuresTile", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("failures tile includes a partial run", async () => {
+    mockData({ failures: [failure(1, { message: "The action partly failed" })] });
+    renderTile();
+    expect(await screen.findByText("Run failed")).toBeInTheDocument();
+    expect(screen.getByText("The action partly failed")).toBeInTheDocument();
+    expect(screen.getByText("Needs attention (1)")).toBeInTheDocument();
+  });
+
   it("shows All schedules OK", async () => {
     mockData({});
     renderTile();

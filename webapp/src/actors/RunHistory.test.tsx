@@ -11,7 +11,7 @@ function run(id: number, overrides: Partial<ActorRun> = {}): ActorRun {
 }
 
 const odd = (o: object) => o as Partial<ActorRun>;
-const props = { timezone: "Australia/Sydney", actionLabel: "Turn the system off" };
+const props = { timezone: "Australia/Sydney", labels: { summary: "Turn the system off", of: (id: string) => ({ system_off: "Turn the system off", set_zone_temperature: "Set zone" })[id] ?? id } };
 
 beforeEach(() => vi.useFakeTimers({ now: new Date("2026-11-05T03:00:00Z") }));
 afterEach(() => vi.useRealTimers());
@@ -67,5 +67,22 @@ describe("RunHistory", () => {
   it("has no limit note below 50", () => {
     render(<RunHistory {...props} runs={[run(1)]} />);
     expect(screen.queryByText(/newest runs/)).not.toBeInTheDocument();
+  });
+
+  it("history lists one line per step, failures first", () => {
+    const steps = [
+      { index: 0, action_id: "system_off", params: {}, outcome: "ok" as const, message: null, attempts: 1 },
+      { index: 1, action_id: "set_zone_temperature", params: {}, outcome: "failed" as const, message: "Out of range", attempts: 2 },
+    ];
+    render(<RunHistory {...props} runs={[run(1, { outcome: "partial", message: "1 of 2 ran", steps })]} />);
+    const lines = within(screen.getByRole("list", { name: "Steps" })).getAllByRole("listitem");
+    expect(lines.map((l) => l.textContent)).toEqual(["Set zone: Out of range", "Turn the system off"]);
+    expect(screen.getByTestId("outcome")).toHaveTextContent("Partly done");
+  });
+
+  it("history copes with a run that has no steps", () => {
+    render(<RunHistory {...props} runs={[run(1, { steps: null }), run(2, { steps: [] })]} />);
+    expect(screen.queryByRole("list", { name: "Steps" })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("outcome")).toHaveLength(2);
   });
 });

@@ -1,4 +1,4 @@
-import { formatRunTime, outcomeLabel } from "./runFormat";
+import { actionLabeler, formatRunTime, outcomeLabel } from "./runFormat";
 import { useNow } from "../dashboard/useNow";
 import type { ActorInstance, ActorRunListItem, ActorSchedule } from "./types";
 import { useRuns } from "./useActors";
@@ -24,6 +24,14 @@ function lastRunText(run: ActorRunListItem | undefined, timezone: string, now: D
   return run ? `Last run ${formatRunTime(run.trigger_at, timezone, now)} · ${outcomeLabel(run.outcome)}` : "No runs yet";
 }
 
+/** The first action's name, with "+N more" when there are others. */
+function actionsText(schedule: ActorSchedule, instance: ActorInstance): string {
+  const [first, ...rest] = schedule.actions;
+  if (!first) return "";
+  const name = actionLabeler(instance)(first.id);
+  return rest.length > 0 ? `${name} +${rest.length} more` : name;
+}
+
 function ScheduleRow({ row, active, onClick }: {
   row: { schedule: ActorSchedule; instance: ActorInstance; lastRun: string | null };
   active: boolean;
@@ -41,6 +49,7 @@ function ScheduleRow({ row, active, onClick }: {
         <span className="min-w-0">
           <span className="block truncate text-ink">{schedule.name}</span>
           <span className="block truncate text-xs text-ink-muted">{instance.name ?? "Air conditioner"}</span>
+          <span className="block truncate text-xs text-ink-muted">{actionsText(schedule, instance)}</span>
           {lastRun && <span className="block truncate text-xs text-ink-muted">{lastRun}</span>}
         </span>
         <OnOffPill on={schedule.enabled} />

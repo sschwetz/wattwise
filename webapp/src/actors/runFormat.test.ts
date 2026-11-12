@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRunTime, isStale, OUTCOME_LABEL, outcomeLabel, outcomeTone, runDescription } from "./runFormat";
+import { formatRunTime, isStale, OUTCOME_LABEL, outcomeLabel, outcomeTone, runDescription, stepLines } from "./runFormat";
 import type { ActorRun } from "./types";
 
 const SYDNEY = "Australia/Sydney";
@@ -80,5 +80,39 @@ describe("unknown values from a newer server", () => {
     expect(outcomeLabel("cancelled")).toBe("cancelled");
     expect(outcomeTone("cancelled")).toBe(outcomeTone("pending"));
     expect(outcomeLabel("ok")).toBe("OK");
+  });
+});
+
+describe("partial and steps", () => {
+  const labelFor = (id: string) => ({ system_off: "Turn off", set_zone_temperature: "Set zone" })[id] ?? id;
+  const step = (index: number, action_id: string, outcome: "ok" | "failed", extra: object = {}) =>
+    ({ index, action_id, params: {}, outcome, message: null, attempts: 1, ...extra });
+
+  it("partial has its own chip and tone", () => {
+    expect(outcomeLabel("partial")).toBe("Partly done");
+    expect(outcomeTone("partial")).toBe("bg-solar-soft text-solar");
+    expect(runDescription(run({ outcome: "partial" }), "A, then B")).toBe("A, then B: Partly done");
+  });
+
+  it("stepLines puts failures first, in index order within each group", () => {
+    const steps = [step(0, "system_off", "ok"), step(1, "set_zone_temperature", "failed", { message: "Too high" }), step(2, "system_off", "failed", { message: "No reply" })];
+    expect(stepLines(run({ steps }), labelFor)).toEqual([
+      { text: "Set zone: Too high", tone: "failed" },
+      { text: "Turn off: No reply", tone: "failed" },
+      { text: "Turn off", tone: "ok" },
+    ]);
+  });
+
+  it("stepLines tells repeated actions apart by their params", () => {
+    const steps = [
+      step(0, "set_zone_temperature", "ok", { params: { zone: "Study", temperature: 24 } }),
+      step(1, "set_zone_temperature", "ok", { params: { zone: "Lounge", temperature: 22 } }),
+    ];
+    expect(stepLines(run({ steps }), labelFor).map((l) => l.text)).toEqual(["Set zone (Study, 24)", "Set zone (Lounge, 22)"]);
+  });
+
+  it("stepLines is empty without steps", () => {
+    expect(stepLines(run({ steps: null }), labelFor)).toEqual([]);
+    expect(stepLines(run({ steps: [] }), labelFor)).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import type { ActorRun, RunOutcome } from "./types";
+import type { ActorInstance, ActorRun, ActorSchedule, RunOutcome, RunStep } from "./types";
 
 /** The actor sends its readings at least every 60 seconds while it can see the unit;
  * two minutes of silence means it stopped. */
@@ -67,6 +67,7 @@ export const OUTCOME_TONE: Record<RunOutcome, string> = {
 const DEFAULT_MESSAGE: Partial<Record<RunOutcome, string>> = {
   skipped: "Skipped",
   failed: "Failed",
+  partial: "Partly done",
   overridden: "Changed by you",
 };
 
@@ -91,4 +92,41 @@ export function runDescription(run: ActorRun, actionLabel: string): string {
 
 export function hasActiveRun(runs: ActorRun[] | undefined): boolean {
   return (runs ?? []).some((r) => r.outcome === "pending" || r.outcome === "running");
+}
+
+/** Names an action by the label its device declared, or by its id when it declared none. */
+export function actionLabeler(instance: ActorInstance): (id: string) => string {
+  const declared = instance.capabilities?.actions ?? [];
+  return (id) => declared.find((a) => a.id === id)?.label ?? id;
+}
+
+/** Every action of a schedule in order, as "A, then B". */
+export function actionsSummary(schedule: ActorSchedule, labelFor: (id: string) => string): string {
+  return schedule.actions.map((spec) => labelFor(spec.id)).join(", then ");
+}
+
+export interface StepLine {
+  text: string;
+  tone: "ok" | "failed";
+}
+
+/** The param values of a step ("Study, 24"), which tell two steps of one action apart. */
+function paramsSummary(step: RunStep): string {
+  return Object.values(step.params).filter((v) => typeof v === "string" || typeof v === "number").join(", ");
+}
+
+function stepText(step: RunStep, labelFor: (id: string) => string, repeated: boolean): string {
+  const params = repeated ? paramsSummary(step) : "";
+  const label = params ? `${labelFor(step.action_id)} (${params})` : labelFor(step.action_id);
+  return step.outcome === "failed" && step.message ? `${label}: ${step.message}` : label;
+}
+
+/** One line per step of a run, failed steps first; each group keeps step order. */
+export function stepLines(run: ActorRun, labelFor: (id: string) => string): StepLine[] {
+  const steps = [...(run.steps ?? [])].sort((a, b) => a.index - b.index);
+  const lines: StepLine[] = steps.map((step) => ({
+    tone: step.outcome,
+    text: stepText(step, labelFor, steps.filter((s) => s.action_id === step.action_id).length > 1),
+  }));
+  return [...lines.filter((l) => l.tone === "failed"), ...lines.filter((l) => l.tone !== "failed")];
 }

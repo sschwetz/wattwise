@@ -75,6 +75,13 @@ describe("ScheduleDetail run history and Test now", () => {
     expect(screen.getByRole("heading", { name: "Air conditioner" })).toBeInTheDocument();
   });
 
+  it("detail and list name every action", async () => {
+    const two = { ...schedule, actions: [{ id: "system_off", params: {} }, { id: "set_mode", params: {} }] };
+    mockApi({ runs: [run(1, "ok")] });
+    renderDetail(two);
+    expect(await within(await screen.findByRole("list", { name: "Runs" })).findByText("Turn the system off, then set_mode")).toBeInTheDocument();
+  });
+
   it("Test now posts and disables the button while pending", async () => {
     const user = userEvent.setup();
     let finish: (r: ActorRun) => void = () => {};
