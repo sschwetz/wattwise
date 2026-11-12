@@ -240,7 +240,7 @@ The table holds no secrets. `GET /services` adds the `reporting` flag at read ti
 
 ## Actor tables
 
-Three tables hold the [actors](actors.md) feature. The migration is `895863e431c6`.
+Three tables hold the [actors](actors.md) feature. The migrations are `895863e431c6` and `e5a7c9b1d3f2` (multi-action schedules). The downgrade of `e5a7c9b1d3f2` maps `partial` runs to `failed`. A downgrade while a `partial` run holds the unit needs a manual restore, because the old code treats the run as `failed` and cannot read the list-form snapshot.
 
 | Table | Purpose |
 |---|---|
@@ -284,7 +284,7 @@ Core API validates these on write with the models in [`actor_schemas.py`](../cor
 ]
 ```
 
-The column was `action` (one entry) before the multi-action change, and the migration wrapped each stored value in a list of one. For one release, API responses also return `action`, equal to the first entry. Requests accept only `actions`.
+The column was `action` (one entry) before the multi-action change, and the migration wrapped each stored value in a list of one. For one release, API responses also return `action`, equal to the first entry. Requests accept only `actions`. Deploy Core API first, then the actor, then the web app. The actor must not go first: an old Core API refuses the `steps` and `partial` the new actor sends with 422, so the run stays `running` and the unit stays held with no restore until Core API is upgraded. While Core API is new and the actor is still old, the old actor reads `action` (the first entry), so a multi-action schedule runs only its first action and reports `ok`, and its single-entry snapshot restores through the new code. The web app goes last because an old Core API rejects `actions` and the page reads `schedule.actions`.
 
 `restore` (the values below are the defaults where a default exists):
 
@@ -329,7 +329,7 @@ A param `type` is `number` (with optional `min`, `max`, `unit`), `choice`, `bool
 
 `latest_readings` is the unit's state exactly as the actor sent it: `is_on`, `mode`, `fan_mode`, `cool_setpoint_c`, `heat_setpoint_c`, `enabled_zones` (zone name to boolean), `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `zone_temps_c`, `zone_setpoints_c` (zone name to setpoint), `zone_ranges_c` (zone name to `[min, max]`), `setpoint_min_c`, `setpoint_max_c` and `updated_at` (UTC).
 
-`steps` on an action run is a list with one entry per action, in list order. It is written while the run goes and when it ends:
+`steps` on an action run is a list with one entry per action, in list order. It is written when the run finishes. After a restart the actor re-derives progress from the unit's state:
 
 ```json
 { "index": 1, "action_id": "set_zone_temperature", "params": { "zone": "Study", "temperature_c": 28.0 },

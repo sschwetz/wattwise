@@ -61,7 +61,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
+    """Downgrade schema.
+
+    A downgrade while a `partial` run holds the unit needs a manual restore: the old code treats
+    the run as `failed` (which owes no restore) and cannot read the list-form snapshot.
+    """
     # The old schema has no partial outcome, so those runs read as failed.
     op.execute("UPDATE actor_runs SET outcome = 'failed' WHERE outcome = 'partial'")
     _set_outcome_check(OLD_OUTCOMES)

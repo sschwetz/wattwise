@@ -45,14 +45,6 @@ def step_actions(steps: list[dict]) -> list[ActionSpec]:
         raise DeviceError(f"malformed steps: {type(err).__name__}") from err
 
 
-def ok_actions(actions: list[ActionSpec], steps: list[dict] | None) -> list[ActionSpec]:
-    """The actions whose step is `ok`, in order, to pair with the entries `restorable` keeps."""
-    if steps is None:
-        return list(actions)
-    ok = _ok_indexes(steps)
-    return [action for i, action in enumerate(actions) if i in ok]
-
-
 def snapshot_matches(snapshot: dict, actions: list[ActionSpec]) -> bool:
     """True when entry i was taken for actions[i]: the same action, the same zones, the same mode or fan.
 

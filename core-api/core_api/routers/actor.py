@@ -304,6 +304,10 @@ def _instance_run(db: Session, instance: ActorInstance, run_id: int) -> ActorRun
     return run
 
 
+def _step_values(payload: RunUpdate) -> list[dict]:
+    return [step.model_dump() for step in payload.steps or []]
+
+
 def _transition_run(db: Session, run: ActorRun, payload: RunUpdate, now: datetime.datetime) -> None:
     """Apply the update in one conditional UPDATE so a concurrent caller cannot
     claim twice or rewrite a finished run. Zero matched rows means it lost."""
@@ -313,7 +317,7 @@ def _transition_run(db: Session, run: ActorRun, payload: RunUpdate, now: datetim
     values: dict = {"outcome": payload.outcome}
     values.update({f: getattr(payload, f) for f in fields if f in payload.model_fields_set})
     if values.get("steps") is not None:
-        values["steps"] = [step.model_dump() for step in payload.steps or []]
+        values["steps"] = _step_values(payload)
     allowed: tuple[RunOutcome, ...]
     if payload.outcome == RunOutcome.RUNNING:
         values["started_at"] = now

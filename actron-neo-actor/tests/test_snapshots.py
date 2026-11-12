@@ -7,7 +7,7 @@ from actron_neo_actor.device import ActronDevice, DeviceState
 from actron_neo_actor.device_snapshot import snapshot_for
 from actron_neo_actor.device_state import state_from_status
 from actron_neo_actor.models import ActionSpec
-from actron_neo_actor.snapshots import ok_actions, restorable, snapshot_for_all, snapshot_matches
+from actron_neo_actor.snapshots import restorable, snapshot_for_all, snapshot_matches
 from actron_neo_actor.unit_checks import owner_changed
 from tests.fakes import SERIAL, START, FakeActronApi, raw_state
 
@@ -49,8 +49,6 @@ def test_restorable_drops_failed_steps():
     assert restorable(snapshot, [step(0, "failed"), step(1, "failed"), step(2, "failed")]) is None
     assert restorable(snapshot, None) == snapshot
     assert restorable(None, steps) is None
-    assert ok_actions([TEMP_26, FAN_LOW, TEMP_20], steps) == [FAN_LOW, TEMP_20]
-    assert ok_actions([TEMP_26, FAN_LOW], None) == [TEMP_26, FAN_LOW]
 
 
 def test_restorable_passes_legacy_snapshot_through():
@@ -71,7 +69,7 @@ def test_owner_changed_needs_every_ok_action_gone():
     assert owner_changed(device, actions, snapshot, both_back)
     # The fan action failed, so only the setpoint counts.
     steps = [step(0, "ok"), step(1, "failed")]
-    ok, kept = ok_actions(actions, steps), restorable(snapshot, steps)
+    ok, kept = [TEMP_26], restorable(snapshot, steps)
     assert owner_changed(device, ok, kept, one_back)
     assert not owner_changed(device, ok, kept, state_of(cool_c=26.0, fan_mode="HIGH+CONT"))
 

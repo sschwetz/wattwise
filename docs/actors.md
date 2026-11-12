@@ -133,6 +133,7 @@ flowchart TD
     APPLY -- "all confirmed" --> OK["ok<br/>The unit now owes a restore"]
     APPLY -- "some confirmed" --> PART["partial<br/>The unit owes a restore"]
     APPLY -- "none confirmed" --> FAIL["failed"]
+    PART --> DUE
     OK --> OWNER{"Owner changes the unit<br/>45 s or more after the action?"}
     OWNER -- yes --> OVER["overridden<br/>Restore row recorded as skipped: owner override"]
     OWNER -- no --> DUE{"Restore time reached,<br/>or early condition true?"}
@@ -182,7 +183,7 @@ The sign-in code and link are shown to the site owner only. Every route that ret
 
 Instances never include `config`, which holds the refresh token. A schedule that fails the capability check returns 422 `invalid_schedule`. The message for a problem in one action starts with `actions[i]`, where `i` is the entry's position. `PATCH` with `actions` replaces the whole list, which must hold 1 to 8 entries.
 
-For one release, schedule responses also carry `action`, which equals the first entry of `actions`, so Core API and the actor can deploy in either order. The actor reads `actions` first and falls back to `action`.
+For one release, schedule responses also carry `action`, which equals the first entry of `actions`. The actor reads `actions` first and falls back to `action`. Deploying in either order is not safe. Deploy Core API first, then the actor, then the web app. The actor must not go first: an old Core API refuses the `steps` and `partial` the new actor sends with 422, so the run stays `running` and the unit stays held with no restore until Core API is upgraded. While Core API is new and the actor is still old, the old actor reads `action` (the first entry), so a multi-action schedule runs only its first action and reports `ok`, and its single-entry snapshot restores through the new code. The web app goes last because an old Core API rejects `actions` and the page reads `schedule.actions`.
 
 Deleting a schedule or an instance deletes its run history, restore rows first because they point at their action run. Disabling keeps history. Delete returns 409 `unit_held_off` while an action run still owes a restore: for an instance, any of its runs, for a schedule, that schedule's runs.
 
