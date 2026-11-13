@@ -8,6 +8,7 @@ import pytest
 from actron_neo_api.models.system import ActronAirSystemInfo
 
 from actron_neo_actor import main as main_module
+from actron_neo_actor.alerts import ALERT_AFTER_FAILURES
 from actron_neo_actor.async_core import AsyncCore
 from actron_neo_actor.connector import ActronConnector
 from actron_neo_actor.core_api_client import CoreApiError
@@ -73,6 +74,25 @@ def test_one_failing_instance_does_not_stop_another(caplog):
     run(scenario())
     assert "Tick failed (instance 1): CoreApiError" in caplog.text
     assert "body with details" not in caplog.text
+
+
+def test_a_tick_that_keeps_failing_raises_an_alert_and_a_good_tick_clears_it():
+    async def scenario() -> None:
+        site = Site(instance(1), instance(2))
+        site.core.instance_errors[1] = CoreApiError("down")
+        for n in range(ALERT_AFTER_FAILURES - 1):
+            await site.round(START + datetime.timedelta(seconds=30 * n))
+        assert site.core.alerts == {}
+        await site.round(START + datetime.timedelta(seconds=30 * ALERT_AFTER_FAILURES))
+        assert list(site.core.alerts) == [(1, "tick")]
+        assert "Actron" in site.core.alerts[(1, "tick")]
+        del site.core.instance_errors[1]
+        await site.round(START + datetime.timedelta(seconds=30 * (ALERT_AFTER_FAILURES + 1)))
+        assert site.core.alerts == {}
+        # Instance 2 never failed, so its alert is cleared once and then left alone.
+        assert site.core.alert_calls.count(("clear", 2, "tick")) == 1
+
+    run(scenario())
 
 
 def test_a_tick_still_running_is_not_started_again():

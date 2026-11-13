@@ -1,4 +1,5 @@
 from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
+from core_api.models.alerts import Alert
 from core_api.models.base import Base
 from core_api.models.billing import BillingCycle, DemandCharge, DemandInterval, DemandWindow, SiteTariff
 from core_api.models.identity import (
@@ -36,6 +37,7 @@ from core_api.models.service_status import ServiceStatus
 from core_api.models.sources import Source, SourceKind
 
 __all__ = [
+    "Alert",
     "Base",
     "User",
     "Site",

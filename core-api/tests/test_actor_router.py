@@ -11,6 +11,7 @@ from core_api.actor_context import ActorContext, WindowOccurrence
 from core_api.deps import get_db_session
 from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
+from core_api.models.alerts import Alert
 from core_api.models.identity import Site
 from core_api.routers import actor as actor_module
 from core_api.routers.actor import router
@@ -62,6 +63,24 @@ def test_discovery_lists_only_matching_provider(http, db, site):
     body = _discover(http).json()
     assert body == [{"instance_id": mine.id, "site_id": site.id, "name": "AC", "timezone": "Australia/Sydney",
                      "restore_only": False, "config": {"refresh_token": "r"}}]
+
+
+def test_actor_alert_is_set_kept_and_cleared_per_code(http, db, site):
+    instance = _instance(db, site)
+    url = f"/api/v1/actor/instances/{instance.id}/alerts/tick"
+    assert http.put(url, json={"message": "Tick failed"}, headers=HEADERS).status_code == 204
+    assert http.put(url, json={"message": "Tick failed again"}, headers=HEADERS).status_code == 204
+    rows = db.query(Alert).filter_by(subject_kind="instance", subject_id=instance.id).all()
+    assert [(a.code, a.message, a.site_id) for a in rows] == [("tick", "Tick failed again", site.id)]
+    assert http.delete(url, headers=HEADERS).status_code == 204
+    assert db.query(Alert).count() == 0
+
+
+def test_actor_alert_rejects_another_providers_key(http, db, site):
+    instance = _instance(db, site)
+    headers = {"X-Actor-Key": ACTOR_KEY, "X-Actor-Provider": "other"}
+    response = http.put(f"/api/v1/actor/instances/{instance.id}/alerts/tick", json={"message": "x"}, headers=headers)
+    assert response.status_code == 401
 
 
 def test_discovery_bad_key_401(http, db, site):

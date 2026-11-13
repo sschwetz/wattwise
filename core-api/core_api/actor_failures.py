@@ -21,11 +21,12 @@ from core_api.actor_context import window_occurrences
 from core_api.actor_runs import unfinished_action_runs
 from core_api.actor_schemas import RestoreSpec, RetrySpec
 from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
+from core_api.models.alerts import SUBJECT_INSTANCE, SUBJECT_SITE, SUBJECT_SOURCE, Alert
 from core_api.models.identity import Site
 from core_api.models.sources import Source
 from core_api.time_utils import as_utc, site_tz
 
-FailureKind = Literal["run_failed", "still_off", "actor_silent", "needs_sign_in", "source_alert"]
+FailureKind = Literal["run_failed", "still_off", "actor_silent", "needs_sign_in", "alert"]
 
 SILENT_AFTER = datetime.timedelta(minutes=5)
 # The latest a restore can fall: a window end with no matching occurrence, and a
@@ -43,6 +44,8 @@ class ActorFailure:
     schedule_name: str | None
     message: str
     since: datetime.datetime
+    # What an "alert" is about: the source or actor name, or "Site". None for the other kinds.
+    subject: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,7 +64,7 @@ def current_failures(db: Session, site_id: int, now: datetime.datetime) -> list[
     if site is None:
         return []
     now = as_utc(now)
-    found: list[ActorFailure] = _source_alerts(db, site_id)
+    found: list[ActorFailure] = _alert_failures(db, site_id)
     for instance in _site_instances(db, site_id):
         found.extend(_sign_in_failures(instance, now))
         found.extend(_failed_runs(db, instance))
@@ -91,18 +94,41 @@ def _site_instances(db: Session, site_id: int) -> list[ActorInstance]:
     return list(db.scalars(stmt))
 
 
-def _source_alerts(db: Session, site_id: int) -> list[ActorFailure]:
-    # Selects columns, not Source rows, so the encrypted config is not decrypted.
-    stmt = (
-        select(Source.name, Source.provider, Source.alert_message, Source.alert_since)
-        .where(Source.site_id == site_id, Source.alert_message.is_not(None))
-        .order_by(Source.id)
-    )
-    return [
-        ActorFailure("source_alert", None, None, name or provider, message, as_utc(since))
-        for name, provider, message, since in db.execute(stmt)
-        if message is not None and since is not None
-    ]
+def _alert_failures(db: Session, site_id: int) -> list[ActorFailure]:
+    """The site's alerts. Those of a disabled source or actor instance are left out, since nothing is left to clear them."""
+    alerts = list(db.scalars(select(Alert).where(Alert.site_id == site_id).order_by(Alert.id)))
+    if not alerts:
+        return []
+    sources = {
+        row.id: row
+        for row in db.execute(select(Source.id, Source.name, Source.provider, Source.enabled).where(Source.site_id == site_id))
+    }
+    instances = {
+        row.id: row
+        for row in db.execute(
+            select(ActorInstance.id, ActorInstance.name, ActorInstance.provider, ActorInstance.enabled).where(
+                ActorInstance.site_id == site_id
+            )
+        )
+    }
+    found: list[ActorFailure] = []
+    for alert in alerts:
+        subject = _alert_subject(alert, sources, instances)
+        if subject is not None:
+            found.append(ActorFailure("alert", None, None, None, alert.message, as_utc(alert.since), subject))
+    return found
+
+
+def _alert_subject(alert: Alert, sources: dict, instances: dict) -> str | None:
+    if alert.subject_kind == SUBJECT_SITE:
+        return "Site"
+    if alert.subject_kind == SUBJECT_SOURCE:
+        row = sources.get(alert.subject_id)
+    elif alert.subject_kind == SUBJECT_INSTANCE:
+        row = instances.get(alert.subject_id)
+    else:
+        return None
+    return row.name or row.provider if row is not None and row.enabled else None
 
 
 def _sign_in_failures(instance: ActorInstance, now: datetime.datetime) -> list[ActorFailure]:

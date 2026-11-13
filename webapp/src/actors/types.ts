@@ -189,16 +189,18 @@ export interface ActorRunListItem extends ActorRun {
   schedule_name: string;
 }
 
-export type ActorFailureKind = "run_failed" | "still_off" | "actor_silent" | "needs_sign_in" | "source_alert";
+export type ActorFailureKind = "run_failed" | "still_off" | "actor_silent" | "needs_sign_in" | "alert";
 
 export interface ActorFailure {
   kind: ActorFailureKind;
-  /** null for source_alert, whose schedule_name holds the source's name. */
+  /** null for alert, which is about a source, an actor or the site rather than a schedule. */
   instance_id: number | null;
   schedule_id: number | null;
   schedule_name: string | null;
   message: string;
   since: string;
+  /** What an alert is about: a source or actor name, or "Site". null for the other kinds. */
+  subject: string | null;
 }
 
 export interface InstanceCreateBody {

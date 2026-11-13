@@ -4,7 +4,7 @@ import datetime
 
 import pytest
 
-from local_pricing_collector import poll
+from local_pricing_collector import alerts, poll
 from local_pricing_collector.config import Settings
 from local_pricing_collector.core_api_client import CoreApiError
 from local_pricing_collector.models import Coverage, LocalSource, RepriceMarker
@@ -586,3 +586,45 @@ def test_a_malformed_marker_is_logged_and_the_source_still_gets_its_other_work(m
 def test_the_windows_fingerprint_ignores_the_marker():
     plain = source()
     assert poll.windows_key(plain.config) == poll.windows_key(marked_source().config)
+
+
+def test_a_bad_time_zone_raises_an_alert_that_clears_once_fixed(monkeypatch, alert_calls):
+    fake_discovery(monkeypatch, [source(timezone="Mars/Base", source_id=1)])
+    tick(poll.TickState())
+    assert [c[:2] for c in alert_calls] == [("set", "timezone")]
+
+    fake_discovery(monkeypatch, [source(source_id=1)])
+    tick(poll.TickState())
+    assert ("clear", "timezone") in alert_calls
+
+
+def test_a_malformed_marker_raises_an_alert(monkeypatch, alert_calls):
+    bad = LocalSource(7, {**source().config, "reprice": {"from": "nope", "version": 1}})
+    fake_discovery(monkeypatch, [bad])
+    tick(poll.TickState())
+    assert [c[:2] for c in alert_calls if c[0] == "set"] == [("set", "reprice_marker")]
+
+
+def test_pricing_failures_raise_an_alert_after_five_in_a_row_and_a_good_run_clears_it(monkeypatch, alert_calls):
+    fake_discovery(monkeypatch, [source()])
+    state = poll.TickState()
+    for _ in range(alerts.ALERT_AFTER_FAILURES):
+        tick(state)
+        FakeProcess.instances[-1].finish(exitcode=1)
+    tick(state)  # reaps the fifth failed child
+    assert [c[:2] for c in alert_calls if c[0] == "set"] == [("set", "pricing")]
+
+    FakeProcess.instances[-1].finish(exitcode=0)
+    tick(state)
+    assert ("clear", "pricing") in alert_calls
+
+
+def test_a_child_that_runs_too_long_counts_as_a_pricing_failure(monkeypatch, alert_calls):
+    fake_discovery(monkeypatch, [source()])
+    state = poll.TickState()
+    now = NOW
+    tick(state, now=now)
+    for _ in range(alerts.ALERT_AFTER_FAILURES):
+        now += poll.MAX_RUN + datetime.timedelta(minutes=1)
+        tick(state, now=now)  # terminates the running child and starts the next
+    assert [c[:2] for c in alert_calls if c[0] == "set"] == [("set", "pricing")]

@@ -33,6 +33,8 @@ class FakeCore:
         self.discovered: list[tuple[int, dict]] = []
         self.errors: dict[str, Exception] = {}  # method name -> error to raise
         self.instance_errors: dict[int, Exception] = {}  # instance id -> error from every per-instance call
+        self.alerts: dict[tuple[int, str], str] = {}  # (instance id, code) -> message of the alerts now showing
+        self.alert_calls: list[tuple[str, int, str]] = []  # ("set" or "clear", instance id, code) per call
         self.threads: set[int] = set()
         self.updates: list[tuple[int, str, dict | None]] = []  # (run id, outcome, snapshot) per update_run
         self._next_id = 1
@@ -69,6 +71,14 @@ class FakeCore:
     def patch_discovered(self, instance_id: int, config: dict | None = None, auth_state: object = None) -> None:
         self._enter("patch_discovered", instance_id)
         self.discovered.append((instance_id, {"config": config, "auth_state": auth_state}))
+
+    def set_alert(self, instance_id: int, code: str, message: str) -> None:
+        self.alert_calls.append(("set", instance_id, code))
+        self.alerts[(instance_id, code)] = message
+
+    def clear_alert(self, instance_id: int, code: str) -> None:
+        self.alert_calls.append(("clear", instance_id, code))
+        self.alerts.pop((instance_id, code), None)
 
     def put_capabilities(self, instance_id: int, capabilities: dict) -> None:
         self._enter("put_capabilities", instance_id)

@@ -44,12 +44,14 @@ class FakeEmailSender:
         self.sent.append((to, subject, body))
 
 
-def try_send_email(email_sender: EmailSender, to: str, subject: str, body: str, description: str) -> None:
+def try_send_email(email_sender: EmailSender, to: str, subject: str, body: str, description: str) -> bool:
     """Send an email, logging instead of raising on delivery failure.
 
     Callers use this when a relay outage must not change the HTTP response.
-    `description` names the email in the log line."""
+    `description` names the email in the log line. Returns whether it was sent."""
     try:
         email_sender.send(to=to, subject=subject, body=body)
     except Exception:
         logger.exception("Failed to send %s email", description)
+        return False
+    return True

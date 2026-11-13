@@ -12,6 +12,7 @@ import zoneinfo
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from local_pricing_collector import alerts
 from local_pricing_collector.config import Settings
 from local_pricing_collector.core_api_client import (
     CoreApiError,
@@ -32,6 +33,10 @@ logger = logging.getLogger("local_pricing_collector")
 PUSH_TIMEOUT_SECONDS = 120
 MAX_RUN = datetime.timedelta(hours=2)
 CONFIG_ERRORS = (KeyError, TypeError, zoneinfo.ZoneInfoNotFoundError, ValueError)
+# Alert codes, one per problem the owner can fix. Each is cleared when its cause goes away.
+PRICING_ALERT = "pricing"
+TIMEZONE_ALERT = "timezone"
+MARKER_ALERT = "reprice_marker"
 
 
 def windows_key(config: dict) -> str:
@@ -140,15 +145,22 @@ class TickState:
     running: dict[int, RunningJob] = field(default_factory=dict)
 
 
-def _finish(tick: TickState, source_id: int, job: RunningJob) -> None:
+def _pricing_failed(settings: Settings, source_id: int) -> None:
+    message = "Local rates are not being priced; the last attempts failed. Check the rate windows and the logs."
+    alerts.report_failure(settings, source_id, PRICING_ALERT, message)
+
+
+def _finish(settings: Settings, tick: TickState, source_id: int, job: RunningJob) -> None:
     job.process.join()
     if job.process.exitcode == 0:
         tick.states[source_id] = after_success(tick.states.get(source_id), job.triggers, job.started, job.tz, job.windows_key)
+        alerts.clear_alert(settings, source_id, PRICING_ALERT)
     else:
         logger.warning("Pricing source %s did not finish its work (exit %s); retrying", source_id, job.process.exitcode)
+        _pricing_failed(settings, source_id)
 
 
-def _reap(tick: TickState, now: datetime.datetime) -> None:
+def _reap(settings: Settings, tick: TickState, now: datetime.datetime) -> None:
     for source_id, job in list(tick.running.items()):
         if job.process.is_alive():
             if now - job.started <= MAX_RUN:
@@ -159,19 +171,24 @@ def _reap(tick: TickState, now: datetime.datetime) -> None:
             if job.process.is_alive():
                 job.process.kill()
                 job.process.join()
+            _pricing_failed(settings, source_id)
         else:
-            _finish(tick, source_id, job)
+            _finish(settings, tick, source_id, job)
         del tick.running[source_id]
 
 
-def _marker_or_none(source: LocalSource) -> RepriceMarker | None:
+def _marker_or_none(settings: Settings, source: LocalSource) -> RepriceMarker | None:
     """A malformed marker is logged and ignored, so it cannot stop the rest of
     the source's pricing."""
     try:
-        return parse_reprice(source.config)
+        marker = parse_reprice(source.config)
     except CONFIG_ERRORS:
         logger.exception("Ignoring a malformed reprice marker for pricing source %s", source.source_id)
+        message = "A request to reprice past rates is malformed and is being ignored."
+        alerts.raise_alert(settings, source.source_id, MARKER_ALERT, message)
         return None
+    alerts.clear_alert(settings, source.source_id, MARKER_ALERT)
+    return marker
 
 
 def _start_if_due(
@@ -187,9 +204,12 @@ def _start_if_due(
         tz = site_timezone(source.config)
     except CONFIG_ERRORS:
         logger.exception("Unusable time zone for pricing source %s; skipping it this tick", source.source_id)
+        message = "The site's time zone is not valid, so local rates are not being priced. Check the site settings."
+        alerts.raise_alert(settings, source.source_id, TIMEZONE_ALERT, message)
         return
+    alerts.clear_alert(settings, source.source_id, TIMEZONE_ALERT)
     key = windows_key(source.config)
-    triggers = due(tick.states.get(source.source_id), now, tz, key, _marker_or_none(source))
+    triggers = due(tick.states.get(source.source_id), now, tz, key, _marker_or_none(settings, source))
     if not triggers.any:
         return
     process = process_factory(target=sync_child, args=(settings, source, triggers, now))
@@ -206,7 +226,7 @@ def run_tick(
     """One pass of the loop. Collects finished children, then starts a child
     for each source whose work is due. It never waits for a child, so a long
     history fill does not delay the next minute's checks."""
-    _reap(tick, now)
+    _reap(settings, tick, now)
     try:
         sources = fetch_collector_sources(settings.core_api_url, settings.collector_key)
     except CoreApiError:

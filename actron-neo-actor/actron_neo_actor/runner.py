@@ -15,6 +15,7 @@ import datetime
 import logging
 from collections.abc import Callable
 
+from actron_neo_actor.alerts import InstanceAlerts
 from actron_neo_actor.async_core import AsyncCore
 from actron_neo_actor.config import Settings
 from actron_neo_actor.connector import ActronConnector
@@ -24,6 +25,8 @@ from actron_neo_actor.models import Instance
 from actron_neo_actor.worker import DeviceFactory, InstanceWorker
 
 _LOG = logging.getLogger(__name__)
+
+TICK_ALERT = "tick"
 
 
 def _utcnow() -> datetime.datetime:
@@ -44,6 +47,7 @@ class Runner:
         self._factory_for = factory_for
         self._clock = clock
         self._sleep = sleep
+        self._alerts = InstanceAlerts(core)
         self._workers: dict[int, InstanceWorker] = {}
         self._ticks: dict[int, asyncio.Task[None]] = {}
 
@@ -73,6 +77,10 @@ class Runner:
             await worker.tick(instance)
         except Exception as err:
             _LOG.error("Tick failed (instance %s): %s", instance.instance_id, type(err).__name__)
+            message = "WattWise cannot reach the air conditioner through Actron. Schedules may not run."
+            await self._alerts.failure(instance.instance_id, TICK_ALERT, message)
+        else:
+            await self._alerts.ok(instance.instance_id, TICK_ALERT)
 
     async def _drop_missing(self, keep: set[int]) -> None:
         for instance_id in [i for i in self._workers if i not in keep]:

@@ -4,6 +4,7 @@ import secrets
 from datetime import UTC, datetime
 
 from core_api.db import make_engine, make_session_factory
+from core_api.models.alerts import Alert
 from core_api.models.identity import Site, User
 from core_api.models.sources import Source, SourceKind
 from tests.conftest import ENVOY_COLLECTOR_KEY, PRICING_COLLECTOR_KEY, WEATHER_COLLECTOR_KEY
@@ -224,11 +225,11 @@ def test_report_discovered_config_merges_cert_serial(client, app_and_db_url):
     assert get.json()["config"]["cert_serial"] == "322103FC7603C350"
 
 
-def _stored_alert(db_url: str, source_id: int) -> tuple[str | None, datetime | None]:
+def _stored_alerts(db_url: str, source_id: int) -> dict[str, tuple[str, datetime]]:
     engine = make_engine(db_url)
     session = make_session_factory(engine)()
-    source = session.get(Source, source_id)
-    result = (source.alert_message, source.alert_since)
+    rows = session.query(Alert).filter_by(subject_kind="source", subject_id=source_id).all()
+    result = {row.code: (row.message, row.since) for row in rows}
     session.close()
     return result
 
@@ -236,36 +237,40 @@ def _stored_alert(db_url: str, source_id: int) -> tuple[str | None, datetime | N
 def test_put_alert_sets_message_and_keeps_the_first_start_time(client, app_and_db_url):
     _, db_url = app_and_db_url
     source_id = make_energy_source(db_url)
+    url = f"/api/v1/sources/{source_id}/alerts/cert"
     headers = {"X-Collector-Key": ENVOY_COLLECTOR_KEY}
-    first = client.put(f"/api/v1/sources/{source_id}/alert", json={"message": "cert changed"}, headers=headers)
+    first = client.put(url, json={"message": "cert changed"}, headers=headers)
     assert first.status_code == 204, first.text
-    _, since = _stored_alert(db_url, source_id)
-    second = client.put(f"/api/v1/sources/{source_id}/alert", json={"message": "still changed"}, headers=headers)
+    _, since = _stored_alerts(db_url, source_id)["cert"]
+    second = client.put(url, json={"message": "still changed"}, headers=headers)
     assert second.status_code == 204, second.text
-    message, since_after = _stored_alert(db_url, source_id)
+    message, since_after = _stored_alerts(db_url, source_id)["cert"]
     assert message == "still changed"
     assert since_after == since
 
 
-def test_delete_alert_clears_it(client, app_and_db_url):
+def test_alerts_with_different_codes_coexist_and_clear_independently(client, app_and_db_url):
     _, db_url = app_and_db_url
     source_id = make_energy_source(db_url)
     headers = {"X-Collector-Key": ENVOY_COLLECTOR_KEY}
-    client.put(f"/api/v1/sources/{source_id}/alert", json={"message": "cert changed"}, headers=headers)
-    response = client.delete(f"/api/v1/sources/{source_id}/alert", headers=headers)
+    for code in ("cert", "token"):
+        client.put(f"/api/v1/sources/{source_id}/alerts/{code}", json={"message": code}, headers=headers)
+    response = client.delete(f"/api/v1/sources/{source_id}/alerts/cert", headers=headers)
     assert response.status_code == 204, response.text
-    assert _stored_alert(db_url, source_id) == (None, None)
+    assert list(_stored_alerts(db_url, source_id)) == ["token"]
+    assert client.delete(f"/api/v1/sources/{source_id}/alerts/cert", headers=headers).status_code == 204
 
 
-def test_alert_rejects_a_wrong_collector_key_and_an_empty_message(client, app_and_db_url):
+def test_alert_rejects_a_wrong_collector_key_an_empty_message_and_a_bad_code(client, app_and_db_url):
     _, db_url = app_and_db_url
     source_id = make_energy_source(db_url)
-    wrong = client.put(f"/api/v1/sources/{source_id}/alert", json={"message": "x"}, headers={"X-Collector-Key": "wrong"})
+    url = f"/api/v1/sources/{source_id}/alerts/cert"
+    wrong = client.put(url, json={"message": "x"}, headers={"X-Collector-Key": "wrong"})
     assert wrong.status_code == 401
-    empty = client.put(
-        f"/api/v1/sources/{source_id}/alert", json={"message": ""}, headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY}
-    )
-    assert empty.status_code == 422
+    headers = {"X-Collector-Key": ENVOY_COLLECTOR_KEY}
+    assert client.put(url, json={"message": ""}, headers=headers).status_code == 422
+    bad_code = client.put(f"/api/v1/sources/{source_id}/alerts/Bad-Code", json={"message": "x"}, headers=headers)
+    assert bad_code.status_code == 422
 
 
 def test_discovered_config_accepts_firmware(client, app_and_db_url):

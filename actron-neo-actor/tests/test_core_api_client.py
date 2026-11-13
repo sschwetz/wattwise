@@ -232,3 +232,20 @@ def test_run_listing_filters(client):
     runs = client.list_recent_runs(1, datetime.datetime(2026, 11, 4, tzinfo=UTC))
     assert route.calls.last.request.url.params["since"] == "2026-11-04T00:00:00+00:00"
     assert runs[0].snapshot == {"mode": "COOL"}
+
+
+@respx.mock
+def test_set_and_clear_alert_use_the_instance_alert_routes(client):
+    put = respx.put(f"{BASE}/api/v1/actor/instances/4/alerts/tick").respond(204)
+    delete = respx.delete(f"{BASE}/api/v1/actor/instances/4/alerts/tick").respond(204)
+    client.set_alert(4, "tick", "Cannot reach the unit")
+    client.clear_alert(4, "tick")
+    assert json.loads(put.calls.last.request.content) == {"message": "Cannot reach the unit"}
+    assert delete.called
+
+
+@respx.mock
+def test_set_alert_failure_raises_core_api_error(client):
+    respx.put(f"{BASE}/api/v1/actor/instances/4/alerts/tick").respond(422, text="bad")
+    with pytest.raises(CoreApiError):
+        client.set_alert(4, "tick", "x")

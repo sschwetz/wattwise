@@ -14,11 +14,14 @@ from core_api.actor_context import ActorContext, build_context
 from core_api.actor_email import site_local_time, site_owner
 from core_api.actor_runs import has_unfinished_action_run, unfinished_action_runs
 from core_api.actor_schemas import AwareUtc, RunCreate, RunOut, RunUpdate, StoredConditions, StoredRestore
+from core_api.alerts import AlertCode, clear_alert, report_notification_result, set_alert
 from core_api.deps import get_actor_instance, get_db_session, get_email_sender, require_actor_key
 from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
 from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
+from core_api.models.alerts import SUBJECT_INSTANCE
 from core_api.models.identity import Site
+from core_api.schemas import AlertIn
 from core_api.time_utils import as_utc
 
 router = APIRouter(prefix="/actor", tags=["actor"])
@@ -139,6 +142,25 @@ def report_actor_discovered_config(
     if "auth_state" in payload.model_fields_set:
         instance.auth_state = payload.auth_state
     db.commit()
+
+
+@router.put("/instances/{instance_id}/alerts/{code}", status_code=status.HTTP_204_NO_CONTENT)
+def set_actor_alert(
+    code: AlertCode,
+    payload: AlertIn,
+    instance: ActorInstance = Depends(get_actor_instance),
+    db: Session = Depends(get_db_session),
+) -> None:
+    set_alert(db, instance.site_id, SUBJECT_INSTANCE, instance.id, code, payload.message)
+
+
+@router.delete("/instances/{instance_id}/alerts/{code}", status_code=status.HTTP_204_NO_CONTENT)
+def clear_actor_alert(
+    code: AlertCode,
+    instance: ActorInstance = Depends(get_actor_instance),
+    db: Session = Depends(get_db_session),
+) -> None:
+    clear_alert(db, SUBJECT_INSTANCE, instance.id, code)
 
 
 @router.put("/instances/{instance_id}/capabilities", status_code=status.HTTP_204_NO_CONTENT)
@@ -360,4 +382,5 @@ def _email_failure(db: Session, run: ActorRun, email_sender: EmailSender) -> Non
         f'The schedule "{schedule.name}" {verb} at {when} for the site "{site.name}".\n\n'
         f"What went wrong: {run.message or 'no details were reported'}\n"
     )
-    try_send_email(email_sender, owner.email, f'Schedule failed: {schedule.name}', body, "actor run failure")
+    sent = try_send_email(email_sender, owner.email, f'Schedule failed: {schedule.name}', body, "actor run failure")
+    report_notification_result(db, site.id, sent)

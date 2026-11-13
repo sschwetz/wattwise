@@ -14,7 +14,7 @@ const KIND_LABEL: Record<ActorFailureKind, string> = {
   still_off: "Still off: the unit may still be off",
   actor_silent: "Actor not reporting: the device program stopped reporting",
   needs_sign_in: "Needs sign-in",
-  source_alert: "Source problem",
+  alert: "Problem",
 };
 
 const linkClass = "text-sm font-medium text-ink underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
@@ -27,10 +27,11 @@ function oldestFirst(failures: ActorFailure[]): ActorFailure[] {
 /** needs_sign_in has no real start time: the server sends "now" on every request, so no time is shown. */
 function FailureRow({ failure, timezone }: { failure: ActorFailure; timezone: string | undefined }) {
   const now = useNow(CLOCK_MS);
+  const label = failure.schedule_name ?? failure.subject;
   return (
     <li className="space-y-0.5 border-t border-line pt-2 text-sm first:border-t-0 first:pt-0">
       <p className="font-medium text-danger">{KIND_LABEL[failure.kind] ?? failure.kind}</p>
-      {failure.schedule_name && <p className="text-ink">{failure.schedule_name}</p>}
+      {label && <p className="text-ink">{label}</p>}
       <p className="text-ink">{failure.message}</p>
       {timezone && failure.kind !== "needs_sign_in" && (
         <time dateTime={failure.since} className="block text-ink-muted">
@@ -48,25 +49,24 @@ function FailureList({ failures, siteId }: { failures: ActorFailure[]; siteId: n
   const timezone = useSites().data?.find((s) => s.id === siteId)?.timezone;
   const shown = oldestFirst(failures).slice(0, MAX_SHOWN);
   const hidden = failures.length - shown.length;
-  const onlySourceAlerts = failures.every((f) => f.kind === "source_alert");
-  const href = onlySourceAlerts ? collectorsHref(siteId) : scheduleHref(siteId);
+  const hasAlerts = failures.some((f) => f.kind === "alert");
+  const hasScheduleFailures = failures.some((f) => f.kind !== "alert");
   return (
     <>
       <h2 className="font-display text-lg font-semibold text-ink">Needs attention ({failures.length})</h2>
       <ul className="mt-3 space-y-2">
         {shown.map((f) => (
-          <FailureRow key={`${f.kind}-${f.instance_id}-${f.schedule_id}-${f.schedule_name}`} failure={f} timezone={timezone} />
+          <FailureRow key={`${f.kind}-${f.instance_id}-${f.schedule_id}-${f.subject}-${f.message}`} failure={f} timezone={timezone} />
         ))}
       </ul>
-      {hidden > 0 && <Link to={href} className={`${linkClass} mt-2 block`}>and {hidden} more</Link>}
-      <Link to={href} className={`${linkClass} mt-3 block`}>
-        {onlySourceAlerts ? "Open the Collectors tab" : "Open the Schedule tab"}
-      </Link>
+      {hidden > 0 && <Link to={hasScheduleFailures ? scheduleHref(siteId) : collectorsHref(siteId)} className={`${linkClass} mt-2 block`}>and {hidden} more</Link>}
+      {hasScheduleFailures && <Link to={scheduleHref(siteId)} className={`${linkClass} mt-3 block`}>Open the Schedule tab</Link>}
+      {hasAlerts && <Link to={collectorsHref(siteId)} className={`${linkClass} mt-3 block`}>Open the Collectors tab</Link>}
     </>
   );
 }
 
-/** Dashboard summary of current schedule and source problems. Without an actor it shows source problems only. */
+/** Dashboard summary of current schedule failures and alerts. Without an actor it shows alerts only. */
 export function FailuresTile({ siteId }: { siteId: number }) {
   const instances = useActorInstances(siteId);
   const failures = useActorFailures(siteId);
@@ -76,7 +76,7 @@ export function FailuresTile({ siteId }: { siteId: number }) {
   // A failed background refetch keeps the failures already shown.
   if (failures.isError && !failures.data) return hasActors ? <p className={hintClass}>Schedule status unavailable</p> : null;
   if (!failures.data) return null;
-  const current = hasActors ? failures.data : failures.data.filter((f) => f.kind === "source_alert");
+  const current = hasActors ? failures.data : failures.data.filter((f) => f.kind === "alert");
   if (current.length === 0) {
     if (!hasActors) return null;
     return (

@@ -45,8 +45,8 @@ The Envoy presents a self-signed certificate. The collector uses trust-on-first-
 
 1. On first sight of a source it fetches the certificate and stores its SHA-256 fingerprint, expiry and serial in the source config (through `discovered-config`).
 2. It sends the access token only to a host that has been pinned.
-3. If the Envoy later presents a different certificate, the collector fetches `/info.xml` from it without sending the token. It re-pins only when the source has a stored serial number, the device reports that same serial, and either the firmware (`<software>` in `/info.xml`) differs from the stored `firmware` or the pinned certificate is within 100 days of expiry. A re-pin logs a warning with the reason and clears the source alert.
-4. Otherwise it refuses, logs an error and sets a source alert through `PUT /sources/{id}/alert`. The message says whether the firmware is unchanged or no stored firmware existed to compare.
+3. If the Envoy later presents a different certificate, the collector fetches `/info.xml` from it without sending the token. It re-pins only when the source has a stored serial number, the device reports that same serial, and either the firmware (`<software>` in `/info.xml`) differs from the stored `firmware` or the pinned certificate is within 100 days of expiry. A re-pin logs a warning with the reason and clears the `cert` alert.
+4. Otherwise it refuses, logs an error and raises the `cert` alert through `PUT /sources/{id}/alerts/cert`. The message says whether the firmware is unchanged or no stored firmware existed to compare.
 
 The collector stores the firmware in the source config as `firmware` through `discovered-config`. A source whose firmware was never stored cannot be recognised as upgraded. Clear `cert_fingerprint` once; the next discovery stores the firmware.
 
@@ -147,6 +147,40 @@ Each tick starts a short-lived child process per source, so one slow source cann
 | `scheduling.py` | Tick alignment. |
 | `core_api_client.py` | HTTP calls. |
 
+## Alerts
+
+Each collector reports problems the owner has to fix as alerts, which the Dashboard **Needs attention** tile shows. A collector calls `PUT /sources/{id}/alerts/{code}` with `{message}` and `DELETE` on the same path when the cause goes away. Each service has its own `alerts.py`, the same convention as `service_report.py`. The state is in memory. After a restart the first success sends one `DELETE` per code, which clears alerts left from before.
+
+A problem that might be a blip raises its alert after 5 failures in a row (`ALERT_AFTER_FAILURES`). A problem that needs the owner raises at once.
+
+| Service | Code | Raised when | Cleared when |
+|---|---|---|---|
+| envoy-collector | `cert` | The TLS certificate changed and was not re-pinned | The collector pins it |
+| envoy-collector | `token` | Enlighten rejected the renewal at once, or renewal keeps failing, or the token is still rejected | A poll succeeds |
+| envoy-collector | `unreachable` | 5 failed polls | A poll succeeds |
+| envoy-collector | `meters` | 5 failed meter reads | A meter read succeeds |
+| envoy-collector | `refused` | Core API answered 403: the source or site is disabled or expired | Core API accepts readings |
+| weatherlink-local-collector | `unreachable`, `iss`, `barometer` | 5 failures in a row each | The condition passes |
+| weatherlink-local-collector | `refused` | Core API answered 403 | Core API accepts readings |
+| amber-pricing-collector | `amber_key` | Amber answered 401 or 403 (at once) | A poll succeeds |
+| amber-pricing-collector | `amber` | 5 failed polls, or a child killed for running too long | A poll succeeds |
+| local-pricing-collector | `pricing` | 5 failed or too-long runs | A run succeeds |
+| local-pricing-collector | `timezone` | The site time zone is invalid | The time zone is valid |
+| local-pricing-collector | `reprice_marker` | A reprice request is malformed | The marker is valid or cleared |
+| actron-neo-actor | `tick` | 5 failed ticks for an instance, such as Actron being unreachable | A tick succeeds |
+
+The Amber and local pricing polls run in child processes, so a child reports through its exit code and the parent loop raises or clears the alerts. An Amber child exits with `OK` 0, `CONFIG_FAILED` 10, `AMBER_REJECTED` 11, `AMBER_FAILED` 12 or `PUSH_FAILED` 13. A local pricing child exits 0 on success and 1 otherwise. Config and push failures change no Amber alert.
+
+The actor reports through `PUT|DELETE /actor/instances/{id}/alerts/{code}` with its own key. Core API also keeps a site-level `notify_email` alert. See [Data model](data-model.md#alerts).
+
+These problems are logged only and raise no alert:
+
+- Skipped malformed Amber price intervals and malformed local rate windows.
+- Envoy battery stream parse failures. A site without a battery fails that read every cycle by design.
+- "No sources discovered yet".
+- A failed refresh of the source list from Core API.
+- Failures of core-api scheduled jobs.
+
 ## Failure behaviour at a glance
 
 | Situation | What you see | Recovery |
@@ -154,7 +188,7 @@ Each tick starts a short-lived child process per source, so one slow source cann
 | Core API down | Collectors log errors every cycle. Data for that period is lost for energy and weather. Pricing catches up later through backfill and catch-up. | Automatic when Core API returns. |
 | Envoy unreachable | Log lines for the source. A gap in the dashboard. | Automatic. |
 | Envoy token expired, no stored credentials | Log line with the renewal URL. Readings stop. | Owner pastes a new token. |
-| Envoy certificate changed without a firmware change or an expiry within 100 days | Source keeps failing. Logged as an error and shown as a source alert on the Dashboard. | Confirm the device is the same, then clear the pin (change the Host or edit the config). |
+| Envoy certificate changed without a firmware change or an expiry within 100 days | Source keeps failing. Logged as an error and shown as a `cert` alert on the Dashboard. | Confirm the device is the same, then clear the pin (change the Host or edit the config). |
 | Amber API key wrong | Pricing log errors. No new prices. | Owner updates the key under Account settings. |
 | Rate window left uncovered | Minutes without a price are left out of cost totals. The web app names the first uncovered time. | Owner adds a window. |
 

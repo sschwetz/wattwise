@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 
+import httpx
 import pytest
 
-from amber_pricing_collector import live_poll
+from amber_pricing_collector import alerts, live_poll
 from amber_pricing_collector.config import PricingSource
 from amber_pricing_collector.core_api_client import CoreApiError
 
@@ -179,6 +180,7 @@ class FakeProcess:
         self.started = False
         self.joined_with_timeout = None
         self.terminated = False
+        self.exitcode = 0
         FakeProcess.instances.append(self)
 
     def start(self):
@@ -214,8 +216,8 @@ def test_run_live_poll_forever_forks_one_child_per_source(monkeypatch):
         live_poll.run_live_poll_forever(BASE_URL, "shared-key")
 
     assert len(FakeProcess.instances) == 2
-    assert {p.args[1] for p in FakeProcess.instances} == {1, 2}
-    assert all(p.args[2] == "shared-key" for p in FakeProcess.instances)
+    assert {p.args[2] for p in FakeProcess.instances} == {1, 2}
+    assert all(p.args[3] == "shared-key" for p in FakeProcess.instances)
     assert all(p.started for p in FakeProcess.instances)
     assert all(p.joined_with_timeout == live_poll.CHILD_JOIN_TIMEOUT_SECONDS for p in FakeProcess.instances)
 
@@ -331,8 +333,8 @@ def test_run_recent_poll_forever_forks_one_child_per_source_running_the_recent_w
         live_poll.run_recent_poll_forever(BASE_URL, "shared-key")
 
     assert len(FakeProcess.instances) == 2
-    assert all(p.target is live_poll.poll_one_site_recent for p in FakeProcess.instances)
-    assert {p.args[1] for p in FakeProcess.instances} == {1, 2}
+    assert all(p.args[0] is live_poll.poll_one_site_recent for p in FakeProcess.instances)
+    assert {p.args[2] for p in FakeProcess.instances} == {1, 2}
 
 
 def test_run_live_poll_forever_real_fork_isolates_sibling_crash(monkeypatch, tmp_path):
@@ -363,3 +365,59 @@ def test_run_live_poll_forever_real_fork_isolates_sibling_crash(monkeypatch, tmp
         live_poll.run_live_poll_forever(BASE_URL, str(marker_path))
 
     assert marker_path.read_text() == "done"
+
+
+class _Response:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+
+def _amber_error(status_code):
+    return httpx.HTTPStatusError("boom", request=httpx.Request("GET", "http://x"), response=_Response(status_code))
+
+
+def test_poll_one_site_returns_how_the_poll_ended(monkeypatch):
+    monkeypatch.setattr(live_poll, "fetch_source_config", lambda *a: {"amber_site_id": "s", "amber_api_key": "k"})
+    monkeypatch.setattr(live_poll, "push_price_intervals", lambda *a, **k: None)
+
+    def reject(*a, **k):
+        raise _amber_error(401)
+
+    monkeypatch.setattr(live_poll, "fetch_current_prices", reject)
+    assert live_poll.poll_one_site("http://core", 1, "key") == live_poll.AMBER_REJECTED
+
+    def down(*a, **k):
+        raise _amber_error(503)
+
+    monkeypatch.setattr(live_poll, "fetch_current_prices", down)
+    assert live_poll.poll_one_site("http://core", 1, "key") == live_poll.AMBER_FAILED
+
+    monkeypatch.setattr(live_poll, "fetch_current_prices", lambda *a, **k: [])
+    assert live_poll.poll_one_site("http://core", 1, "key") == live_poll.OK
+
+
+def test_a_child_exits_with_the_polls_outcome_code():
+    with pytest.raises(SystemExit) as info:
+        live_poll._run_child(lambda url, sid, key: live_poll.AMBER_FAILED, "http://core", 1, "key")
+    assert info.value.code == live_poll.AMBER_FAILED
+
+
+def test_amber_rejection_raises_a_key_alert_at_once_and_a_good_poll_clears_it(alert_calls):
+    live_poll._report_outcome("http://core", "key", 1, live_poll.AMBER_REJECTED)
+    assert [c[:2] for c in alert_calls] == [("set", "amber_key")]
+    live_poll._report_outcome("http://core", "key", 1, live_poll.OK)
+    assert ("clear", "amber_key") in alert_calls and ("clear", "amber") in alert_calls
+
+
+def test_amber_failures_raise_an_alert_after_five_in_a_row_and_a_terminated_child_counts(alert_calls):
+    for _ in range(alerts.ALERT_AFTER_FAILURES - 1):
+        live_poll._report_outcome("http://core", "key", 1, live_poll.AMBER_FAILED)
+    assert alert_calls == []
+    live_poll._report_outcome("http://core", "key", 1, None)
+    assert [c[:2] for c in alert_calls] == [("set", "amber")]
+
+
+def test_config_and_push_failures_change_no_alert(alert_calls):
+    live_poll._report_outcome("http://core", "key", 1, live_poll.CONFIG_FAILED)
+    live_poll._report_outcome("http://core", "key", 1, live_poll.PUSH_FAILED)
+    assert alert_calls == []

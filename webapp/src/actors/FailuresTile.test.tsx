@@ -16,7 +16,7 @@ const site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydne
 function failure(n: number, overrides: Partial<ActorFailure> = {}): ActorFailure {
   return {
     kind: "run_failed", instance_id: 3, schedule_id: n, schedule_name: `Schedule ${n}`,
-    message: `Message ${n}`, since: `2026-10-0${n}T14:30:00Z`, ...overrides,
+    message: `Message ${n}`, since: `2026-10-0${n}T14:30:00Z`, subject: null, ...overrides,
   };
 }
 
@@ -56,17 +56,28 @@ describe("FailuresTile", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows a source alert on a site with no actor, linking to the Collectors tab", async () => {
+  it("shows an alert on a site with no actor, linking to the Collectors tab", async () => {
     mockData({
       instances: [],
-      failures: [failure(1, { kind: "source_alert", instance_id: null, schedule_id: null, schedule_name: "Roof Envoy", message: "Certificate changed" })],
+      failures: [failure(1, { kind: "alert", instance_id: null, schedule_id: null, schedule_name: null, subject: "Roof Envoy", message: "Certificate changed" })],
     });
     renderTile();
     const tile = await screen.findByRole("region", { name: "Needs attention" });
-    expect(within(tile).getByText("Source problem")).toBeInTheDocument();
+    expect(within(tile).getByText("Problem")).toBeInTheDocument();
     expect(within(tile).getByText("Roof Envoy")).toBeInTheDocument();
     expect(within(tile).getByText("Certificate changed")).toBeInTheDocument();
     expect(within(tile).getByRole("link", { name: "Open the Collectors tab" })).toHaveAttribute("href", "/settings/sites/7/collectors");
+    expect(within(tile).queryByRole("link", { name: "Open the Schedule tab" })).not.toBeInTheDocument();
+  });
+
+  it("links to both tabs when schedule failures and alerts are present", async () => {
+    mockData({
+      failures: [failure(1), failure(2, { kind: "alert", instance_id: null, schedule_id: null, schedule_name: null, subject: "Site", message: "Email failed" })],
+    });
+    renderTile();
+    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    expect(within(tile).getByRole("link", { name: "Open the Schedule tab" })).toBeInTheDocument();
+    expect(within(tile).getByRole("link", { name: "Open the Collectors tab" })).toBeInTheDocument();
   });
 
   it("failures tile includes a partial run", async () => {

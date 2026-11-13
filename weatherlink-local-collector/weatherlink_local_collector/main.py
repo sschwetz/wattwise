@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from weatherlink_local_collector import alerts
 from weatherlink_local_collector.config import Settings, get_settings
 from weatherlink_local_collector.core_api_client import (
     CoreApiError,
@@ -20,6 +21,11 @@ from weatherlink_local_collector.weatherlink_client import fetch_current_conditi
 
 logger = logging.getLogger("weatherlink_local_collector")
 
+# Alert codes, one per problem the owner can fix. Each is cleared when its cause goes away.
+UNREACHABLE_ALERT = "unreachable"
+ISS_ALERT = "iss"
+BAROMETER_ALERT = "barometer"
+REFUSED_ALERT = "refused"
 # Readings whose push failed, per source, sent again with the next cycle's.
 # Core API upserts on (source, ts, metric), so a batch that was in fact stored
 # after the timeout is harmless to send twice. rain_mm is never kept: a failed
@@ -33,22 +39,32 @@ _pending_readings: dict[int, list[dict]] = {}
 _dropping: set[int] = set()
 
 
-def _map_iss_or_empty(conditions: list[dict], ts: datetime.datetime, rain_state: RainState) -> list[dict]:
+def _map_iss_or_empty(
+    settings: Settings, source_id: int, conditions: list[dict], ts: datetime.datetime, rain_state: RainState
+) -> list[dict]:
     try:
         iss = next(c for c in conditions if c["data_structure_type"] == 1)
-        return map_iss_readings(iss, ts, rain_state)
+        readings = map_iss_readings(iss, ts, rain_state)
     except Exception:
         logger.exception("Failed to find/parse ISS (outdoor) data this cycle; continuing without it")
+        message = "The weather station is not reporting outdoor (ISS) data. Check the sensor and its battery."
+        alerts.report_failure(settings, source_id, ISS_ALERT, message)
         return []
+    alerts.clear_alert(settings, source_id, ISS_ALERT)
+    return readings
 
 
-def _map_barometer_or_empty(conditions: list[dict], ts: datetime.datetime) -> list[dict]:
+def _map_barometer_or_empty(settings: Settings, source_id: int, conditions: list[dict], ts: datetime.datetime) -> list[dict]:
     try:
         barometer = next(c for c in conditions if c["data_structure_type"] == 3)
-        return map_barometer_readings(barometer, ts)
+        readings = map_barometer_readings(barometer, ts)
     except Exception:
         logger.exception("Failed to find/parse barometer data this cycle; continuing without it")
+        message = "The weather station is not reporting barometer data."
+        alerts.report_failure(settings, source_id, BAROMETER_ALERT, message)
         return []
+    alerts.clear_alert(settings, source_id, BAROMETER_ALERT)
+    return readings
 
 
 def poll_once(settings: Settings, source_id: int, config: dict, rain_state: RainState) -> None:
@@ -60,7 +76,10 @@ def poll_once(settings: Settings, source_id: int, config: dict, rain_state: Rain
         conditions = data["data"]["conditions"]
     except Exception:
         logger.exception("Failed to poll WeatherLink this cycle for source %s", source_id)
+        message = f"Cannot read data from the weather station at {config.get('host')}. Check that it is on and reachable."
+        alerts.report_failure(settings, source_id, UNREACHABLE_ALERT, message)
         return
+    alerts.clear_alert(settings, source_id, UNREACHABLE_ALERT)
 
     # map_iss_readings advances rain_state's baseline as a side effect of
     # computing this cycle's rain_mm delta. Snapshot it first so a failed
@@ -68,7 +87,9 @@ def poll_once(settings: Settings, source_id: int, config: dict, rain_state: Rain
     # next successful push would only report the delta since the dropped
     # cycle, silently undercounting the running rain total.
     prev_rain_baseline = rain_state.last_daily_mm
-    readings = _map_iss_or_empty(conditions, ts, rain_state) + _map_barometer_or_empty(conditions, ts)
+    readings = _map_iss_or_empty(settings, source_id, conditions, ts, rain_state) + _map_barometer_or_empty(
+        settings, source_id, conditions, ts
+    )
     if not readings:
         return
 
@@ -88,6 +109,8 @@ def _push_or_keep(settings: Settings, source_id: int, batch: list[dict]) -> bool
             if source_id not in _dropping:
                 logger.warning("Core API refused readings for source %s (%s); dropping them", source_id, exc)
             _dropping.add(source_id)
+            message = "WattWise is refusing this source's readings (the source or site is disabled or has expired), so they are being dropped."
+            alerts.raise_alert(settings, source_id, REFUSED_ALERT, message)
             return True
         logger.exception(
             "Failed to push %s readings to Core API this cycle for source %s; will resend next cycle",
@@ -98,6 +121,7 @@ def _push_or_keep(settings: Settings, source_id: int, batch: list[dict]) -> bool
         _pending_readings[source_id] = kept[-MAX_PENDING_READINGS:]
         return False
     _dropping.discard(source_id)
+    alerts.clear_alert(settings, source_id, REFUSED_ALERT)
     return True
 
 
