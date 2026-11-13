@@ -101,6 +101,7 @@ def _source_alerts(db: Session, site_id: int) -> list[ActorFailure]:
     return [
         ActorFailure("source_alert", None, None, name or provider, message, as_utc(since))
         for name, provider, message, since in db.execute(stmt)
+        if message is not None and since is not None
     ]
 
 
