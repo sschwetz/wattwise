@@ -17,7 +17,7 @@ class _RaisingSender:
 
 def test_try_send_email_delivers_through_the_sender():
     sender = FakeEmailSender()
-    try_send_email(sender, "a@example.com", "Subject", "Body", "test")
+    assert try_send_email(sender, "a@example.com", "Subject", "Body", "test") is True
     assert sender.sent == [("a@example.com", "Subject", "Body")]
 
 
@@ -26,5 +26,5 @@ def test_try_send_email_logs_and_swallows_delivery_failure(monkeypatch):
     # fileConfig, which disables propagation for existing loggers.
     logged = []
     monkeypatch.setattr(email_sender.logger, "exception", lambda *args: logged.append(args))
-    try_send_email(_RaisingSender(), "a@example.com", "Subject", "Body", "password-reset")
+    assert try_send_email(_RaisingSender(), "a@example.com", "Subject", "Body", "password-reset") is False
     assert logged == [("Failed to send %s email", "password-reset")]

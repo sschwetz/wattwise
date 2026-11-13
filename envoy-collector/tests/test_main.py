@@ -9,6 +9,7 @@ import threading
 
 import pytest
 
+from envoy_collector import alerts as alerts_module
 from envoy_collector import main as main_module
 from envoy_collector.config import Settings
 from envoy_collector.core_api_client import CoreApiError
@@ -34,9 +35,9 @@ def _no_commit_reporter(monkeypatch: pytest.MonkeyPatch) -> None:
 def _alert_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str | None]]:
     """Records the alerts sent to Core API instead of sending them."""
     calls: list[tuple[str, str | None]] = []
-    monkeypatch.setattr(main_module, "set_source_alert", lambda url, sid, key, message: calls.append(("set", message)))
-    monkeypatch.setattr(main_module, "clear_source_alert", lambda url, sid, key: calls.append(("clear", None)))
-    main_module._alerts.clear()
+    monkeypatch.setattr(alerts_module, "set_source_alert", lambda url, sid, key, code, message: calls.append(("set", code, message)))
+    monkeypatch.setattr(alerts_module, "clear_source_alert", lambda url, sid, key, code: calls.append(("clear", code)))
+    alerts_module.reset()
     return calls
 
 
@@ -895,6 +896,92 @@ def test_poll_once_falls_back_to_the_manual_message_when_renewal_fails(monkeypat
     assert not any("pw-secret" in m for m in caplog.messages)
 
 
+def test_rejected_login_raises_a_token_alert_and_a_good_poll_clears_it(monkeypatch, _alert_calls):
+    def reject(u, p, s):
+        raise EnlightenAuthError("Enlighten rejected the username or password")
+
+    monkeypatch.setattr(main_module, "fetch_token", reject)
+    main_module.renew_token(SETTINGS, 1, {"token": "old", **CREDS})
+    assert _alert_calls == [("set", "token", "Could not renew the Envoy token: Enlighten rejected the username or password. Update the Enlighten credentials in the source.")]
+    assert "pw-secret" not in str(_alert_calls)
+
+    _stub_one_reading(monkeypatch)
+    monkeypatch.setattr(main_module, "push_energy_readings", lambda *a: None)
+    main_module.poll_once(SETTINGS, 1, {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"})
+    assert ("clear", "token") in _alert_calls
+
+
+def test_token_still_rejected_after_renewal_raises_a_token_alert_with_the_renewal_link(monkeypatch, _alert_calls):
+    monkeypatch.setattr(main_module, "fetch_token", lambda u, p, s: (_ for _ in ()).throw(EnlightenAuthError("no")))
+    monkeypatch.setattr(
+        main_module, "fetch_meter_readings", lambda host, token, cert_fingerprint: (_ for _ in ()).throw(EnvoyAuthError("x"))
+    )
+    monkeypatch.setattr(main_module, "fetch_battery_power", lambda host, token, cert_fingerprint: {"devices:": []})
+    stored = {"host": "envoy.local", "token": "old", "cert_fingerprint": "pinned", "serial_num": "1234", **CREDS}
+    monkeypatch.setattr(main_module, "fetch_source_config", lambda base_url, source_id, key: dict(stored))
+
+    main_module.poll_once(SETTINGS, 1, dict(stored))
+
+    token_alerts = [c for c in _alert_calls if c[0] == "set" and c[1] == "token"]
+    assert any("entrez-auth-token?serial_num=1234" in c[2] for c in token_alerts)
+
+
+def test_unreachable_alert_needs_five_failed_cycles_and_clears_on_success(monkeypatch, _alert_calls):
+    def boom(*args):
+        raise OSError("no route")
+
+    monkeypatch.setattr(main_module, "fetch_meter_readings", boom)
+    monkeypatch.setattr(main_module, "fetch_meters", lambda *a: [])
+    config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
+    for _ in range(alerts_module.ALERT_AFTER_FAILURES - 1):
+        main_module.poll_once(SETTINGS, 1, config)
+    assert not [c for c in _alert_calls if c[0] == "set"]
+    main_module.poll_once(SETTINGS, 1, config)
+    main_module.poll_once(SETTINGS, 1, config)
+    sets = [c for c in _alert_calls if c[0] == "set"]
+    assert [(c[1]) for c in sets] == ["unreachable"]
+    assert "envoy.local" in sets[0][2]
+
+    _stub_one_reading(monkeypatch)
+    monkeypatch.setattr(main_module, "push_energy_readings", lambda *a: None)
+    main_module.poll_once(SETTINGS, 1, config)
+    assert ("clear", "unreachable") in _alert_calls
+
+
+def test_a_403_raises_a_refused_alert_that_clears_once_readings_are_accepted(monkeypatch, _alert_calls):
+    _stub_one_reading(monkeypatch)
+    main_module._pending_readings.clear()
+    main_module._dropping.clear()
+    outcomes = [CoreApiError("403 site_disabled", status_code=403), None]
+
+    def _push(base_url, source_id, key, readings):
+        if (error := outcomes.pop(0)) is not None:
+            raise error
+
+    monkeypatch.setattr(main_module, "push_energy_readings", _push)
+    config = {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"}
+    main_module.poll_once(SETTINGS, 1, config)
+    assert [c[:2] for c in _alert_calls if c[0] == "set"] == [("set", "refused")]
+    main_module.poll_once(SETTINGS, 1, config)
+    assert ("clear", "refused") in _alert_calls
+
+
+def test_failing_meters_raise_an_alert_after_five_cycles_and_a_good_read_clears_it(monkeypatch, _alert_calls):
+    ts = datetime.datetime.now(datetime.UTC)
+    _stub_meters(monkeypatch)
+
+    def boom(host, token, fp):
+        raise OSError("down")
+
+    monkeypatch.setattr(main_module, "fetch_meter_readings", boom)
+    for _ in range(alerts_module.ALERT_AFTER_FAILURES):
+        main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
+    assert [c[:2] for c in _alert_calls if c[0] == "set"] == [("set", "meters")]
+    _stub_meters(monkeypatch)
+    main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
+    assert ("clear", "meters") in _alert_calls
+
+
 NOW = datetime.datetime(2026, 10, 13, tzinfo=datetime.UTC)
 
 
@@ -1045,7 +1132,7 @@ def test_poll_once_repins_when_the_firmware_changed_even_with_far_expiry(monkeyp
     assert result["firmware"] == "D8.4.1"
     assert reported[0]["firmware"] == "D8.4.1"
     assert any("firmware changed from D8.3.5226 to D8.4.1" in m for m in caplog.messages)
-    assert _alert_calls == [("clear", None)]
+    assert _alert_calls == [("clear", "cert")]
 
 
 def test_repin_without_a_stored_firmware_cannot_tell_an_upgrade_and_says_so(monkeypatch, caplog):
@@ -1405,7 +1492,7 @@ def test_meters_listing_is_fetched_once_per_source(monkeypatch):
 def test_meters_cache_cleared_on_auth_failure(monkeypatch):
     _stub_meters(monkeypatch)
     ts = datetime.datetime.now(datetime.UTC)
-    assert main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    assert main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
     assert 1 in main_module._meters_cache
 
     def unauthorized(host, token, fp):
@@ -1413,7 +1500,7 @@ def test_meters_cache_cleared_on_auth_failure(monkeypatch):
 
     monkeypatch.setattr(main_module, "fetch_meter_readings", unauthorized)
 
-    assert main_module._meter_readings_or_empty(1, dict(PINNED), ts) == []
+    assert main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts) == []
     assert 1 not in main_module._meters_cache
 
 
@@ -1429,13 +1516,13 @@ def test_meter_failures_are_rate_limited_per_source(monkeypatch, caplog):
     ts = datetime.datetime.now(datetime.UTC)
 
     for source_id in (1, 1, 2):
-        assert main_module._meter_readings_or_empty(source_id, dict(PINNED), ts) == []
+        assert main_module._meter_readings_or_empty(SETTINGS, source_id, dict(PINNED), ts) == []
     assert [(r.levelno, r.exc_info is not None) for r in caplog.records] == [
         (logging.ERROR, True),
         (logging.ERROR, True),
     ]
     now[0] += FAILURE_LOG_INTERVAL_SECONDS
-    main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
     assert caplog.records[-1].levelno == logging.WARNING
     assert "2 failures since last log" in caplog.records[-1].getMessage()
 
@@ -1451,11 +1538,11 @@ def test_meter_success_resets_the_failure_streak(monkeypatch, caplog):
         return []
 
     monkeypatch.setattr(main_module, "fetch_meter_readings", readings)
-    main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
     failing[0] = False
-    main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
     failing[0] = True
-    main_module._meter_readings_or_empty(1, dict(PINNED), ts)
+    main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
 
     assert [r.levelno for r in caplog.records] == [logging.ERROR, logging.ERROR]
 

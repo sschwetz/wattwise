@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from weatherlink_local_collector import alerts
 from weatherlink_local_collector import main as main_module
 from weatherlink_local_collector.config import Settings
 from weatherlink_local_collector.core_api_client import CoreApiError
@@ -621,3 +622,48 @@ def test_main_starts_the_commit_reporter(monkeypatch):
         main_module.main()
 
     assert calls == [("http://localhost:8000", "X-Collector-Key", "key", "weatherlink-local-collector")]
+
+
+def test_unreachable_station_raises_an_alert_after_five_cycles_and_a_good_poll_clears_it(monkeypatch, alert_calls):
+    def _raise(host):
+        raise OSError("no route")
+
+    monkeypatch.setattr(main_module, "fetch_current_conditions", _raise)
+    config = {"host": "weatherlink.local"}
+    for _ in range(alerts.ALERT_AFTER_FAILURES - 1):
+        main_module.poll_once(SETTINGS, 1, config, RainState())
+    assert alert_calls == []
+    main_module.poll_once(SETTINGS, 1, config, RainState())
+    assert [c[:2] for c in alert_calls] == [("set", "unreachable")]
+    assert "weatherlink.local" in alert_calls[0][2]
+
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+    monkeypatch.setattr(main_module, "push_weather_readings", lambda *a: None)
+    main_module.poll_once(SETTINGS, 1, config, RainState())
+    assert ("clear", "unreachable") in alert_calls
+
+
+def test_missing_iss_data_raises_an_iss_alert_after_five_cycles(monkeypatch, alert_calls):
+    only_barometer = {"data": {"conditions": [{"data_structure_type": 3, "bar_sea_level": 30.4, "bar_absolute": 30.3}]}}
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: only_barometer)
+    monkeypatch.setattr(main_module, "push_weather_readings", lambda *a: None)
+    for _ in range(alerts.ALERT_AFTER_FAILURES):
+        main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
+    assert [c[:2] for c in alert_calls if c[0] == "set"] == [("set", "iss")]
+
+
+def test_a_403_raises_a_refused_alert_that_clears_once_readings_are_accepted(monkeypatch, alert_calls):
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+    main_module._pending_readings.clear()
+    main_module._dropping.clear()
+    outcomes = [CoreApiError("403 site_disabled", status_code=403), None]
+
+    def _push(base_url, source_id, key, readings):
+        if (error := outcomes.pop(0)) is not None:
+            raise error
+
+    monkeypatch.setattr(main_module, "push_weather_readings", _push)
+    main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
+    assert [c[:2] for c in alert_calls if c[0] == "set"] == [("set", "refused")]
+    main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
+    assert ("clear", "refused") in alert_calls

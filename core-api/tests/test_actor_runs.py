@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from core_api.deps import get_db_session, get_email_sender
 from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunOutcome
+from core_api.models.alerts import Alert
 from core_api.routers.actor import router
 from tests.conftest import ACTOR_KEY, UTC
 
@@ -138,6 +139,16 @@ def test_failed_run_emails_owner_when_notify_on(http, db, inst, user, site, fake
     repeat = http.patch(_url(inst, f"/runs/{path_resp.json()['id']}"), json={"outcome": "failed"}, headers=HEADERS)
     assert repeat.status_code == 409
     assert len(fake_email_sender.sent) == 1
+
+
+def test_unsent_notification_email_raises_a_site_alert_until_one_sends(http, db, inst, site, fake_email_sender, monkeypatch):
+    s = _schedule(db, inst, notify=True)
+    monkeypatch.setattr(fake_email_sender, "send", lambda **kw: (_ for _ in ()).throw(RuntimeError("relay down")))
+    _fail(http, inst, s)
+    assert [(a.subject_kind, a.subject_id, a.code) for a in db.query(Alert).all()] == [("site", site.id, "notify_email")]
+    monkeypatch.undo()
+    _fail(http, inst, _schedule(db, inst, notify=True))
+    assert db.query(Alert).count() == 0
 
 
 def test_failed_run_no_email_when_notify_off(http, db, inst, fake_email_sender):

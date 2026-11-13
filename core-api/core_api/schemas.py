@@ -668,7 +668,7 @@ class DiscoveredSourceConfig(BaseModel):
     token: str | None = None
 
 
-class SourceAlertIn(BaseModel):
+class AlertIn(BaseModel):
     model_config = {"extra": "forbid"}
 
     message: str = Field(min_length=1, max_length=1000)

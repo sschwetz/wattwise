@@ -91,11 +91,11 @@ def report_discovered_config(
         )
 
 
-def set_source_alert(base_url: str, source_id: int, collector_key: str, message: str) -> None:
-    """Shows `message` on the Dashboard until clear_source_alert is called."""
+def set_source_alert(base_url: str, source_id: int, collector_key: str, code: str, message: str) -> None:
+    """Shows `message` on the Dashboard until clear_source_alert is called with the same code."""
     response = _request(
         "PUT",
-        f"{base_url}/api/v1/sources/{source_id}/alert",
+        f"{base_url}/api/v1/sources/{source_id}/alerts/{code}",
         headers={"X-Collector-Key": collector_key},
         json={"message": message},
         timeout=10,
@@ -104,10 +104,10 @@ def set_source_alert(base_url: str, source_id: int, collector_key: str, message:
         raise CoreApiError(f"Failed to set source alert: {response.status_code} {response.text}")
 
 
-def clear_source_alert(base_url: str, source_id: int, collector_key: str) -> None:
+def clear_source_alert(base_url: str, source_id: int, collector_key: str, code: str) -> None:
     response = _request(
         "DELETE",
-        f"{base_url}/api/v1/sources/{source_id}/alert",
+        f"{base_url}/api/v1/sources/{source_id}/alerts/{code}",
         headers={"X-Collector-Key": collector_key},
         timeout=10,
     )

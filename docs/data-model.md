@@ -126,7 +126,7 @@ A **source** ties a site to one device or service.
 
 The whole `config` value is encrypted at rest, whatever the provider.
 
-`alert_message` and `alert_since` (nullable, migration `f6b2d8a4c1e7`) hold a problem the collector reported through `PUT /sources/{id}/alert`. Both are null when there is no alert. They are plain text, not credentials.
+Problems a collector reports live in the [`alerts` table](#alerts), not on the source row. Migration `a3c5e7d9b1f2` dropped the earlier `alert_message` and `alert_since` columns and copied existing alerts in with code `cert`.
 
 Rules the code enforces:
 
@@ -239,6 +239,21 @@ Window patterns (`months`, `days_of_week`, `start_time`, `end_time`) share one r
 | `reported_at` | timestamp with time zone | When Core API stored the report |
 
 The table holds no secrets. `GET /services` adds the `reporting` flag at read time; it is not stored. See [Service status](core-api.md#service-status).
+
+## Alerts
+
+`alerts` holds problems the owner has to fix. Migration `a3c5e7d9b1f2`. Messages are plain text, not credentials.
+
+| Column | Meaning |
+|---|---|
+| `site_id` | The site the alert belongs to |
+| `subject_kind` | `source`, `instance` or `site` |
+| `subject_id` | The source or actor instance id. The site id for kind `site`. |
+| `code` | Short name of the problem, such as `cert` or `unreachable` |
+| `message` | What the owner sees |
+| `since` | When the alert was first raised |
+
+There is one row per (`subject_kind`, `subject_id`, `code`), so a source can show several problems at once. A repeat `PUT` keeps the original `since`. The site-level code `notify_email` is set when a schedule notification email (run failure or watchdog) cannot be sent, and cleared by the next one that sends. See [Alerts](collectors.md#alerts).
 
 ## Actor tables
 

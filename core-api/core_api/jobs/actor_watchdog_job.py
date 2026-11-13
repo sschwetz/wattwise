@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from core_api.actor_email import site_local_time, site_owner
 from core_api.actor_failures import HeldOffFailure, held_off_failures
+from core_api.alerts import report_notification_result
 from core_api.email_sender import EmailSender, try_send_email
 from core_api.models.actors import ActorInstance, ActorRun
 from core_api.models.identity import Site
@@ -49,7 +50,7 @@ def _notify_once(
     if owner is None:
         return
     subject, body = _email_text(site, held)
-    try_send_email(email_sender, owner.email, subject, body, "actor watchdog")
+    report_notification_result(db, site.id, try_send_email(email_sender, owner.email, subject, body, "actor watchdog"))
 
 
 def _email_text(site: Site, held: HeldOffFailure) -> tuple[str, str]:

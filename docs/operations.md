@@ -105,7 +105,7 @@ The file exists only if the database had no users at first start. If you don't d
 | API answering | `curl http://localhost:8000/health` | `{"status":"ok"}` |
 | Data flowing | Dashboard live tiles | Values change within a minute or two |
 | Services reporting | **About** in the user menu, Containers tab | Each of the 7 services shows a commit, not "not reporting" (the webapp row needs `FRONTEND_BASE_URL` to be reachable from core-api, see below) |
-| Per-source problems | Logs (below) | No repeating errors |
+| Per-source problems | **Needs attention** tile, then logs (below) | No alerts, no repeating errors |
 
 If a site's data stops and its sources look healthy, check whether the site was disabled: open **Site settings** in the webapp and look at **Enabled** on the **General** tab. A disabled site is dimmed in the site chips and its collectors log 403 `site_disabled` if they still hold the old source list. The data is kept. Turning **Enabled** on resumes collection within one discovery refresh (`DISCOVERY_REFRESH_SECONDS`).
 
@@ -160,14 +160,14 @@ Lines carry the instance id and the error type, never a message from Actron or C
 
 ### What each Dashboard entry means
 
-The tile **Needs attention** appears at the top of the site Dashboard while a schedule or a source has a problem. It refreshes every 15 seconds. With an air conditioner set up and nothing wrong it reads **All schedules OK**. Without one it appears only when a source has a problem. If only source problems are listed, its link opens the Collectors tab instead of the Schedule tab.
+The tile **Needs attention** appears at the top of the site Dashboard while a schedule has a failure or an alert is raised. It refreshes every 15 seconds. With an air conditioner set up and nothing wrong it reads **All schedules OK**. Without one it appears only when an alert exists. Schedule failures link to the Schedule tab and alerts link to the Collectors tab, and both links show when both kinds are present.
 
 | Entry | Meaning | What to do |
 |---|---|---|
 | Run failed | An action or restore did not succeed after its tries. The message says why. | Check the unit and turn it on if a restore failed. A later good run clears the entry; a skipped run clears a failed action but not a failed restore. |
 | Still off | The unit is still off after its restore time and the schedule's give-up minutes. A restore set to happen only on a condition counts its restore time as 24 hours after the trigger. | Turn the unit on. Then check the restore settings. A "only restore if" condition that never passes causes this. |
 | Actor not reporting | The unit is held off and the actor has not reported for 5 minutes. The actor also stops reporting when it cannot reach the unit through the Actron cloud or its sign-in is lost. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. If it needs signing in, press **Sign in again**. |
-| Source problem | A collector reported an alert on a source, such as an Envoy certificate it refused to pin. The entry names the source. | Read the message, confirm the device, then clear the pin as in [Collectors](collectors.md#failure-behaviour-at-a-glance). The collector clears the alert when it pins a certificate. |
+| Problem | A service raised an alert, such as an Envoy certificate it refused to pin or a source it cannot reach. The entry names the source, actor or `Site`. A source can show several. See [Alerts](collectors.md#alerts) for the codes. | Read the message and fix the cause. The service clears the alert when the cause goes away. For `cert`, see [Collectors](collectors.md#failure-behaviour-at-a-glance). A `Site` entry `notify_email` means a schedule notification email could not be sent; the next one that sends clears it. |
 | Needs sign-in | Actron rejected the stored token. | Open **Schedule** in Site settings, press **Sign in again** and approve the code. This works while the unit is held off: the actor puts it back after the new sign-in. |
 
 A needs-sign-in entry shows no time, because Core API does not record when it began. With **Email me if it still fails** on, a failed run emails the owner at once, and a still-off or silent actor emails once from the watchdog.
@@ -292,7 +292,7 @@ The consequences for you:
 | What | When | How you notice | Fix |
 |---|---|---|---|
 | Envoy access token | About 1 year after issue | Envoy collector logs `still invalid`, with the renewal URL. Dashboard goes stale. | Store the Enlighten login on the source (automatic renewal), or paste a new token. |
-| Envoy TLS certificate | The Envoy renews it when within 100 days of expiry, and may replace it on a firmware upgrade | Warning log line when re-pinned. If refused, an error log line and a **Source problem** entry in **Needs attention** | Normally automatic. If refused, see [Collectors](collectors.md#failure-behaviour-at-a-glance). |
+| Envoy TLS certificate | The Envoy renews it when within 100 days of expiry, and may replace it on a firmware upgrade | Warning log line when re-pinned. If refused, an error log line and a **Problem** entry in **Needs attention** | Normally automatic. If refused, see [Collectors](collectors.md#failure-behaviour-at-a-glance). |
 | Amber API key | If revoked or rotated | Pricing log errors, no new prices | New key in Account settings |
 | Raw readings | Past 365 days | Not visible. They turn into 5-minute averages overnight. | None |
 | Demand charge estimates | Until a billing period closes | `is_estimated` flag on the Billing page | Becomes final at the next 00:10 job after the period closes |
@@ -303,7 +303,7 @@ The consequences for you:
 - Core API must run as a single worker (the default `uvicorn` command). Lockouts and the job scheduler are per process.
 - The live tile store and its WebSocket subscribers are also per process, and live samples are lost on restart.
 - Lost readings are not queued. A restart of `core-api` during a collector's push drops that cycle.
-- There is no bundled monitoring or alerting. Silence (a flat dashboard) is the signal.
+- There is no bundled monitoring or external alerting. The **Needs attention** tile covers the problems listed in [Alerts](collectors.md#alerts). Other failures are logged only, including failures of core-api scheduled jobs.
 
 ## Handover checklist
 

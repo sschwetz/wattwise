@@ -11,6 +11,7 @@ from core_api.actor_failures import current_failures
 from core_api.deps import get_current_user, get_db_session
 from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
+from core_api.models.alerts import Alert
 from core_api.models.billing import DemandWindow, SiteTariff
 from core_api.models.identity import Site, SiteAccess, User
 from core_api.models.sources import Source, SourceKind
@@ -52,21 +53,44 @@ def kinds(db, site, now=NOW) -> list[str]:
     return [f.kind for f in current_failures(db, site.id, now)]
 
 
-def test_source_alert_is_a_failure_until_cleared(db, site):
-    since = NOW - datetime.timedelta(hours=1)
-    source = Source(
-        site_id=site.id, kind=SourceKind.ENERGY, provider="envoy", name="Roof", config={}, effective_from=since,
-        alert_message="Envoy certificate changed", alert_since=since,
-    )
+def make_source(db, site, **kw) -> Source:
+    source = Source(site_id=site.id, kind=SourceKind.ENERGY, provider="envoy", config={}, effective_from=NOW, **kw)
     db.add(source)
     db.commit()
-    [failure] = current_failures(db, site.id, NOW)
-    assert (failure.kind, failure.instance_id, failure.schedule_name) == ("source_alert", None, "Roof")
-    assert failure.message == "Envoy certificate changed"
-    assert failure.since == since
-    source.alert_message = None
-    source.alert_since = None
+    return source
+
+
+def add_alert(db, site, kind, subject_id, code="cert", message="Envoy certificate changed") -> Alert:
+    since = NOW - datetime.timedelta(hours=1)
+    alert = Alert(site_id=site.id, subject_kind=kind, subject_id=subject_id, code=code, message=message, since=since)
+    db.add(alert)
     db.commit()
+    return alert
+
+
+def test_alerts_are_failures_named_for_their_subject_until_cleared(db, site):
+    source = make_source(db, site, name="Roof")
+    instance = make_instance(db, site)
+    add_alert(db, site, "source", source.id)
+    add_alert(db, site, "instance", instance.id, code="tick", message="Actron not answering")
+    add_alert(db, site, "site", site.id, code="notify_email", message="Email failed")
+    found = current_failures(db, site.id, NOW)
+    assert [(f.kind, f.subject, f.message) for f in found] == [
+        ("alert", "Roof", "Envoy certificate changed"),
+        ("alert", "AC", "Actron not answering"),
+        ("alert", "Site", "Email failed"),
+    ]
+    assert all(f.instance_id is None and f.schedule_id is None for f in found)
+    db.query(Alert).delete()
+    db.commit()
+    assert kinds(db, site) == []
+
+
+def test_alerts_of_a_disabled_source_or_instance_are_left_out(db, site):
+    source = make_source(db, site, enabled=False)
+    instance = make_instance(db, site, enabled=False)
+    add_alert(db, site, "source", source.id)
+    add_alert(db, site, "instance", instance.id)
     assert kinds(db, site) == []
 
 

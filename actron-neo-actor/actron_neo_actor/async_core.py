@@ -25,6 +25,12 @@ class AsyncCore:
     async def put_capabilities(self, instance_id: int, capabilities: dict) -> None:
         await asyncio.to_thread(self._client.put_capabilities, instance_id, capabilities)
 
+    async def set_alert(self, instance_id: int, code: str, message: str) -> None:
+        await asyncio.to_thread(self._client.set_alert, instance_id, code, message)
+
+    async def clear_alert(self, instance_id: int, code: str) -> None:
+        await asyncio.to_thread(self._client.clear_alert, instance_id, code)
+
     async def get_schedules(self, instance_id: int) -> list[Schedule]:
         return await asyncio.to_thread(self._client.get_schedules, instance_id)
 

@@ -105,6 +105,13 @@ class CoreApiClient:
     def put_capabilities(self, instance_id: int, capabilities: dict) -> None:
         self._request("PUT", f"/instances/{instance_id}/capabilities", "put capabilities", 204, json=capabilities)
 
+    def set_alert(self, instance_id: int, code: str, message: str) -> None:
+        """Shows `message` on the Dashboard until clear_alert is called with the same code."""
+        self._request("PUT", f"/instances/{instance_id}/alerts/{code}", "set alert", 204, json={"message": message})
+
+    def clear_alert(self, instance_id: int, code: str) -> None:
+        self._request("DELETE", f"/instances/{instance_id}/alerts/{code}", "clear alert", 204)
+
     def get_schedules(self, instance_id: int) -> list[Schedule]:
         body = self._request("GET", f"/instances/{instance_id}/schedules", "fetch schedules", 200)
         return _parsed("schedules", body, lambda b: [Schedule.from_json(s, instance_id) for s in b])

@@ -112,3 +112,27 @@ def report_gap_marker(base_url: str, source_id: int, collector_key: str, channel
     )
     if response.status_code != 204:
         raise CoreApiError(f"Failed to report gap marker: {response.status_code} {response.text}")
+
+
+def set_source_alert(base_url: str, source_id: int, collector_key: str, code: str, message: str) -> None:
+    """Shows `message` on the Dashboard until clear_source_alert is called with the same code."""
+    response = _request(
+        "PUT",
+        f"{base_url}/api/v1/sources/{source_id}/alerts/{code}",
+        headers={"X-Collector-Key": collector_key},
+        json={"message": message},
+        timeout=10,
+    )
+    if response.status_code != 204:
+        raise CoreApiError(f"Failed to set source alert: {response.status_code} {response.text}")
+
+
+def clear_source_alert(base_url: str, source_id: int, collector_key: str, code: str) -> None:
+    response = _request(
+        "DELETE",
+        f"{base_url}/api/v1/sources/{source_id}/alerts/{code}",
+        headers={"X-Collector-Key": collector_key},
+        timeout=10,
+    )
+    if response.status_code != 204:
+        raise CoreApiError(f"Failed to clear source alert: {response.status_code} {response.text}")

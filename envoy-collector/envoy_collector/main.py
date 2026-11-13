@@ -6,23 +6,22 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
+from envoy_collector import alerts
 from envoy_collector.config import Settings, get_settings
 from envoy_collector.core_api_client import (
     CoreApiError,
-    clear_source_alert,
     fetch_collector_sources,
     fetch_source_config,
     push_energy_readings,
     push_live_sample,
     report_discovered_config,
-    set_source_alert,
 )
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError, fetch_token, token_expires_at
 from envoy_collector.envoy_client import (
     CertificateInfo,
+    DeviceInfo,
     EnvoyAuthError,
     EnvoyCertificateMismatch,
-    DeviceInfo,
     enable_livedata_stream,
     fetch_battery_power,
     fetch_certificate_info,
@@ -58,6 +57,12 @@ _last_renewal_attempt: dict[int, float] = {}
 # answering on the Envoy's address. The webapp's SourcesPage.tsx repeats this
 # value (CERT_REPIN_WINDOW_DAYS) in its certificate expiry text.
 CERT_REPIN_WINDOW = datetime.timedelta(days=100)
+# Alert codes, one per problem the owner can fix. Each is cleared when its cause goes away.
+CERT_ALERT = "cert"
+TOKEN_ALERT = "token"
+UNREACHABLE_ALERT = "unreachable"
+METERS_ALERT = "meters"
+REFUSED_ALERT = "refused"
 # Readings whose push failed, per source, sent again with the next cycle's.
 # Core API upserts on (source, ts, metric), so a batch that was in fact
 # stored after the timeout is harmless to send twice. Held in memory only: a
@@ -78,9 +83,6 @@ _meters_cache: dict[int, list[dict]] = {}
 # Per-source failure streaks for meter reads, so a meter outage logs one
 # traceback and then a warning at most every FAILURE_LOG_INTERVAL_SECONDS.
 _meter_failure_logs: dict[int, FailureLog] = {}
-# The alert message last sent to Core API per source, so a certificate problem
-# that lasts is reported once rather than every cycle. Memory only.
-_alerts: dict[int, str] = {}
 
 
 def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
@@ -122,30 +124,13 @@ def _store_pin(
         )
     except CoreApiError:
         logger.exception("Failed to report pinned TLS certificate to Core API for source %s", source_id)
-    _clear_alert(settings, source_id)
+    alerts.clear_alert(settings, source_id, CERT_ALERT)
 
 
-def _raise_alert(settings: Settings, source_id: int, message: str) -> None:
-    """Logs `message` as an error and shows it on the Dashboard. Core API is
-    only told when the message differs from the last one sent."""
+def _cert_problem(settings: Settings, source_id: int, message: str) -> None:
+    """Logs `message` as an error and shows it on the Dashboard."""
     logger.error("%s", message)
-    if _alerts.get(source_id) == message:
-        return
-    try:
-        set_source_alert(settings.core_api_url, source_id, settings.collector_key, message)
-    except CoreApiError:
-        logger.exception("Failed to report the alert to Core API for source %s", source_id)
-        return
-    _alerts[source_id] = message
-
-
-def _clear_alert(settings: Settings, source_id: int) -> None:
-    try:
-        clear_source_alert(settings.core_api_url, source_id, settings.collector_key)
-    except CoreApiError:
-        logger.exception("Failed to clear the alert in Core API for source %s", source_id)
-        return
-    _alerts.pop(source_id, None)
+    alerts.raise_alert(settings, source_id, CERT_ALERT, message)
 
 
 def _record_cert_details(settings: Settings, source_id: int, config: dict) -> None:
@@ -214,7 +199,7 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
     failing until they clear the pin."""
     known_serial = config.get("serial_num")
     if not known_serial:
-        _raise_alert(
+        _cert_problem(
             settings,
             source_id,
             "The Envoy presented a different TLS certificate than pinned, and no serial number is stored "
@@ -228,7 +213,7 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
         logger.exception("Failed to read the new Envoy certificate for source %s; will retry next cycle", source_id)
         return config
     if device.serial != known_serial:
-        _raise_alert(
+        _cert_problem(
             settings,
             source_id,
             f"The Envoy now reports serial {device.serial}, not {known_serial}; not re-pinning its certificate.",
@@ -236,7 +221,7 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
         return config
     reason = _repin_reason(config, device, datetime.datetime.now(datetime.UTC))
     if reason is None:
-        _raise_alert(settings, source_id, _not_an_upgrade_message(config, device))
+        _cert_problem(settings, source_id, _not_an_upgrade_message(config, device))
         return config
     new_config = dict(config)
     _store_pin(settings, source_id, new_config, info, device.firmware)
@@ -293,9 +278,12 @@ def renew_token(settings: Settings, source_id: int, config: dict) -> dict:
         token = fetch_token(username, password, serial_num)
     except EnlightenAuthError as exc:
         logger.error("Could not renew the Envoy token for source %s: %s. Update the Enlighten credentials.", source_id, exc)
+        message = f"Could not renew the Envoy token: {exc}. Update the Enlighten credentials in the source."
+        alerts.raise_alert(settings, source_id, TOKEN_ALERT, message)
         return config
     except EnlightenError as exc:
         logger.error("Could not renew the Envoy token for source %s: %s. Will retry in an hour.", source_id, exc)
+        alerts.report_failure(settings, source_id, TOKEN_ALERT, f"Could not renew the Envoy token: {exc}")
         return config
     try:
         report_discovered_config(settings.core_api_url, source_id, settings.collector_key, token=token)
@@ -376,6 +364,19 @@ def _fetch_and_map(source_id: int, config: dict, ts: datetime.datetime) -> list[
     return power_readings + battery_readings
 
 
+def _token_rejected(settings: Settings, source_id: int, config: dict) -> None:
+    message = _renewal_message(config)
+    logger.error("%s", message)
+    alerts.raise_alert(settings, source_id, TOKEN_ALERT, message)
+
+
+def _poll_failed(settings: Settings, source_id: int, config: dict, context: str = "") -> None:
+    """Logs the exception being handled and counts it towards the unreachable alert."""
+    logger.exception("Failed to poll Envoy this cycle%s for source %s", context, source_id)
+    message = f"Cannot read data from the Envoy at {config.get('host')}. Check that it is on and reachable."
+    alerts.report_failure(settings, source_id, UNREACHABLE_ALERT, message)
+
+
 def _recover_from_auth_failure(
     settings: Settings, source_id: int, config: dict, ts: datetime.datetime
 ) -> tuple[dict, list[dict] | None]:
@@ -393,22 +394,22 @@ def _recover_from_auth_failure(
     except EnvoyAuthError:
         pass
     except Exception:
-        logger.exception("Failed to poll Envoy this cycle (after config refetch) for source %s", source_id)
+        _poll_failed(settings, source_id, config, " (after config refetch)")
         return config, None
     renewed = renew_token(settings, source_id, config)
     if renewed.get("token") == config.get("token"):
-        logger.error(_renewal_message(config))
+        _token_rejected(settings, source_id, config)
         return config, None
     try:
         return renewed, _fetch_and_map(source_id, renewed, ts)
     except EnvoyAuthError:
-        logger.error(_renewal_message(renewed))
+        _token_rejected(settings, source_id, renewed)
     except Exception:
-        logger.exception("Failed to poll Envoy this cycle (after token renewal) for source %s", source_id)
+        _poll_failed(settings, source_id, renewed, " (after token renewal)")
     return renewed, None
 
 
-def _meter_readings_or_empty(source_id: int, config: dict, ts: datetime.datetime) -> list[dict]:
+def _meter_readings_or_empty(settings: Settings, source_id: int, config: dict, ts: datetime.datetime) -> list[dict]:
     """Lifetime energy counters and grid voltages from the Envoy's meters.
     Any failure is logged and gives [] so it never stops the power readings
     from being pushed. The meters listing is read once per source and cached;
@@ -420,12 +421,21 @@ def _meter_readings_or_empty(source_id: int, config: dict, ts: datetime.datetime
     except EnvoyAuthError:
         _meters_cache.pop(source_id, None)
         logger.warning("Envoy rejected our token reading meters for source %s", source_id)
+        _meters_failed(settings, source_id, "The Envoy rejected the access token reading meters")
         return []
     except Exception:
         _meter_failure_log(source_id).failure()
+        _meters_failed(settings, source_id, "Reading the Envoy's meters is failing")
         return []
     _meter_failure_log(source_id).success()
+    alerts.clear_alert(settings, source_id, METERS_ALERT)
     return rows
+
+
+def _meters_failed(settings: Settings, source_id: int, reason: str) -> None:
+    alerts.report_failure(
+        settings, source_id, METERS_ALERT, f"{reason}, so energy counters and voltages are missing from the charts."
+    )
 
 
 def _meter_failure_log(source_id: int) -> FailureLog:
@@ -488,7 +498,7 @@ def _collect_readings(
     except EnvoyCertificateMismatch:
         return repin_certificate(settings, source_id, config), None
     except Exception:
-        logger.exception("Failed to poll Envoy this cycle for source %s", source_id)
+        _poll_failed(settings, source_id, config)
         return config, None
 
 
@@ -512,7 +522,9 @@ def poll_once(settings: Settings, source_id: int, config: dict, sampler: LiveSam
     config, readings = _collect_readings(settings, source_id, config, ts, sampler)
     if readings is None:
         return config
-    readings = readings + _meter_readings_or_empty(source_id, config, ts)
+    alerts.clear_alert(settings, source_id, UNREACHABLE_ALERT)
+    alerts.clear_alert(settings, source_id, TOKEN_ALERT)
+    readings = readings + _meter_readings_or_empty(settings, source_id, config, ts)
 
     _push_or_keep(settings, source_id, _pending_readings.pop(source_id, []) + readings)
     return config
@@ -528,6 +540,8 @@ def _push_or_keep(settings: Settings, source_id: int, batch: list[dict]) -> None
             if source_id not in _dropping:
                 logger.warning("Core API refused readings for source %s (%s); dropping them", source_id, exc)
             _dropping.add(source_id)
+            message = "WattWise is refusing this source's readings (the source or site is disabled or has expired), so they are being dropped."
+            alerts.raise_alert(settings, source_id, REFUSED_ALERT, message)
             return
         logger.exception(
             "Failed to push %s readings to Core API this cycle for source %s; will resend next cycle",
@@ -537,6 +551,7 @@ def _push_or_keep(settings: Settings, source_id: int, batch: list[dict]) -> None
         _pending_readings[source_id] = batch[-MAX_PENDING_READINGS:]
         return
     _dropping.discard(source_id)
+    alerts.clear_alert(settings, source_id, REFUSED_ALERT)
 
 
 def _live_pusher(settings: Settings, source_id: int) -> Callable[[LiveSample, dict], None]:
