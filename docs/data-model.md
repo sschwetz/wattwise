@@ -251,9 +251,12 @@ The table holds no secrets. `GET /services` adds the `reporting` flag at read ti
 | `subject_id` | The source or actor instance id. The site id for kind `site`. |
 | `code` | Short name of the problem, such as `cert` or `unreachable` |
 | `message` | What the owner sees |
-| `since` | When the alert was first raised |
+| `since` | When the alert was first raised, or raised again after it was cleared |
+| `severity` | `failure`, `partial` or `notice`. Default `failure`. Migration `b7d1f4a2c6e9`. |
+| `cleared_at` | When the service cleared the alert. Null while the problem holds. |
+| `sticky` | True for a notice that stays until a user dismisses it. Default false. |
 
-There is one row per (`subject_kind`, `subject_id`, `code`), so a source can show several problems at once. A repeat `PUT` keeps the original `since`. The site-level code `notify_email` is set when a schedule notification email (run failure or watchdog) cannot be sent, and cleared by the next one that sends. See [Alerts](collectors.md#alerts).
+There is one row per (`subject_kind`, `subject_id`, `code`), so a source can show several problems at once. A repeat `PUT` of an unresolved alert keeps the original `since` and updates the message and severity. Clearing sets `cleared_at` and keeps the row. A `PUT` on a cleared row, or any sticky `PUT`, replaces the row in place with `since` now and `cleared_at` null. Clearing a sticky row does nothing. The site-level code `notify_email` is set when a schedule notification email (run failure or watchdog) cannot be sent, and cleared by the next one that sends. See [Alerts](collectors.md#alerts).
 
 ## Actor tables
 

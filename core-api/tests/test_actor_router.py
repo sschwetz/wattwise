@@ -73,7 +73,8 @@ def test_actor_alert_is_set_kept_and_cleared_per_code(http, db, site):
     rows = db.query(Alert).filter_by(subject_kind="instance", subject_id=instance.id).all()
     assert [(a.code, a.message, a.site_id) for a in rows] == [("tick", "Tick failed again", site.id)]
     assert http.delete(url, headers=HEADERS).status_code == 204
-    assert db.query(Alert).count() == 0
+    db.expire_all()
+    assert [a.cleared_at is not None for a in db.query(Alert).all()] == [True]
 
 
 def test_actor_alert_rejects_another_providers_key(http, db, site):

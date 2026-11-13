@@ -89,7 +89,7 @@ def set_source_alert(
     source: Source = Depends(get_source_by_collector_key),
     db: Session = Depends(get_db_session),
 ) -> None:
-    set_alert(db, source.site_id, SUBJECT_SOURCE, source.id, code, payload.message)
+    set_alert(db, source.site_id, SUBJECT_SOURCE, source.id, code, payload.message, payload.severity, payload.sticky)
 
 
 @router.delete("/alerts/{code}", status_code=status.HTTP_204_NO_CONTENT)

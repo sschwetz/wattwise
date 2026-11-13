@@ -148,7 +148,8 @@ def test_unsent_notification_email_raises_a_site_alert_until_one_sends(http, db,
     assert [(a.subject_kind, a.subject_id, a.code) for a in db.query(Alert).all()] == [("site", site.id, "notify_email")]
     monkeypatch.undo()
     _fail(http, inst, _schedule(db, inst, notify=True))
-    assert db.query(Alert).count() == 0
+    db.expire_all()
+    assert [a.cleared_at is not None for a in db.query(Alert).all()] == [True]
 
 
 def test_failed_run_no_email_when_notify_off(http, db, inst, fake_email_sender):

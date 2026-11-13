@@ -672,6 +672,8 @@ class AlertIn(BaseModel):
     model_config = {"extra": "forbid"}
 
     message: str = Field(min_length=1, max_length=1000)
+    severity: Literal["failure", "partial", "notice"] = "failure"
+    sticky: bool = False
 
 
 class DemandChargeOut(BaseModel):

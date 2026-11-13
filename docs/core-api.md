@@ -117,8 +117,8 @@ All collector endpoints send `X-Collector-Key`. Per-source endpoints may also se
 | `GET /collector/sources?kind=&provider=` | List enabled, in-date sources of a kind, on enabled sites, with their resolved config |
 | `GET /sources/{id}/config` | One source's resolved config |
 | `PATCH /sources/{id}/discovered-config` | Merge facts the collector learned (serial number, firmware, certificate pin, renewed token) into the stored config |
-| `PUT /sources/{id}/alerts/{code}` | Set the source's alert for `code` from `{message}`. `code` matches `^[a-z0-9_]{1,64}$`. A repeat keeps the original `since`. Returns 204. |
-| `DELETE /sources/{id}/alerts/{code}` | Clear that alert. Returns 204. |
+| `PUT /sources/{id}/alerts/{code}` | Set the source's alert for `code` from `{message, severity?, sticky?}`. `severity` is `failure` (default), `partial` or `notice`; `sticky` defaults to false. `code` matches `^[a-z0-9_]{1,64}$`. A repeat of an unresolved alert keeps the original `since`; a repeat after a clear, or any sticky `PUT`, restarts `since`. Returns 204. |
+| `DELETE /sources/{id}/alerts/{code}` | Mark that alert cleared (`cleared_at` set, row kept). Does nothing to a sticky or already cleared alert. Returns 204. |
 | `POST /sources/{id}/readings/energy`, `/readings/weather` | Batch upsert of readings |
 | `POST /sources/{id}/prices` | Batch upsert of price intervals, with minute fan-out |
 | `GET /sources/{id}/prices/coverage`, `/prices/gaps?since=` | What is already priced, which days are missing (a day with under 95% of its 5-minute intervals is missing) |

@@ -96,7 +96,9 @@ def _site_instances(db: Session, site_id: int) -> list[ActorInstance]:
 
 def _alert_failures(db: Session, site_id: int) -> list[ActorFailure]:
     """The site's alerts. Those of a disabled source or actor instance are left out, since nothing is left to clear them."""
-    alerts = list(db.scalars(select(Alert).where(Alert.site_id == site_id).order_by(Alert.id)))
+    # Task 2 replaces this filter with the one-hour rule for cleared alerts.
+    stmt = select(Alert).where(Alert.site_id == site_id, Alert.cleared_at.is_(None)).order_by(Alert.id)
+    alerts = list(db.scalars(stmt))
     if not alerts:
         return []
     sources = {

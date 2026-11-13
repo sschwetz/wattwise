@@ -151,7 +151,7 @@ def set_actor_alert(
     instance: ActorInstance = Depends(get_actor_instance),
     db: Session = Depends(get_db_session),
 ) -> None:
-    set_alert(db, instance.site_id, SUBJECT_INSTANCE, instance.id, code, payload.message)
+    set_alert(db, instance.site_id, SUBJECT_INSTANCE, instance.id, code, payload.message, payload.severity, payload.sticky)
 
 
 @router.delete("/instances/{instance_id}/alerts/{code}", status_code=status.HTTP_204_NO_CONTENT)

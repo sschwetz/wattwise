@@ -234,6 +234,14 @@ def _stored_alerts(db_url: str, source_id: int) -> dict[str, tuple[str, datetime
     return result
 
 
+def _cleared_codes(db_url: str, source_id: int) -> list[str]:
+    session = make_session_factory(make_engine(db_url))()
+    rows = session.query(Alert).filter(Alert.subject_id == source_id, Alert.cleared_at.is_not(None)).all()
+    codes = sorted(row.code for row in rows)
+    session.close()
+    return codes
+
+
 def test_put_alert_sets_message_and_keeps_the_first_start_time(client, app_and_db_url):
     _, db_url = app_and_db_url
     source_id = make_energy_source(db_url)
@@ -257,7 +265,8 @@ def test_alerts_with_different_codes_coexist_and_clear_independently(client, app
         client.put(f"/api/v1/sources/{source_id}/alerts/{code}", json={"message": code}, headers=headers)
     response = client.delete(f"/api/v1/sources/{source_id}/alerts/cert", headers=headers)
     assert response.status_code == 204, response.text
-    assert list(_stored_alerts(db_url, source_id)) == ["token"]
+    assert list(_stored_alerts(db_url, source_id)) == ["cert", "token"]
+    assert _cleared_codes(db_url, source_id) == ["cert"]
     assert client.delete(f"/api/v1/sources/{source_id}/alerts/cert", headers=headers).status_code == 204
 
 
@@ -284,3 +293,24 @@ def test_discovered_config_accepts_firmware(client, app_and_db_url):
     assert patch.status_code == 204, patch.text
     get = client.get(f"/api/v1/sources/{source_id}/config", headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY})
     assert get.json()["config"]["firmware"] == "D8.3.5226"
+
+
+def test_put_alert_accepts_severity_and_sticky(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url)
+    url = f"/api/v1/sources/{source_id}/alerts/token"
+    headers = {"X-Collector-Key": ENVOY_COLLECTOR_KEY}
+    response = client.put(url, json={"message": "x", "severity": "partial", "sticky": True}, headers=headers)
+    assert response.status_code == 204, response.text
+    session = make_session_factory(make_engine(db_url))()
+    row = session.query(Alert).filter_by(subject_id=source_id, code="token").one()
+    assert (row.severity, row.sticky) == ("partial", True)
+    session.close()
+
+
+def test_put_alert_rejects_unknown_severity(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url)
+    url = f"/api/v1/sources/{source_id}/alerts/token"
+    response = client.put(url, json={"message": "x", "severity": "loud"}, headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY})
+    assert response.status_code == 422
