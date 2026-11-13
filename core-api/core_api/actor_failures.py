@@ -22,9 +22,10 @@ from core_api.actor_runs import unfinished_action_runs
 from core_api.actor_schemas import RestoreSpec, RetrySpec
 from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
 from core_api.models.identity import Site
+from core_api.models.sources import Source
 from core_api.time_utils import as_utc, site_tz
 
-FailureKind = Literal["run_failed", "still_off", "actor_silent", "needs_sign_in"]
+FailureKind = Literal["run_failed", "still_off", "actor_silent", "needs_sign_in", "source_alert"]
 
 SILENT_AFTER = datetime.timedelta(minutes=5)
 # The latest a restore can fall: a window end with no matching occurrence, and a
@@ -37,7 +38,7 @@ _FAILED_OUTCOMES = (RunOutcome.FAILED, RunOutcome.PARTIAL)
 @dataclass(frozen=True)
 class ActorFailure:
     kind: FailureKind
-    instance_id: int
+    instance_id: int | None
     schedule_id: int | None
     schedule_name: str | None
     message: str
@@ -60,12 +61,12 @@ def current_failures(db: Session, site_id: int, now: datetime.datetime) -> list[
     if site is None:
         return []
     now = as_utc(now)
-    found: list[ActorFailure] = []
+    found: list[ActorFailure] = _source_alerts(db, site_id)
     for instance in _site_instances(db, site_id):
         found.extend(_sign_in_failures(instance, now))
         found.extend(_failed_runs(db, instance))
         found.extend(held.failure for held in held_off_failures(db, site, instance, now))
-    return sorted(found, key=lambda f: (f.since, f.instance_id, f.schedule_id or 0))
+    return sorted(found, key=lambda f: (f.since, f.instance_id or 0, f.schedule_id or 0))
 
 
 def held_off_failures(db: Session, site: Site, instance: ActorInstance, now: datetime.datetime) -> list[HeldOffFailure]:
@@ -88,6 +89,19 @@ def held_off_failures(db: Session, site: Site, instance: ActorInstance, now: dat
 def _site_instances(db: Session, site_id: int) -> list[ActorInstance]:
     stmt = select(ActorInstance).where(ActorInstance.site_id == site_id).order_by(ActorInstance.id)
     return list(db.scalars(stmt))
+
+
+def _source_alerts(db: Session, site_id: int) -> list[ActorFailure]:
+    # Selects columns, not Source rows, so the encrypted config is not decrypted.
+    stmt = (
+        select(Source.name, Source.provider, Source.alert_message, Source.alert_since)
+        .where(Source.site_id == site_id, Source.alert_message.is_not(None))
+        .order_by(Source.id)
+    )
+    return [
+        ActorFailure("source_alert", None, None, name or provider, message, as_utc(since))
+        for name, provider, message, since in db.execute(stmt)
+    ]
 
 
 def _sign_in_failures(instance: ActorInstance, now: datetime.datetime) -> list[ActorFailure]:

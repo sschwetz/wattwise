@@ -222,4 +222,4 @@ sequenceDiagram
 
 ![Sources page](../webapp/src/docs/images/sources-list.png)
 
-When the collector learns something about a device, it reports it back with `PATCH /sources/{id}/discovered-config`. The Envoy collector does this for the serial number, the pinned certificate fingerprint and expiry, and renewed tokens. The web app then shows them on the source's settings form.
+When the collector learns something about a device, it reports it back with `PATCH /sources/{id}/discovered-config`. The Envoy collector does this for the serial number, the firmware version, the pinned certificate fingerprint and expiry, and renewed tokens. The web app then shows them on the source's settings form.

@@ -22,7 +22,7 @@ from envoy_collector.envoy_client import (
     fetch_livedata,
     fetch_meter_readings,
     fetch_meters,
-    fetch_serial_number,
+    fetch_device_info,
 )
 
 VALID_TOKEN = "my-token"
@@ -68,7 +68,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self._write_json(200, _GET_PAYLOADS[self.path])
         elif self.path == "/info.xml":
             body = (
-                b"<?xml version='1.0'?><envoy_info><device><sn>123456789012</sn>"
+                b"<?xml version='1.0'?><envoy_info><device><sn>123456789012</sn><software>D8.3.5226</software>"
                 b"</device></envoy_info>"
             )
             self.send_response(200)
@@ -178,15 +178,16 @@ def test_fetch_battery_power_rejects_an_all_zero_pinned_fingerprint(envoy_server
         fetch_battery_power(host, VALID_TOKEN, "0" * 64)
 
 
-def test_fetch_serial_number_parses_xml(envoy_server):
+def test_fetch_device_info_returns_serial_and_firmware(envoy_server):
     host, fingerprint = envoy_server
-    assert fetch_serial_number(host, fingerprint) == "123456789012"
+    info = fetch_device_info(host, fingerprint)
+    assert (info.serial, info.firmware) == ("123456789012", "D8.3.5226")
 
 
-def test_fetch_serial_number_refuses_a_connection_with_the_wrong_pinned_fingerprint(envoy_server):
+def test_fetch_device_info_refuses_a_connection_with_the_wrong_pinned_fingerprint(envoy_server):
     host, _real_fingerprint = envoy_server
     with pytest.raises(EnvoyCertificateMismatch):
-        fetch_serial_number(host, "0" * 64)
+        fetch_device_info(host, "0" * 64)
 
 
 @pytest.mark.parametrize(

@@ -664,7 +664,14 @@ class DiscoveredSourceConfig(BaseModel):
     cert_fingerprint: str | None = None
     cert_expires_at: AwareDatetime | None = None
     cert_serial: str | None = None
+    firmware: str | None = None
     token: str | None = None
+
+
+class SourceAlertIn(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    message: str = Field(min_length=1, max_length=1000)
 
 
 class DemandChargeOut(BaseModel):

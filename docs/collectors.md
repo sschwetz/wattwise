@@ -45,7 +45,10 @@ The Envoy presents a self-signed certificate. The collector uses trust-on-first-
 
 1. On first sight of a source it fetches the certificate and stores its SHA-256 fingerprint, expiry and serial in the source config (through `discovered-config`).
 2. It sends the access token only to a host that has been pinned.
-3. If the Envoy later presents a different certificate, the collector re-pins only when all three hold: the pinned certificate is within 100 days of expiry (the Envoy renews then), the source has a stored serial number, and the device reports that same serial. Otherwise it refuses and logs why.
+3. If the Envoy later presents a different certificate, the collector fetches `/info.xml` from it without sending the token. It re-pins only when the source has a stored serial number, the device reports that same serial, and either the firmware (`<software>` in `/info.xml`) differs from the stored `firmware` or the pinned certificate is within 100 days of expiry. A re-pin logs a warning with the reason and clears the source alert.
+4. Otherwise it refuses, logs an error and sets a source alert through `PUT /sources/{id}/alert`. The message says whether the firmware is unchanged or no stored firmware existed to compare.
+
+The collector stores the firmware in the source config as `firmware` through `discovered-config`. A source whose firmware was never stored cannot be recognised as upgraded. Clear `cert_fingerprint` once; the next discovery stores the firmware.
 
 Changing the **Host** in the web app clears the pin, because the pin belongs to the old device.
 
@@ -151,7 +154,7 @@ Each tick starts a short-lived child process per source, so one slow source cann
 | Core API down | Collectors log errors every cycle. Data for that period is lost for energy and weather. Pricing catches up later through backfill and catch-up. | Automatic when Core API returns. |
 | Envoy unreachable | Log lines for the source. A gap in the dashboard. | Automatic. |
 | Envoy token expired, no stored credentials | Log line with the renewal URL. Readings stop. | Owner pastes a new token. |
-| Envoy certificate changed outside the renewal window | Source keeps failing. Logged with the reason. | Confirm the device is the same, then clear the pin (change the Host or edit the config). |
+| Envoy certificate changed without a firmware change or an expiry within 100 days | Source keeps failing. Logged as an error and shown as a source alert on the Dashboard. | Confirm the device is the same, then clear the pin (change the Host or edit the config). |
 | Amber API key wrong | Pricing log errors. No new prices. | Owner updates the key under Account settings. |
 | Rate window left uncovered | Minutes without a price are left out of cost totals. The web app names the first uncovered time. | Owner adds a window. |
 

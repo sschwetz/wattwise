@@ -191,11 +191,17 @@ def enable_livedata_stream(host: str, token: str, cert_fingerprint: str) -> None
     _raise_for_status(status, path)
 
 
-def fetch_serial_number(host: str, cert_fingerprint: str) -> str:
+@dataclass(frozen=True)
+class DeviceInfo:
+    serial: str
+    firmware: str | None  # None when /info.xml has no <software> element
+
+
+def fetch_device_info(host: str, cert_fingerprint: str) -> DeviceInfo:
     status, body = _request(host, "/info.xml", cert_fingerprint, {})
     _raise_for_status(status, "/info.xml")
     root = ET.fromstring(body)
     serial = root.findtext("device/sn")
     if not serial:
         raise ValueError("/info.xml response did not contain a device serial number")
-    return serial
+    return DeviceInfo(serial=serial, firmware=(root.findtext("device/software") or "").strip() or None)

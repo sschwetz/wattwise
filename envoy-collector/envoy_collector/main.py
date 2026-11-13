@@ -9,24 +9,27 @@ from concurrent.futures import ThreadPoolExecutor
 from envoy_collector.config import Settings, get_settings
 from envoy_collector.core_api_client import (
     CoreApiError,
+    clear_source_alert,
     fetch_collector_sources,
     fetch_source_config,
     push_energy_readings,
     push_live_sample,
     report_discovered_config,
+    set_source_alert,
 )
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError, fetch_token, token_expires_at
 from envoy_collector.envoy_client import (
     CertificateInfo,
     EnvoyAuthError,
     EnvoyCertificateMismatch,
+    DeviceInfo,
     enable_livedata_stream,
     fetch_battery_power,
     fetch_certificate_info,
+    fetch_device_info,
     fetch_livedata,
     fetch_meter_readings,
     fetch_meters,
-    fetch_serial_number,
 )
 from envoy_collector.failure_log import FailureLog
 from envoy_collector.live_sampler import LiveSampler
@@ -75,6 +78,9 @@ _meters_cache: dict[int, list[dict]] = {}
 # Per-source failure streaks for meter reads, so a meter outage logs one
 # traceback and then a warning at most every FAILURE_LOG_INTERVAL_SECONDS.
 _meter_failure_logs: dict[int, FailureLog] = {}
+# The alert message last sent to Core API per source, so a certificate problem
+# that lasts is reported once rather than every cycle. Memory only.
+_alerts: dict[int, str] = {}
 
 
 def _pin_certificate(settings: Settings, source_id: int, config: dict) -> bool:
@@ -102,8 +108,12 @@ def _cert_details(info: CertificateInfo) -> dict[str, str]:
     return {"cert_expires_at": info.expires_at.isoformat(), "cert_serial": info.serial}
 
 
-def _store_pin(settings: Settings, source_id: int, config: dict, info: CertificateInfo) -> None:
+def _store_pin(
+    settings: Settings, source_id: int, config: dict, info: CertificateInfo, firmware: str | None = None
+) -> None:
     details = _cert_details(info)
+    if firmware:
+        details["firmware"] = firmware
     config["cert_fingerprint"] = info.fingerprint
     config.update(details)
     try:
@@ -112,6 +122,30 @@ def _store_pin(settings: Settings, source_id: int, config: dict, info: Certifica
         )
     except CoreApiError:
         logger.exception("Failed to report pinned TLS certificate to Core API for source %s", source_id)
+    _clear_alert(settings, source_id)
+
+
+def _raise_alert(settings: Settings, source_id: int, message: str) -> None:
+    """Logs `message` as an error and shows it on the Dashboard. Core API is
+    only told when the message differs from the last one sent."""
+    logger.error("%s", message)
+    if _alerts.get(source_id) == message:
+        return
+    try:
+        set_source_alert(settings.core_api_url, source_id, settings.collector_key, message)
+    except CoreApiError:
+        logger.exception("Failed to report the alert to Core API for source %s", source_id)
+        return
+    _alerts[source_id] = message
+
+
+def _clear_alert(settings: Settings, source_id: int) -> None:
+    try:
+        clear_source_alert(settings.core_api_url, source_id, settings.collector_key)
+    except CoreApiError:
+        logger.exception("Failed to clear the alert in Core API for source %s", source_id)
+        return
+    _alerts.pop(source_id, None)
 
 
 def _record_cert_details(settings: Settings, source_id: int, config: dict) -> None:
@@ -147,47 +181,66 @@ def _repin_allowed(config: dict, now: datetime.datetime) -> bool:
     return expires_at - now <= CERT_REPIN_WINDOW
 
 
+def _repin_reason(config: dict, device: DeviceInfo, now: datetime.datetime) -> str | None:
+    """Why a changed certificate may be trusted, or None if it may not."""
+    known_firmware = config.get("firmware")
+    if known_firmware and device.firmware and device.firmware != known_firmware:
+        return f"firmware changed from {known_firmware} to {device.firmware}"
+    if _repin_allowed(config, now):
+        return f"the pinned certificate is within {CERT_REPIN_WINDOW.days} days of expiry"
+    return None
+
+
+def _not_an_upgrade_message(config: dict, device: DeviceInfo) -> str:
+    if config.get("firmware"):
+        firmware = f"firmware is still {device.firmware or 'unknown'}"
+    else:
+        firmware = "no firmware version was stored to compare against"
+    return (
+        f"The Envoy presented a different TLS certificate than pinned, but it is not an upgrade ({firmware}) "
+        f"and the pinned certificate (expires {config.get('cert_expires_at', 'unknown')}) is not within "
+        f"{CERT_REPIN_WINDOW.days} days of expiry; not re-pinning. "
+        "If the device was replaced, clear the source's cert_fingerprint."
+    )
+
+
 def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
     """Called when the Envoy presents a certificate other than the pinned
-    one. Pins the new certificate only if the pinned one is within
-    CERT_REPIN_WINDOW of expiring (the Envoy renews it then) and the device
-    reports the same serial number. Otherwise returns `config` unchanged and
-    the source keeps failing until the owner clears the pin."""
+    one. Reads /info.xml from the new certificate (no token is sent) and pins
+    it if the device reports the stored serial number and either its firmware
+    differs from the stored version (an upgrade regenerates the certificate)
+    or the pinned certificate is within CERT_REPIN_WINDOW of expiring. Either
+    way the owner is alerted when it does not re-pin, and the source keeps
+    failing until they clear the pin."""
     known_serial = config.get("serial_num")
     if not known_serial:
-        logger.error(
-            "Envoy for source %s presented a different TLS certificate than pinned, and no serial number "
-            "is stored to check the device against; not re-pinning. Enter the serial number in the source.",
+        _raise_alert(
+            settings,
             source_id,
-        )
-        return config
-    if not _repin_allowed(config, datetime.datetime.now(datetime.UTC)):
-        logger.error(
-            "Envoy for source %s presented a different TLS certificate than pinned, and the pinned one "
-            "(expires %s) is not within %s days of expiry; not re-pinning. If the device was replaced, "
-            "clear the source's cert_fingerprint.",
-            source_id,
-            config.get("cert_expires_at", "unknown"),
-            CERT_REPIN_WINDOW.days,
+            "The Envoy presented a different TLS certificate than pinned, and no serial number is stored "
+            "to check the device against; not re-pinning. Enter the serial number in the source.",
         )
         return config
     try:
         info = fetch_certificate_info(config["host"])
-        serial = fetch_serial_number(config["host"], info.fingerprint)
+        device = fetch_device_info(config["host"], info.fingerprint)
     except Exception:
         logger.exception("Failed to read the new Envoy certificate for source %s; will retry next cycle", source_id)
         return config
-    if serial != known_serial:
-        logger.error(
-            "Envoy for source %s now reports serial %s, not %s; not re-pinning its certificate.",
+    if device.serial != known_serial:
+        _raise_alert(
+            settings,
             source_id,
-            serial,
-            known_serial,
+            f"The Envoy now reports serial {device.serial}, not {known_serial}; not re-pinning its certificate.",
         )
         return config
+    reason = _repin_reason(config, device, datetime.datetime.now(datetime.UTC))
+    if reason is None:
+        _raise_alert(settings, source_id, _not_an_upgrade_message(config, device))
+        return config
     new_config = dict(config)
-    _store_pin(settings, source_id, new_config, info)
-    logger.warning("Re-pinned the renewed Envoy TLS certificate for source %s", source_id)
+    _store_pin(settings, source_id, new_config, info, device.firmware)
+    logger.warning("Re-pinned the Envoy TLS certificate for source %s: %s", source_id, reason)
     return new_config
 
 
@@ -195,17 +248,25 @@ def discover_and_sync_serial(settings: Settings, source_id: int, config: dict) -
     if not _pin_certificate(settings, source_id, config):
         return
     try:
-        serial = fetch_serial_number(config["host"], config["cert_fingerprint"])
+        device = fetch_device_info(config["host"], config["cert_fingerprint"])
     except Exception:
         logger.exception("Failed to fetch Envoy serial number from /info.xml for source %s", source_id)
         return
-    if config.get("serial_num") != serial:
-        config["serial_num"] = serial
-        try:
-            report_discovered_config(settings.core_api_url, source_id, settings.collector_key, serial_num=serial)
-            logger.info("Reported discovered Envoy serial number %s for source %s", serial, source_id)
-        except CoreApiError:
-            logger.exception("Failed to report discovered serial number to Core API for source %s", source_id)
+    _sync_discovered(settings, source_id, config, "serial_num", device.serial)
+    if device.firmware:
+        _sync_discovered(settings, source_id, config, "firmware", device.firmware)
+
+
+def _sync_discovered(settings: Settings, source_id: int, config: dict, key: str, value: str) -> None:
+    """Stores a value read from the device in `config` and reports it to Core API when it changed."""
+    if config.get(key) == value:
+        return
+    config[key] = value
+    try:
+        report_discovered_config(settings.core_api_url, source_id, settings.collector_key, **{key: value})
+        logger.info("Reported discovered Envoy %s %s for source %s", key, value, source_id)
+    except CoreApiError:
+        logger.exception("Failed to report discovered %s to Core API for source %s", key, source_id)
 
 
 def _renewal_message(config: dict) -> str:
