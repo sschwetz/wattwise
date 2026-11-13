@@ -119,12 +119,14 @@ A **source** ties a site to one device or service.
 
 | Kind | Providers in use | `config` holds |
 |---|---|---|
-| `energy` | `envoy` | `host`, `token`, `username`, `password` (Enlighten), `serial_num`, `invert_consumption_ct`, plus `cert_fingerprint`, `cert_expires_at`, `cert_serial` written by the collector |
+| `energy` | `envoy` | `host`, `token`, `username`, `password` (Enlighten), `serial_num`, `invert_consumption_ct`, plus `cert_fingerprint`, `cert_expires_at`, `cert_serial`, `firmware` written by the collector |
 | `pricing` | `amber` | `amber_site_id` |
 | `pricing` | `local` | Nothing. Rates live in `local_rate_windows`. Core API builds the config the collector sees. |
 | `weather` | `weatherlink_live` | `host` |
 
 The whole `config` value is encrypted at rest, whatever the provider.
+
+`alert_message` and `alert_since` (nullable, migration `f6b2d8a4c1e7`) hold a problem the collector reported through `PUT /sources/{id}/alert`. Both are null when there is no alert. They are plain text, not credentials.
 
 Rules the code enforces:
 

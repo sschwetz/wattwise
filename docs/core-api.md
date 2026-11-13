@@ -116,7 +116,9 @@ All collector endpoints send `X-Collector-Key`. Per-source endpoints may also se
 |---|---|
 | `GET /collector/sources?kind=&provider=` | List enabled, in-date sources of a kind, on enabled sites, with their resolved config |
 | `GET /sources/{id}/config` | One source's resolved config |
-| `PATCH /sources/{id}/discovered-config` | Merge facts the collector learned (serial number, certificate pin, renewed token) into the stored config |
+| `PATCH /sources/{id}/discovered-config` | Merge facts the collector learned (serial number, firmware, certificate pin, renewed token) into the stored config |
+| `PUT /sources/{id}/alert` | Set the source's alert from `{message}`. A repeat keeps the original `alert_since`. Returns 204. |
+| `DELETE /sources/{id}/alert` | Clear the alert. Returns 204. |
 | `POST /sources/{id}/readings/energy`, `/readings/weather` | Batch upsert of readings |
 | `POST /sources/{id}/prices` | Batch upsert of price intervals, with minute fan-out |
 | `GET /sources/{id}/prices/coverage`, `/prices/gaps?since=` | What is already priced, which days are missing (a day with under 95% of its 5-minute intervals is missing) |
@@ -147,7 +149,7 @@ Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 | `GET/POST /schedules`, `PATCH/DELETE /schedules/{sid}` | Manage schedules. Writes are validated against the instance's capabilities (422 `invalid_schedule` or `no_capabilities`). |
 | `POST /schedules/{sid}/test` | Queue a test run. 409 `instance_disabled` or `no_capabilities`. |
 | `GET /runs?limit=`, `GET /schedules/{sid}/runs?limit=` | Run history, newest first. `limit` is 1 to 200, default 50. |
-| `GET /failures` | The current failures for the Dashboard tile |
+| `GET /failures` | The current failures for the Dashboard tile. Also returns kind `source_alert` entries for the site's sources with an alert, with `instance_id` null and `schedule_name` set to the source name (or provider). |
 
 ### Service status
 

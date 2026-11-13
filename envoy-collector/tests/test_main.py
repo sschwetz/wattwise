@@ -13,7 +13,7 @@ from envoy_collector import main as main_module
 from envoy_collector.config import Settings
 from envoy_collector.core_api_client import CoreApiError
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError
-from envoy_collector.envoy_client import CertificateInfo, EnvoyAuthError, EnvoyCertificateMismatch
+from envoy_collector.envoy_client import CertificateInfo, DeviceInfo, EnvoyAuthError, EnvoyCertificateMismatch
 from envoy_collector.failure_log import FAILURE_LOG_INTERVAL_SECONDS
 from envoy_collector.mapping import LiveSample, map_live_sample_values
 from tests.test_enlighten_client import make_jwt
@@ -28,6 +28,16 @@ def _no_commit_reporter(monkeypatch: pytest.MonkeyPatch) -> None:
     This hides the call; test_main_starts_the_commit_reporter covers it.
     """
     monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
+def _alert_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str | None]]:
+    """Records the alerts sent to Core API instead of sending them."""
+    calls: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(main_module, "set_source_alert", lambda url, sid, key, message: calls.append(("set", message)))
+    monkeypatch.setattr(main_module, "clear_source_alert", lambda url, sid, key: calls.append(("clear", None)))
+    main_module._alerts.clear()
+    return calls
 
 
 def _cert(fingerprint: str, days_left: int) -> CertificateInfo:
@@ -50,7 +60,7 @@ SETTINGS_ALWAYS_REFRESH = Settings(
 
 
 def test_discover_and_sync_serial_reports_when_changed(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, cert_fingerprint: "new-serial")
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, cert_fingerprint: DeviceInfo("new-serial", None))
     reported = {}
     monkeypatch.setattr(
         main_module,
@@ -65,7 +75,7 @@ def test_discover_and_sync_serial_reports_when_changed(monkeypatch):
 
 
 def test_discover_and_sync_serial_skips_report_when_unchanged(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, cert_fingerprint: "same")
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, cert_fingerprint: DeviceInfo("same", None))
     called = []
     monkeypatch.setattr(
         main_module, "report_discovered_config", lambda *a, **k: called.append((a, k))
@@ -81,7 +91,7 @@ def test_discover_and_sync_serial_does_not_raise_when_envoy_unreachable(monkeypa
     def _raise(host, cert_fingerprint):
         raise OSError("network unreachable")
 
-    monkeypatch.setattr(main_module, "fetch_serial_number", _raise)
+    monkeypatch.setattr(main_module, "fetch_device_info", _raise)
     config = {"host": "envoy.local", "cert_fingerprint": "pinned", "cert_expires_at": FAR_EXPIRY, "cert_serial": "ABC123"}
     main_module.discover_and_sync_serial(SETTINGS, 1, config)  # must not raise
 
@@ -96,16 +106,16 @@ def test_discover_and_sync_serial_does_not_raise_when_pinning_fails(monkeypatch)
 
 def test_discover_and_sync_serial_pins_the_certificate_before_fetching_the_serial(monkeypatch):
     """A brand-new source has no cert_fingerprint yet -- discovery must pin
-    one (and persist it to Core API) before it can call fetch_serial_number,
+    one (and persist it to Core API) before it can call fetch_device_info,
     which now requires a pin to verify against."""
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new-fingerprint", 365))
     received_serial_args = []
 
-    def fake_fetch_serial_number(host, cert_fingerprint):
+    def fake_fetch_device_info(host, cert_fingerprint):
         received_serial_args.append(cert_fingerprint)
-        return "123456789012"
+        return DeviceInfo("123456789012", None)
 
-    monkeypatch.setattr(main_module, "fetch_serial_number", fake_fetch_serial_number)
+    monkeypatch.setattr(main_module, "fetch_device_info", fake_fetch_device_info)
     reported = []
     monkeypatch.setattr(
         main_module, "report_discovered_config", lambda base_url, source_id, key, **kwargs: reported.append(kwargs)
@@ -955,7 +965,7 @@ def _expiring_config(days_left: int, **extra) -> dict:
 
 def test_discovery_backfills_expiry_and_serial_for_a_source_pinned_before_they_were_tracked(monkeypatch):
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("pinned", 200))
-    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", None))
     reported = _reports(monkeypatch)
 
     config = {"host": "envoy.local", "serial_num": "123456789012", "cert_fingerprint": "pinned"}
@@ -967,7 +977,7 @@ def test_discovery_backfills_expiry_and_serial_for_a_source_pinned_before_they_w
 
 def test_discovery_does_not_record_expiry_of_a_certificate_that_is_not_the_pinned_one(monkeypatch):
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("someone-else", 200))
-    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", None))
     reported = _reports(monkeypatch)
 
     config = {"host": "envoy.local", "serial_num": "123456789012", "cert_fingerprint": "pinned"}
@@ -981,7 +991,7 @@ def test_discovery_does_not_record_expiry_of_a_certificate_that_is_not_the_pinne
 def test_poll_once_repins_a_changed_certificate_within_100_days_of_expiry(monkeypatch):
     monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
-    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", None))
     reported = _reports(monkeypatch)
 
     result = main_module.poll_once(SETTINGS, 1, _expiring_config(days_left=100))
@@ -998,7 +1008,7 @@ def test_poll_once_repins_a_changed_certificate_within_100_days_of_expiry(monkey
 def test_poll_once_repins_when_the_pinned_certificate_has_already_expired(monkeypatch):
     monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
-    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "123456789012")
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", None))
     _reports(monkeypatch)
 
     result = main_module.poll_once(SETTINGS, 1, _expiring_config(days_left=-3))
@@ -1006,20 +1016,71 @@ def test_poll_once_repins_when_the_pinned_certificate_has_already_expired(monkey
     assert result["cert_fingerprint"] == "new"
 
 
-def test_poll_once_refuses_to_repin_a_changed_certificate_with_more_than_100_days_left(monkeypatch, caplog):
+def test_poll_once_refuses_to_repin_when_the_firmware_is_unchanged_and_expiry_is_far(monkeypatch, caplog, _alert_calls):
     monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
-    fetched = []
-    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: fetched.append(host))
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.3.5226"))
     reported = _reports(monkeypatch)
 
-    config = _expiring_config(days_left=101)
+    config = _expiring_config(days_left=101, firmware="D8.3.5226")
     with caplog.at_level("ERROR"):
         result = main_module.poll_once(SETTINGS, 1, config)
 
     assert result == config
-    assert fetched == []
     assert reported == []
-    assert any("not re-pinning" in m for m in caplog.messages)
+    assert any("not re-pinning" in m and "still D8.3.5226" in m for m in caplog.messages)
+    assert [call[0] for call in _alert_calls] == ["set"]
+
+
+def test_poll_once_repins_when_the_firmware_changed_even_with_far_expiry(monkeypatch, caplog, _alert_calls):
+    monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.4.1"))
+    reported = _reports(monkeypatch)
+
+    with caplog.at_level("WARNING"):
+        result = main_module.poll_once(SETTINGS, 1, _expiring_config(days_left=300, firmware="D8.3.5226"))
+
+    assert result["cert_fingerprint"] == "new"
+    assert result["firmware"] == "D8.4.1"
+    assert reported[0]["firmware"] == "D8.4.1"
+    assert any("firmware changed from D8.3.5226 to D8.4.1" in m for m in caplog.messages)
+    assert _alert_calls == [("clear", None)]
+
+
+def test_repin_without_a_stored_firmware_cannot_tell_an_upgrade_and_says_so(monkeypatch, caplog):
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.4.1"))
+    _reports(monkeypatch)
+
+    config = _expiring_config(days_left=300)
+    with caplog.at_level("ERROR"):
+        assert main_module.repin_certificate(SETTINGS, 1, config) == config
+
+    assert any("no firmware version was stored" in m for m in caplog.messages)
+
+
+def test_repeated_mismatch_sends_the_alert_once(monkeypatch, _alert_calls):
+    monkeypatch.setattr(main_module, "fetch_meter_readings", _mismatch)
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.3.5226"))
+    config = _expiring_config(days_left=300, firmware="D8.3.5226")
+
+    main_module.poll_once(SETTINGS, 1, config)
+    main_module.poll_once(SETTINGS, 1, config)
+
+    assert [call[0] for call in _alert_calls] == ["set"]
+
+
+def test_discovery_stores_a_changed_firmware_version(monkeypatch):
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.4.1"))
+    reported = _reports(monkeypatch)
+
+    config = _expiring_config(days_left=300, firmware="D8.3.5226")
+    main_module.discover_and_sync_serial(SETTINGS, 1, config)
+
+    assert config["firmware"] == "D8.4.1"
+    assert reported == [{"firmware": "D8.4.1"}]
 
 
 def test_poll_once_refuses_to_repin_when_the_expiry_is_unknown(monkeypatch):
@@ -1031,9 +1092,9 @@ def test_poll_once_refuses_to_repin_when_the_expiry_is_unknown(monkeypatch):
     assert reported == []
 
 
-def test_repin_refuses_when_the_serial_number_changed(monkeypatch, caplog):
+def test_repin_refuses_when_the_serial_number_changed(monkeypatch, caplog, _alert_calls):
     monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
-    monkeypatch.setattr(main_module, "fetch_serial_number", lambda host, fp: "999999999999")
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("999999999999", None))
     reported = _reports(monkeypatch)
 
     config = _expiring_config(days_left=30)
@@ -1043,6 +1104,7 @@ def test_repin_refuses_when_the_serial_number_changed(monkeypatch, caplog):
     assert result == config
     assert reported == []
     assert any("serial" in m for m in caplog.messages)
+    assert [call[0] for call in _alert_calls] == ["set"]
 
 
 def test_repin_refuses_when_no_serial_number_is_stored(monkeypatch, caplog):

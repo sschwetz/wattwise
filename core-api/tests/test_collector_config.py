@@ -222,3 +222,60 @@ def test_report_discovered_config_merges_cert_serial(client, app_and_db_url):
 
     get = client.get(f"/api/v1/sources/{source_id}/config", headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY})
     assert get.json()["config"]["cert_serial"] == "322103FC7603C350"
+
+
+def _stored_alert(db_url: str, source_id: int) -> tuple[str | None, datetime | None]:
+    engine = make_engine(db_url)
+    session = make_session_factory(engine)()
+    source = session.get(Source, source_id)
+    result = (source.alert_message, source.alert_since)
+    session.close()
+    return result
+
+
+def test_put_alert_sets_message_and_keeps_the_first_start_time(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url)
+    headers = {"X-Collector-Key": ENVOY_COLLECTOR_KEY}
+    first = client.put(f"/api/v1/sources/{source_id}/alert", json={"message": "cert changed"}, headers=headers)
+    assert first.status_code == 204, first.text
+    _, since = _stored_alert(db_url, source_id)
+    second = client.put(f"/api/v1/sources/{source_id}/alert", json={"message": "still changed"}, headers=headers)
+    assert second.status_code == 204, second.text
+    message, since_after = _stored_alert(db_url, source_id)
+    assert message == "still changed"
+    assert since_after == since
+
+
+def test_delete_alert_clears_it(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url)
+    headers = {"X-Collector-Key": ENVOY_COLLECTOR_KEY}
+    client.put(f"/api/v1/sources/{source_id}/alert", json={"message": "cert changed"}, headers=headers)
+    response = client.delete(f"/api/v1/sources/{source_id}/alert", headers=headers)
+    assert response.status_code == 204, response.text
+    assert _stored_alert(db_url, source_id) == (None, None)
+
+
+def test_alert_rejects_a_wrong_collector_key_and_an_empty_message(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url)
+    wrong = client.put(f"/api/v1/sources/{source_id}/alert", json={"message": "x"}, headers={"X-Collector-Key": "wrong"})
+    assert wrong.status_code == 401
+    empty = client.put(
+        f"/api/v1/sources/{source_id}/alert", json={"message": ""}, headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY}
+    )
+    assert empty.status_code == 422
+
+
+def test_discovered_config_accepts_firmware(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    source_id = make_energy_source(db_url)
+    patch = client.patch(
+        f"/api/v1/sources/{source_id}/discovered-config",
+        json={"firmware": "D8.3.5226"},
+        headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY},
+    )
+    assert patch.status_code == 204, patch.text
+    get = client.get(f"/api/v1/sources/{source_id}/config", headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY})
+    assert get.json()["config"]["firmware"] == "D8.3.5226"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,7 +11,7 @@ from core_api.errors import AppError
 from core_api.models.identity import Site, User
 from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
 from core_api.models.sources import Source
-from core_api.schemas import DiscoveredSourceConfig, SourceConfigOut
+from core_api.schemas import DiscoveredSourceConfig, SourceAlertIn, SourceConfigOut
 from core_api.time_utils import as_utc
 
 router = APIRouter(prefix="/sources/{source_id}", tags=["collector-config"])
@@ -77,4 +79,28 @@ def report_discovered_config(
 ) -> None:
     discovered = payload.model_dump(mode="json", exclude_none=True)
     source.config = {**(source.config or {}), **discovered}
+    db.commit()
+
+
+@router.put("/alert", status_code=status.HTTP_204_NO_CONTENT)
+def set_source_alert(
+    payload: SourceAlertIn,
+    source: Source = Depends(get_source_by_collector_key),
+    db: Session = Depends(get_db_session),
+) -> None:
+    """Sets the source's alert. A repeat report keeps the original start time."""
+    if source.alert_message is None:
+        source.alert_since = datetime.datetime.now(datetime.UTC)
+    source.alert_message = payload.message
+    db.commit()
+
+
+@router.delete("/alert", status_code=status.HTTP_204_NO_CONTENT)
+def clear_source_alert(
+    source: Source = Depends(get_source_by_collector_key), db: Session = Depends(get_db_session)
+) -> None:
+    if source.alert_message is None:
+        return
+    source.alert_message = None
+    source.alert_since = None
     db.commit()

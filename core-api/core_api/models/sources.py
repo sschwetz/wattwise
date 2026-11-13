@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import enum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core_api.encrypted_types import EncryptedJSON
@@ -46,5 +46,8 @@ class Source(Base):
     # Encrypted at rest: holds device tokens and the Enlighten password.
     config: Mapped[dict] = mapped_column(EncryptedJSON, nullable=False, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # A problem the collector can't fix itself, shown on the Dashboard until it clears it.
+    alert_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    alert_since: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     effective_from: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     effective_to: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

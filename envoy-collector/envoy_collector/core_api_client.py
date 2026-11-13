@@ -66,6 +66,7 @@ def report_discovered_config(
     cert_fingerprint: str | None = None,
     cert_expires_at: str | None = None,
     cert_serial: str | None = None,
+    firmware: str | None = None,
     token: str | None = None,
 ) -> None:
     fields = {
@@ -73,6 +74,7 @@ def report_discovered_config(
         "cert_fingerprint": cert_fingerprint,
         "cert_expires_at": cert_expires_at,
         "cert_serial": cert_serial,
+        "firmware": firmware,
         "token": token,
     }
     payload = {k: v for k, v in fields.items() if v is not None}
@@ -87,6 +89,30 @@ def report_discovered_config(
         raise CoreApiError(
             f"Failed to report discovered config: {response.status_code} {response.text}"
         )
+
+
+def set_source_alert(base_url: str, source_id: int, collector_key: str, message: str) -> None:
+    """Shows `message` on the Dashboard until clear_source_alert is called."""
+    response = _request(
+        "PUT",
+        f"{base_url}/api/v1/sources/{source_id}/alert",
+        headers={"X-Collector-Key": collector_key},
+        json={"message": message},
+        timeout=10,
+    )
+    if response.status_code != 204:
+        raise CoreApiError(f"Failed to set source alert: {response.status_code} {response.text}")
+
+
+def clear_source_alert(base_url: str, source_id: int, collector_key: str) -> None:
+    response = _request(
+        "DELETE",
+        f"{base_url}/api/v1/sources/{source_id}/alert",
+        headers={"X-Collector-Key": collector_key},
+        timeout=10,
+    )
+    if response.status_code != 204:
+        raise CoreApiError(f"Failed to clear source alert: {response.status_code} {response.text}")
 
 
 def push_energy_readings(base_url: str, source_id: int, collector_key: str, readings: list[dict]) -> None:

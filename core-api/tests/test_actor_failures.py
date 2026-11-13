@@ -13,6 +13,7 @@ from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
 from core_api.models.billing import DemandWindow, SiteTariff
 from core_api.models.identity import Site, SiteAccess, User
+from core_api.models.sources import Source, SourceKind
 from core_api.routers.actors import router
 from tests.conftest import UTC, sydney_local
 
@@ -49,6 +50,24 @@ def make_run(db, schedule, trigger_at, outcome, kind=RunKind.ACTION, parent=None
 
 def kinds(db, site, now=NOW) -> list[str]:
     return [f.kind for f in current_failures(db, site.id, now)]
+
+
+def test_source_alert_is_a_failure_until_cleared(db, site):
+    since = NOW - datetime.timedelta(hours=1)
+    source = Source(
+        site_id=site.id, kind=SourceKind.ENERGY, provider="envoy", name="Roof", config={}, effective_from=since,
+        alert_message="Envoy certificate changed", alert_since=since,
+    )
+    db.add(source)
+    db.commit()
+    [failure] = current_failures(db, site.id, NOW)
+    assert (failure.kind, failure.instance_id, failure.schedule_name) == ("source_alert", None, "Roof")
+    assert failure.message == "Envoy certificate changed"
+    assert failure.since == since
+    source.alert_message = None
+    source.alert_since = None
+    db.commit()
+    assert kinds(db, site) == []
 
 
 def test_failed_run_is_current_until_later_ok(db, site):

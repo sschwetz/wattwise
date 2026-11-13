@@ -56,6 +56,19 @@ describe("FailuresTile", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("shows a source alert on a site with no actor, linking to the Collectors tab", async () => {
+    mockData({
+      instances: [],
+      failures: [failure(1, { kind: "source_alert", instance_id: null, schedule_id: null, schedule_name: "Roof Envoy", message: "Certificate changed" })],
+    });
+    renderTile();
+    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    expect(within(tile).getByText("Source problem")).toBeInTheDocument();
+    expect(within(tile).getByText("Roof Envoy")).toBeInTheDocument();
+    expect(within(tile).getByText("Certificate changed")).toBeInTheDocument();
+    expect(within(tile).getByRole("link", { name: "Open the Collectors tab" })).toHaveAttribute("href", "/settings/sites/7/collectors");
+  });
+
   it("failures tile includes a partial run", async () => {
     mockData({ failures: [failure(1, { message: "The action partly failed" })] });
     renderTile();
