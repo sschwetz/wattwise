@@ -19,10 +19,10 @@ from envoy_collector.envoy_client import (
     fetch_battery_power,
     fetch_certificate_fingerprint,
     fetch_certificate_info,
+    fetch_device_info,
     fetch_livedata,
     fetch_meter_readings,
     fetch_meters,
-    fetch_device_info,
 )
 
 VALID_TOKEN = "my-token"

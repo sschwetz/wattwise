@@ -20,9 +20,9 @@ from envoy_collector.core_api_client import (
 from envoy_collector.enlighten_client import EnlightenAuthError, EnlightenError, fetch_token, token_expires_at
 from envoy_collector.envoy_client import (
     CertificateInfo,
+    DeviceInfo,
     EnvoyAuthError,
     EnvoyCertificateMismatch,
-    DeviceInfo,
     enable_livedata_stream,
     fetch_battery_power,
     fetch_certificate_info,
