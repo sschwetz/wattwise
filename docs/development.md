@@ -138,7 +138,8 @@ See [Adding another actor](actors.md#adding-another-actor).
 | Several Uvicorn workers | Each runs the jobs, lockouts do not share | Keep one worker |
 | SQLite-only SQL | `sqlite_insert ... on_conflict_do_update` fails on Postgres | Port the upserts first if the database ever moves |
 | New env var in `config.py` | All tests fail on startup | Add it to `tests/conftest.py` |
-| Help docs and screenshots | Link tests fail | Keep chapter links and image names valid |
+| Help docs and screenshots | Link tests fail | Keep chapter links and image names valid. Adding or removing a chapter changes the count in `src/help/docs.test.ts`. |
+| Pages in `docs/` | The `docs` CI job fails on a broken link, anchor or split table | Run `python3 scripts/check_docs.py` before pushing |
 | Editing the specs and plans | Rewrites history | Add a dated note instead |
 | Filtering or comparing an encrypted column in SQL | Never matches, because each encryption has a random IV | Load the row and compare in Python, or test `IS NOT NULL` |
 | Changing `SECRETS_ENCRYPTION_KEY` | Encrypted columns fail to decrypt; recovery codes stop matching | Treat the key as permanent |

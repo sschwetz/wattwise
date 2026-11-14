@@ -90,16 +90,21 @@ GET   /actor/instances/{id}/schedules | /context | /runs
 POST  /actor/instances/{id}/runs
 PATCH /actor/instances/{id}/runs/{run_id}           a finished run changes only from ok to overridden
 GET   /sites/{id}/actors/failures                   (people, JWT)
+DELETE /sites/{id}/actors/alerts/{alert_id}         (any user with site access; dismisses a sticky alert)
+
+Alerts (collector key, or actor key under /actor/instances/{id}):
+PUT    /sources/{id}/alerts/{code}                  {"message", "severity"?, "sticky"?}
+DELETE /sources/{id}/alerts/{code}
 ```
 
 ## Enumerations
 
 - Source kind: `energy`, `pricing`, `weather`.
 - Providers in use: `envoy`, `amber`, `local`, `weatherlink_live`. Free text in the database.
-- Energy metrics: `production_w`, `consumption_w`, `grid_import_w`, `grid_export_w`, `battery_charge_w`, `battery_discharge_w`, `battery_soc_pct`.
+- Energy metrics: `production_w`, `consumption_w`, `grid_import_w`, `grid_export_w`, `battery_charge_w`, `battery_discharge_w`, `battery_soc_pct`, `production_wh_lifetime`, `grid_import_wh_lifetime`, `grid_export_wh_lifetime`, `grid_voltage_ph_a_v`, `grid_voltage_ph_b_v`, `grid_voltage_ph_c_v`, `grid_relay_state`.
 - Weather metrics: `temp_c`, `humidity_pct`, `wind_speed_kph`, `wind_direction_deg`, `rain_mm`, `solar_radiation_wm2`, `barometric_pressure_hpa`.
 - Price channels: `buy`, `sell`, `controlled_load` (`demand` exists but nothing uses it).
-- Actor providers: `actron_neo`. Run kinds: `action`, `restore`, `test`. Run outcomes: `pending`, `running`, `ok`, `skipped`, `failed`, `overridden`. Failure kinds: `run_failed`, `still_off`, `actor_silent`, `needs_sign_in`.
+- Actor providers: `actron_neo`. Run kinds: `action`, `restore`, `test`. Run outcomes: `pending`, `running`, `ok`, `skipped`, `partial`, `failed`, `overridden`. Failure kinds: `run_failed`, `still_off`, `actor_silent`, `needs_sign_in`, `alert`. Alert severities: `failure`, `partial`, `notice`. Trigger types: `window_start`, `window_end`, `time`, `price_above`, `temperature`.
 
 ## Working in this repository
 
@@ -109,7 +114,7 @@ GET   /sites/{id}/actors/failures                   (people, JWT)
 4. **Run the relevant suite** (`uv run pytest` in the Python project you changed, `npm test` and `npm run lint` for `webapp/`). Report failures as they are.
 5. **Follow `CLAUDE.md`.** Review for long functions (over 30 lines), repeated logic, TypeScript `any`, components with more than 3 props, and unhandled async errors. Run `/simplify` before presenting code.
 6. **Write prose per `.claude/rules/avoid-ai-writing.md`.** That covers comments, docs and commit messages.
-7. **Update the docs you affect.** The user guide chapters in `webapp/src/docs/` are tested for broken links. The pages in `docs/` are not, so check them yourself.
+7. **Update the docs you affect.** The user guide chapters in `webapp/src/docs/` are tested for broken links. `python3 scripts/check_docs.py` (run by CI) checks links, anchors and table layout in `docs/`, but not whether the prose matches the code, so check that yourself. Follow the `documentation` agent's table of where each kind of fact lives.
 8. **Do not guess at hardware.** Envoy and WeatherLink behaviour in the code comes from observed devices. Keep fixture JSON from real responses when you add a mapping.
 
 ## Known sharp edges

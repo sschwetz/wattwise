@@ -17,7 +17,13 @@ The dashboard's live tiles use a WebSocket to `core-api` (`/api/v1/sites/{site_i
 
 ## Update order
 
-Update `core-api` before the collectors. A collector from the alert bulbs release sends `severity` and `sticky` with each alert, and an older `core-api` rejects those fields with 422.
+Update `core-api` first, then the collectors and the actor, then the web app. A normal `docker compose up -d` after a pull recreates them together, so this matters when you update services one at a time.
+
+- **Collectors.** They send `severity` and `sticky` with each alert, and an older `core-api` rejects those fields with 422.
+- **Actor.** It sends `steps` and the `partial` outcome on multi-action runs. An older `core-api` refuses them with 422, so the run stays `running` and the unit stays held with no restore until `core-api` is upgraded.
+- **Web app.** It reads `schedule.actions`, which an older `core-api` does not return.
+
+With a new `core-api` and an older actor, the actor reads `action` (the first entry of `actions`), so a multi-action schedule runs only its first action and reports `ok`. Its single-entry snapshot restores through the new code.
 
 ## Putting WattWise on the internet
 
@@ -164,7 +170,9 @@ Lines carry the instance id and the error type, never a message from Actron or C
 
 ### What each Dashboard entry means
 
-The tile **Needs attention** appears at the top of the site Dashboard while a schedule has a failure or an alert is raised. It refreshes every 15 seconds. With an air conditioner set up and nothing wrong it reads **All schedules OK**. Without one it appears only when an alert exists. Schedule failures link to the Schedule tab and alerts link to the Collectors tab, and both links show when both kinds are present.
+The tile **Needs attention** appears at the top of the site Dashboard while a schedule has a failure or an alert is raised. It refreshes every 15 seconds. With an air conditioner set up and nothing wrong it reads **All schedules OK**. Without one it appears only when an alert exists.
+
+Each row has a coloured bulb: red for a failure, amber for a partial problem (part of a device still works) and blue for a notice. The tile glows in the colour of its worst unresolved row. Unresolved rows come first, then rows the service cleared in the last hour, shown dimmed. Each row has one button: **Dismiss** for a sticky notice, **Open Collectors** for any other alert and **Open Schedule** for a schedule failure.
 
 | Entry | Meaning | What to do |
 |---|---|---|
@@ -172,6 +180,7 @@ The tile **Needs attention** appears at the top of the site Dashboard while a sc
 | Still off | The unit is still off after its restore time and the schedule's give-up minutes. A restore set to happen only on a condition counts its restore time as 24 hours after the trigger. | Turn the unit on. Then check the restore settings. A "only restore if" condition that never passes causes this. |
 | Actor not reporting | The unit is held off and the actor has not reported for 5 minutes. The actor also stops reporting when it cannot reach the unit through the Actron cloud or its sign-in is lost. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. If it needs signing in, press **Sign in again**. |
 | Problem | A service raised an alert, such as an Envoy certificate it refused to pin or a source it cannot reach. The entry names the source, actor or `Site`. A source can show several. See [Alerts](collectors.md#alerts) for the codes. | Read the message and fix the cause. The service clears the alert when the cause goes away. For `cert`, see [Collectors](collectors.md#failure-behaviour-at-a-glance). A `Site` entry `notify_email` means a schedule notification email could not be sent; the next one that sends clears it. |
+| Notice (blue, sticky) | The Envoy collector re-pinned a certificate (`repinned`) or saw a new firmware version (`firmware`). Nothing is broken. A `repinned` notice raised because the firmware changed is red. | Read it, then press **Dismiss**. A sticky notice stays until someone dismisses it. |
 | Needs sign-in | Actron rejected the stored token. | Open **Schedule** in Site settings, press **Sign in again** and approve the code. This works while the unit is held off: the actor puts it back after the new sign-in. |
 
 A needs-sign-in entry shows no time, because Core API does not record when it began. With **Email me if it still fails** on, a failed run emails the owner at once, and a still-off or silent actor emails once from the watchdog.
@@ -180,7 +189,6 @@ A needs-sign-in entry shows no time, because Core API does not record when it be
 
 - The push (MQTT) path of the `actron-neo-api` library has not been tried on a real unit. Polling covers it: every 30 seconds while push is down, every 120 seconds while it works.
 - The library is unofficial and pinned to 0.5.16. A change on Actron's side can break it without notice. Check the logs after Actron updates its app.
-- The actor image has not been built yet. The first build is CI's publish workflow, or `docker compose build actron-neo-actor`.
 - Fan speeds `AUTO`, `LOW`, `MED` and `HIGH` are not confirmed on the owner's unit.
 - If the process is killed during a test run's pause, the unit stays as the test set it until the actor restarts. The next start finds the run and puts the unit back.
 - Run one actor container. Two would race on the same trigger. The unique key on a run stops a second create, but both could still act on the unit around it.
@@ -263,7 +271,6 @@ Every service keeps the first 7 characters. A service shows "not reporting" in t
 
 - With `WEBAPP_VERSION_URL` set to the host's IP address and published port, such as `http://10.69.6.2:8180`, the fetch no longer depends on `FRONTEND_BASE_URL`. Use this when the public hostname does not resolve from the container.
 - With the compose default `http://localhost`, the request goes to core-api itself, which does not serve `/version`. The webapp row shows "not reporting", or "never reported" if it has never succeeded.
-- With the host's IP address and published port, such as `http://10.69.6.2:8180`, the container reaches the webapp through the host and the row works.
 - With a public hostname behind a reverse proxy, core-api's container must resolve that hostname and reach the proxy. Hairpin NAT does not work on some home routers, so a name that works from your laptop can fail from the container.
 - If `SCHEDULER_ENABLED=false`, the job does not run, and the core-api and webapp rows are never written.
 

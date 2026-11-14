@@ -283,9 +283,10 @@ Core API validates these on write with the models in [`actor_schemas.py`](../cor
 { "type": "window_end", "window_id": 12 }
 { "type": "time", "time": "16:00", "days_of_week": [0, 1, 2, 3, 4] }
 { "type": "price_above", "c_per_kwh": 60.0 }
+{ "type": "temperature", "reading": "outdoor_temp_c", "op": "gt", "value": 30.0 }
 ```
 
-`days_of_week` defaults to all seven days (0 is Monday) and needs at least one. `window_id` must be a demand window of the site's tariffs.
+`days_of_week` defaults to all seven days (0 is Monday) and needs at least one. `window_id` must be a demand window of the site's tariffs. For `temperature`, `reading` is `indoor_temp_c` or `outdoor_temp_c` and `op` is `gt` or `lt`.
 
 `conditions` is a list. `restore.only_if` and `restore.early_if` use the same item shape:
 
@@ -315,7 +316,7 @@ That is a reading row. Four more kinds of row carry a `kind`, and all of them us
 ]
 ```
 
-The column was `action` (one entry) before the multi-action change, and the migration wrapped each stored value in a list of one. For one release, API responses also return `action`, equal to the first entry. Requests accept only `actions`. Deploy Core API first, then the actor, then the web app. The actor must not go first: an old Core API refuses the `steps` and `partial` the new actor sends with 422, so the run stays `running` and the unit stays held with no restore until Core API is upgraded. While Core API is new and the actor is still old, the old actor reads `action` (the first entry), so a multi-action schedule runs only its first action and reports `ok`, and its single-entry snapshot restores through the new code. The web app goes last because an old Core API rejects `actions` and the page reads `schedule.actions`.
+The column was `action` (one entry) before the multi-action change, and the migration wrapped each stored value in a list of one. API responses also return `action`, equal to the first entry, so an actor built before the change keeps working. Requests accept only `actions`. The order to update the services in is under [Update order](operations.md#update-order).
 
 `restore` (the values below are the defaults where a default exists):
 

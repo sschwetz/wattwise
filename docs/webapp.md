@@ -44,7 +44,7 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 </tr>
 </table>
 
-More screenshots, with the explanation of every tile and field, are in the [user guide](../webapp/src/docs/index.md).
+The Schedule tab and the Needs attention tile are shown in the user guide chapter [Schedules and the air conditioner](../webapp/src/docs/08-schedules.md). More screenshots, with the explanation of every tile and field, are in the [user guide](../webapp/src/docs/index.md).
 
 ## Source layout
 
@@ -112,8 +112,8 @@ The editor counts as changed while its form differs from the schedule as last sa
 
 [`FailuresTile`](../webapp/src/actors/FailuresTile.tsx) sits above the other tiles in `DashboardPage.tsx`. It reads `GET .../actors/failures` every 15 seconds (`FAILURES_POLL_MS`).
 
-- No air conditioner set up: nothing is shown.
-- No failures: "All schedules OK" and a link to the Schedule tab.
+- No air conditioner set up and no alert: nothing is shown.
+- An air conditioner set up and no failures or alerts: "All schedules OK" and a link to the Schedule tab.
 - Failures and alerts: **Needs attention (N)**, where N counts unresolved rows. The heading has no count when only cleared rows remain. The tile glows red (`danger-glow`), amber (`partial-glow`) or blue (`notice-glow`) by the worst unresolved bulb, and has no glow when every row is cleared.
 - Each row is one line: a `Bulb`, the time (`YYYY-MM-DD HH:MM` in the site's time zone), `Source - message`, and one button on the right. The source is the alert's `subject` or the schedule name. The button is **Dismiss** for a `sticky` alert (it calls `DELETE /api/v1/sites/{id}/actors/alerts/{alert_id}`, stays disabled while the request runs, and the row stays if the request fails), else **Open Collectors** for an alert, else **Open Schedule**.
 - `orderFailures` (`alertTone.ts`) sorts the rows: unresolved first, red then amber then blue, newest first within a colour, cleared rows last. The tile shows the first five and links "and N more". A `needs_sign_in` row shows no time, because Core API has none to give.

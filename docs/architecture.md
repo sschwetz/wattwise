@@ -81,7 +81,7 @@ flowchart LR
 
 ## Build commit and service status
 
-Each collector and the actor reports the commit it was built from to Core API when it starts and every 60 seconds. Core API does not call itself over HTTP: its scheduler job writes its own row. A collector sends `X-Collector-Key` and the actor sends `X-Actor-Key`, the credentials they already use. The webapp does not report: it serves `GET /version`, and the same scheduler job fetches `<FRONTEND_BASE_URL>/version` once a minute. `mail-relay` does not report. The webapp's About dialog reads the result from `GET /api/v1/services`. See [Service status](core-api.md#service-status).
+Each collector and the actor reports the commit it was built from to Core API when it starts and every 60 seconds. Core API does not call itself over HTTP: its scheduler job writes its own row. A collector sends `X-Collector-Key` and the actor sends `X-Actor-Key`, the credentials they already use. The webapp does not report: it serves `GET /version`, and the same scheduler job fetches `<WEBAPP_VERSION_URL>/version` (default `FRONTEND_BASE_URL`) once a minute. `mail-relay` does not report. The webapp's About dialog reads the result from `GET /api/v1/services`. See [Service status](core-api.md#service-status).
 
 ## Who is allowed to do what
 

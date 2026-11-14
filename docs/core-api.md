@@ -150,7 +150,7 @@ Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 | `POST /schedules/{sid}/test` | Queue a test run. 409 `instance_disabled` or `no_capabilities`. |
 | `GET /runs?limit=`, `GET /schedules/{sid}/runs?limit=` | Run history, newest first. `limit` is 1 to 200, default 50. |
 | `GET /failures` | The current failures for the Dashboard tile. Also returns kind `alert` entries from the `alerts` table, with a `subject` field (the source or actor name, or `Site`) and `instance_id`, `schedule_id` and `schedule_name` null. Alerts on a disabled source or actor instance are left out. Every entry has `severity` (`failure`, `partial` or `notice`; a partial run is `partial`), `alert_id`, `cleared_at` and `sticky`. `alert_id` is null except for `alert` entries. A cleared alert stays listed for one hour with `cleared_at` set. The list is ordered with unresolved entries first by severity, newest first, and cleared entries last. |
-| `DELETE /alerts/{alert_id}` | Dismiss a sticky alert of the site. Returns 204. 404 `not_found` for an unknown alert or one of another site, 409 `not_dismissable` when the alert is not sticky. |
+| `DELETE /alerts/{alert_id}` | Any user with site access can dismiss a sticky alert of the site. Returns 204. 404 `not_found` for an unknown alert or one of another site, 409 `not_dismissable` when the alert is not sticky. |
 
 ### Service status
 
@@ -174,7 +174,7 @@ The two pricing collectors share a key, so either can report as the other. Core 
 
 `reporting` is true while `last_reported_at` is at most 180 seconds old (three report intervals). Timestamps are UTC.
 
-Core API reports for itself and for the webapp. The `service_status` job (see [Background jobs](#background-jobs)) writes the `core-api` row from `GIT_COMMIT`, then fetches `<FRONTEND_BASE_URL>/version` and stores the `commit` it returns as the `webapp` row. If the fetch fails or returns a bad body, the `webapp` row stays as it was and ages into `reporting: false`. `mail-relay` is not listed because it does not report.
+Core API reports for itself and for the webapp. The `service_status` job (see [Background jobs](#background-jobs)) writes the `core-api` row from `GIT_COMMIT`, then fetches `<WEBAPP_VERSION_URL>/version` and stores the `commit` it returns as the `webapp` row. If the fetch fails or returns a bad body, the `webapp` row stays as it was and ages into `reporting: false`. `mail-relay` is not listed because it does not report.
 
 ## Live samples
 
@@ -248,7 +248,7 @@ Validation failures use code `validation_error` and HTTP 422. The `detail` list 
 | `demand_charge` | Daily 00:10 | Computes `demand_charges` for each billing period | Finalized rows are skipped. Estimated rows are recomputed. |
 | `retention_rollup` | Daily 00:20 | Moves readings older than 365 days into 5-minute rollups and deletes the raw rows | Upsert into rollups, delete after. Cutoff is floored to a bucket boundary. |
 | `actor_watchdog` | Every minute | Finds action runs that hold a unit off past the restore time plus the give-up allowance, or whose actor has been silent for 5 minutes, and emails the site owner once per run if the schedule has email on | A conditional update sets `watchdog_notified_at` first, and only the job run that wins the update sends |
-| `service_status` | Every 60 seconds, and once at startup | Writes the `core-api` row, then fetches `<FRONTEND_BASE_URL>/version` (5 second timeout) and writes the `webapp` row | Upsert on the service name. A failed fetch leaves the webapp row unchanged. |
+| `service_status` | Every 60 seconds, and once at startup | Writes the `core-api` row, then fetches `<WEBAPP_VERSION_URL>/version` (5 second timeout) and writes the `webapp` row | Upsert on the service name. A failed fetch leaves the webapp row unchanged. |
 | `expire_admin_password_file` | Daily 03:17, and once at startup | Deletes `initial-admin-password.txt` if it is 5 days old or older | Does nothing when the file is missing. Not a database job: it takes the file path, not a session. |
 
 Times use the container's clock (UTC in the image).
@@ -267,7 +267,8 @@ Times use the container's clock (UTC in the image).
 | `AVATAR_STORAGE_DIR` | no | `./data/avatars` | Compose sets `/data/avatars` |
 | `JWT_EXPIRY_HOURS` | no | `24` | Access token lifetime |
 | `GIT_COMMIT` | no | `unknown` | The build commit. Core API keeps the first 7 characters. The Dockerfile sets it from a build arg; see [Operations](operations.md#build-commit). |
-| `FRONTEND_BASE_URL` | no | `http://localhost:5173` | CORS origin, the base of links in emails, and where the `service_status` job fetches `/version` |
+| `FRONTEND_BASE_URL` | no | `http://localhost:5173` | CORS origin and the base of links in emails |
+| `WEBAPP_VERSION_URL` | no | `FRONTEND_BASE_URL` | Where the `service_status` job fetches the webapp's `/version`. Must be reachable from inside the core-api container. See [Operations](operations.md#build-commit). |
 | `ROOT_PATH` | no | empty | Prefix for the `/docs`, `/redoc` and `/openapi.json` pages, for example `/api` to reach them at `/api/docs` through a proxy that forwards `/api` unchanged. API routes always stay under `/api/v1` |
 | `SMTP_HOST`, `SMTP_PORT` | no | `mail-relay`, `25` | Outbound mail |
 | `SMTP_FROM` | no | `noreply@localhost` | Sender address |
