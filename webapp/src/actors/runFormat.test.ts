@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRunTime, isStale, OUTCOME_LABEL, outcomeLabel, outcomeTone, runDescription, stepLines } from "./runFormat";
+import { formatAlertTime, formatRunTime, isStale, OUTCOME_LABEL, outcomeLabel, outcomeTone, runDescription, stepLines } from "./runFormat";
 import type { ActorRun } from "./types";
 
 const SYDNEY = "Australia/Sydney";
@@ -114,5 +114,11 @@ describe("partial and steps", () => {
   it("stepLines is empty without steps", () => {
     expect(stepLines(run({ steps: null }), labelFor)).toEqual([]);
     expect(stepLines(run({ steps: [] }), labelFor)).toEqual([]);
+  });
+});
+
+describe("formatAlertTime", () => {
+  it("formats in the site zone", () => {
+    expect(formatAlertTime("2026-11-13T09:12:00Z", SYDNEY)).toBe("2026-11-13 20:12");
   });
 });

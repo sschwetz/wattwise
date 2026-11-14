@@ -16,7 +16,8 @@ const site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydne
 function failure(n: number, overrides: Partial<ActorFailure> = {}): ActorFailure {
   return {
     kind: "run_failed", instance_id: 3, schedule_id: n, schedule_name: `Schedule ${n}`,
-    message: `Message ${n}`, since: `2026-10-0${n}T14:30:00Z`, subject: null, ...overrides,
+    message: `Message ${n}`, since: `2026-10-0${n}T14:30:00Z`, subject: null,
+    severity: "failure", alert_id: null, cleared_at: null, sticky: false, ...overrides,
   };
 }
 

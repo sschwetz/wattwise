@@ -191,6 +191,8 @@ export interface ActorRunListItem extends ActorRun {
 
 export type ActorFailureKind = "run_failed" | "still_off" | "actor_silent" | "needs_sign_in" | "alert";
 
+export type AlertSeverity = "failure" | "partial" | "notice";
+
 export interface ActorFailure {
   kind: ActorFailureKind;
   /** null for alert, which is about a source, an actor or the site rather than a schedule. */
@@ -201,6 +203,13 @@ export interface ActorFailure {
   since: string;
   /** What an alert is about: a source or actor name, or "Site". null for the other kinds. */
   subject: string | null;
+  severity: AlertSeverity;
+  /** Set for alert rows; null for the computed kinds. */
+  alert_id: number | null;
+  /** When the alert cleared, if it has and is still shown. */
+  cleared_at: string | null;
+  /** True when the alert stays on the tile until dismissed. */
+  sticky: boolean;
 }
 
 export interface InstanceCreateBody {

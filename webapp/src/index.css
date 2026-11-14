@@ -21,6 +21,9 @@
   --color-grid-soft: light-dark(#e7eefc, #16233f);
   --color-danger: #e5484d;
   --color-danger-soft: light-dark(#fde8e8, #3a1317);
+  --color-notice: light-dark(#6aa6e0, #9cc4f0);
+  --color-notice-soft: light-dark(#e6f0fb, #14263f);
+  --color-bulb-off: light-dark(#c4c9d4, #3a4258);
 
   /* Chart series: one fixed-order categorical palette, each hue stepped for the
      light and dark surface and checked with the dataviz validator. Separate
@@ -79,7 +82,9 @@ body {
 
 .solar-glow,
 .flow-glow,
-.danger-glow {
+.danger-glow,
+.partial-glow,
+.notice-glow {
   background-size: 200% 200%;
   animation: tile-glow 10s ease-in-out infinite;
 }
@@ -96,11 +101,54 @@ body {
   background-image: linear-gradient(120deg, var(--color-danger-soft), var(--color-surface) 45%, var(--color-danger-soft) 90%);
 }
 
+.partial-glow {
+  background-image: linear-gradient(120deg, var(--color-solar-soft), var(--color-surface) 45%, var(--color-solar-soft) 90%);
+}
+
+.notice-glow {
+  background-image: linear-gradient(120deg, var(--color-notice-soft), var(--color-surface) 45%, var(--color-notice-soft) 90%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .solar-glow,
   .flow-glow,
-  .danger-glow {
+  .danger-glow,
+  .partial-glow,
+  .notice-glow {
     animation: none;
+  }
+}
+
+/* Alert bulbs: a glass lens with a highlight. Open failures and partials pulse. */
+.bulb {
+  --bulb-period: 3s;
+  display: inline-block;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--c), white 58%) 0 14%, var(--c) 52%, color-mix(in srgb, var(--c), black 28%) 100%);
+  box-shadow: 0 0 3px 0 color-mix(in srgb, var(--c) 30%, transparent);
+}
+
+.bulb-failure { --c: var(--color-danger); }
+.bulb-partial { --c: var(--color-solar); }
+.bulb-notice { --c: var(--color-notice); }
+
+.bulb-cleared {
+  background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--color-bulb-off), white 25%), var(--color-bulb-off) 70%);
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 3.5px var(--c);
+}
+
+@keyframes bulb-glow {
+  0%, 100% { box-shadow: 0 0 3px 0 color-mix(in srgb, var(--c) 30%, transparent); }
+  50% { box-shadow: 0 0 14px 3px color-mix(in srgb, var(--c) 62%, transparent); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bulb-failure:not(.bulb-cleared),
+  .bulb-partial:not(.bulb-cleared) {
+    animation: bulb-glow var(--bulb-period) ease-in-out infinite;
   }
 }
 

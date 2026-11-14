@@ -33,6 +33,15 @@ export function formatRunTime(iso: string, timezone: string, now: Date): string 
   return `${short}, ${clock(date, timezone)}`;
 }
 
+/** "2026-11-13 20:12" in the given zone. */
+export function formatAlertTime(iso: string, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(iso));
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
 export const OUTCOME_LABEL: Record<RunOutcome, string> = {
   ok: "OK",
   skipped: "Skipped",
