@@ -14,12 +14,15 @@ import {
   restoreOptions,
   setTriggerType,
   toPayload,
+  type ConditionRow,
+  type ReadingRow,
   type SchedulePayload,
   type ScheduleFormState,
 } from "./scheduleForm";
 import { validateForm } from "./scheduleValidation";
 import { serverProblems } from "./serverRules.testHelper";
-import type { Capabilities, TriggerSpec } from "./types";
+import type { Capabilities, ConditionSpec, TriggerSpec } from "./types";
+import type { DemandWindow } from "../billing/useBilling";
 
 const zones = [{ value: "Lounge", label: "Lounge" }, { value: "Bed 1", label: "Bed 1" }];
 
@@ -126,21 +129,21 @@ describe("toPayload and fromSchedule round-trip", () => {
     p.restore.early_if = [{ reading: "indoor_temp_c", op: "gt", value: 27 }];
     const form = fromSchedule(p);
     expect(form.conditions.map((r) => r.use)).toEqual([false, true]);
-    expect(form.conditions[0].target).toBeNull();
+    expect(readingRow(form.conditions, 0).target).toBeNull();
     expect(form.restore.onlyIf[0].use).toBe(false);
     expect(form.restore.earlyIf[0]).toMatchObject({ use: true, target: null });
   });
 });
 
 describe("unticked rows", () => {
-  const junk = { op: "gt" as const, use: false };
+  const junk = { kind: "reading" as const, op: "gt" as const, use: false };
 
   it("an unticked incomplete row does not block saving and sends a server-valid body", () => {
     const form = valid();
     form.conditions.push({ ...junk, key: 5, reading: "gone_reading", value: "", target: "Garage" });
     form.conditions.push({ ...junk, key: 6, reading: "indoor_temp_c", value: "abc", target: null });
     form.restore.onlyIf.push({ ...junk, key: 5, reading: "zone_temp_c", value: "", target: "Garage" });
-    expect(validateForm(form, caps)).toEqual({});
+    expect(validateForm(form, caps, [])).toEqual({});
     const body = toPayload(form, caps);
     expect(body.conditions.slice(2)).toEqual([
       { reading: "gone_reading", op: "gt", value: 0, target: "Garage", enabled: false },
@@ -152,23 +155,23 @@ describe("unticked rows", () => {
 
   it("a ticked row with an empty value still blocks saving", () => {
     const form = valid();
-    form.conditions[0].value = "";
-    form.restore.earlyIf[0].value = "";
-    const errors = validateForm(form, caps);
+    readingRow(form.conditions, 0).value = "";
+    readingRow(form.restore.earlyIf, 0).value = "";
+    const errors = validateForm(form, caps, []);
     expect(errors["conditions.0"]).toBe("Enter a number for Outdoor temperature.");
     expect(errors["restore.earlyIf.0"]).toBe("Enter a number for Indoor temperature.");
   });
 
   it("a stale target on a ticked row blocks saving, and an unticked one does not", () => {
     const form = valid();
-    form.conditions[1].target = "Garage";
-    form.restore.earlyIf[0].target = "Lounge";
-    const errors = validateForm(form, caps);
+    readingRow(form.conditions, 1).target = "Garage";
+    readingRow(form.restore.earlyIf, 0).target = "Lounge";
+    const errors = validateForm(form, caps, []);
     expect(errors["conditions.1"]).toBe('Target "Garage" is no longer offered for Zone temperature. Pick another.');
     expect(errors["restore.earlyIf.0"]).toBe('Target "Lounge" is no longer offered for Indoor temperature. Pick another.');
     form.conditions[1].use = false;
     form.restore.earlyIf[0].use = false;
-    expect(validateForm(form, caps)).toEqual({});
+    expect(validateForm(form, caps, [])).toEqual({});
   });
 });
 
@@ -251,10 +254,16 @@ describe("trigger and restore options", () => {
 
   it("adds a row for the first reading with an empty value", () => {
     const rows = addCondition([], conditionReadings(caps));
-    expect(rows).toEqual([{ key: 0, use: true, reading: "indoor_temp_c", op: "gt", value: "", target: null }]);
+    expect(rows).toEqual([{ key: 0, use: true, kind: "reading", reading: "indoor_temp_c", op: "gt", value: "", target: null }]);
     expect(addCondition(rows, conditionReadings(caps))[1].key).toBe(1);
   });
 });
+
+function readingRow(rows: ConditionRow[], index: number): ReadingRow {
+  const row = rows[index];
+  if (row.kind !== "reading") throw new Error(`row ${index} is not a reading row`);
+  return row;
+}
 
 function valid(): ScheduleFormState {
   return fromSchedule(payload(triggers[2]));
@@ -262,65 +271,65 @@ function valid(): ScheduleFormState {
 
 describe("validateForm", () => {
   it("accepts a valid form", () => {
-    expect(validateForm(valid(), caps)).toEqual({});
+    expect(validateForm(valid(), caps, [])).toEqual({});
   });
 
   it("rejects out-of-range numbers", () => {
     const form = resetActionParams(valid(), 0, caps.actions[2], caps);
     form.actions[0].params.temperature_c = { kind: "number", text: "31" };
-    expect(validateForm(form, caps)["actions.0.param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
+    expect(validateForm(form, caps, [])["actions.0.param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
     form.actions[0].params.temperature_c = { kind: "number", text: "9.5" };
-    expect(validateForm(form, caps)["actions.0.param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
+    expect(validateForm(form, caps, [])["actions.0.param.temperature_c"]).toBe("Temperature must be between 10 and 30.");
   });
 
   it("rejects empty required params", () => {
     const form = resetActionParams(valid(), 0, caps.actions[2], caps);
     form.actions[0].params.temperature_c = { kind: "number", text: "" };
-    expect(validateForm(form, caps)["actions.0.param.temperature_c"]).toBe("Enter a number for Temperature.");
+    expect(validateForm(form, caps, [])["actions.0.param.temperature_c"]).toBe("Enter a number for Temperature.");
     const zonesForm = resetActionParams(valid(), 0, caps.actions[3], caps);
-    expect(validateForm(zonesForm, caps)["actions.0.param.zones"]).toBe("Tick at least one option for Zones.");
+    expect(validateForm(zonesForm, caps, [])["actions.0.param.zones"]).toBe("Tick at least one option for Zones.");
   });
 
   it("rejects a bad HH:MM", () => {
     const form = valid();
     form.trigger.time = "24:00";
-    expect(validateForm(form, caps)["trigger.time"]).toBe("Enter the time as HH:MM, for example 16:00.");
+    expect(validateForm(form, caps, [])["trigger.time"]).toBe("Enter the time as HH:MM, for example 16:00.");
     form.trigger.time = "6:30";
-    expect(validateForm(form, caps)["trigger.time"]).toBeDefined();
+    expect(validateForm(form, caps, [])["trigger.time"]).toBeDefined();
     const restore = valid();
     restore.restore.when = "at_time";
     restore.restore.time = "";
-    expect(validateForm(restore, caps)["restore.time"]).toBe("Enter the restore time as HH:MM, for example 21:00.");
+    expect(validateForm(restore, caps, [])["restore.time"]).toBe("Enter the restore time as HH:MM, for example 21:00.");
   });
 
   it("rejects values below the retry floors", () => {
     const form = valid();
     form.retry = { maxAttempts: "0", intervalSeconds: "4", giveUpMinutes: "0" };
-    expect(validateForm(form, caps)).toEqual({
+    expect(validateForm(form, caps, [])).toEqual({
       "retry.maxAttempts": "Attempts must be a whole number of at least 1.",
       "retry.intervalSeconds": "Seconds between tries must be a whole number of at least 5.",
       "retry.giveUpMinutes": "Give up after must be a whole number of minutes, at least 1.",
     });
     form.retry = { maxAttempts: "2.5", intervalSeconds: "30", giveUpMinutes: "15" };
-    expect(validateForm(form, caps)["retry.maxAttempts"]).toBeDefined();
+    expect(validateForm(form, caps, [])["retry.maxAttempts"]).toBeDefined();
   });
 
   it("rejects an empty name, no days, a missing window and price", () => {
     const form = valid();
     form.name = " ";
     form.trigger.days = [];
-    const errors = validateForm(form, caps);
+    const errors = validateForm(form, caps, []);
     expect(errors.name).toBe("Enter a name for this schedule.");
     expect(errors["trigger.days"]).toBe("Tick at least one day.");
-    expect(validateForm({ ...valid(), trigger: { ...valid().trigger, type: "window_start", windowId: "" } }, caps)["trigger.windowId"]).toBe("Pick a demand window.");
-    expect(validateForm({ ...valid(), trigger: { ...valid().trigger, type: "price_above", price: "abc" } }, caps)["trigger.price"]).toBe("Enter a price in c/kWh.");
+    expect(validateForm({ ...valid(), trigger: { ...valid().trigger, type: "window_start", windowId: "" } }, caps, [])["trigger.windowId"]).toBe("Pick a demand window.");
+    expect(validateForm({ ...valid(), trigger: { ...valid().trigger, type: "price_above", price: "abc" } }, caps, [])["trigger.price"]).toBe("Enter a price in c/kWh.");
   });
 
   it("rejects a ticked condition with no value and restore minutes below 1", () => {
     const form = valid();
-    form.conditions[1].value = "";
+    readingRow(form.conditions, 1).value = "";
     form.restore.minutes = "0";
-    const errors = validateForm(form, caps);
+    const errors = validateForm(form, caps, []);
     expect(errors["conditions.1"]).toBe("Enter a number for Zone temperature.");
     expect(errors["restore.minutes"]).toBe("Enter a whole number of minutes, at least 1.");
   });
@@ -329,21 +338,21 @@ describe("validateForm", () => {
     const form = valid();
     form.restore.enabled = false;
     form.restore.minutes = "";
-    form.restore.earlyIf[0].value = "";
-    expect(validateForm(form, caps)).toEqual({});
+    readingRow(form.restore.earlyIf, 0).value = "";
+    expect(validateForm(form, caps, [])).toEqual({});
   });
 
   it("asks for an early condition when restoring only on conditions", () => {
     const form = valid();
     form.restore.when = "conditions_only";
     form.restore.earlyIf = [];
-    expect(validateForm(form, caps)["restore.earlyIf"]).toBe("Add a condition under Restore early when, or pick another time to restore.");
+    expect(validateForm(form, caps, [])["restore.earlyIf"]).toBe("Add a condition under Restore early when, or pick another time to restore.");
   });
 
   it("rejects an action the actor does not declare", () => {
     const form = valid();
     form.actions[0].actionId = "gone";
-    expect(validateForm(form, caps)["actions.0.action"]).toBe("Pick an action this device supports.");
+    expect(validateForm(form, caps, [])["actions.0.action"]).toBe("Pick an action this device supports.");
   });
 });
 
@@ -355,19 +364,19 @@ describe("with restore off, hidden fields never make the payload rejectable", ()
     ["minutes 2.5", (f) => { f.restore.when = "after_minutes"; f.restore.minutes = "2.5"; }],
     ["bad time", (f) => { f.restore.when = "at_time"; f.restore.time = "25:99"; }],
     ["empty time", (f) => { f.restore.when = "at_time"; f.restore.time = ""; }],
-    ["undeclared reading", (f) => { f.restore.onlyIf[0].reading = "gone_reading"; }],
-    ["stale target", (f) => { f.restore.earlyIf = [{ key: 0, use: true, reading: "zone_temp_c", op: "gt", value: "20", target: "Garage" }]; }],
-    ["target on a reading without targets", (f) => { f.restore.earlyIf[0].target = "Lounge"; }],
-    ["target on a site reading", (f) => { f.restore.onlyIf[0].target = "Lounge"; }],
-    ["no value", (f) => { f.restore.earlyIf[0].value = "abc"; }],
-    ["unticked row with an undeclared reading", (f) => { f.restore.onlyIf[0] = { ...f.restore.onlyIf[0], use: false, reading: "gone_reading", value: "" }; }],
+    ["undeclared reading", (f) => { readingRow(f.restore.onlyIf, 0).reading = "gone_reading"; }],
+    ["stale target", (f) => { f.restore.earlyIf = [{ key: 0, use: true, kind: "reading", reading: "zone_temp_c", op: "gt", value: "20", target: "Garage" }]; }],
+    ["target on a reading without targets", (f) => { readingRow(f.restore.earlyIf, 0).target = "Lounge"; }],
+    ["target on a site reading", (f) => { readingRow(f.restore.onlyIf, 0).target = "Lounge"; }],
+    ["no value", (f) => { readingRow(f.restore.earlyIf, 0).value = "abc"; }],
+    ["unticked row with an undeclared reading", (f) => { f.restore.onlyIf[0] = { ...readingRow(f.restore.onlyIf, 0), use: false, reading: "gone_reading", value: "" }; }],
   ];
 
   it.each(garbage)("%s", (_name, spoil) => {
     const form = valid();
     spoil(form);
     form.restore.enabled = false;
-    expect(validateForm(form, caps)).toEqual({});
+    expect(validateForm(form, caps, [])).toEqual({});
     const body = toPayload(form, caps);
     expect(body.restore.enabled).toBe(false);
     expect(serverProblems(caps, body)).toEqual([]);
@@ -402,7 +411,7 @@ describe("alignParams matches the stored params to the declaration", () => {
   it("keeps a choice that is no longer offered so validateForm can flag it", () => {
     const form = alignParams(stored({ mode: "DRY" }, "system_on"), caps);
     expect(form.actions[0].params.mode).toEqual({ kind: "value", value: "DRY" });
-    expect(validateForm(form, caps)["actions.0.param.mode"]).toBe('Mode "DRY" is no longer offered by the device. Pick another option.');
+    expect(validateForm(form, caps, [])["actions.0.param.mode"]).toBe('Mode "DRY" is no longer offered by the device. Pick another option.');
   });
 
   it("drops zones the device no longer has", () => {
@@ -480,12 +489,12 @@ describe("a schedule with a list of actions", () => {
     const form = fromSchedule(two());
     const second = form.actions[1].key;
     form.actions[1].params.zones = { kind: "value", value: [] };
-    const errors = validateForm(form, caps);
+    const errors = validateForm(form, caps, []);
     expect(Object.keys(errors)).toEqual([`actions.${second}.param.zones`]);
   });
 
   it("flags an empty list under the actions key", () => {
-    expect(validateForm({ ...emptyForm(caps, context), name: "x", actions: [] }, caps).actions).toBeDefined();
+    expect(validateForm({ ...emptyForm(caps, context), name: "x", actions: [] }, caps, []).actions).toBeDefined();
   });
 
   it("keeps restore on only when every action can be restored", () => {
@@ -500,5 +509,73 @@ describe("a schedule with a list of actions", () => {
     expect(serverProblems(caps, { ...p, actions: Array(9).fill(p.actions[2]) })).not.toEqual([]);
     const bad = { ...p, actions: [p.actions[0], { id: "set_temperature", params: { temperature_c: 99 } }] };
     expect(serverProblems(caps, bad).filter((m) => m.startsWith("actions[1]"))).toHaveLength(1);
+  });
+});
+
+describe("calendar and demand window rows", () => {
+  const calendar: ConditionSpec[] = [
+    { kind: "months", op: "in", values: [12, 1, 2], enabled: true },
+    { kind: "days", op: "not_in", values: [5, 6], enabled: true },
+    { kind: "week", parity: "odd", enabled: true },
+    { kind: "demand_window", op: "not_active", window_id: null, enabled: true },
+    { kind: "demand_window", op: "active", window_id: 7, enabled: false },
+  ];
+  const window7 = { id: 7, label: "Peak" } as DemandWindow;
+
+  function withCalendar(): ScheduleFormState {
+    const base = valid();
+    return fromSchedule({ ...toPayload(base, caps), conditions: calendar });
+  }
+
+  it("round trips through the form with months and days sorted", () => {
+    const body = toPayload(withCalendar(), caps);
+    expect(body.conditions).toEqual([
+      { kind: "months", op: "in", values: [1, 2, 12], enabled: true },
+      ...calendar.slice(1),
+    ]);
+  });
+
+  it("sends reading rows without a kind", () => {
+    const body = toPayload(valid(), caps);
+    expect(body.conditions.every((c) => !("kind" in c))).toBe(true);
+  });
+
+  it("sends an unticked months row with nothing picked, and drops it ticked", () => {
+    const form = valid();
+    form.conditions = [{ key: 0, use: false, kind: "months", op: "in", values: [] }];
+    expect(toPayload(form, caps).conditions).toEqual([{ kind: "months", op: "in", values: [], enabled: false }]);
+    form.conditions = [{ key: 0, use: true, kind: "months", op: "in", values: [] }];
+    expect(toPayload(form, caps).conditions).toEqual([]);
+  });
+
+  it("sends a ticked demand window row for any window as null", () => {
+    const form = valid();
+    form.conditions = [{ key: 0, use: true, kind: "demand_window", op: "not_active", windowId: "" }];
+    expect(toPayload(form, caps).conditions).toEqual([{ kind: "demand_window", op: "not_active", window_id: null, enabled: true }]);
+  });
+
+  it("matches the server's rules", () => {
+    expect(serverProblems(caps, toPayload(withCalendar(), caps))).toEqual([]);
+  });
+
+  it("blocks a ticked months or days row with nothing picked, but not an unticked one", () => {
+    const form = valid();
+    form.conditions = [
+      { key: 0, use: true, kind: "months", op: "in", values: [] },
+      { key: 1, use: true, kind: "days", op: "in", values: [] },
+      { key: 2, use: false, kind: "days", op: "in", values: [] },
+    ];
+    const errors = validateForm(form, caps, [window7]);
+    expect(errors["conditions.0"]).toBe("Pick at least one month.");
+    expect(errors["conditions.1"]).toBe("Pick at least one day.");
+    expect(errors["conditions.2"]).toBeUndefined();
+  });
+
+  it("blocks a ticked demand window row naming a window that is gone", () => {
+    const form = valid();
+    form.conditions = [{ key: 0, use: true, kind: "demand_window", op: "active", windowId: "9" }];
+    expect(validateForm(form, caps, [window7])["conditions.0"]).toBe("This demand window is no longer available. Pick another.");
+    form.conditions = [{ key: 0, use: true, kind: "demand_window", op: "active", windowId: "7" }];
+    expect(validateForm(form, caps, [window7])).toEqual({});
   });
 });

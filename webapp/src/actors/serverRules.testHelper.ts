@@ -2,18 +2,42 @@
 // core-api/core_api/actor_schemas.py (ScheduleCreate and its specs) and the
 // capability checks from actor_capabilities.py. Returns every problem found.
 import type { SchedulePayload } from "./scheduleForm";
-import type { ActionParamValue, ActionSpec, Capabilities, ConditionSpec, ParamDecl } from "./types";
+import type { ActionParamValue, ActionSpec, Capabilities, ConditionSpec, MembershipConditionSpec, ParamDecl } from "./types";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const SITE_READING_IDS = new Set(["outdoor_temp_c", "battery_soc_pct", "price_c_per_kwh"]);
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isWhole = (v: unknown, floor: number) => isFiniteNumber(v) && Number.isInteger(v) && v >= floor;
 
-const CONDITION_KEYS = new Set(["reading", "op", "value", "target", "enabled"]);
+const READING_KEYS = new Set(["reading", "op", "value", "target", "enabled"]);
+const isIntIn = (v: unknown, low: number, high: number) => typeof v === "number" && Number.isInteger(v) && v >= low && v <= high;
+
+function extraKeys(c: ConditionSpec, allowed: string[], where: string): string[] {
+  return Object.keys(c).filter((k) => !allowed.includes(k)).map((k) => `${where}: extra key ${k}`);
+}
+
+/** The month and day rows: `values` in range, and at least one when switched on. */
+function membershipProblems(c: MembershipConditionSpec, where: string): string[] {
+  const [low, high] = c.kind === "months" ? [1, 12] : [0, 6];
+  const problems = extraKeys(c, ["kind", "op", "values", "enabled"], where);
+  if (c.op !== "in" && c.op !== "not_in") problems.push(`${where}: op`);
+  if (!Array.isArray(c.values) || !c.values.every((v) => isIntIn(v, low, high))) problems.push(`${where}: values`);
+  else if (c.enabled !== false && c.values.length === 0) problems.push(`${where}: values need at least one`);
+  return problems;
+}
 
 /** ConditionSpec field rules, with extra="forbid". */
 function conditionShapeProblems(c: ConditionSpec, where: string): string[] {
-  const problems = Object.keys(c).filter((k) => !CONDITION_KEYS.has(k)).map((k) => `${where}: extra key ${k}`);
+  if (c.kind === "months" || c.kind === "days") return membershipProblems(c, where);
+  if (c.kind === "week") return [...extraKeys(c, ["kind", "parity", "enabled"], where), ...(c.parity === "odd" || c.parity === "even" ? [] : [`${where}: parity`])];
+  if (c.kind === "demand_window") {
+    const problems = extraKeys(c, ["kind", "op", "window_id", "enabled"], where);
+    if (c.op !== "active" && c.op !== "not_active") problems.push(`${where}: op`);
+    if (c.window_id !== null && !isWhole(c.window_id, 0)) problems.push(`${where}: window_id`);
+    return problems;
+  }
+  if (c.kind !== undefined) return [`${where}: unknown kind`];
+  const problems = extraKeys(c, [...READING_KEYS], where);
   if (typeof c.reading !== "string") problems.push(`${where}: reading`);
   if (c.op !== "gt" && c.op !== "lt") problems.push(`${where}: op`);
   if (!isFiniteNumber(c.value)) problems.push(`${where}: value`);
@@ -22,9 +46,10 @@ function conditionShapeProblems(c: ConditionSpec, where: string): string[] {
   return problems;
 }
 
-/** actor_capabilities._check_condition, which validate_conditions_against skips for a switched-off condition. */
+/** actor_capabilities._check_condition, which validate_conditions_against skips for a switched-off condition
+ * and for the calendar and demand window rows. */
 function capabilityProblems(caps: Capabilities, c: ConditionSpec, where: string): string[] {
-  if (c.enabled === false) return [];
+  if (c.enabled === false || c.kind !== undefined) return [];
   const target = c.target ?? null;
   const device = caps.readings.find((r) => r.id === c.reading);
   if (!device) {

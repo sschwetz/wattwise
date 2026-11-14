@@ -8,6 +8,7 @@ from core_api.actor_schemas import (
     Capabilities,
     ConditionSpec,
     ParamDecl,
+    ReadingCondition,
 )
 from core_api.errors import AppError
 
@@ -68,7 +69,7 @@ def validate_action_against(capabilities: Capabilities, action: ActionSpec) -> N
         _check_param(param, action.params[name])
 
 
-def _check_condition(capabilities: Capabilities, site_reading_ids: set[str], cond: ConditionSpec) -> None:
+def _check_condition(capabilities: Capabilities, site_reading_ids: set[str], cond: ReadingCondition) -> None:
     device = next((r for r in capabilities.readings if r.id == cond.reading), None)
     if device is None:
         if cond.reading not in site_reading_ids:
@@ -91,5 +92,5 @@ def validate_conditions_against(
     """Each enabled condition reads a device reading first, then a site reading.
     A switched-off condition is not checked, so it may name a reading the device no longer declares."""
     for cond in conditions:
-        if cond.enabled:
+        if isinstance(cond, ReadingCondition) and cond.enabled:
             _check_condition(capabilities, site_reading_ids, cond)

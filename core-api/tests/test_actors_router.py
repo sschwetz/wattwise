@@ -191,6 +191,70 @@ OFF = {"reading": "mystery", "op": "gt", "value": 1, "enabled": False}
 ON = {"reading": "outdoor_temp_c", "op": "gt", "value": 30}
 
 
+MONTHS_ROW = {"kind": "months", "op": "in", "values": [12, 1, 2]}
+DAYS_ROW = {"kind": "days", "op": "not_in", "values": [5, 6]}
+WEEK_ROW = {"kind": "week", "parity": "odd"}
+IDLE_ROW = {"kind": "demand_window", "op": "not_active", "window_id": None}
+
+
+def _post(http, site, inst, **kw):
+    return http.post(f"{_base(site)}/schedules", json=_body(inst, **kw))
+
+
+def test_create_schedule_with_calendar_conditions(http, db, site):
+    inst = _instance(db, site)
+    r = _post(http, site, inst, conditions=[MONTHS_ROW, DAYS_ROW, WEEK_ROW, IDLE_ROW])
+    assert r.status_code == 201
+    stored = db.get(ActorSchedule, r.json()["id"]).conditions
+    assert stored[0] == {**MONTHS_ROW, "enabled": True}
+    assert [c["kind"] for c in stored] == ["months", "days", "week", "demand_window"]
+
+
+def test_reading_condition_is_stored_without_kind(http, db, site):
+    inst = _instance(db, site)
+    r = _post(http, site, inst, conditions=[ON])
+    assert r.status_code == 201
+    assert "kind" not in db.get(ActorSchedule, r.json()["id"]).conditions[0]
+
+
+def test_ticked_months_row_needs_values(http, db, site):
+    inst = _instance(db, site)
+    empty = {"kind": "months", "op": "in", "values": []}
+    assert _post(http, site, inst, conditions=[empty]).status_code == 422
+    assert _post(http, site, inst, conditions=[{**empty, "enabled": False}]).status_code == 201
+
+
+@pytest.mark.parametrize("row", [
+    {"kind": "months", "op": "in", "values": [13]},
+    {"kind": "months", "op": "in", "values": [0]},
+    {"kind": "days", "op": "in", "values": [7]},
+    {"kind": "week", "parity": "third"},
+    {"kind": "moon"},
+])
+def test_calendar_condition_ranges_and_kinds_rejected(http, db, site, row):
+    inst = _instance(db, site)
+    assert _post(http, site, inst, conditions=[row]).status_code == 422
+
+
+def test_condition_window_must_belong_to_site(http, db, site, user):
+    inst = _instance(db, site)
+    other = Site(owner_user_id=user.id, name="Other", timezone="Australia/Sydney")
+    db.add(other)
+    db.commit()
+    foreign, own = _window(db, other), _window(db, site)
+    row = {"kind": "demand_window", "op": "active", "window_id": foreign.id}
+    r = _post(http, site, inst, conditions=[row])
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_schedule")
+    assert _post(http, site, inst, conditions=[{**row, "window_id": own.id}]).status_code == 201
+    assert _post(http, site, inst, conditions=[{**row, "window_id": 999999, "enabled": False}]).status_code == 201
+
+
+def test_calendar_rows_in_restore_conditions(http, db, site):
+    inst = _instance(db, site)
+    restore = {"when": "after_minutes", "minutes": 60, "only_if": [WEEK_ROW], "early_if": [DAYS_ROW]}
+    assert _post(http, site, inst, restore=restore).status_code == 201
+
+
 def test_condition_enabled_flag_round_trips(http, db, site):
     inst = _instance(db, site)
     body = _body(inst, conditions=[OFF, ON], restore={"when": "after_minutes", "minutes": 60, "only_if": [OFF],

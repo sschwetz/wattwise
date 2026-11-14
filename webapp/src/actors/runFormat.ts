@@ -9,7 +9,7 @@ export function isStale(lastSeen: string | null, now: Date): boolean {
 }
 
 /** The calendar day in a zone as "YYYY-MM-DD". */
-function dayKey(date: Date, timezone: string): string {
+export function dayKey(date: Date, timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 

@@ -8,8 +8,8 @@ from core_api.actor_capabilities import (
 from core_api.actor_schemas import (
     ActionSpec,
     Capabilities,
-    ConditionSpec,
     PriceAboveTrigger,
+    ReadingCondition,
     RetrySpec,
     TemperatureTrigger,
 )
@@ -95,8 +95,8 @@ def test_multi_choice_requires_known_options() -> None:
 
 def test_condition_reading_resolves_device_then_site_ids() -> None:
     caps = make_capabilities()
-    device = ConditionSpec(reading="indoor_temp_c", op="gt", value=27)
-    site = ConditionSpec(reading="outdoor_temp_c", op="gt", value=30)
+    device = ReadingCondition(reading="indoor_temp_c", op="gt", value=27)
+    site = ReadingCondition(reading="outdoor_temp_c", op="gt", value=30)
     validate_conditions_against(caps, SITE_READINGS, [device, site])
     # outdoor_temp_c is also accepted when the device declares it
     caps.readings.append(caps.readings[0].model_copy(update={"id": "outdoor_temp_c"}))
@@ -104,37 +104,37 @@ def test_condition_reading_resolves_device_then_site_ids() -> None:
 
 
 def test_unknown_reading_rejected() -> None:
-    cond = ConditionSpec(reading="humidity", op="lt", value=50)
+    cond = ReadingCondition(reading="humidity", op="lt", value=50)
     with pytest.raises(AppError, match="humidity"):
         validate_conditions_against(make_capabilities(), SITE_READINGS, [cond])
 
 
 def test_zone_target_must_be_a_declared_target_option() -> None:
     caps = make_capabilities()
-    ok = ConditionSpec(reading="zone_temp_c", op="gt", value=25, target="z1")
+    ok = ReadingCondition(reading="zone_temp_c", op="gt", value=25, target="z1")
     validate_conditions_against(caps, SITE_READINGS, [ok])
-    bad = ConditionSpec(reading="zone_temp_c", op="gt", value=25, target="z2")
+    bad = ReadingCondition(reading="zone_temp_c", op="gt", value=25, target="z2")
     with pytest.raises(AppError, match="z2"):
         validate_conditions_against(caps, SITE_READINGS, [bad])
-    no_target = ConditionSpec(reading="indoor_temp_c", op="gt", value=25, target="z1")
+    no_target = ReadingCondition(reading="indoor_temp_c", op="gt", value=25, target="z1")
     with pytest.raises(AppError, match="target"):
         validate_conditions_against(caps, SITE_READINGS, [no_target])
 
 
 def test_condition_enabled_defaults_true() -> None:
-    assert ConditionSpec(reading="indoor_temp_c", op="gt", value=27).enabled is True
-    assert ConditionSpec(reading="indoor_temp_c", op="gt", value=27, enabled=False).enabled is False
+    assert ReadingCondition(reading="indoor_temp_c", op="gt", value=27).enabled is True
+    assert ReadingCondition(reading="indoor_temp_c", op="gt", value=27, enabled=False).enabled is False
 
 
 def test_disabled_condition_is_not_checked() -> None:
     caps = make_capabilities()
-    unknown = ConditionSpec(reading="humidity", op="lt", value=50, enabled=False)
-    bad_target = ConditionSpec(reading="zone_temp_c", op="gt", value=25, target="z9", enabled=False)
+    unknown = ReadingCondition(reading="humidity", op="lt", value=50, enabled=False)
+    bad_target = ReadingCondition(reading="zone_temp_c", op="gt", value=25, target="z9", enabled=False)
     validate_conditions_against(caps, SITE_READINGS, [unknown, bad_target])
 
 
 def test_enabled_condition_with_unknown_reading_still_rejected() -> None:
-    cond = ConditionSpec(reading="humidity", op="lt", value=50, enabled=True)
+    cond = ReadingCondition(reading="humidity", op="lt", value=50, enabled=True)
     with pytest.raises(AppError, match="humidity"):
         validate_conditions_against(make_capabilities(), SITE_READINGS, [cond])
 
@@ -171,7 +171,7 @@ def test_non_finite_number_param_rejected(bad: float) -> None:
 @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
 def test_non_finite_floats_rejected_by_models(bad: float) -> None:
     with pytest.raises(ValidationError):
-        ConditionSpec(reading="indoor_temp_c", op="gt", value=bad)
+        ReadingCondition(reading="indoor_temp_c", op="gt", value=bad)
     with pytest.raises(ValidationError):
         PriceAboveTrigger(type="price_above", c_per_kwh=bad)
     with pytest.raises(ValidationError):

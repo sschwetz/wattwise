@@ -46,7 +46,9 @@ export type TriggerSpec =
 
 export type TemperatureReading = "indoor_temp_c" | "outdoor_temp_c";
 
-export interface ConditionSpec {
+/** A reading is above or below a value. Rows saved before the calendar rows existed have no `kind`. */
+export interface ReadingConditionSpec {
+  kind?: undefined;
   reading: string;
   op: "gt" | "lt";
   value: number;
@@ -55,6 +57,31 @@ export interface ConditionSpec {
   /** False for a switched-off row. Rows saved before the flag existed leave it out and count as on. */
   enabled?: boolean;
 }
+
+/** The site's month (1-12) or day of the week (0 for Monday to 6) is or is not one of `values`. */
+export interface MembershipConditionSpec {
+  kind: "months" | "days";
+  op: "in" | "not_in";
+  values: number[];
+  enabled?: boolean;
+}
+
+/** The week is odd or even, counted from the week holding 1970-01-01 (even). */
+export interface WeekConditionSpec {
+  kind: "week";
+  parity: "odd" | "even";
+  enabled?: boolean;
+}
+
+/** A demand window, or the one named by `window_id`, is or is not running now. */
+export interface DemandWindowConditionSpec {
+  kind: "demand_window";
+  op: "active" | "not_active";
+  window_id: number | null;
+  enabled?: boolean;
+}
+
+export type ConditionSpec = ReadingConditionSpec | MembershipConditionSpec | WeekConditionSpec | DemandWindowConditionSpec;
 
 export type ActionParamValue = number | string | boolean | string[];
 

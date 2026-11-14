@@ -65,6 +65,17 @@ Not in this version: per-action triggers, conditions or delays, conditional flow
 
 Conditions ("only if") all have to pass or the run is skipped. A reading that is missing or stale fails a condition. A device reading is stale after 5 minutes. The site readings (`outdoor_temp_c`, `battery_soc_pct`, `price_c_per_kwh`) come from the [context](#context), where outdoor temperature and battery charge older than 15 minutes are `null`. A condition row can be switched off with its tick box: it is kept but ignored.
 
+Besides readings, a condition can test the calendar and the demand windows. These rows use the site time zone and never fail for missing data:
+
+| Row | Passes when |
+|-----|-------------|
+| Month is / is not | The current month is, or is not, one of the months picked |
+| Day of week is / is not | The current day is, or is not, one of the days picked |
+| Week is odd / even | The week is odd or even. Weeks run Monday to Sunday and count from the week holding 1970-01-01, which is even. A new row starts on the parity of the current week. |
+| Demand window is / is not active | A window, or any window, is running now (start up to but not including end) |
+
+"Only in summer, if it is over 30 outside and over 25 inside, and no demand window is running" is a Month row (Dec, Jan, Feb), two reading rows and a Demand window row set to "is not active". The shapes are in [Data model](data-model.md#actor-tables).
+
 ### Restore
 
 An action that is `restorable` saves the fields it changes (the snapshot) before it acts, then puts them back. The editor offers restore only when every action in the schedule is restorable.
