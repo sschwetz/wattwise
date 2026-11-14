@@ -4,7 +4,6 @@ import datetime
 import logging
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from weatherlink_local_collector import alerts
@@ -17,6 +16,7 @@ from weatherlink_local_collector.core_api_client import (
 )
 from weatherlink_local_collector.mapping import RainState, map_barometer_readings, map_iss_readings, map_live_values
 from weatherlink_local_collector.service_report import start_commit_reporter
+from weatherlink_local_collector.streaming import LiveState, StreamListener
 from weatherlink_local_collector.weatherlink_client import fetch_current_conditions
 
 logger = logging.getLogger("weatherlink_local_collector")
@@ -80,6 +80,7 @@ def poll_once(settings: Settings, source_id: int, config: dict, rain_state: Rain
         alerts.report_failure(settings, source_id, UNREACHABLE_ALERT, message)
         return
     alerts.clear_alert(settings, source_id, UNREACHABLE_ALERT)
+    publish_polled_live(settings, source_id, conditions, data["data"].get("did"))
 
     # map_iss_readings advances rain_state's baseline as a side effect of
     # computing this cycle's rain_mm delta. Snapshot it first so a failed
@@ -150,44 +151,45 @@ def _refresh_sources(settings: Settings, known: dict[int, _Source]) -> dict[int,
     return refreshed
 
 
-# Sources whose last live poll failed. Only the first failure of a streak and
-# the recovery are logged, so an unreachable station does not log every 10 seconds.
+# Sources whose last live push failed. Only the first failure of a streak and
+# the recovery are logged, so a Core API outage does not log every few seconds.
 _live_failing: set[int] = set()
+# The last polled values per source, and whether the UDP stream is delivering.
+# The stream lays its wind over the polled values; see streaming.LiveState.
+_live_state = LiveState()
 
 
-def live_poll_once(settings: Settings, source_id: int, config: dict) -> None:
-    """One live poll for one source. Never raises, and never touches the
+def _push_live(settings: Settings, source_id: int, values: dict[str, float]) -> None:
+    """One live push for one source. Never raises, and never touches the
     pending queue or any rain state: live values are not stored here."""
     try:
-        data = fetch_current_conditions(config["host"])
-        values = map_live_values(data["data"]["conditions"])
-        if values:
-            push_live_sample(
-                settings.core_api_url,
-                source_id,
-                settings.collector_key,
-                datetime.datetime.now(datetime.UTC),
-                values,
-            )
+        push_live_sample(
+            settings.core_api_url, source_id, settings.collector_key, datetime.datetime.now(datetime.UTC), values
+        )
     except Exception:
         if source_id not in _live_failing:
             _live_failing.add(source_id)
-            logger.exception("Live poll failed for source %s", source_id)
+            logger.exception("Live push failed for source %s", source_id)
         return
     if source_id in _live_failing:
         _live_failing.discard(source_id)
-        logger.info("Live poll recovered for source %s", source_id)
+        logger.info("Live push recovered for source %s", source_id)
 
 
-def run_live_loop(settings: Settings, get_sources: Callable[[], dict[int, _Source]], stop: threading.Event) -> None:
-    """Polls every known source each live_poll_seconds until `stop` is set."""
-    while not stop.is_set():
-        started = time.monotonic()
-        for source_id, source in list(get_sources().items()):
-            if stop.is_set():
-                return
-            live_poll_once(settings, source_id, source.config)
-        stop.wait(max(0.0, settings.live_poll_seconds - (time.monotonic() - started)))
+def publish_polled_live(settings: Settings, source_id: int, conditions: list[dict], did: str | None) -> None:
+    """Remembers this poll's values for the stream to lay its wind over, and
+    pushes them as a live sample unless the stream is already doing that. The
+    stream's wind is the latest reading and the poll's is a 1-minute average,
+    so pushing both would flip the wind tile between the two. Never raises."""
+    try:
+        values = map_live_values(conditions)
+        iss = next((c for c in conditions if c["data_structure_type"] == 1), None)
+    except Exception:
+        logger.exception("Failed to map live values for source %s this cycle", source_id)
+        return
+    _live_state.record_poll(source_id, values, iss.get("txid") if iss else None, did)
+    if values and not _live_state.stream_is_live(source_id):
+        _push_live(settings, source_id, values)
 
 
 class _SourceHolder:
@@ -213,9 +215,11 @@ def main() -> None:
             time.sleep(settings.poll_interval_seconds)
     last_refresh = time.monotonic()
     holder = _SourceHolder(sources)
-    threading.Thread(
-        target=run_live_loop, args=(settings, holder.get, threading.Event()), name="live-loop", daemon=True
-    ).start()
+    if settings.stream_enabled:
+        listener = StreamListener(
+            settings, holder.get, _live_state, lambda source_id, values: _push_live(settings, source_id, values)
+        )
+        threading.Thread(target=listener.run, args=(threading.Event(),), name="live-stream", daemon=True).start()
 
     while True:
         # Sleep first so startup isn't itself a poll trigger.

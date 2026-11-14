@@ -82,6 +82,22 @@ def map_barometer_readings(barometer: dict, ts: datetime.datetime) -> list[dict]
     ]
 
 
+def map_stream_values(iss: dict) -> dict[str, float]:
+    """Map the wind fields of a UDP broadcast ISS record to live values. The
+    broadcast carries the latest wind reading, not the 1-minute average the
+    polled values use, so the live tile moves with the wind. A null field is
+    skipped alone."""
+    field_specs = (
+        ("wind_speed_last", "wind_speed_kph", lambda v: v * 1.609344),
+        ("wind_dir_last", "wind_direction_deg", lambda v: v),
+    )
+    return {
+        metric: round(transform(iss[source_key]), 1)
+        for source_key, metric, transform in field_specs
+        if iss.get(source_key) is not None
+    }
+
+
 def map_live_values(conditions: list[dict]) -> dict[str, float]:
     """Map a current-conditions payload to {metric: value} for the live tiles.
 

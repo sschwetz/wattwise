@@ -117,7 +117,27 @@ Rain is the one stateful field. The device reports rain since midnight, so the c
 
 ### Live push
 
-Besides the 60 second stored poll, the collector runs a live loop (`run_live_loop` in `main.py`). Every `LIVE_POLL_SECONDS` (default 10, minimum 2) it reads each source's current conditions and pushes them to `POST /sources/{id}/live/weather`. A value below 2 stops the collector at startup. The live loop skips `rain_mm`, does not touch the rain baseline or the pending queue, and stores nothing. A failed poll or push is logged and dropped; only the first failure of a streak and the recovery are logged, so an unreachable station does not log every 10 seconds.
+Every successful 60 second poll also pushes its values to `POST /sources/{id}/live/weather` (`publish_polled_live` in `main.py`). That is the only HTTP request the collector sends to the device, once a minute. The live push skips `rain_mm`, does not touch the rain baseline or the pending queue, and stores nothing. A failed push is logged and dropped. Only the first failure of a streak and the recovery are logged.
+
+On top of that the collector can stream wind from the device (`streaming.py`). It asks each device for a real-time broadcast with `GET /v1/real_time?duration=N`, listens for the UDP packets the device sends every 2.5 seconds, and pushes each one as a live sample, so the wind tiles move with the wind instead of once a minute.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `STREAM_ENABLED` | `true` | `false` turns streaming off. The collector then only pushes at each poll. |
+| `STREAM_DURATION_SECONDS` | 300 | How long each broadcast request lasts. 30 to 86400. The collector renews at half this time, and retries a failed renewal after 30 seconds. |
+| `STREAM_PORT` | 22222 | The UDP port to listen on. The device broadcasts on 22222. The collector logs a warning if the device reports another port. |
+
+The broadcast carries only wind and rain. Core API keeps one live sample per source, so a wind-only sample would blank the other tiles. The collector keeps the last poll's values and lays each packet's wind (`wind_speed_last`, `wind_dir_last`) over them. Nothing is pushed from the stream until the first poll has run. While packets keep arriving, the poll skips its own live push, because the poll's wind is a 1 minute average and the two would alternate. After 10 seconds without a packet the poll pushes again. Only the transmitter the poll reads is used, so a second ISS cannot swap in its wind. A packet is matched to its source by the device id (`did`) it carries, which the poll reads from `current_conditions`, not by the address it came from. A relay that changes the sender's address therefore makes no difference.
+
+Streaming is optional and falls back by itself. If the broadcast request fails, the port is taken, or no packets arrive, the live tiles update at each poll. A failed request is logged once per streak.
+
+> **Warning:** The device sends the broadcast to its own subnet, and a router does not forward broadcasts. The collector sees packets only if it is on the same subnet as the WeatherLink Live and receives UDP port 22222 (host networking, because a bridge-networked container does not see a subnet broadcast), or if something on the device's subnet forwards them. [`relay/relay.py`](../weatherlink-local-collector/relay/relay.py) is that something: run it on any host in the device's subnet and it hands each datagram from `--source` to `--target` by unicast, so the collector can run anywhere that receives `--target:22222/udp`.
+
+```
+python3 relay.py --source <weatherlink-ip> --target <collector-host-ip> [--device <interface>]
+```
+
+The relay logs when it starts and when forwarding first works or fails. On a gateway, run it from a cron entry under `flock` so one copy stays up and cron restarts it within a minute. Check that entry after each firmware upgrade, because an upgrade may remove it.
 
 ## Amber pricing collector
 

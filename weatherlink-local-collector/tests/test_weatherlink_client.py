@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from weatherlink_local_collector.weatherlink_client import fetch_current_conditions
+from weatherlink_local_collector.weatherlink_client import fetch_current_conditions, request_real_time
 
 
 @respx.mock
@@ -32,3 +32,26 @@ def test_fetch_current_conditions_raises_when_device_reports_error_field():
     )
     with pytest.raises(ValueError):
         fetch_current_conditions("weatherlink.local")
+
+
+@respx.mock
+def test_request_real_time_asks_for_the_duration_and_returns_the_broadcast_port():
+    route = respx.get("http://weatherlink.local/v1/real_time", params={"duration": "300"}).mock(
+        return_value=httpx.Response(200, json={"data": {"broadcast_port": 22222, "duration": 300}, "error": None})
+    )
+
+    assert request_real_time("weatherlink.local", 300) == 22222
+    assert route.called
+
+
+@respx.mock
+def test_request_real_time_raises_when_the_device_has_no_iss_transmitter():
+    respx.get("http://weatherlink.local/v1/real_time").mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": None, "error": {"code": 409, "message": "No ISS Transmitters. Real Time broadcast not enabled"}},
+        )
+    )
+
+    with pytest.raises(ValueError, match="No ISS Transmitters"):
+        request_real_time("weatherlink.local", 300)

@@ -14,3 +14,17 @@ def fetch_current_conditions(host: str) -> dict:
     if data.get("error") is not None:
         raise ValueError(f"WeatherLink reported an error: {data['error']}")
     return data
+
+
+def request_real_time(host: str, duration_seconds: int) -> int:
+    """Asks the device to broadcast live wind and rain over UDP for
+    `duration_seconds`, and returns the UDP port it will use. A request for
+    less time than a running broadcast has left is ignored by the device, and
+    a longer one extends it, so renewing with the same duration is safe. With
+    no ISS transmitter configured the device answers 409 in the error field."""
+    response = httpx.get(f"http://{host}/v1/real_time", params={"duration": duration_seconds}, timeout=5)
+    response.raise_for_status()
+    body = response.json()
+    if body.get("error") is not None:
+        raise ValueError(f"WeatherLink refused the real-time broadcast: {body['error'].get('message')}")
+    return body["data"]["broadcast_port"]

@@ -11,6 +11,7 @@ from weatherlink_local_collector.mapping import (
     map_barometer_readings,
     map_iss_readings,
     map_live_values,
+    map_stream_values,
     rain_size_mm_per_tip,
 )
 
@@ -182,3 +183,15 @@ def test_map_live_values_skips_missing_blocks():
     assert "barometric_pressure_hpa" not in map_live_values(only_iss)
     assert set(map_live_values(only_baro)) == {"barometric_pressure_hpa"}
     assert map_live_values([]) == {}
+
+
+def test_map_stream_values_converts_the_latest_wind_reading():
+    iss = {"data_structure_type": 1, "wind_speed_last": 10.0, "wind_dir_last": 26.7}
+
+    assert map_stream_values(iss) == {"wind_speed_kph": 16.1, "wind_direction_deg": 26.7}
+
+
+def test_map_stream_values_skips_a_null_field_alone():
+    iss = {"data_structure_type": 1, "wind_speed_last": None, "wind_dir_last": 90}
+
+    assert map_stream_values(iss) == {"wind_direction_deg": 90}

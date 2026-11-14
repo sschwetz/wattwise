@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
-import time
 
 import pytest
 
@@ -11,8 +9,7 @@ from weatherlink_local_collector import main as main_module
 from weatherlink_local_collector.config import Settings
 from weatherlink_local_collector.core_api_client import CoreApiError
 from weatherlink_local_collector.mapping import RainState
-
-REAL_RUN_LIVE_LOOP = main_module.run_live_loop
+from weatherlink_local_collector.streaming import LiveState
 
 
 @pytest.fixture(autouse=True)
@@ -521,51 +518,99 @@ def test_main_gives_a_reappearing_source_a_fresh_rain_state(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _reset_live_failure_state():
+def _fresh_live_state(monkeypatch):
     main_module._live_failing.clear()
+    monkeypatch.setattr(main_module, "_live_state", LiveState())
     yield
     main_module._live_failing.clear()
 
 
 @pytest.fixture(autouse=True)
-def _no_live_thread_from_main(monkeypatch):
-    # main() starts the live loop on a thread; keep it from polling in the tests above.
-    monkeypatch.setattr(main_module, "run_live_loop", lambda settings, get_sources, stop: None)
-
-
-def test_live_poll_once_pushes_values(monkeypatch):
-    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
-    pushed = []
+def live_pushes(monkeypatch):
+    """Records the live samples instead of sending them to Core API."""
+    pushed: list = []
     monkeypatch.setattr(
         main_module,
         "push_live_sample",
         lambda base_url, source_id, key, ts, values: pushed.append((source_id, ts, values)),
     )
+    return pushed
 
-    main_module.live_poll_once(SETTINGS, 7, {"host": "weatherlink.local"})
 
-    assert len(pushed) == 1
-    source_id, ts, values = pushed[0]
+class _FakeListener:
+    instances: list = []
+
+    def __init__(self, settings, get_sources, state, push):
+        self.push = push
+        self.ran = False
+        _FakeListener.instances.append(self)
+
+    def run(self, stop):
+        self.ran = True
+
+
+@pytest.fixture(autouse=True)
+def fake_listener(monkeypatch):
+    # main() starts the UDP listener on a thread; keep the tests above from binding a port.
+    _FakeListener.instances = []
+    monkeypatch.setattr(main_module, "StreamListener", _FakeListener)
+    return _FakeListener
+
+
+def test_poll_once_pushes_a_live_sample_from_the_poll(monkeypatch, live_pushes):
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+    monkeypatch.setattr(main_module, "push_weather_readings", lambda *args: None)
+
+    main_module.poll_once(SETTINGS, 7, {"host": "weatherlink.local"}, RainState())
+
+    assert len(live_pushes) == 1
+    source_id, ts, values = live_pushes[0]
     assert source_id == 7
     assert ts.tzinfo is not None
     assert values["temp_c"] == 22.7
     assert "rain_mm" not in values
 
 
-def test_live_poll_failure_is_logged_once_per_streak(monkeypatch, caplog):
+def test_poll_once_leaves_the_live_push_to_the_stream_while_it_is_live(monkeypatch, live_pushes):
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+    monkeypatch.setattr(main_module, "push_weather_readings", lambda *args: None)
+    main_module._live_state.record_poll(7, {"temp_c": 1.0}, txid=None, did=None)
+    main_module._live_state.record_stream(7, {"data_structure_type": 1, "wind_speed_last": 10.0, "wind_dir_last": 90})
+
+    main_module.poll_once(SETTINGS, 7, {"host": "weatherlink.local"}, RainState())
+
+    assert live_pushes == []
+    # the poll still refreshes what the stream lays its wind over
+    merged = main_module._live_state.record_stream(7, {"data_structure_type": 1, "wind_speed_last": 5.0})
+    assert merged["temp_c"] == 22.7
+
+
+def test_poll_once_pushes_live_again_once_the_stream_goes_quiet(monkeypatch, live_pushes):
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
+    monkeypatch.setattr(main_module, "push_weather_readings", lambda *args: None)
+    clock = [0.0]
+    monkeypatch.setattr(main_module, "_live_state", LiveState(clock=lambda: clock[0]))
+    main_module._live_state.record_poll(7, {"temp_c": 1.0}, txid=None, did=None)
+    main_module._live_state.record_stream(7, {"data_structure_type": 1, "wind_speed_last": 10.0})
+    clock[0] = 60.0
+
+    main_module.poll_once(SETTINGS, 7, {"host": "weatherlink.local"}, RainState())
+
+    assert len(live_pushes) == 1
+
+
+def test_live_push_failure_is_logged_once_per_streak(monkeypatch, caplog):
     outcomes = [False, False, False, True, False]
 
-    def fake_fetch(host):
-        if outcomes.pop(0):
-            return CURRENT_CONDITIONS
-        raise OSError("unreachable")
+    def fake_push(base_url, source_id, key, ts, values):
+        if not outcomes.pop(0):
+            raise CoreApiError("down")
 
-    monkeypatch.setattr(main_module, "fetch_current_conditions", fake_fetch)
-    monkeypatch.setattr(main_module, "push_live_sample", lambda *args: None)
+    monkeypatch.setattr(main_module, "push_live_sample", fake_push)
 
     with caplog.at_level(logging.INFO, logger="weatherlink_local_collector"):
         for _ in range(5):
-            main_module.live_poll_once(SETTINGS, 1, {"host": "h"})
+            main_module._push_live(SETTINGS, 1, {"temp_c": 1.0})
 
     failures = [r for r in caplog.records if r.levelno == logging.ERROR]
     recoveries = [r for r in caplog.records if r.levelno == logging.INFO]
@@ -573,35 +618,58 @@ def test_live_poll_failure_is_logged_once_per_streak(monkeypatch, caplog):
     assert len(recoveries) == 1
 
 
-def test_live_poll_leaves_stored_poll_state_alone(monkeypatch):
+def test_live_push_failure_leaves_stored_poll_state_alone(monkeypatch):
     monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
     monkeypatch.setattr(main_module, "push_live_sample", lambda *args: (_ for _ in ()).throw(CoreApiError("x")))
+    pushed = []
+    monkeypatch.setattr(main_module, "push_weather_readings", lambda url, sid, key, readings: pushed.append(readings))
     main_module._pending_readings.clear()
 
-    main_module.live_poll_once(SETTINGS, 1, {"host": "h"})
+    main_module.poll_once(SETTINGS, 1, {"host": "h"}, RainState())
 
+    assert len(pushed) == 1
     assert main_module._pending_readings == {}
 
 
-def test_run_live_loop_polls_every_source_and_stops(monkeypatch):
-    polled = set()
-    monkeypatch.setattr(main_module, "live_poll_once", lambda settings, sid, config: polled.add(sid))
+def test_poll_once_survives_conditions_the_live_mapping_cannot_read(monkeypatch, live_pushes):
+    broken = {"data": {"conditions": [{**CURRENT_CONDITIONS["data"]["conditions"][0], "rain_size": 9}]}, "error": None}
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: broken)
+    monkeypatch.setattr(main_module, "push_weather_readings", lambda *args: None)
+
+    main_module.poll_once(SETTINGS, 1, {"host": "h"}, RainState())
+
+    assert live_pushes == []
+
+
+def test_main_starts_the_stream_listener_when_streaming_is_enabled(monkeypatch, fake_listener):
+    _run_main_for_one_loop(monkeypatch, SETTINGS)
+
+    assert [listener.ran for listener in fake_listener.instances] == [True]
+
+
+def test_main_does_not_start_the_stream_listener_when_streaming_is_disabled(monkeypatch, fake_listener):
     settings = Settings(
         core_api_url="http://x", collector_key="k", poll_interval_seconds=60, discovery_refresh_seconds=300,
-        live_poll_seconds=2,
+        stream_enabled=False,
     )
-    sources = {1: main_module._Source({"host": "a"}, RainState()), 2: main_module._Source({"host": "b"}, RainState())}
-    stop = threading.Event()
-    thread = threading.Thread(target=REAL_RUN_LIVE_LOOP, args=(settings, lambda: sources, stop))
-    thread.start()
-    deadline = time.monotonic() + 3
-    while polled != {1, 2} and time.monotonic() < deadline:
-        time.sleep(0.01)
-    stop.set()
-    thread.join(timeout=1)
 
-    assert polled == {1, 2}
-    assert not thread.is_alive()
+    _run_main_for_one_loop(monkeypatch, settings)
+
+    assert fake_listener.instances == []
+
+
+def _run_main_for_one_loop(monkeypatch, settings):
+    monkeypatch.setattr(main_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": {"host": "h"}}]
+    )
+
+    def _stop(seconds):
+        raise SystemExit
+
+    monkeypatch.setattr(main_module.time, "sleep", _stop)
+    with pytest.raises(SystemExit):
+        main_module.main()
 
 
 def test_main_starts_the_commit_reporter(monkeypatch):
@@ -611,7 +679,6 @@ def test_main_starts_the_commit_reporter(monkeypatch):
     monkeypatch.setattr(
         main_module, "fetch_collector_sources", lambda base_url, key: [{"source_id": 1, "config": {"host": "h"}}]
     )
-    monkeypatch.setattr(main_module, "run_live_loop", lambda *args: None)
 
     def _stop(seconds):
         raise SystemExit

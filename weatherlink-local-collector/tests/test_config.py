@@ -38,26 +38,40 @@ def test_get_settings_raises_if_required_var_missing(monkeypatch):
         get_settings()
 
 
-def test_get_settings_live_poll_seconds_defaults_to_10(monkeypatch):
+def _required_env(monkeypatch):
     monkeypatch.setenv("CORE_API_URL", "http://localhost:8000")
     monkeypatch.setenv("COLLECTOR_KEY", "k")
-    monkeypatch.delenv("LIVE_POLL_SECONDS", raising=False)
-
-    assert get_settings().live_poll_seconds == 10
-
-
-def test_get_settings_accepts_live_poll_seconds_of_5(monkeypatch):
-    monkeypatch.setenv("CORE_API_URL", "http://localhost:8000")
-    monkeypatch.setenv("COLLECTOR_KEY", "k")
-    monkeypatch.setenv("LIVE_POLL_SECONDS", "5")
-
-    assert get_settings().live_poll_seconds == 5
+    for name in ("STREAM_ENABLED", "STREAM_DURATION_SECONDS", "STREAM_PORT"):
+        monkeypatch.delenv(name, raising=False)
 
 
-def test_get_settings_rejects_live_poll_seconds_below_2(monkeypatch):
-    monkeypatch.setenv("CORE_API_URL", "http://localhost:8000")
-    monkeypatch.setenv("COLLECTOR_KEY", "k")
-    monkeypatch.setenv("LIVE_POLL_SECONDS", "1")
+def test_get_settings_stream_defaults(monkeypatch):
+    _required_env(monkeypatch)
 
-    with pytest.raises(RuntimeError, match="LIVE_POLL_SECONDS must be at least 2"):
+    settings = get_settings()
+
+    assert settings.stream_enabled is True
+    assert settings.stream_duration_seconds == 300
+    assert settings.stream_port == 22222
+
+
+def test_get_settings_reads_stream_env_vars(monkeypatch):
+    _required_env(monkeypatch)
+    monkeypatch.setenv("STREAM_ENABLED", "false")
+    monkeypatch.setenv("STREAM_DURATION_SECONDS", "600")
+    monkeypatch.setenv("STREAM_PORT", "22223")
+
+    settings = get_settings()
+
+    assert settings.stream_enabled is False
+    assert settings.stream_duration_seconds == 600
+    assert settings.stream_port == 22223
+
+
+@pytest.mark.parametrize("value", ["29", "86401"])
+def test_get_settings_rejects_stream_duration_outside_the_devices_range(monkeypatch, value):
+    _required_env(monkeypatch)
+    monkeypatch.setenv("STREAM_DURATION_SECONDS", value)
+
+    with pytest.raises(RuntimeError, match="STREAM_DURATION_SECONDS must be between 30 and 86400"):
         get_settings()
