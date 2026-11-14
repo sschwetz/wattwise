@@ -2,6 +2,7 @@ from lib import *
 random.seed(7)
 user("PATCH", "/users/me/profile", {"display_name": "Alex Morgan"})
 sid = user("POST", "/sites", {"name": "Home", "timezone": "Australia/Sydney"})["id"]
+user("PATCH", f"/sites/{sid}", {"latitude": -33.8688, "longitude": 151.2093})
 envoy = user("POST", f"/sites/{sid}/sources", {"kind": "energy", "provider": "envoy", "name": "Main Envoy", "config": {"host": "192.168.1.50", "token": "demo-token", "serial_num": "122200000000"}})
 amber = user("POST", f"/sites/{sid}/sources", {"kind": "pricing", "provider": "amber", "name": "Amber", "config": {"amber_site_id": "01ABCDEFGHJKMNPQRSTVWXYZ00"}})
 wx = user("POST", f"/sites/{sid}/sources", {"kind": "weather", "provider": "weatherlink_live", "name": "Back yard station", "config": {"host": "192.168.1.60"}})

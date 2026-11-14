@@ -2,7 +2,7 @@ import os
 exec(open(os.path.join(os.getcwd(), "scripts/docs-screenshots/shot.py")).read())
 setup(); go("http://localhost:5173/sites/1", 5)
 capture_screenshot(OUT + "dashboard-overview.png", full=True)
-r = js("(()=>{const h=document.querySelector('h1'); let col=h.parentElement; while(col.children.length<4) col=col.parentElement; const first=col.children[1].getBoundingClientRect(); const w=[...document.querySelectorAll('p,div,span')].find(x=>x.children.length==0 && x.innerText.trim()==='Weather').getBoundingClientRect(); return [first.x,first.y+scrollY,first.width,first.height,w.y+scrollY]})()")
+r = js("(()=>{const h=document.querySelector('h1'); let col=h.parentElement; while(col.children.length<4) col=col.parentElement; const first=col.children[1].getBoundingClientRect(); const log=document.querySelector('section[aria-label^=Schedule]'); const top=log?log.getBoundingClientRect().bottom+scrollY+24:first.y+scrollY; const w=[...document.querySelectorAll('p,div,span')].find(x=>x.children.length==0 && x.innerText.trim()==='Weather').getBoundingClientRect(); return [first.x,top,first.width,first.y+scrollY+first.height-top,w.y+scrollY]})()")
 print(r)
 x,y,w,h,wy = r
 clip("dashboard-live-tiles", x, y, w, wy - y - 6)

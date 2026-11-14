@@ -27,7 +27,7 @@ Click **New schedule**. The form has numbered steps. Click **Save schedule** at 
 
 ![The Schedule tab with two schedules listed and the first one open in the editor](images/schedule-list.png)
 
-![Steps 3 to 6 of the editor: Only if, Do this, When it ends and If it fails](images/schedule-editor.png)
+![Steps 3 to 7 of the editor: Only if with a time of day row, Do this, When it ends, How often and If it fails](images/schedule-editor.png)
 
 | Step | What you choose |
 |------|-----------------|
@@ -114,7 +114,7 @@ The bottom of the schedule's card, under **Test now**, lists that schedule's new
 
 If one action of several fails, the others still run and the run is recorded as partial, with the failed action named.
 
-![The air conditioner's current state, each zone and the run history](images/schedule-run-history.png)
+![The Test now button and run history at the bottom of a schedule, then the air conditioner's current state and each zone](images/schedule-run-history.png)
 
 The unit's current state, with each zone, is shown in its own card below the schedule. It reads **Not updating** when the actor has not reported for 2 minutes.
 

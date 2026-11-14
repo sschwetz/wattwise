@@ -42,7 +42,7 @@ Use the site switcher at the top of the sidebar. Pick a site name to open its da
 
 Click your name in the top right corner, then **Site settings**, to open the Settings page (`/settings`). It lists every site you own or have been given access to, including disabled ones.
 
-![Site settings with the General tab open and the Home site selected](images/settings-general.png)
+![The General tab with the name, time zone, latitude and longitude, a map with the site pinned in Sydney and today's sunrise and sunset](images/settings-general.png)
 
 - **Site chips** run along the top, one per site, with **Add** at the end. A disabled site is dimmed with a dashed border.
 - **Tabs** run down the left: **General**, **Collectors**, **Tariffs**, **Billing**, **Schedule** and **Sharing**. The selected site and tab are in the address, so you can bookmark a tab.

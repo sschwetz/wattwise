@@ -29,10 +29,12 @@ elif stage == "ready":
       "zone_ranges_c": {"Study": [20.0, 26.0], "Family": [20.0, 26.0], "Bedrooms": [20.0, 26.0]}, "setpoint_min_c": 16.0, "setpoint_max_c": 30.0, "updated_at": iso(NOW)}})
     s1 = user("POST", f"/sites/{sid}/actors/schedules", {"instance_id": iid, "name": "Off during the weekday peak", "trigger": {"type": "window_start", "window_id": ids["window"]},
       "conditions": [{"reading": "outdoor_temp_c", "op": "lt", "value": 35.0, "target": None, "enabled": True}, {"kind": "months", "op": "in", "values": [11, 12, 1, 2, 3], "enabled": True}],
-      "actions": [{"id": "system_off", "params": {}}], "restore": {"enabled": True, "when": "window_end"}, "notify_email": True})
+      "actions": [{"id": "system_off", "params": {}}], "restore": {"enabled": True, "when": "window_end"}, "limits": {"min_gap_minutes": 30}, "notify_email": True})
     s2 = user("POST", f"/sites/{sid}/actors/schedules", {"instance_id": iid, "name": "Pre-cool before the peak", "trigger": {"type": "time", "time": "14:30", "days_of_week": [0, 1, 2, 3, 4]},
-      "conditions": [{"reading": "outdoor_temp_c", "op": "gt", "value": 28.0, "target": None, "enabled": True}],
-      "actions": [{"id": "set_temperature", "params": {"temperature_c": 22.0}}], "restore": {"enabled": True, "when": "after_minutes", "minutes": 90}})
+      "conditions": [{"reading": "outdoor_temp_c", "op": "gt", "value": 28.0, "target": None, "enabled": True},
+                     {"kind": "time_of_day", "start": {"kind": "sun", "event": "sunrise", "offset_minutes": 60}, "end": {"kind": "sun", "event": "sunset", "offset_minutes": -60}, "enabled": True}],
+      "actions": [{"id": "set_temperature", "params": {"temperature_c": 22.0}}], "restore": {"enabled": True, "when": "after_minutes", "minutes": 90},
+      "limits": {"min_gap_minutes": 30, "run_again_after": {"kind": "sun", "event": "sunrise", "offset_minutes": 0}}})
     ids.update(s1=s1["id"], s2=s2["id"]); json.dump(ids, open("ids.json", "w")); print(s1["id"], s2["id"])
 elif stage == "runs":
     iid = ids["instance"]
