@@ -2,7 +2,7 @@
 
 [Contents](index.md) · Previous: [Sources](05-sources.md) · Next: [Billing](07-billing.md)
 
-The dashboard is the first page of every site. It has five parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing), [today's grid and cost chart](#todays-grid-and-cost-chart) and the [battery chart](#battery-chart). The [Reporting page](#reporting-page) shows the cost for a period you choose.
+The dashboard is the first page of every site. It has five parts, from top to bottom: [live tiles](#live-tiles), [weather tiles](#weather-tiles), [Today's Pricing](#todays-pricing), [today's grid and cost chart](#todays-grid-and-cost-chart) and the [battery chart](#battery-chart). A log appears above them when a collector or schedule has a problem or a notice, or an air conditioner action ran OK in the last 24 hours. The bulb colours and the buttons are in [Schedules](08-schedules.md#the-log). The [Reporting page](#reporting-page) shows the cost for a period you choose.
 
 ![The full dashboard: live tiles, weather, today's pricing chart and today's grid and cost chart](images/dashboard-overview.png)
 
@@ -126,7 +126,7 @@ Open **Reporting** in the sidebar to see a chart and a table of totals for a mon
 
 ### Daily totals
 
-![The Reporting page for October 2026: a month picker, Net and Gross options, a chart and the daily table](images/reporting-days.png)
+![The Reporting page for November 2026: a month picker, Net and Gross options, a chart and the daily table](images/reporting-days.png)
 
 The page has a month picker and **Net** and **Gross** options. Below them is a chart, then a table with one row for each day, ending at today.
 
@@ -200,10 +200,10 @@ Net is the default and matches your retailer's bill. Gross is useful for compari
 
 ### Missing prices
 
-If a minute has energy but no price (for example, before the pricing source was added), WattWise leaves that minute out of the cost instead of guessing. Totals for such periods will be lower than your real bill. See [Troubleshooting](09-troubleshooting.md#costs-look-too-low-or-are-missing).
+If a minute has energy but no price (for example, before the pricing source was added), WattWise leaves that minute out of the cost instead of guessing. Totals for such periods will be lower than your real bill. See [Troubleshooting](10-troubleshooting.md#costs-look-too-low-or-are-missing).
 
 ## Next
 
 - [Billing](07-billing.md): tariffs and cycles that feed the cost figures
-- [Troubleshooting](09-troubleshooting.md) when something looks wrong
-- [Glossary](10-glossary.md) for terms such as demand window and export adjustment
+- [Troubleshooting](10-troubleshooting.md) when something looks wrong
+- [Glossary](11-glossary.md) for terms such as demand window and export adjustment

@@ -1,6 +1,6 @@
-# 9. Troubleshooting
+# 10. Troubleshooting
 
-[Contents](index.md) · Previous: [Account settings](08-account-settings.md) · Next: [Glossary](10-glossary.md)
+[Contents](index.md) · Previous: [Account settings](09-account-settings.md) · Next: [Glossary](11-glossary.md)
 
 Find your symptom below. Each fix links to the chapter with the full steps.
 
@@ -22,7 +22,7 @@ If the live tiles say *Failed to load live readings.*, the web app cannot reach 
 
 ## The Envoy stopped reporting after a reset
 
-The collector pins the Envoy's certificate on first contact. It accepts a new certificate on its own only when the serial number is unchanged and either the firmware version changed or the pinned certificate is within 100 days of expiry; otherwise it refuses it and the Dashboard **Needs attention** tile shows a **Problem** entry. A source whose firmware was never stored cannot be recognised as upgraded; change **Host** once so the next discovery stores it. After a factory reset or replacement, change **Host** (for example, between the IP address and `envoy.local`) and click **Save config**. Changing the host clears the stored certificate and serial number, and the collector pins the device again. You may also need a [new token](05-sources.md#getting-the-token) for the new serial number.
+The collector pins the Envoy's certificate on first contact. It accepts a new certificate on its own only when the serial number is unchanged and either the firmware version changed or the pinned certificate is within 100 days of expiry; otherwise it refuses it and the Dashboard [log](08-schedules.md#the-log) shows a red entry for the source. When it does accept a new certificate, the log shows a notice you can **Dismiss**; see [Certificate pinning](05-sources.md#certificate-pinning). A source whose firmware was never stored cannot be recognised as upgraded; change **Host** once so the next discovery stores it. After a factory reset or replacement, change **Host** (for example, between the IP address and `envoy.local`) and click **Save config**. Changing the host clears the stored certificate and serial number, and the collector pins the device again. You may also need a [new token](05-sources.md#getting-the-token) for the new serial number.
 
 ## Consumption or grid numbers have the wrong sign
 
@@ -37,16 +37,41 @@ If your home's consumption reads negative while importing, your Envoy's consumpt
 | No **Billing Period** tile | No billing cycle. [Add one](07-billing.md#billing-cycles). This is normal until you do. |
 | Fixed fees are missing | The daily charge needs a [tariff](07-billing.md#tariffs). The monthly fee needs a tariff with a monthly fee **and** a billing cycle. |
 | Demand charges are missing | Needs a [demand window](07-billing.md#demand-windows) on the active tariff, a billing cycle, and some days of data. |
-| Tariff change not reflected | Rates apply from the moment a tariff is added, not retroactively. |
+| Tariff change not reflected | A tariff applies from its **Start date**, and costs are worked out when you look, so a start date in the past also changes past days. Check the dates. [End the old tariff and add the new one](07-billing.md#changing-a-tariff) with the start date the new rates began. |
 | Cost is different between Net and Gross | Expected. See [Net and gross cost](06-dashboard.md#net-and-gross-cost). |
 
 ## No prices or pricing chart
 
-1. Save your Amber API key in [Account settings](08-account-settings.md#amber-api-key).
+1. Save your Amber API key in [Account settings](09-account-settings.md#amber-api-key).
 2. Add a [pricing source](05-sources.md#connecting-amber-electric) with the correct **Amber site ID**.
 3. Wait a few minutes. The chart fills as Amber publishes each 5-minute price.
 
 The grid price tile appears only while WattWise knows whether you are importing or exporting.
+
+## A bulb in the log
+
+| Bulb | Meaning and fix |
+|------|-----------------|
+| Red, pulsing | A failure. Click **Open Collectors** or **Open Schedule**, read the message and fix the cause. The row clears itself. |
+| Amber, pulsing | Part of a device still works, for example the weather station reports but its barometer does not. Fix it the same way. |
+| Blue | A notice, such as an Envoy firmware upgrade, or a **Ran OK** row for a schedule run. Nothing is broken. Click **Dismiss** if the row has the button. |
+| Grey centre in a coloured ring | The problem has gone. The row disappears after an hour. |
+
+Messages are one short line. The collector log has the detail, including addresses. See [The log](08-schedules.md#the-log).
+
+## The air conditioner schedule is not working
+
+Open the **Schedule** tab in [Site settings](04-sites.md#site-settings) and the log on the [dashboard](08-schedules.md#the-log).
+
+| Symptom | Cause and fix |
+|---------|---------------|
+| The tab shows a code and a link | The air conditioner is waiting for you to approve it in Actron. [Open the link and enter the code](08-schedules.md#adding-the-air-conditioner). |
+| **Needs sign-in** | Actron rejected the stored sign-in. Click **Sign in again** and approve the new code. |
+| **New schedule** is missing | The actor has not yet reported what your unit can do. Wait a minute. If it stays missing, ask your administrator to check that the actor is running. |
+| The unit stayed off after the window | Look at **Still off** or **Not reporting** on the tile. Check an **Only restore if** row that never passes, then turn the unit on by hand. |
+| The page says **Not updating** | The actor has not reported for 2 minutes. Ask your administrator to check the actor's log. |
+| A run says **Skipped** | Read its message. Common causes are a condition that failed, a reading that was missing, or another schedule holding the unit. |
+| **You took over** | You changed the unit yourself after the action, so WattWise did not restore it. |
 
 ## Weather tiles are missing
 

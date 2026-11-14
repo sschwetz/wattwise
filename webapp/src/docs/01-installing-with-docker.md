@@ -61,7 +61,7 @@ docker compose exec core-api cat /data/initial-admin-password.txt
 ```
 
 2. Open `http://localhost` (or your `FRONTEND_BASE_URL`) and sign in as `admin@example.com`.
-3. [Set up two-factor authentication](03-signing-in.md#setting-up-two-factor-authentication) and change the password in [Account settings](08-account-settings.md).
+3. [Set up two-factor authentication](03-signing-in.md#setting-up-two-factor-authentication) and change the password in [Account settings](09-account-settings.md).
 4. Delete the password file:
 
 ```sh
@@ -90,7 +90,7 @@ Your data lives in a Docker volume named `core_api_data`, so stopping or updatin
 
 ## Updating
 
-Back up first, then pull the new images and restart:
+Back up first (see [Backing up](#backing-up)), then pull the new images and restart:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
@@ -98,6 +98,24 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-o
 ```
 
 Database changes apply automatically when Core API starts.
+
+## Backing up
+
+Everything WattWise stores is in the `core_api_data` volume: the database and profile photos. Copy the database with SQLite's own backup routine, because copying the file while WattWise writes to it can give a damaged copy:
+
+```sh
+docker compose exec core-api python3 -c "
+import sqlite3
+src = sqlite3.connect('/data/core_api.db')
+dst = sqlite3.connect('/data/backup.db')
+src.backup(dst)
+dst.close()
+"
+docker compose cp core-api:/data/backup.db ./wattwise-$(date +%F).db
+docker compose exec core-api rm /data/backup.db
+```
+
+Keep the backup somewhere other than this machine, and keep `SECRETS_ENCRYPTION_KEY` in a different place. The backup cannot be read without that key. Restore steps are in `docs/operations.md` in the repository.
 
 ## Using it outside your home network
 
@@ -223,9 +241,9 @@ After you change `FRONTEND_BASE_URL` or `API_BASE_URL`, run `docker compose up -
 - Update the images regularly, as described under [Updating](#updating).
 - Keep `.env` private. Collector keys and `ACTOR_KEY` protect the endpoints that collectors and the air conditioner actor use, and `SECRETS_ENCRYPTION_KEY` protects stored credentials.
 
-Backups, restores and log-reading are covered in more detail in the repository's `docs/operations.md`.
+Restores, key handling and log-reading are covered in more detail in the repository's `docs/operations.md`.
 
 ## Next
 
 - [Getting started](02-getting-started.md)
-- [Troubleshooting](09-troubleshooting.md)
+- [Troubleshooting](10-troubleshooting.md)
