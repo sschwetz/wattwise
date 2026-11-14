@@ -1,4 +1,5 @@
 // Pure helpers for the month, day, week and demand window condition rows.
+import { dayKey } from "./runFormat";
 import { type ConditionKind, type ConditionRow, pointAtReading, type ReadingChoice } from "./scheduleForm";
 
 const DAY_MS = 86_400_000;
@@ -11,8 +12,7 @@ export function weekNumber(year: number, month: number, day: number): number {
 
 /** Whether the week holding `now` is odd or even, by the calendar day in the site's timezone. */
 export function currentWeekParity(now: Date, timezone: string): "odd" | "even" {
-  const key = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-  const [year, month, day] = key.split("-").map(Number);
+  const [year, month, day] = dayKey(now, timezone).split("-").map(Number);
   return weekNumber(year, month, day) % 2 === 1 ? "odd" : "even";
 }
 

@@ -82,9 +82,8 @@ function KindSelect({ model }: { model: RowModel }) {
   function pick(value: string) {
     const calendarKind = CALENDAR_KINDS.find((k) => k.kind === value);
     if (calendarKind) return onChange(changeKind(row, calendarKind.kind, defaults()));
-    const reading = readings.find((r) => r.id === value);
-    const asReading = row.kind === "reading" ? row : changeKind(row, "reading", defaults());
-    if (asReading.kind === "reading") onChange(pointAtReading({ ...asReading, reading: value }, reading));
+    const base: ReadingRow = row.kind === "reading" ? row : { key: row.key, use: row.use, kind: "reading", reading: "", op: "gt", value: "", target: null };
+    onChange(pointAtReading({ ...base, reading: value }, readings.find((r) => r.id === value)));
   }
   return (
     <select aria-label={`Reading ${number}`} value={row.kind === "reading" ? row.reading : row.kind} onChange={(e) => pick(e.target.value)} className={compactInputClass}>
