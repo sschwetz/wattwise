@@ -67,7 +67,7 @@ function FailureRow({ failure, siteId, timezone }: { failure: ActorFailure; site
   );
 }
 
-const rowKey = (f: ActorFailure) => `${f.kind}-${f.alert_id}-${f.instance_id}-${f.schedule_id}-${f.subject}-${f.message}`;
+const rowKey = (f: ActorFailure) => (f.alert_id !== null ? `alert-${f.alert_id}` : `${f.kind}-${f.instance_id}-${f.schedule_id}`);
 
 function FailureList({ failures, siteId }: { failures: ActorFailure[]; siteId: number }) {
   const timezone = useSites().data?.find((s) => s.id === siteId)?.timezone;

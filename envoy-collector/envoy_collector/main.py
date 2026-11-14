@@ -199,9 +199,13 @@ def _not_an_upgrade_advice(config: dict, device: DeviceInfo) -> str:
     )
 
 
+def _firmware_message(old: str, new: str) -> str:
+    return f"Firmware updated {old} to {new}"
+
+
 def _raise_repinned_notice(settings: Settings, source_id: int, config: dict, device: DeviceInfo, repin: Repin) -> None:
     if repin.firmware_changed:
-        message = f"Firmware updated {config.get('firmware')} to {device.firmware}, certificate re-pinned"
+        message = f"{_firmware_message(str(config.get('firmware')), str(device.firmware))}, certificate re-pinned"
         severity = "failure"
     else:
         message = "Certificate re-pinned before it expired"
@@ -268,7 +272,7 @@ def discover_and_sync_serial(settings: Settings, source_id: int, config: dict) -
     if device.firmware:
         known_firmware = config.get("firmware")
         if known_firmware and known_firmware != device.firmware:
-            message = f"Firmware updated {known_firmware} to {device.firmware}"
+            message = _firmware_message(known_firmware, device.firmware)
             alerts.raise_alert(settings, source_id, FIRMWARE_ALERT, message, severity="notice", sticky=True)
         _sync_discovered(settings, source_id, config, "firmware", device.firmware)
 
@@ -399,7 +403,7 @@ def _token_rejected(settings: Settings, source_id: int, config: dict) -> None:
     alerts.raise_alert(settings, source_id, TOKEN_ALERT, "Envoy token rejected")
 
 
-def _poll_failed(settings: Settings, source_id: int, config: dict, context: str = "") -> None:
+def _poll_failed(settings: Settings, source_id: int, context: str = "") -> None:
     """Logs the exception being handled and counts it towards the unreachable alert."""
     logger.exception("Failed to poll Envoy this cycle%s for source %s", context, source_id)
     alerts.report_failure(settings, source_id, UNREACHABLE_ALERT, "Cannot connect to the Envoy")
@@ -422,7 +426,7 @@ def _recover_from_auth_failure(
     except EnvoyAuthError:
         pass
     except Exception:
-        _poll_failed(settings, source_id, config, " (after config refetch)")
+        _poll_failed(settings, source_id, " (after config refetch)")
         return config, None
     renewed = renew_token(settings, source_id, config)
     if renewed.get("token") == config.get("token"):
@@ -433,7 +437,7 @@ def _recover_from_auth_failure(
     except EnvoyAuthError:
         _token_rejected(settings, source_id, renewed)
     except Exception:
-        _poll_failed(settings, source_id, renewed, " (after token renewal)")
+        _poll_failed(settings, source_id, " (after token renewal)")
     return renewed, None
 
 
@@ -524,7 +528,7 @@ def _collect_readings(
     except EnvoyCertificateMismatch:
         return repin_certificate(settings, source_id, config), None
     except Exception:
-        _poll_failed(settings, source_id, config)
+        _poll_failed(settings, source_id)
         return config, None
 
 

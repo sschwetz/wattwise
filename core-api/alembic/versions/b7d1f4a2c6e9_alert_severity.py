@@ -28,8 +28,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    # Cleared rows would show as live alerts in old code. Sticky rows are real notices, so they stay.
-    op.execute('DELETE FROM alerts WHERE cleared_at IS NOT NULL')
+    # Cleared rows would show as live alerts in old code. Sticky rows are one-off events, and the
+    # old Core API never clears the repinned and firmware codes, so they would stay forever.
+    op.get_bind().execute(sa.text('DELETE FROM alerts WHERE cleared_at IS NOT NULL OR sticky = :t'), {'t': True})
     with op.batch_alter_table('alerts') as batch:
         batch.drop_column('sticky')
         batch.drop_column('cleared_at')

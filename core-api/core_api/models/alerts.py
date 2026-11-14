@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import datetime
 
-import sqlalchemy as sa
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core_api.models.base import Base
@@ -37,4 +36,4 @@ class Alert(Base):
     since: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, default=SEVERITY_FAILURE, server_default=SEVERITY_FAILURE)
     cleared_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    sticky: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa.false())
+    sticky: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())

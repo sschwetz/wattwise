@@ -360,6 +360,11 @@ def test_cleared_alert_is_listed_for_an_hour(db, site):
     assert item.cleared_at == NOW - datetime.timedelta(minutes=59)
 
 
+def test_alert_cleared_exactly_an_hour_ago_is_not_listed(db, site):
+    add_listed_alert(db, site, "edge", cleared_at=NOW - datetime.timedelta(minutes=60))
+    assert current_failures(db, site.id, NOW) == []
+
+
 def test_alert_failure_carries_severity_id_and_sticky(db, site):
     alert = add_listed_alert(db, site, "kept", severity="notice", sticky=True)
     [item] = current_failures(db, site.id, NOW)

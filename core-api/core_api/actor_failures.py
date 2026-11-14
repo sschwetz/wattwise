@@ -71,8 +71,10 @@ class HeldOffFailure:
 
 
 def current_failures(db: Session, site_id: int, now: datetime.datetime) -> list[ActorFailure]:
-    """Every current failure at the site: unresolved first by severity, newest first, then recently cleared alerts. Disabled instances and
-    schedules are included while the condition holds."""
+    """Every current failure at the site.
+
+    Unresolved first by severity, newest first, then recently cleared alerts. Disabled
+    instances and schedules are included while the condition holds."""
     site = db.get(Site, site_id)
     if site is None:
         return []
@@ -123,8 +125,12 @@ def _site_instances(db: Session, site_id: int) -> list[ActorInstance]:
 
 def _alert_failures(db: Session, site_id: int, now: datetime.datetime) -> list[ActorFailure]:
     """The site's alerts. Those of a disabled source or actor instance are left out, since nothing is left to clear them."""
-    stmt = select(Alert).where(Alert.site_id == site_id).order_by(Alert.id)
-    alerts = [a for a in db.scalars(stmt) if a.cleared_at is None or now - as_utc(a.cleared_at) < ALERT_CLEARED_TTL]
+    stmt = (
+        select(Alert)
+        .where(Alert.site_id == site_id, Alert.cleared_at.is_(None) | (Alert.cleared_at > now - ALERT_CLEARED_TTL))
+        .order_by(Alert.id)
+    )
+    alerts = list(db.scalars(stmt))
     if not alerts:
         return []
     sources = {
