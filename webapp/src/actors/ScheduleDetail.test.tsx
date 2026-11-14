@@ -21,7 +21,7 @@ const schedule: ActorSchedule = {
   id: 21, instance_id: 3, name: "Peak off", enabled: true,
   trigger: { type: "time", time: "16:00", days_of_week: [1] }, conditions: [], actions: [{ id: "system_off", params: {} }],
   restore: { enabled: false, when: "window_end", minutes: null, time: null, only_if: [], early_if: [] },
-  retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 }, notify_email: false,
+  retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 }, limits: { min_gap_minutes: 0, run_again_after: null }, notify_email: false,
 };
 
 function run(id: number, outcome: ActorRun["outcome"]): ActorRun {

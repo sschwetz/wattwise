@@ -37,12 +37,20 @@ export interface Capabilities {
   readings: ReadingDecl[];
 }
 
+/** A clock time in site time, or sunrise or sunset at the site moved by up to three hours either way. */
+export type TimeRefSpec =
+  | { kind: "clock"; time: string }
+  | { kind: "sun"; event: "sunrise" | "sunset"; offset_minutes: number };
+
 export type TriggerSpec =
   | { type: "window_start"; window_id: number }
   | { type: "window_end"; window_id: number }
   | { type: "time"; time: string; days_of_week: number[] }
-  | { type: "price_above"; c_per_kwh: number }
-  | { type: "temperature"; reading: TemperatureReading; op: "gt" | "lt"; value: number };
+  | { type: "sun"; event: "sunrise" | "sunset"; offset_minutes: number; days_of_week: number[] }
+  /** `rearm`: after firing, the trigger waits until the price is at or below it. Null waits until it is no longer above the level. */
+  | { type: "price_above"; c_per_kwh: number; rearm?: number | null }
+  /** `rearm`: after firing, the trigger waits until the reading is back at or past it (below for gt, above for lt). */
+  | { type: "temperature"; reading: TemperatureReading; op: "gt" | "lt"; value: number; rearm?: number | null };
 
 export type TemperatureReading = "indoor_temp_c" | "outdoor_temp_c";
 
@@ -81,7 +89,20 @@ export interface DemandWindowConditionSpec {
   enabled?: boolean;
 }
 
-export type ConditionSpec = ReadingConditionSpec | MembershipConditionSpec | WeekConditionSpec | DemandWindowConditionSpec;
+/** The time of day is from `start` up to `end`; an `end` not later than `start` runs through midnight. */
+export interface TimeOfDayConditionSpec {
+  kind: "time_of_day";
+  start: TimeRefSpec;
+  end: TimeRefSpec;
+  enabled?: boolean;
+}
+
+export type ConditionSpec =
+  | ReadingConditionSpec
+  | MembershipConditionSpec
+  | WeekConditionSpec
+  | DemandWindowConditionSpec
+  | TimeOfDayConditionSpec;
 
 export type ActionParamValue = number | string | boolean | string[];
 
@@ -103,6 +124,13 @@ export interface RetrySpec {
   max_attempts: number;
   interval_seconds: number;
   give_up_minutes: number;
+}
+
+/** How often a schedule may fire. `min_gap_minutes` runs from its last restore (or last run); 0 is off.
+ * `run_again_after` holds the trigger until the next such time after its last run. */
+export interface LimitsSpec {
+  min_gap_minutes: number;
+  run_again_after: TimeRefSpec | null;
 }
 
 /** What the actor reports about the unit (actron-neo-actor DeviceState.to_payload). */
@@ -165,6 +193,7 @@ export interface ActorSchedule {
   actions: ActionSpec[];
   restore: RestoreSpec;
   retry: RetrySpec;
+  limits: LimitsSpec;
   notify_email: boolean;
 }
 
@@ -178,6 +207,7 @@ export interface ScheduleBody {
   actions: ActionSpec[];
   restore?: Partial<RestoreSpec>;
   retry?: Partial<RetrySpec>;
+  limits?: Partial<LimitsSpec>;
   notify_email?: boolean;
 }
 

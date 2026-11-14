@@ -12,7 +12,15 @@ vi.mock("../api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
-const site: Site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true };
+vi.mock("./SiteMap", () => ({
+  default: ({ point, onPick }: { point: { latitude: number; longitude: number } | null; onPick: (p: { latitude: number; longitude: number }) => void }) => (
+    <button type="button" onClick={() => onPick({ latitude: -37.8136, longitude: 144.9631 })}>
+      Map {point ? `${point.latitude},${point.longitude}` : "empty"}
+    </button>
+  ),
+}));
+
+const site: Site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, latitude: null, longitude: null };
 
 function renderTab(s: Site = site) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -34,6 +42,7 @@ describe("GeneralTab", () => {
     vi.mocked(apiFetch).mockReset();
     vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === "/api/v1/users/me") return { id: 1, email: "a@b.c" } as never;
+      if (path === "/api/v1/sites/7/sun") return { estimated: true, sunrise: "2026-11-13T19:00:00Z", sunset: "2026-11-14T09:00:00Z" } as never;
       if (init?.method === "PATCH") return { ...site, ...JSON.parse(String(init.body)) } as never;
       return [] as never;
     });
@@ -199,5 +208,87 @@ describe("GeneralTab", () => {
     screen.getByLabelText("Name").focus();
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+  describe("location", () => {
+    const editable = () => waitFor(() => expect(screen.getByLabelText("Latitude")).toBeEnabled());
+
+    it("shows today's sunrise and sunset in the site's time zone", async () => {
+      renderTab();
+      expect(await screen.findByText(/Today: sunrise 06:00, sunset 20:00 \(estimated from the time zone\)/)).toBeInTheDocument();
+    });
+
+    it("saves a point picked on the map", async () => {
+      const user = userEvent.setup();
+      renderTab();
+      await user.click(await screen.findByRole("button", { name: "Map empty" }));
+      expect(screen.getByLabelText("Latitude")).toHaveValue("-37.8136");
+      expect(screen.getByLabelText("Longitude")).toHaveValue("144.9631");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(patchCalls()).toHaveLength(1));
+      expect(JSON.parse(String(patchCalls()[0][1]?.body))).toMatchObject({ latitude: -37.8136, longitude: 144.9631 });
+    });
+
+    it("does not send the location when it is unchanged", async () => {
+      const user = userEvent.setup();
+      renderTab({ ...site, latitude: -33.8, longitude: 151.2 });
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(patchCalls()).toHaveLength(1));
+      expect(JSON.parse(String(patchCalls()[0][1]?.body))).toEqual({ name: "Home", timezone: "Australia/Sydney" });
+    });
+
+    it("clears the location when both boxes are emptied", async () => {
+      const user = userEvent.setup();
+      renderTab({ ...site, latitude: -33.8, longitude: 151.2 });
+      await editable();
+      await user.clear(screen.getByLabelText("Latitude"));
+      await user.clear(screen.getByLabelText("Longitude"));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(patchCalls()).toHaveLength(1));
+      expect(JSON.parse(String(patchCalls()[0][1]?.body))).toMatchObject({ latitude: null, longitude: null });
+    });
+
+    it("refuses half a location without calling the server", async () => {
+      const user = userEvent.setup();
+      renderTab();
+      await editable();
+      await user.type(screen.getByLabelText("Latitude"), "-33.8");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByText(/Enter a latitude/)).toBeInTheDocument();
+      expect(patchCalls()).toHaveLength(0);
+    });
+
+    it("fills the boxes from the device location", async () => {
+      const user = userEvent.setup();
+      const getCurrentPosition = vi.fn((ok: (p: unknown) => void) => ok({ coords: { latitude: -31.9523, longitude: 115.8613 } }));
+      vi.stubGlobal("navigator", { ...navigator, geolocation: { getCurrentPosition } });
+      renderTab();
+      await editable();
+      await user.click(screen.getByRole("button", { name: "Use my location" }));
+      expect(screen.getByLabelText("Latitude")).toHaveValue("-31.9523");
+      expect(screen.getByLabelText("Longitude")).toHaveValue("115.8613");
+      vi.unstubAllGlobals();
+    });
+
+    it("explains a blocked location request", async () => {
+      const user = userEvent.setup();
+      const denied = { code: 1, PERMISSION_DENIED: 1 };
+      const getCurrentPosition = vi.fn((_ok: unknown, fail: (e: unknown) => void) => fail(denied));
+      vi.stubGlobal("navigator", { ...navigator, geolocation: { getCurrentPosition } });
+      renderTab();
+      await editable();
+      await user.click(screen.getByRole("button", { name: "Use my location" }));
+      expect(await screen.findByText(/Location access was blocked/)).toBeInTheDocument();
+      vi.unstubAllGlobals();
+    });
+
+    it("is read-only for a viewer", async () => {
+      vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+        if (path === "/api/v1/users/me") return { id: 99, email: "v@b.c" } as never;
+        return [] as never;
+      });
+      renderTab();
+      await waitFor(() => expect(screen.getByLabelText("Latitude")).toBeDisabled());
+      expect(screen.queryByRole("button", { name: "Use my location" })).not.toBeInTheDocument();
+    });
   });
 });

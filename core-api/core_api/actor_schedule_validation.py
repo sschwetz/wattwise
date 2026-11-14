@@ -11,10 +11,19 @@ from core_api.actor_capabilities import (
     validate_action_against,
     validate_conditions_against,
 )
-from core_api.actor_schemas import Capabilities, ConditionSpec, DemandWindowCondition, ScheduleCreate
+from core_api.actor_schemas import (
+    Capabilities,
+    ConditionSpec,
+    DemandWindowCondition,
+    ScheduleCreate,
+    SunTime,
+    SunTrigger,
+)
 from core_api.errors import AppError
 from core_api.models.actors import ActorInstance
 from core_api.models.billing import DemandWindow, SiteTariff
+from core_api.models.identity import Site
+from core_api.sun import site_location
 
 
 def parse_schedule(data: dict) -> ScheduleCreate:
@@ -70,6 +79,17 @@ def _check_actions(capabilities: Capabilities, schedule: ScheduleCreate) -> None
             raise AppError(exc.status_code, exc.code, f"actions[{index}]: {exc.message}") from exc
 
 
+def _uses_sun(schedule: ScheduleCreate) -> bool:
+    """True when the trigger, a time-of-day row or the lockout names sunrise or sunset."""
+    return isinstance(schedule.trigger, SunTrigger) or any(isinstance(r, SunTime) for r in schedule.time_refs())
+
+
+def _check_sun_location(db: Session, site_id: int, schedule: ScheduleCreate) -> None:
+    site = db.get(Site, site_id)
+    if _uses_sun(schedule) and (site is None or site_location(site) is None):
+        raise AppError(422, "invalid_schedule", "Sunrise and sunset need a site location. Set it on the site's General tab.")
+
+
 def validate_schedule(db: Session, site_id: int, instance: ActorInstance, schedule: ScheduleCreate) -> None:
     """Check every action, every condition and the trigger window against the instance and site."""
     if not instance.capabilities:
@@ -81,3 +101,4 @@ def validate_schedule(db: Session, site_id: int, instance: ActorInstance, schedu
     check_condition_windows(db, site_id, conditions)
     _check_window_belongs_to_site(db, site_id, schedule)
     _check_window_end_restore(schedule)
+    _check_sun_location(db, site_id, schedule)

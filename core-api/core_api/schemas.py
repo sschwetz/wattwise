@@ -200,8 +200,18 @@ class SiteOut(BaseModel):
     name: str
     timezone: str
     enabled: bool
+    latitude: float | None
+    longitude: float | None
 
     model_config = {"from_attributes": True}
+
+
+class SiteSunOut(BaseModel):
+    """Today's sunrise and sunset at the site, null when it has no usable location or the sun does not rise or set."""
+
+    estimated: bool
+    sunrise: AwareDatetime | None
+    sunset: AwareDatetime | None
 
 
 class InviteCreate(BaseModel):
@@ -230,9 +240,20 @@ class PendingInviteOut(BaseModel):
 
 
 class SiteUpdate(BaseModel):
+    """A field left out is unchanged. `latitude` and `longitude` are set or cleared together; null clears."""
+
     name: str | None = None
     timezone: Annotated[str, AfterValidator(validate_timezone)] | None = None
     enabled: bool | None = None
+    latitude: Annotated[float, Field(ge=-90, le=90, allow_inf_nan=False)] | None = None
+    longitude: Annotated[float, Field(ge=-180, le=180, allow_inf_nan=False)] | None = None
+
+    @model_validator(mode="after")
+    def _location_is_a_pair(self) -> SiteUpdate:
+        sent = {"latitude", "longitude"} & self.model_fields_set
+        if sent and (sent != {"latitude", "longitude"} or (self.latitude is None) != (self.longitude is None)):
+            raise ValueError("latitude and longitude must be set together, or both cleared")
+        return self
 
 
 def normalize_tariff_name(name: str | None) -> str:

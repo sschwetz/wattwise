@@ -773,3 +773,145 @@ def test_dismiss_requires_login(db, site):
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db_session] = lambda: db
     assert TestClient(app).delete(f"{_base(site)}/alerts/{alert.id}").status_code == 401
+
+
+# Sun triggers, time-of-day rows, limits and re-arm values
+
+SUNSET_MINUS_30 = {"kind": "sun", "event": "sunset", "offset_minutes": -30}
+CLOCK_23 = {"kind": "clock", "time": "23:00"}
+
+
+def _create(http, site, instance, **kw):
+    return http.post(f"{_base(site)}/schedules", json=_body(instance, **kw))
+
+
+def test_sun_trigger_is_accepted_and_stored(http, db, site):
+    instance = _instance(db, site)
+    trigger = {"type": "sun", "event": "sunrise", "offset_minutes": 15, "days_of_week": [0, 1, 2]}
+    response = _create(http, site, instance, trigger=trigger, restore={"when": "after_minutes", "minutes": 60})
+    assert response.status_code == 201, response.text
+    assert response.json()["trigger"] == trigger
+
+
+@pytest.mark.parametrize(
+    "trigger",
+    [
+        {"type": "sun", "event": "noon", "offset_minutes": 0},
+        {"type": "sun", "event": "sunset", "offset_minutes": 181},
+        {"type": "sun", "event": "sunset", "offset_minutes": -181},
+        {"type": "sun", "event": "sunset", "days_of_week": []},
+    ],
+)
+def test_sun_trigger_rejects_bad_values(http, db, site, trigger):
+    response = _create(http, site, _instance(db, site), trigger=trigger)
+    assert response.status_code == 422
+
+
+def test_time_of_day_condition_is_accepted_in_conditions_and_restore_lists(http, db, site):
+    row = {"kind": "time_of_day", "start": SUNSET_MINUS_30, "end": CLOCK_23, "enabled": True}
+    response = _create(
+        http, site, _instance(db, site), conditions=[row],
+        restore={"when": "after_minutes", "minutes": 60, "only_if": [row], "early_if": [row]},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["conditions"] == [row]
+    assert body["restore"]["only_if"] == [row] and body["restore"]["early_if"] == [row]
+
+
+def test_time_of_day_condition_rejects_identical_ends(http, db, site):
+    row = {"kind": "time_of_day", "start": CLOCK_23, "end": CLOCK_23, "enabled": True}
+    assert _create(http, site, _instance(db, site), conditions=[row]).status_code == 422
+
+
+def test_a_switched_off_time_of_day_row_still_validates_its_times(http, db, site):
+    row = {"kind": "time_of_day", "start": {"kind": "clock", "time": "25:00"}, "end": CLOCK_23, "enabled": False}
+    assert _create(http, site, _instance(db, site), conditions=[row]).status_code == 422
+
+
+def test_limits_default_to_none_and_round_trip(http, db, site):
+    instance = _instance(db, site)
+    plain = _create(http, site, instance).json()
+    assert plain["limits"] == {"min_gap_minutes": 0, "run_again_after": None}
+    limits = {"min_gap_minutes": 30, "run_again_after": {"kind": "sun", "event": "sunrise", "offset_minutes": 0}}
+    response = _create(http, site, instance, limits=limits)
+    assert response.status_code == 201, response.text
+    assert response.json()["limits"] == limits
+
+
+@pytest.mark.parametrize("limits", [{"min_gap_minutes": -1}, {"min_gap_minutes": 1441}, {"run_again_after": {"kind": "clock", "time": "7:00"}}])
+def test_limits_reject_bad_values(http, db, site, limits):
+    assert _create(http, site, _instance(db, site), limits=limits).status_code == 422
+
+
+def test_patching_limits_keeps_the_rest_of_the_schedule(http, db, site):
+    instance = _instance(db, site)
+    made = _create(http, site, instance).json()
+    patched = http.patch(f"{_base(site)}/schedules/{made['id']}", json={"limits": {"min_gap_minutes": 45}})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["limits"] == {"min_gap_minutes": 45, "run_again_after": None}
+    assert patched.json()["trigger"] == made["trigger"]
+
+
+@pytest.mark.parametrize(
+    ("trigger", "ok"),
+    [
+        ({"type": "temperature", "reading": "outdoor_temp_c", "op": "gt", "value": 30, "rearm": 28}, True),
+        ({"type": "temperature", "reading": "outdoor_temp_c", "op": "gt", "value": 30, "rearm": None}, True),
+        ({"type": "temperature", "reading": "outdoor_temp_c", "op": "gt", "value": 30, "rearm": 30}, False),
+        ({"type": "temperature", "reading": "outdoor_temp_c", "op": "gt", "value": 30, "rearm": 32}, False),
+        ({"type": "temperature", "reading": "indoor_temp_c", "op": "lt", "value": 18, "rearm": 20}, True),
+        ({"type": "temperature", "reading": "indoor_temp_c", "op": "lt", "value": 18, "rearm": 16}, False),
+        ({"type": "price_above", "c_per_kwh": 40, "rearm": 35}, True),
+        ({"type": "price_above", "c_per_kwh": 40, "rearm": 45}, False),
+    ],
+)
+def test_rearm_must_lie_back_inside_the_trigger_level(http, db, site, trigger, ok):
+    response = _create(http, site, _instance(db, site), trigger=trigger)
+    assert (response.status_code == 201) is ok, response.text
+
+
+def test_a_new_schedule_is_armed_and_changing_its_trigger_arms_it_again(http, db, site):
+    instance = _instance(db, site)
+    trigger = {"type": "temperature", "reading": "outdoor_temp_c", "op": "gt", "value": 30}
+    made = _create(http, site, instance, trigger=trigger).json()
+    row = db.get(ActorSchedule, made["id"])
+    assert row.armed is True
+    row.armed = False
+    db.commit()
+    http.patch(f"{_base(site)}/schedules/{made['id']}", json={"name": "Renamed"})
+    db.refresh(row)
+    assert row.armed is False
+    http.patch(f"{_base(site)}/schedules/{made['id']}", json={"trigger": {**trigger, "value": 31}})
+    db.refresh(row)
+    assert row.armed is True
+
+
+def _without_a_usable_location(db, site):
+    site.timezone = "Not/AZone"
+    db.commit()
+
+
+def test_a_sun_trigger_needs_a_site_location(http, db, site):
+    instance = _instance(db, site)
+    _without_a_usable_location(db, site)
+    response = _create(http, site, instance, trigger={"type": "sun", "event": "sunset"})
+    assert response.status_code == 422
+    assert "location" in response.json()["message"]
+
+
+def test_sun_rows_and_limits_need_a_site_location(http, db, site):
+    instance = _instance(db, site)
+    _without_a_usable_location(db, site)
+    row = {"kind": "time_of_day", "start": SUNSET_MINUS_30, "end": CLOCK_23, "enabled": True}
+    assert _create(http, site, instance, conditions=[row]).status_code == 422
+    limits = {"run_again_after": {"kind": "sun", "event": "sunrise"}}
+    assert _create(http, site, instance, limits=limits).status_code == 422
+
+
+def test_clock_times_need_no_site_location(http, db, site):
+    instance = _instance(db, site)
+    _without_a_usable_location(db, site)
+    row = {"kind": "time_of_day", "start": {"kind": "clock", "time": "18:00"}, "end": CLOCK_23, "enabled": True}
+    limits = {"run_again_after": CLOCK_23}
+    assert _create(http, site, instance, conditions=[row], limits=limits).status_code == 201

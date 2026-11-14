@@ -5,7 +5,8 @@
   "trigger": {"type": "time", "time": "16:00", "days_of_week": [0, 1, 2, 3, 4]},
   "conditions": [
     {"reading": "outdoor_temp_c", "op": "gt", "value": 30.0, "target": null, "enabled": true},
-    {"kind": "months", "op": "in", "values": [12, 1, 2], "enabled": true}
+    {"kind": "months", "op": "in", "values": [12, 1, 2], "enabled": true},
+    {"kind": "time_of_day", "start": {"kind": "sun", "event": "sunset", "offset_minutes": -30}, "end": {"kind": "clock", "time": "23:00"}, "enabled": true}
   ],
   "actions": [
     {"id": "set_zones", "params": {"zones": ["Family", "Kids"], "enabled": false}}
@@ -26,6 +27,8 @@
     ]
   },
   "retry": {"max_attempts": 3, "interval_seconds": 30, "give_up_minutes": 15},
+  "limits": {"min_gap_minutes": 30, "run_again_after": {"kind": "sun", "event": "sunrise", "offset_minutes": 0}},
+  "armed": true,
   "notify_email": true,
   "created_at": "2026-11-01T00:00:00+00:00"
 }

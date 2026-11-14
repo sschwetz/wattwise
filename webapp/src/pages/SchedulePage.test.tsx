@@ -41,7 +41,7 @@ function schedule(id: number, name: string): ActorSchedule {
     conditions: [], actions: [{ id: "turn_off", params: {} }],
     restore: { enabled: false, when: "window_end", minutes: null, time: null, only_if: [], early_if: [] },
     retry: { max_attempts: 3, interval_seconds: 60, give_up_minutes: 30 },
-    notify_email: false,
+    limits: { min_gap_minutes: 0, run_again_after: null }, notify_email: false,
   };
 }
 

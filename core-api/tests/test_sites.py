@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import User
 from core_api.security import create_access_token
@@ -187,3 +189,75 @@ def test_patch_site_rejects_unknown_timezone(client, app_and_db_url):
     resp = client.patch(f"/api/v1/sites/{site['id']}", json={"timezone": "Mars/Olympus"}, headers=auth(owner_id))
     assert resp.status_code == 422
     assert client.get(f"/api/v1/sites/{site['id']}", headers=auth(owner_id)).json()["timezone"] == "Australia/Sydney"
+
+
+def _site(client, db_url, email):
+    owner_id = make_user(db_url, email)
+    site_id = client.post(
+        "/api/v1/sites", json={"name": "Home", "timezone": "Australia/Sydney"}, headers=auth(owner_id)
+    ).json()["id"]
+    return owner_id, site_id
+
+
+def test_new_site_has_no_location(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = _site(client, db_url, "loc1@example.com")
+    body = client.get(f"/api/v1/sites/{site_id}", headers=auth(owner_id)).json()
+    assert (body["latitude"], body["longitude"]) == (None, None)
+
+
+def test_owner_sets_and_clears_the_site_location(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = _site(client, db_url, "loc2@example.com")
+    url = f"/api/v1/sites/{site_id}"
+    set_ = client.patch(url, json={"latitude": -33.8688, "longitude": 151.2093}, headers=auth(owner_id))
+    assert set_.status_code == 200
+    assert (set_.json()["latitude"], set_.json()["longitude"]) == (-33.8688, 151.2093)
+    # A patch that leaves the location out keeps it.
+    kept = client.patch(url, json={"name": "Renamed"}, headers=auth(owner_id)).json()
+    assert (kept["latitude"], kept["longitude"]) == (-33.8688, 151.2093)
+    cleared = client.patch(url, json={"latitude": None, "longitude": None}, headers=auth(owner_id)).json()
+    assert (cleared["latitude"], cleared["longitude"]) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"latitude": -33.8},
+        {"longitude": 151.2},
+        {"latitude": -33.8, "longitude": None},
+        {"latitude": 91, "longitude": 0},
+        {"latitude": -91, "longitude": 0},
+        {"latitude": 0, "longitude": 181},
+        {"latitude": 0, "longitude": -181},
+    ],
+)
+def test_patch_site_rejects_a_partial_or_out_of_range_location(client, app_and_db_url, payload):
+    _, db_url = app_and_db_url
+    owner_id, site_id = _site(client, db_url, "loc3@example.com")
+    response = client.patch(f"/api/v1/sites/{site_id}", json=payload, headers=auth(owner_id))
+    assert response.status_code == 422
+
+
+def test_site_sun_reports_today_for_a_site_with_a_location(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = _site(client, db_url, "sun1@example.com")
+    client.patch(f"/api/v1/sites/{site_id}", json={"latitude": -33.8688, "longitude": 151.2093}, headers=auth(owner_id))
+    body = client.get(f"/api/v1/sites/{site_id}/sun", headers=auth(owner_id)).json()
+    assert body["estimated"] is False
+    assert body["sunrise"] < body["sunset"]
+
+
+def test_site_sun_is_estimated_from_the_time_zone_without_a_location(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id, site_id = _site(client, db_url, "sun2@example.com")
+    body = client.get(f"/api/v1/sites/{site_id}/sun", headers=auth(owner_id)).json()
+    assert body["estimated"] is True
+    assert body["sunrise"] is not None and body["sunset"] is not None
+
+
+def test_site_sun_is_hidden_from_strangers(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    _, site_id = _site(client, db_url, "sun3@example.com")
+    stranger = make_user(db_url, "sun3-stranger@example.com")
+    assert client.get(f"/api/v1/sites/{site_id}/sun", headers=auth(stranger)).status_code == 404

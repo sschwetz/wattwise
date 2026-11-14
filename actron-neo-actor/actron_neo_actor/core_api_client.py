@@ -121,6 +121,12 @@ class CoreApiClient:
         body = self._request("GET", f"/instances/{instance_id}/schedules", "fetch schedules", 200)
         return _parsed("schedules", body, lambda b: [Schedule.from_json(s, instance_id) for s in b])
 
+    def set_schedule_armed(self, instance_id: int, schedule_id: int, armed: bool) -> None:
+        """Clears the flag when a price or temperature trigger fires and sets it when the trigger may fire again."""
+        self._request(
+            "PATCH", f"/instances/{instance_id}/schedules/{schedule_id}", "set schedule armed", 204, json={"armed": armed}
+        )
+
     def get_context(self, instance_id: int) -> Context:
         body = self._request("GET", f"/instances/{instance_id}/context", "fetch context", 200)
         return _parsed("context", body, Context.from_json)

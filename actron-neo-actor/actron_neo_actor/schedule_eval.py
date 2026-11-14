@@ -5,12 +5,12 @@ do I/O; callers pass `now` where time matters."""
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from actron_neo_actor.models import Condition, Context, Run, Schedule, Trigger, WindowOccurrence
+from actron_neo_actor.models import Condition, Context, Run, Schedule, TimeRef, Trigger, WindowOccurrence
 
 GRACE = timedelta(minutes=10)
 LOOKBACK = timedelta(hours=24)
@@ -24,12 +24,16 @@ PRICE_STEP_SECONDS = 300
 class DueTrigger:
     trigger_at: datetime
     label: str
+    # Set when a limit on the schedule holds this trigger back: why, for the skipped run that records it.
+    blocked: str | None = None
 
 
 @dataclass(frozen=True)
 class ConditionResult:
     passed: bool
     reason: str | None = None
+    # A failure for want of data (sun times) rather than because the condition is false.
+    unavailable: bool = False
 
 
 # --- local clock helpers -------------------------------------------------
@@ -84,6 +88,31 @@ def _time_trigger_instants(
     return out
 
 
+# --- time references ----------------------------------------------------
+
+
+def ref_instant(ref: TimeRef, day: date, context: Context) -> datetime | None:
+    """The instant `ref` falls on local date `day`, or None when the sun gives no time that day or the context has none."""
+    if ref.kind == "clock":
+        return _local_instant(day, _parse_hhmm(ref.time or ""), ZoneInfo(context.timezone))
+    entry = next((d for d in context.sun if d.date == day), None)
+    event = None if entry is None else (entry.sunrise if ref.event == "sunrise" else entry.sunset)
+    return None if event is None else event + timedelta(minutes=ref.offset_minutes)
+
+
+def next_after(ref: TimeRef, after: datetime, context: Context) -> datetime | None:
+    """The first occurrence of `ref` after `after`, or None when none is known."""
+    first = after.astimezone(ZoneInfo(context.timezone)).date()
+    found = (ref_instant(ref, first + timedelta(days=n), context) for n in range(-1, 3))
+    return min((at for at in found if at is not None and at > after), default=None)
+
+
+def _ref_label(ref: TimeRef) -> str:
+    if ref.kind == "clock":
+        return ref.time or ""
+    return f"{ref.event} {ref.offset_minutes:+d} min" if ref.offset_minutes else str(ref.event)
+
+
 # --- triggers ------------------------------------------------------------
 
 
@@ -107,6 +136,23 @@ def _time_candidates(schedule: Schedule, context: Context, now: datetime) -> lis
     return [DueTrigger(at, trigger.time) for at in instants]
 
 
+def _sun_candidates(schedule: Schedule, context: Context, now: datetime) -> list[DueTrigger]:
+    trigger = schedule.trigger
+    if trigger.event is None or trigger.days_of_week is None:
+        return []
+    ref = TimeRef("sun", event=trigger.event, offset_minutes=trigger.offset_minutes)
+    tz = ZoneInfo(context.timezone)
+    first = (now - LOOKBACK).astimezone(tz).date() - timedelta(days=1)
+    last = now.astimezone(tz).date() + timedelta(days=1)
+    found = []
+    for offset in range((last - first).days + 1):
+        day = first + timedelta(days=offset)
+        at = ref_instant(ref, day, context) if day.weekday() in trigger.days_of_week else None
+        if at is not None:
+            found.append(DueTrigger(at, _ref_label(ref)))
+    return found
+
+
 def _candidates(schedule: Schedule, context: Context, now: datetime, existing: set[datetime]) -> list[DueTrigger]:
     """Non-price triggers inside [max(created_at, now - 24h), now] not yet recorded."""
     if not schedule.enabled:
@@ -116,6 +162,8 @@ def _candidates(schedule: Schedule, context: Context, now: datetime, existing: s
         found = _window_candidates(schedule, context)
     elif kind == "time":
         found = _time_candidates(schedule, context, now)
+    elif kind == "sun":
+        found = _sun_candidates(schedule, context, now)
     else:
         return []
     floor = max(schedule.created_at, now - LOOKBACK)
@@ -132,35 +180,64 @@ def _level_label(trigger: Trigger) -> str:
     return f"{trigger.reading} {_WORDS.get(trigger.op or '', trigger.op)} {trigger.value:g}"
 
 
+def _level_value(
+    schedule: Schedule, context: Context, readings: Mapping[str, float], stale: set[str]
+) -> float | None:
+    """The price or temperature a level trigger watches, or None when it is unknown or the trigger has no level.
+    A temperature uses the device reading first, then the site's."""
+    trigger = schedule.trigger
+    if trigger.type == "price_above":
+        price = context.price_c_per_kwh
+        return price if price is not None and math.isfinite(price) else None
+    if trigger.type == "temperature" and trigger.reading:
+        return _lookup(trigger.reading, readings, stale, context)
+    return None
+
+
+def _passes(trigger: Trigger, value: float) -> bool | None:
+    """Whether `value` is past the trigger's level; None when the trigger has no level."""
+    if trigger.type == "price_above":
+        return None if trigger.c_per_kwh is None else value > trigger.c_per_kwh
+    if trigger.op and trigger.value is not None:
+        return _holds(Condition(trigger.reading or "", trigger.op, trigger.value), value)
+    return None
+
+
 def level_met(
     schedule: Schedule, context: Context, readings: Mapping[str, float], stale: set[str]
 ) -> bool | None:
     """Whether a price or temperature trigger's level is passed now; None when the value is unknown
-    or the trigger is not a level trigger. A temperature uses the device reading first, then the site's."""
+    or the trigger is not a level trigger."""
+    value = _level_value(schedule, context, readings, stale)
+    return None if value is None else _passes(schedule.trigger, value)
+
+
+def rearm_due(schedule: Schedule, context: Context, readings: Mapping[str, float], stale: set[str]) -> bool:
+    """True when a level trigger that has fired may fire again. With a `rearm` value the reading must be
+    back at or past it; without one it must no longer pass the level. An unknown reading never re-arms."""
     trigger = schedule.trigger
-    if trigger.type == "price_above":
-        price = context.price_c_per_kwh
-        if trigger.c_per_kwh is None or price is None or not math.isfinite(price):
-            return None
-        return price > trigger.c_per_kwh
-    if trigger.type == "temperature" and trigger.reading and trigger.op and trigger.value is not None:
-        value = _lookup(trigger.reading, readings, stale, context)
-        return None if value is None else _holds(Condition(trigger.reading, trigger.op, trigger.value), value)
-    return None
+    value = _level_value(schedule, context, readings, stale)
+    if trigger.type not in LEVEL_TRIGGERS or value is None:
+        return False
+    if trigger.rearm is None:
+        return _passes(trigger, value) is False
+    return value <= trigger.rearm if trigger.type == "price_above" or trigger.op == "gt" else value >= trigger.rearm
 
 
-def _level_crossing(
-    schedule: Schedule, now: datetime, existing: set[datetime], met: bool | None, was_met: bool | None
-) -> list[DueTrigger]:
-    """One trigger per crossing, stamped to the 5-minute step. A level already passed before the
-    actor started counts as a crossing, because `was_met` is unknown then."""
-    if met is not True or was_met is True:
-        return []
+def _level_due(schedule: Schedule, now: datetime, existing: set[datetime], blocked: datetime | None) -> list[DueTrigger]:
+    """One trigger per firing, stamped to the 5-minute step. A limit that still holds leaves the trigger armed
+    and unrecorded, so it fires when the limit ends if the level is still passed."""
     step = int(now.timestamp()) // PRICE_STEP_SECONDS * PRICE_STEP_SECONDS
     at = datetime.fromtimestamp(step, UTC)
-    if at in existing:
+    if at in existing or (blocked is not None and now < blocked):
         return []
     return [DueTrigger(at, _level_label(schedule.trigger))]
+
+
+def _block_reason(blocked: datetime | None, at: datetime, timezone: str) -> str | None:
+    if blocked is None or at >= blocked:
+        return None
+    return f"waiting until {blocked.astimezone(ZoneInfo(timezone)):%a %H:%M}"
 
 
 def due_triggers(
@@ -168,19 +245,26 @@ def due_triggers(
     context: Context,
     now: datetime,
     existing_trigger_ats: set[datetime],
-    was_met: bool | None,
+    armed: bool,
     readings: Mapping[str, float] | None = None,
     stale: set[str] | None = None,
+    runs: Sequence[Run] = (),
 ) -> list[DueTrigger]:
-    """Triggers at most 10 minutes old that have no run yet. `was_met` is whether a level trigger's
-    level was passed at the last look; `readings` and `stale` are the device's, for temperature triggers."""
+    """Triggers at most 10 minutes old that have no run yet. A level trigger fires only while `armed`;
+    `readings` and `stale` are the device's, for temperature triggers. `runs` are the instance's recent runs,
+    for the schedule's limits. A time or window trigger a limit holds back is returned with `blocked` set."""
     if not schedule.enabled:
         return []
+    blocked = blocked_until(schedule, context, runs)
     if schedule.trigger.type in LEVEL_TRIGGERS:
         met = level_met(schedule, context, readings or {}, stale or set())
-        return _level_crossing(schedule, now, existing_trigger_ats, met, was_met)
+        return _level_due(schedule, now, existing_trigger_ats, blocked) if met is True and armed else []
     found = _candidates(schedule, context, now, existing_trigger_ats)
-    return [d for d in found if now - d.trigger_at <= GRACE]
+    return [
+        DueTrigger(d.trigger_at, d.label, _block_reason(blocked, d.trigger_at, context.timezone))
+        for d in found
+        if now - d.trigger_at <= GRACE
+    ]
 
 
 def missed_triggers(
@@ -189,6 +273,26 @@ def missed_triggers(
     """Triggers more than 10 minutes old that have no run yet. Price crossings never qualify."""
     found = _candidates(schedule, context, now, existing_trigger_ats)
     return [d for d in found if now - d.trigger_at > GRACE]
+
+
+# --- limits --------------------------------------------------------------
+
+
+def blocked_until(schedule: Schedule, context: Context, runs: Sequence[Run]) -> datetime | None:
+    """The instant before which the schedule may not trigger, or None when no limit holds.
+    The minimum gap runs from the end of the schedule's last restore or run, and "run again after"
+    from the start of its last run. Skipped runs and test runs do not count."""
+    limits = schedule.limits
+    mine = [r for r in runs if r.schedule_id == schedule.id and r.kind in ("action", "restore") and r.outcome != "skipped"]
+    ends: list[datetime] = []
+    if mine and limits.min_gap_minutes > 0:
+        ends.append(max(r.finished_at or r.trigger_at for r in mine) + timedelta(minutes=limits.min_gap_minutes))
+    actions = [r.trigger_at for r in mine if r.kind == "action"]
+    if actions and limits.run_again_after is not None:
+        waits = next_after(limits.run_again_after, max(actions), context)
+        if waits is not None:
+            ends.append(waits)
+    return max(ends, default=None)
 
 
 # --- restore -------------------------------------------------------------
@@ -308,6 +412,31 @@ def _window_result(cond: Condition, context: Context) -> ConditionResult:
     return ConditionResult(False, f"unsupported comparison: {cond.op}")
 
 
+def _spans(cond: Condition, day: date, context: Context) -> tuple[datetime, datetime] | None:
+    """The span the row covers starting on local date `day`; one that ends by its start runs into the next day."""
+    if cond.start is None or cond.end is None:
+        return None
+    start = ref_instant(cond.start, day, context)
+    end = ref_instant(cond.end, day, context)
+    if start is not None and end is not None and end <= start:
+        end = ref_instant(cond.end, day + timedelta(days=1), context)
+    return None if start is None or end is None else (start, end)
+
+
+def _time_of_day_result(cond: Condition, context: Context) -> ConditionResult:
+    """Passes when now is inside the span that started today or yesterday. A span that cannot be placed
+    because the sun gives no time counts as unavailable unless another span holds now."""
+    if cond.start is None or cond.end is None:
+        return ConditionResult(False, "time of day row has no times")
+    local = context.now.astimezone(ZoneInfo(context.timezone))
+    spans = [_spans(cond, local.date() - timedelta(days=n), context) for n in (1, 0)]
+    if any(span is not None and span[0] <= context.now < span[1] for span in spans):
+        return ConditionResult(True)
+    if any(span is None for span in spans):
+        return ConditionResult(False, "sun times unavailable", unavailable=True)
+    return ConditionResult(False, f"time {local:%H:%M} is outside {_ref_label(cond.start)} to {_ref_label(cond.end)}")
+
+
 def _calendar_result(cond: Condition, context: Context) -> ConditionResult:
     """The result of a month, day, week or demand window row."""
     local = context.now.astimezone(ZoneInfo(context.timezone))
@@ -319,6 +448,8 @@ def _calendar_result(cond: Condition, context: Context) -> ConditionResult:
         return _week_result(cond, local)
     if cond.kind == "demand_window":
         return _window_result(cond, context)
+    if cond.kind == "time_of_day":
+        return _time_of_day_result(cond, context)
     return ConditionResult(False, f"unsupported condition: {cond.kind}")
 
 
@@ -350,7 +481,8 @@ def restore_gate_passes(
     """Like evaluate_conditions, but a missing or stale reading passes so it never keeps the unit off."""
     for cond in _switched_on(conditions):
         if cond.kind != "reading":
-            if not _calendar_result(cond, context).passed:
+            result = _calendar_result(cond, context)
+            if not (result.passed or result.unavailable):
                 return False
             continue
         value = _lookup(_key(cond), readings, stale, context)

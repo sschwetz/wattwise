@@ -49,6 +49,8 @@ erDiagram
         string name
         string timezone "IANA name, e.g. Australia/Sydney"
         bool enabled "false stops collection"
+        float latitude "null with longitude when no point is set"
+        float longitude
     }
     SITE_INVITE {
         int id PK
@@ -93,7 +95,7 @@ erDiagram
 | Table | Purpose |
 |---|---|
 | `users` | Email, bcrypt password hash, TOTP secret, optional Amber API key. The Amber key belongs to the user, not a site. The TOTP secrets and the Amber key are encrypted at rest. |
-| `sites` | A property. Has one owner and an IANA time zone that all local-time rules use. `enabled` (default true) switches collection off; see [Disabled sites](#disabled-sites). |
+| `sites` | A property. Has one owner and an IANA time zone that all local-time rules use. `enabled` (default true) switches collection off; see [Disabled sites](#disabled-sites). `latitude` and `longitude` (nullable floats, migration `a9c3e5f7b1d4`) are the point used for sunrise and sunset. Both are set or both are null. Core API checks -90 to 90 and -180 to 180 on write. With no point, [`sun.py`](../core-api/core_api/sun.py) estimates from the time zone's reference city. |
 | `site_access` | Extra read-only grants. The only role today is `viewer`. Ownership is `sites.owner_user_id` and nowhere else. Permission checks read this table. It is written by accepting an invite and deleted by revoking one. |
 | `site_invites` | Emailed invitations to view a site. Append-only record, see [Invitations](#invitations). |
 | `recovery_codes` | One-time TOTP recovery codes, stored as a keyed HMAC (not reversible, and useless without `SECRETS_ENCRYPTION_KEY`). Ten 16-character codes are issued at enrolment. |
@@ -260,12 +262,12 @@ There is one row per (`subject_kind`, `subject_id`, `code`), so a source can sho
 
 ## Actor tables
 
-Three tables hold the [actors](actors.md) feature. The migrations are `895863e431c6` and `e5a7c9b1d3f2` (multi-action schedules). The downgrade of `e5a7c9b1d3f2` maps `partial` runs to `failed`. A downgrade while a `partial` run holds the unit needs a manual restore, because the old code treats the run as `failed` and cannot read the list-form snapshot.
+Three tables hold the [actors](actors.md) feature. The migrations are `895863e431c6`, `e5a7c9b1d3f2` (multi-action schedules) and `c4e6a8b0d2f3` (`limits` and `armed`). The downgrade of `e5a7c9b1d3f2` maps `partial` runs to `failed`. A downgrade while a `partial` run holds the unit needs a manual restore, because the old code treats the run as `failed` and cannot read the list-form snapshot.
 
 | Table | Purpose |
 |---|---|
 | `actor_instances` | One signed-in device account at a site. Columns: `site_id`, `provider` (free text, `actron_neo` today), `name`, `enabled`, `config` (`EncryptedJSON`, holds the refresh token), `auth_state` (`EncryptedJSON`, holds the sign-in code and link), `capabilities`, `capabilities_updated_at`, `latest_readings`, `last_seen_at` (set when the actor reports readings). |
-| `actor_schedules` | One schedule on one instance, with 1 to 8 actions: `instance_id`, `name`, `enabled`, `trigger`, `conditions`, `actions`, `restore`, `retry`, `notify_email` (default false), `created_at`. |
+| `actor_schedules` | One schedule on one instance, with 1 to 8 actions: `instance_id`, `name`, `enabled`, `trigger`, `conditions`, `actions`, `restore`, `retry`, `limits` (JSON, default `{}`), `armed` (boolean, default true), `notify_email` (default false), `created_at`. `armed` is the state of a level trigger: see [Level triggers](actors.md#level-triggers). |
 | `actor_runs` | One row per attempt: `schedule_id`, `kind`, `trigger_at`, `started_at`, `finished_at`, `outcome`, `message`, `attempts`, `steps`, `parent_run_id`, `snapshot`, `watchdog_notified_at`. |
 
 `kind` is `action`, `restore` or `test`. `outcome` is `pending`, `running`, `ok`, `skipped`, `partial`, `failed` or `overridden`. Both are text with a `CHECK` constraint. A unique constraint on (`schedule_id`, `kind`, `trigger_at`) stops a restart or a second actor process from running the same trigger twice. `parent_run_id` is set on restore rows only, is indexed, and points at the action run that holds the snapshot. Deleting a schedule or instance deletes its runs; the API does this because the foreign keys have no cascade.
@@ -282,11 +284,12 @@ Core API validates these on write with the models in [`actor_schemas.py`](../cor
 { "type": "window_start", "window_id": 12 }
 { "type": "window_end", "window_id": 12 }
 { "type": "time", "time": "16:00", "days_of_week": [0, 1, 2, 3, 4] }
-{ "type": "price_above", "c_per_kwh": 60.0 }
-{ "type": "temperature", "reading": "outdoor_temp_c", "op": "gt", "value": 30.0 }
+{ "type": "sun", "event": "sunset", "offset_minutes": -30, "days_of_week": [0, 1, 2, 3, 4] }
+{ "type": "price_above", "c_per_kwh": 60.0, "rearm": 40.0 }
+{ "type": "temperature", "reading": "outdoor_temp_c", "op": "gt", "value": 30.0, "rearm": 28.0 }
 ```
 
-`days_of_week` defaults to all seven days (0 is Monday) and needs at least one. `window_id` must be a demand window of the site's tariffs. For `temperature`, `reading` is `indoor_temp_c` or `outdoor_temp_c` and `op` is `gt` or `lt`.
+`days_of_week` on `time` and `sun` defaults to all seven days (0 is Monday) and needs at least one. `event` is `sunrise` or `sunset` and `offset_minutes` is -180 to 180 (default 0). `rearm` is optional and null by default. It must be below `c_per_kwh`, below `value` for `gt`, and above `value` for `lt`. `window_id` must be a demand window of the site's tariffs. For `temperature`, `reading` is `indoor_temp_c` or `outdoor_temp_c` and `op` is `gt` or `lt`.
 
 `conditions` is a list. `restore.only_if` and `restore.early_if` use the same item shape:
 
@@ -296,16 +299,19 @@ Core API validates these on write with the models in [`actor_schemas.py`](../cor
 
 `op` is `gt` or `lt`. `target` names one of a reading's declared targets, such as a zone. `enabled` defaults to true; a row saved before the field existed counts as enabled. A row with `enabled: false` is kept and ignored.
 
-That is a reading row. Four more kinds of row carry a `kind`, and all of them use the site's time zone:
+That is a reading row. Five more kinds of row carry a `kind`, and all of them use the site's time zone:
 
 ```json
 { "kind": "months", "op": "in", "values": [12, 1, 2], "enabled": true }
 { "kind": "days", "op": "not_in", "values": [5, 6], "enabled": true }
 { "kind": "week", "parity": "odd", "enabled": true }
 { "kind": "demand_window", "op": "not_active", "window_id": null, "enabled": true }
+{ "kind": "time_of_day", "start": { "kind": "sun", "event": "sunset", "offset_minutes": 0 }, "end": { "kind": "clock", "time": "23:00" }, "enabled": true }
 ```
 
 `months` takes 1 to 12 and `days` takes 0 (Monday) to 6; both need at least one value unless the row is switched off. `op` is `in` or `not_in`. `week` is `odd` or `even`: weeks run Monday to Sunday and the week holding 1970-01-01 is week 0, which is even, so the pattern needs no start date and does not slip at the year end. `demand_window` is `active` or `not_active` for the window named by `window_id` (a demand window of the site), or for any window when `window_id` is null.
+
+`time_of_day` passes from `start` up to `end`. Each is a time reference, either `{ "kind": "clock", "time": "HH:MM" }` or `{ "kind": "sun", "event": "sunrise" or "sunset", "offset_minutes": -180 to 180 }`. An `end` not later than `start` runs through midnight. The two must differ. See [Actors](actors.md#schedules) for how a row with no sun data behaves.
 
 `actions` is a list of 1 to 8 entries. Each entry names a declared action and gives every one of its params. The actor runs them in list order:
 
@@ -333,6 +339,14 @@ The column was `action` (one entry) before the multi-action change, and the migr
 ```
 
 The minimums are 1, 5 and 1.
+
+`limits` (the values below are the defaults; a schedule saved before the column existed holds `{}`, which reads as the same):
+
+```json
+{ "min_gap_minutes": 0, "run_again_after": null }
+```
+
+`min_gap_minutes` is 0 to 1440. `run_again_after` is a time reference as above, or null. [Actors](actors.md#limits) says how the actor applies them.
 
 `capabilities` is what the actor declared:
 

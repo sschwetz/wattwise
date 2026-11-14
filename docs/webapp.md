@@ -10,6 +10,7 @@ Single-page app in [`webapp/`](../webapp). It is built to static files and serve
 | TanStack Query 5 | Fetching, caching, polling |
 | React Router 7 | Routes |
 | Recharts 3 | Charts |
+| Leaflet 1.9 | The location map on the General tab |
 | `react-markdown` with `remark-gfm` | The in-app help |
 | Vitest and Testing Library | Tests |
 | Oxlint | Linting |
@@ -58,7 +59,7 @@ The Schedule tab and the dashboard log are shown in the user guide chapter [Sche
 | `src/actors/` | The Schedule tab's parts and hooks. `useActors.ts` has the TanStack Query hooks. `scheduleForm.ts` turns a schedule into form state and back (and holds the client-side checks that mirror Core API). `runFormat.ts` formats run times and outcomes. `types.ts` mirrors the API shapes. |
 | `src/billing/` | `useBilling.ts` (all tariff and cycle calls), `ConditionalCredits.tsx`, `tariffHeading.ts` |
 | `src/sources/` | `useSources.ts`, `useRateWindows.ts`, the rate window panel and form, `rateCoverage.ts` (finds uncovered times) |
-| `src/settings/` | The Settings page: `SettingsPage` (route and redirects), `SettingsShell`, `GeneralTab`, `SharingTab`, `tabs.ts`. The Collectors, Tariffs and Billing tabs reuse `CollectorsTab` in `pages/SourcesPage.tsx` and `TariffsTab` and `BillingTab` in `pages/BillingPage.tsx`. |
+| `src/settings/` | The Settings page: `SettingsPage` (route and redirects), `SettingsShell`, `GeneralTab`, `SharingTab`, `tabs.ts`, and the location parts listed under [The General tab's location](#the-general-tabs-location). The Collectors, Tariffs and Billing tabs reuse `CollectorsTab` in `pages/SourcesPage.tsx` and `TariffsTab` and `BillingTab` in `pages/BillingPage.tsx`. |
 | `src/sites/`, `src/account/` | Site, invitation and account hooks and forms. `useEnabledSites` filters `GET /sites` to enabled sites for the picker. The switcher shows enabled sites plus the current site when it is disabled. |
 | `src/about/` | The About dialog: `AboutDialog.tsx` (tabs, Escape and focus handling), `ContainersTab.tsx` and `useServices.ts` (`GET /services`), `LicencesTab.tsx` and `useLicences.ts` (`/licences.json`) |
 | `src/help/` | The help viewer |
@@ -97,14 +98,14 @@ Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadin
 | `DisabledNotice` | Shown when the instance is disabled, with **Turn on** |
 | `ScheduleList` | The schedules per instance with an On or Off pill and the last run. **New schedule**. |
 | `ScheduleDetail` | The editor, **Test now** and the run history for the selected schedule in one card, then the unit state below it |
-| `ScheduleEditor` | The numbered form: `ActorStep`, `WhenStep`, the "Only if" step with `ConditionsEditor`, `ActionStep`, `RestoreStep` ("When it ends") and `RetryStep` ("If it fails", with **Email me if it still fails**). `DeleteSchedule` confirms a delete. |
+| `ScheduleEditor` | The numbered form: `ActorStep` (1), `WhenStep` (2, with sun, price and temperature fields and the re-arm field), the "Only if" step (3) with `ConditionsEditor`, `ActionStep` (4), `RestoreStep` (5, "When it ends"), `LimitsStep` (6, "How often") and `RetryStep` (7, "If it fails", with **Email me if it still fails**). `TimeRefField` is the clock time or sunrise or sunset picker that the Time of day rows and **Do not run again until** share. `DeleteSchedule` confirms a delete. |
 | `UnitStatePanel` | Read-only power, mode, setpoints, readings and each zone, with the update time. Shows **Not updating** when `last_seen_at` is more than 2 minutes old (`STALE_MS`). |
 | `TestNow` | **Test now**. Shows "Test queued" after the request. |
 | `ScheduleRunHistory` (`RunHistory.tsx`) | The newest 50 runs with a pill: OK, Skipped, Failed, "You took over" (`overridden`), Queued, Running |
 
 Only the site owner can change anything on the page. A viewer sees the same panels with the form read-only and no buttons. The run lists poll every 5 seconds while a run is queued or running.
 
-`scheduleForm.ts` shows only restore times that fit the trigger: "When the window ends" appears for a window-start trigger, and the others are "After a set number of minutes", "At a set time" and "Only when a condition below is met". A condition row has a tick box; unticked rows are kept but ignored. The first select of a row lists the readings, then a Calendar group: Month, Day of week, Week and Demand window. `calendarConditions.ts` changes a row's kind and works out the odd or even week a new Week row starts on, from the site time zone.
+`scheduleForm.ts` shows only restore times that fit the trigger: "When the window ends" appears for a window-start trigger, and the others are "After a set number of minutes", "At a set time" and "Only when a condition below is met". A condition row has a tick box; unticked rows are kept but ignored. The first select of a row lists the readings, then a Calendar group: Month, Day of week, Week, Demand window and Time of day. A new Time of day row starts at sunset to sunrise. `calendarConditions.ts` changes a row's kind and works out the odd or even week a new Week row starts on, from the site time zone.
 
 The editor counts as changed while its form differs from the schedule as last saved, or from the empty form for a new schedule (`isDirty` in `scheduleDirty.ts`). Numbers compare by value, so "30" and "30.0" match, text is compared without surrounding spaces, and the order of ticked days or zones does not count. While the owner has changes, picking another schedule, **New schedule**, any in-app link (side rail, site chips, header menu, logo, help) and browser back or forward open "Discard unsaved changes?" (`UnsavedChangesDialog`). **Keep editing**, Escape or a click outside leaves the form as it was; **Discard changes** carries on. Closing or reloading the tab gets the browser's own prompt. A save, create or delete clears the changes, and a viewer is never asked. While a new schedule is saving, the form is locked, and it unlocks with the edits kept if the save fails. If the edited schedule disappears while the dialog is open, the dialog closes. Signing out does not ask about unsaved edits. Holding navigation needs `useBlocker`, so `main.tsx` uses `createBrowserRouter` with one catch-all route; `useLeaveGuard` (`hooks/useLeaveGuard.ts`) holds navigation only under such a data router, so under `MemoryRouter` in tests it guards the tab alone.
 
@@ -119,13 +120,28 @@ The editor counts as changed while its form differs from the schedule as last sa
 - `orderFailures` (`alertTone.ts`) sorts the rows: unresolved first, red then amber then blue, newest first within a colour, cleared rows last. The tile shows the first five and links "and N more". A `needs_sign_in` row shows no time, because Core API has none to give.
 - If the request fails, "Schedule status unavailable".
 
+### Sun times in the editor
+
+`WhenStep` and the Time of day rows read `locationSet` from the site (`latitude` and `longitude` not null) and show `SunNote`, which says whether sun times come from the location or the time zone. Core API is the only place that refuses a sun schedule for want of a location. Choosing a temperature trigger sets **Minutes between runs** to 30 while it is 0 (`setTriggerType` in `scheduleForm.ts`). `suggestRearm` fills the temperature re-arm field with a value 2 degrees back inside the level until the owner types one. The re-arm and limits rules are in [Actors](actors.md#level-triggers).
+
+## The General tab's location
+
+`GeneralTab` holds the location in form state as text and sends `latitude` and `longitude` in the same `PATCH /sites/{id}` as the name and time zone. Both boxes empty sends null for both.
+
+| File | Does |
+|---|---|
+| `LocationFields.tsx` | The **Latitude** and **Longitude** boxes, the **Use my location** button and the map. The button calls `navigator.geolocation.getCurrentPosition` on click only, and is not drawn when the browser has no geolocation or the viewer is read-only. |
+| `SiteMap.tsx` | A Leaflet map with one pin. A click reports the point. It is loaded with `React.lazy`, so Leaflet and its CSS stay out of the main bundle. Tiles come from `https://tile.openstreetmap.org`. |
+| `location.ts` | Converts between the saved site and the form text, rounds a picked point to 5 decimal places, and builds the patch. It checks the ranges the API checks. |
+| `SunToday.tsx` | Today's sunrise and sunset from `GET /sites/{id}/sun` (`useSiteSun` in `sites/useSites.ts`), in the site's time zone, with a note when `estimated` is true. The query key includes the point and time zone, so a save fetches new times. |
+
 ## Runtime configuration
 
 The API address is not compiled in. `public/config.js` sets `window.__APP_CONFIG__.apiBaseUrl`, and `src/api/config.ts` reads it (falling back to `http://localhost:8000`). In the container, [`docker-entrypoint.sh`](../webapp/docker-entrypoint.sh) rewrites `config.js` from the `API_BASE_URL` environment variable each time it starts. So one image works for any deployment, and changing the address needs a restart, not a rebuild.
 
 `nginx.conf` serves `/version` as JSON (see [The About dialog](#the-about-dialog)) and `index.html` for every other unknown path so that browser refreshes on client-side routes work.
 
-The entrypoint also writes `/etc/nginx/security-headers.conf`, which `nginx.conf` includes. It sets a Content-Security-Policy (with `connect-src` limited to `API_BASE_URL` and the same address with `ws://` or `wss://`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` and `Permissions-Policy`. A new third-party script, style or image host needs adding to the CSP in `docker-entrypoint.sh`.
+The entrypoint also writes `/etc/nginx/security-headers.conf`, which `nginx.conf` includes. It sets a Content-Security-Policy (with `connect-src` limited to `API_BASE_URL` and the same address with `ws://` or `wss://`, and `img-src` allowing `https://tile.openstreetmap.org` for the General tab's map), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` and `Permissions-Policy` (camera and microphone off, geolocation allowed for the page itself so **Use my location** works). A new third-party script, style or image host needs adding to the CSP in `docker-entrypoint.sh`.
 
 ## The About dialog
 

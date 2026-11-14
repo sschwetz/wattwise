@@ -34,5 +34,7 @@ export function changeKind(row: ConditionRow, kind: ConditionKind, defaults: Kin
       return { ...base, kind, parity: defaults.parity };
     case "demand_window":
       return { ...base, kind, op: "not_active", windowId: "" };
+    case "time_of_day":
+      return { ...base, kind, start: { kind: "sun", event: "sunset", offset: "0" }, end: { kind: "sun", event: "sunrise", offset: "0" } };
   }
 }

@@ -50,7 +50,7 @@ Run Python commands from the project directory. Collectors need `CORE_API_URL` a
 | What can the web app call? | `webapp/src/api/client.ts` and the `use*.ts` hooks next to each page |
 | Which providers does the UI offer? | `PROVIDERS_BY_KIND` in `webapp/src/pages/SourcesPage.tsx` |
 | What does the user see described? | `webapp/src/docs/*.md` (also shown in-app) |
-| How do actors, schedules and runs work? | `docs/actors.md`; `core_api/routers/actor.py` (actor side), `routers/actors.py` (owner side), `actor_failures.py`, `jobs/actor_watchdog_job.py` |
+| How do actors, schedules and runs work? | `docs/actors.md`; `core_api/routers/actor.py` (actor side), `routers/actors.py` (owner side), `actor_failures.py`, `sun.py`, `jobs/actor_watchdog_job.py` |
 | How does the Actron actor decide and act? | `actron-neo-actor/actron_neo_actor/worker.py` (tick), `schedule_eval.py`, `actions.py`, `restores.py`, `device.py` |
 | How does the Schedule tab work? | `webapp/src/pages/SchedulePage.tsx`, `webapp/src/actors/` |
 | How does the Envoy collector handle expiry and certificates? | `envoy-collector/envoy_collector/main.py` |
@@ -87,9 +87,11 @@ Actors:      X-Actor-Key: <ACTOR_KEY>
 GET   /actor/instances?provider=...
 PUT   /actor/instances/{id}/capabilities | /readings
 GET   /actor/instances/{id}/schedules | /context | /runs
+PATCH /actor/instances/{id}/schedules/{sid}         {"armed": bool}, 204
 POST  /actor/instances/{id}/runs
 PATCH /actor/instances/{id}/runs/{run_id}           a finished run changes only from ok to overridden
 GET   /sites/{id}/actors/failures                   (people, JWT)
+GET   /sites/{id}/sun                               (people, JWT) today's {estimated, sunrise, sunset}
 DELETE /sites/{id}/actors/alerts/{alert_id}         (any user with site access; dismisses a sticky alert)
 
 Alerts (collector key, or actor key under /actor/instances/{id}):
@@ -104,7 +106,7 @@ DELETE /sources/{id}/alerts/{code}
 - Energy metrics: `production_w`, `consumption_w`, `grid_import_w`, `grid_export_w`, `battery_charge_w`, `battery_discharge_w`, `battery_soc_pct`, `production_wh_lifetime`, `grid_import_wh_lifetime`, `grid_export_wh_lifetime`, `grid_voltage_ph_a_v`, `grid_voltage_ph_b_v`, `grid_voltage_ph_c_v`, `grid_relay_state`.
 - Weather metrics: `temp_c`, `humidity_pct`, `wind_speed_kph`, `wind_direction_deg`, `rain_mm`, `solar_radiation_wm2`, `barometric_pressure_hpa`.
 - Price channels: `buy`, `sell`, `controlled_load` (`demand` exists but nothing uses it).
-- Actor providers: `actron_neo`. Run kinds: `action`, `restore`, `test`. Run outcomes: `pending`, `running`, `ok`, `skipped`, `partial`, `failed`, `overridden`. Failure kinds: `run_failed`, `run_ok`, `still_off`, `actor_silent`, `needs_sign_in`, `alert`. Alert severities: `failure`, `partial`, `notice`. Trigger types: `window_start`, `window_end`, `time`, `price_above`, `temperature`.
+- Actor providers: `actron_neo`. Run kinds: `action`, `restore`, `test`. Run outcomes: `pending`, `running`, `ok`, `skipped`, `partial`, `failed`, `overridden`. Failure kinds: `run_failed`, `run_ok`, `still_off`, `actor_silent`, `needs_sign_in`, `alert`. Alert severities: `failure`, `partial`, `notice`. Trigger types: `window_start`, `window_end`, `time`, `sun`, `price_above`, `temperature`. Condition kinds: `reading` (no `kind` key), `months`, `days`, `week`, `demand_window`, `time_of_day`. Time reference kinds: `clock`, `sun`.
 
 ## Working in this repository
 

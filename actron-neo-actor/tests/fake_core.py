@@ -30,6 +30,7 @@ class FakeCore:
         self.runs: dict[int, Run] = {}
         self.capabilities: list[tuple[int, dict]] = []
         self.readings: list[tuple[int, dict]] = []
+        self.armed_calls: list[tuple[int, bool]] = []  # (schedule id, armed) per set_schedule_armed
         self.discovered: list[tuple[int, dict]] = []
         self.errors: dict[str, Exception] = {}  # method name -> error to raise
         self.instance_errors: dict[int, Exception] = {}  # instance id -> error from every per-instance call
@@ -91,6 +92,12 @@ class FakeCore:
     def get_schedules(self, instance_id: int) -> list[Schedule]:
         self._enter("get_schedules", instance_id)
         return list(self.schedules.get(instance_id, []))
+
+    def set_schedule_armed(self, instance_id: int, schedule_id: int, armed: bool) -> None:
+        self._enter("set_schedule_armed", instance_id)
+        self.armed_calls.append((schedule_id, armed))
+        schedules = self.schedules.get(instance_id, [])
+        self.schedules[instance_id] = [dataclasses.replace(s, armed=armed) if s.id == schedule_id else s for s in schedules]
 
     def get_context(self, instance_id: int) -> Context:
         self._enter("get_context", instance_id)

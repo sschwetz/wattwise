@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime
 import math
 import zoneinfo
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ from core_api.models.billing import DemandWindow, SiteTariff
 from core_api.models.identity import Site
 from core_api.models.pricing import PriceChannel, PriceInterval
 from core_api.models.readings import EnergyMetric, EnergyReading, WeatherMetric, WeatherReading
+from core_api.sun import SunDay, site_location, sun_days
 from core_api.time_utils import as_utc, site_tz
 
 LOOKBACK = datetime.timedelta(hours=24)
@@ -50,6 +51,10 @@ class ActorContext:
     battery_soc_pct: float | None
     price_c_per_kwh: float | None
     windows: list[WindowOccurrence]
+    # Sunrise and sunset for the local dates around `now`; empty when the site has no usable location.
+    sun: list[SunDay] = field(default_factory=list)
+    # True when the sun times come from the time zone, not a point set on the site.
+    sun_estimated: bool = False
 
 
 def build_context(db: Session, site: Site, now: datetime.datetime) -> ActorContext:
@@ -61,6 +66,8 @@ def build_context(db: Session, site: Site, now: datetime.datetime) -> ActorConte
         battery_soc_pct=_latest_battery_soc(db, site.id, now),
         price_c_per_kwh=_current_buy_price(db, site.id, now),
         windows=window_occurrences(db, site, now),
+        sun=sun_days(site, now),
+        sun_estimated=bool((location := site_location(site)) and location.estimated),
     )
 
 

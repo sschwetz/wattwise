@@ -22,6 +22,7 @@ Update `core-api` first, then the collectors and the actor, then the web app. A 
 - **Collectors.** They send `severity` and `sticky` with each alert, and an older `core-api` rejects those fields with 422.
 - **Actor.** It sends `steps` and the `partial` outcome on multi-action runs. An older `core-api` refuses them with 422, so the run stays `running` and the unit stays held with no restore until `core-api` is upgraded.
 - **Web app.** It reads `schedule.actions`, which an older `core-api` does not return.
+- **Sun times and limits.** The actor reads `sun` from the context and `limits` and `armed` from each schedule, and it clears `armed` with `PATCH /actor/instances/{id}/schedules/{schedule_id}`. An older `core-api` has none of these, so a price or temperature trigger cannot record that it fired. The web app's General tab calls `GET /sites/{id}/sun`, which an older `core-api` also lacks.
 
 With a new `core-api` and an older actor, the actor reads `action` (the first entry of `actions`), so a multi-action schedule runs only its first action and reports `ok`. Its single-entry snapshot restores through the new code.
 
@@ -186,6 +187,12 @@ Each row has a coloured bulb: red for a failure, amber for a partial problem (pa
 
 A needs-sign-in entry shows no time, because Core API does not record when it began. With **Email me if it still fails** on, a failed run emails the owner at once, and a still-off or silent actor emails once from the watchdog.
 
+### Sun times and the location map
+
+Sunrise and sunset schedules need a site location. Core API takes a latitude and longitude from the site's General tab. With none set, it estimates from the time zone's reference city in `/usr/share/zoneinfo/zone.tab`. The `core-api` image must contain that file, which comes from the `tzdata` package. Without it a site with no point has no sun times, and Core API refuses to save a sun schedule for it. Set the point on each site to avoid depending on the estimate.
+
+The General tab's map loads its tiles in the user's browser from `tile.openstreetmap.org`, a server run by OpenStreetMap. That server receives the browser's address and the map area viewed. WattWise sends nothing else to it. The container needs no outbound access for this. The browser does. The web app's Content-Security-Policy is set in `docker-entrypoint.sh`, so `img-src` must allow that host (see [The web app](webapp.md#runtime-configuration)). Entering the latitude and longitude as numbers works without the map.
+
 ### Known limits
 
 - The push (MQTT) path of the `actron-neo-api` library has not been tried on a real unit. Polling covers it: every 30 seconds while push is down, every 120 seconds while it works.
@@ -194,7 +201,6 @@ A needs-sign-in entry shows no time, because Core API does not record when it be
 - If the process is killed during a test run's pause, the unit stays as the test set it until the actor restarts. The next start finds the run and puts the unit back.
 - Run one actor container. Two would race on the same trigger. The unique key on a run stops a second create, but both could still act on the unit around it.
 - The actor uses the first air conditioner on the Actron account.
-- A `price_above` trigger acts again after the owner overrides it and the actor restarts in the same high-price spell, because the restarted actor counts a price already above the level as a crossing.
 
 ### Stopping the actor
 

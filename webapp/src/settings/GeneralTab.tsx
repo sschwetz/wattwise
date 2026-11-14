@@ -6,6 +6,9 @@ import { type Site, useUpdateSite } from "../sites/useSites";
 import { buttonClass, inputClass } from "../components/formStyles";
 import { SaveStatus, SubmitButton } from "../components/SubmitButton";
 import { AccessNote } from "./AccessNote";
+import { LocationFields } from "./LocationFields";
+import { SunToday } from "./SunToday";
+import { locationPatch, locationText, type LocationText } from "./location";
 import { useSiteAccess } from "./useSiteAccess";
 
 function ConfirmDisable({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
@@ -108,10 +111,15 @@ export function GeneralTab({ site }: { site: Site }) {
   const update = useUpdateSite(site.id);
   const [name, setName] = useState(site.name);
   const [timezone, setTimezone] = useState(site.timezone);
+  const [location, setLocation] = useState<LocationText>(locationText(site));
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   function handleSave(event: FormEvent) {
     event.preventDefault();
-    update.mutate({ name, timezone });
+    const patch = locationPatch(location, locationText(site));
+    if (typeof patch === "string") return setLocationError(patch);
+    setLocationError(null);
+    update.mutate({ name, timezone, ...patch });
   }
 
   return (
@@ -126,6 +134,9 @@ export function GeneralTab({ site }: { site: Site }) {
           Time zone
           <TimezoneSelect value={timezone} onChange={setTimezone} disabled={readOnly} className={inputClass} />
         </label>
+        <LocationFields value={location} onChange={setLocation} disabled={readOnly} />
+        <SunToday site={site} />
+        {locationError && <p role="alert" className="text-sm text-danger">{locationError}</p>}
         {update.isError && (
           <p role="alert" className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
             {errorMessage(update.error, "Failed to save. Please try again.")}

@@ -18,7 +18,7 @@ const saved: SchedulePayload = {
   actions: [{ id: "set_temperature", params: { temperature_c: 26 } }],
   restore: { enabled: true, when: "after_minutes", minutes: 45, time: null, only_if: [], early_if: [] },
   retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 },
-  notify_email: false,
+  limits: { min_gap_minutes: 0, run_again_after: null }, notify_email: false,
 };
 
 const baseline = fromSchedule(saved);

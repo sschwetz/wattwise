@@ -49,7 +49,7 @@ Click your name in the top right corner, then **Site settings**, to open the Set
 
 | Tab | What it holds |
 |-----|---------------|
-| **General** | Site name, time zone, the **Enabled** switch, and an **Open dashboard** link |
+| **General** | Site name, time zone, [location](#location-and-sun-times), the **Enabled** switch, and an **Open dashboard** link |
 | **Collectors** | The [sources](05-sources.md) of the site |
 | **Tariffs** | The [tariff](07-billing.md#tariffs) cards |
 | **Billing** | The [billing cycle](07-billing.md#billing-cycles) and [demand charges](07-billing.md#demand-charges) |
@@ -57,6 +57,20 @@ Click your name in the top right corner, then **Site settings**, to open the Set
 | **Sharing** | [Invitations](#sharing-a-site) to view the site |
 
 Only the owner can change a site's settings. Other people see the tabs read-only. The old `/sites/:id/sources`, `/sites/:id/billing` and `/sites/:id/schedule` addresses redirect to the **Collectors**, **Billing** and **Schedule** tabs.
+
+## Location and sun times
+
+A schedule can start or stop at sunrise or sunset, so WattWise needs to know where the site is. Set it on the **General** tab under **Location**:
+
+- Type a **Latitude** (-90 to 90) and a **Longitude** (-180 to 180), for example `-33.87` and `151.21`. South and west are negative.
+- Click **Use my location** to fill both boxes from your device. Your browser asks permission only when you click. The button is missing when the browser has no location support, and for people who can only view the site.
+- Click the map to set the point. The map starts zoomed out over Australia and moves to the point you set.
+
+Click **Save** to keep the change. To remove the location, clear both boxes and save. You cannot set one box without the other. Under the map, a line shows today's sunrise and sunset in the site's time zone, so you can check the point. It reads *The sun does not rise or set at this location today* in polar summer and winter.
+
+With no point set, WattWise estimates sun times from the reference city of the site's time zone, and the line adds *(estimated from the time zone)*. The estimate is only as close as that city is to your property. The Schedule editor refuses sunrise and sunset when neither a point nor a time zone estimate is available.
+
+> **Note:** The map is drawn from tiles that your browser downloads from `tile.openstreetmap.org`, a server run by OpenStreetMap. That server sees your browser's address and the area you view. WattWise loads the map only when you open the **General** tab. Typing the numbers works without it. The sun times use the saved latitude and longitude, never the map.
 
 ## Disabling a site
 

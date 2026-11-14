@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import enum
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, func, true
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, String, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core_api.encrypted_types import EncryptedString
@@ -65,6 +65,9 @@ class Site(Base):
     enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
     )
+    # Where the site is, for sunrise and sunset. Both set or both null.
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class SiteAccess(Base):

@@ -12,7 +12,7 @@ vi.mock("../api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
-const site: Site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true };
+const site: Site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, latitude: null, longitude: null };
 
 function invite(id: number, status: Invite["status"], extra: Partial<Invite> = {}): Invite {
   return {

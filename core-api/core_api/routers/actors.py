@@ -30,7 +30,7 @@ from core_api.models.identity import Site, User
 
 router = APIRouter(prefix="/sites/{site_id}/actors", tags=["actors"])
 
-_SCHEDULE_FIELDS = ("name", "enabled", "trigger", "conditions", "actions", "restore", "retry", "notify_email")
+_SCHEDULE_FIELDS = ("name", "enabled", "trigger", "conditions", "actions", "restore", "retry", "limits", "notify_email")
 # Changing one of these while the schedule holds the unit off would change how
 # or when the unit is put back, so it is refused until the restore finishes.
 _HELD_FIELDS = ("trigger", "actions", "restore")
@@ -220,8 +220,11 @@ def patch_schedule(
     parsed = parse_schedule({**merged, "instance_id": schedule.instance_id})
     validate_schedule(db, site.id, _instance_of(db, schedule), parsed)
     _refuse_held_spec_change(db, schedule, parsed)
+    trigger_changed = _stored_spec(schedule)["trigger"] != parsed.model_dump(mode="json", include={"trigger"})["trigger"]
     for field, value in parsed.model_dump(mode="json", include=set(_SCHEDULE_FIELDS)).items():
         setattr(schedule, field, value)
+    if trigger_changed:
+        schedule.armed = True
     db.commit()
     db.refresh(schedule)
     return schedule

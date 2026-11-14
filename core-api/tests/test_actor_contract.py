@@ -20,6 +20,7 @@ from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance
 from core_api.routers import actor as actor_module
 from core_api.routers import actors as owner_routes
+from core_api.sun import SunDay
 from tests.conftest import ACTOR_KEY, UTC
 
 CONTRACTS = Path(__file__).resolve().parents[2] / "contracts" / "actor-api"
@@ -78,7 +79,7 @@ def _url(instance: ActorInstance, suffix: str) -> str:
 
 
 def _schedule_id(http, site, inst) -> int:
-    body = {k: v for k, v in fixture("schedules_list_entry.json").items() if k not in ("id", "created_at", "action")}
+    body = {k: v for k, v in fixture("schedules_list_entry.json").items() if k not in ("id", "created_at", "action", "armed")}
     r = http.post(f"/api/v1/sites/{site.id}/actors/schedules", json={**body, "instance_id": inst.id})
     assert r.status_code == 201, r.text
     return r.json()["id"]
@@ -112,7 +113,8 @@ def test_schedules_list_entry(http, site, inst):
 def test_context(http, inst, monkeypatch):
     now = datetime.datetime(2026, 11, 5, 4, 0, tzinfo=UTC)
     window = WindowOccurrence(7, "Peak", now + datetime.timedelta(hours=1), now + datetime.timedelta(hours=5))
-    context = ActorContext(now, "Australia/Sydney", 31.5, 64.0, 42.1, [window])
+    sun = [SunDay(datetime.date(2026, 11, 5), now - datetime.timedelta(hours=9), now + datetime.timedelta(hours=9))]
+    context = ActorContext(now, "Australia/Sydney", 31.5, 64.0, 42.1, [window], sun, sun_estimated=False)
     monkeypatch.setattr(actor_module, "build_context", lambda _db, _site, _now: context)
     body = http.get(_url(inst, "/context"), headers=HEADERS).json()
     assert_same_shape(body, fixture("context.json"))
@@ -141,3 +143,26 @@ def test_run_list_item(http, site, inst):
     runs = http.get(_url(inst, "/runs"), headers=HEADERS, params={"since": "2026-11-05T00:00:00+00:00"}).json()
     [listed] = [r for r in runs if r["kind"] == "restore"]
     assert_same_shape(listed, fixture("run_list_item.json"))
+
+
+def test_actor_sets_a_schedules_armed_flag(http, db, site, inst):
+    from core_api.models import ActorSchedule
+
+    schedule_id = _schedule_id(http, site, inst)
+    row = db.get(ActorSchedule, schedule_id)
+    assert row.armed is True
+    r = http.patch(_url(inst, f"/schedules/{schedule_id}"), headers=HEADERS, json={"armed": False})
+    assert r.status_code == 204
+    db.refresh(row)
+    assert row.armed is False
+    [entry] = http.get(_url(inst, "/schedules"), headers=HEADERS).json()
+    assert entry["armed"] is False
+
+
+def test_armed_flag_of_another_instances_schedule_is_not_found(http, db, site, inst):
+    other = ActorInstance(site_id=site.id, provider="actron_neo", name="Other", config={})
+    db.add(other)
+    db.commit()
+    schedule_id = _schedule_id(http, site, inst)
+    r = http.patch(_url(other, f"/schedules/{schedule_id}"), headers=HEADERS, json={"armed": False})
+    assert r.status_code == 404

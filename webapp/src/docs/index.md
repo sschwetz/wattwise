@@ -11,11 +11,11 @@ This guide covers every screen in the web app. Use the contents below, or the **
 | [1. Installing with Docker Compose](01-installing-with-docker.md) | For whoever runs the server: settings, starting, updating, backups, and reaching WattWise from the internet over HTTPS |
 | [2. Getting started](02-getting-started.md) | What WattWise is, how data reaches it, and a first-day checklist |
 | [3. Signing in and account security](03-signing-in.md) | Creating an account, two-factor authentication, recovery codes, password reset |
-| [4. Sites](04-sites.md) | Creating sites, switching between them, time zones |
+| [4. Sites](04-sites.md) | Creating sites, switching between them, time zones, location and sun times |
 | [5. Sources](05-sources.md) | Connecting your Envoy, Amber, a fixed tariff and WeatherLink |
 | [6. The dashboard](06-dashboard.md) | Live tiles, weather, the pricing, grid and battery charts, the Reporting page's totals by day, hour and minute, net and gross cost |
 | [7. Billing](07-billing.md) | Tariffs, billing cycles, demand windows, export adjustments, fee discounts |
-| [8. Schedules and the air conditioner](08-schedules.md) | Making the air conditioner switch off for a demand window, testing it, and the dashboard log |
+| [8. Schedules and the air conditioner](08-schedules.md) | Making the air conditioner switch off for a demand window, a time, sunrise or sunset, a price or a temperature, limiting how often it runs, testing it, and the dashboard log |
 | [9. Account settings](09-account-settings.md) | Name, photo, password, email, authenticator, Amber API key |
 | [10. Troubleshooting](10-troubleshooting.md) | Fixes for missing tiles, wrong costs, sign-in problems and access from outside your home |
 | [11. Glossary](11-glossary.md) | Plain-language definitions of the terms used in the app |

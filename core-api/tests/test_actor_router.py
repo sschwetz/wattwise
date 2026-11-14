@@ -242,7 +242,7 @@ def test_schedule_response_shape_is_pinned(http, db, site):
     r = http.get(f"/api/v1/actor/instances/{i.id}/schedules", headers=HEADERS)
     [body] = r.json()
     assert set(body) == {
-        "id", "name", "enabled", "trigger", "conditions", "actions", "action", "restore", "retry", "notify_email", "created_at",
+        "id", "name", "enabled", "trigger", "conditions", "actions", "action", "restore", "retry", "limits", "armed", "notify_email", "created_at",
     }
     created = datetime.datetime.fromisoformat(body["created_at"])
     assert created.utcoffset() == datetime.timedelta(0)

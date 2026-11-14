@@ -68,7 +68,7 @@ const saved: ActorSchedule = {
   actions: [{ id: "set_temperature", params: { temperature_c: 26 } }],
   restore: { enabled: true, when: "window_end", minutes: null, time: null, only_if: [], early_if: [] },
   retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 },
-  notify_email: false,
+  limits: { min_gap_minutes: 0, run_again_after: null }, notify_email: false,
 };
 
 interface Api {
@@ -232,7 +232,93 @@ describe("ScheduleEditor", () => {
     await user.type(screen.getByRole("spinbutton", { name: "Level (C)" }), "18");
     await user.click(screen.getByRole("button", { name: "Save schedule" }));
     expect(await screen.findByText(/Saved/)).toBeInTheDocument();
-    expect(body("POST").trigger).toEqual({ type: "temperature", reading: "indoor_temp_c", op: "lt", value: 18 });
+    // The re-arm value starts two degrees back inside the level, and the gap starts at 30 minutes.
+    expect(body("POST").trigger).toEqual({ type: "temperature", reading: "indoor_temp_c", op: "lt", value: 18, rearm: 20 });
+    expect(body("POST").limits).toEqual({ min_gap_minutes: 30, run_again_after: null });
+  });
+
+  it("the suggested re-arm value follows the level until it is typed over", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "temperature");
+    const rearm = screen.getByRole("spinbutton", { name: /Can fire again once it is back/ });
+    await user.type(screen.getByRole("spinbutton", { name: "Level (C)" }), "30");
+    expect(rearm).toHaveValue(28);
+    await user.clear(rearm);
+    await user.type(rearm, "25");
+    await user.clear(screen.getByRole("spinbutton", { name: "Level (C)" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Level (C)" }), "32");
+    expect(rearm).toHaveValue(25);
+  });
+
+  it("a sun trigger saves its event, offset and days", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Evening");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "sun");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Event" }), "sunrise");
+    await user.type(screen.getByRole("spinbutton", { name: "Minutes after (negative is before)" }), "{Control>}a{/Control}-20");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").trigger).toEqual({ type: "sun", event: "sunrise", offset_minutes: -20, days_of_week: [0, 1, 2, 3, 4, 5, 6] });
+  });
+
+  it("says sun times are estimated while the site has no location", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "sun");
+    expect(screen.getByText(/estimated from the site's time zone/)).toBeInTheDocument();
+  });
+
+  it("a time-of-day row saves its two times", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Evenings");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "sun");
+    await user.click(within(step("Only if")).getByRole("button", { name: "Add condition" }));
+    await user.selectOptions(within(step("Only if")).getByRole("combobox", { name: "Reading 1" }), "time_of_day");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Start 1 type" }), "clock");
+    await user.type(screen.getByRole("textbox", { name: "Start 1 time" }), "18:00");
+    await user.selectOptions(screen.getByRole("combobox", { name: "End 1 type" }), "clock");
+    await user.type(screen.getByRole("textbox", { name: "End 1 time" }), "23:00");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").conditions).toContainEqual({
+      kind: "time_of_day", start: { kind: "clock", time: "18:00" }, end: { kind: "clock", time: "23:00" }, enabled: true,
+    });
+  });
+
+  it("the How often step saves the gap and the run-again time", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Limited");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "sun");
+    const how = step("How often");
+    await user.clear(within(how).getByRole("spinbutton", { name: "Minutes between runs" }));
+    await user.type(within(how).getByRole("spinbutton", { name: "Minutes between runs" }), "45");
+    await user.click(within(how).getByRole("checkbox", { name: "Do not run again until" }));
+    await user.selectOptions(within(how).getByRole("combobox", { name: "Run again after type" }), "sunrise");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").limits).toEqual({ min_gap_minutes: 45, run_again_after: { kind: "sun", event: "sunrise", offset_minutes: 0 } });
+  });
+
+  it("flags a bad gap in the How often step", async () => {
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Limited");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "sun");
+    await user.clear(screen.getByRole("spinbutton", { name: "Minutes between runs" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Minutes between runs" }), "2000");
+    await user.click(screen.getByRole("button", { name: "Save schedule" }));
+    expect(screen.getByText(/from 0 to 1440/)).toBeInTheDocument();
+    expect(writes("POST")).toHaveLength(0);
   });
 
   it("a temperature trigger without a level is not saved", async () => {
@@ -271,6 +357,7 @@ describe("ScheduleEditor", () => {
       actions: [{ id: "set_zones", params: { zones: ["Bed 1"], enabled: false } }],
       restore: { enabled: true, when: "window_end", minutes: null, time: null, only_if: [], early_if: [] },
       retry: { max_attempts: 3, interval_seconds: 30, give_up_minutes: 15 },
+      limits: { min_gap_minutes: 0, run_again_after: null },
       notify_email: true,
     });
   });

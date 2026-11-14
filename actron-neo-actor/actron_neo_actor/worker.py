@@ -25,10 +25,10 @@ from actron_neo_actor.async_core import AsyncCore
 from actron_neo_actor.config import Settings
 from actron_neo_actor.device import Device, DeviceAuthError, DeviceState
 from actron_neo_actor.executor import Clock, Env, Sleep
-from actron_neo_actor.models import Instance
+from actron_neo_actor.models import Instance, Schedule
 from actron_neo_actor.restores import record_override_skips, run_restores, watch_for_override
 from actron_neo_actor.resume import resume
-from actron_neo_actor.schedule_eval import LOOKBACK, level_met
+from actron_neo_actor.schedule_eval import LEVEL_TRIGGERS, LOOKBACK, rearm_due
 from actron_neo_actor.test_runs import TestControl, run_test, triage
 from actron_neo_actor.view import STALE_AFTER, TickView, sensed
 
@@ -102,8 +102,6 @@ class InstanceWorker:
         self._view: TickView | None = None
         self._tick_lock = asyncio.Lock()
         self._runs_lock = asyncio.Lock()
-        # Whether each price or temperature trigger's level was passed at the last tick that could tell.
-        self._level_met: dict[int, bool] = {}
         self._capabilities_sent: str | None = None
         self._latest: DeviceState | None = None
         self._readings_sent_at: datetime.datetime | None = None
@@ -178,11 +176,16 @@ class InstanceWorker:
 
     async def _run_due(self, env: Env, view: TickView) -> None:
         for schedule in view.schedules.values():
-            await run_schedule(env, view, schedule, self._level_met.get(schedule.id))
-            readings, stale = sensed(env.device.state(), env.clock())
-            met = level_met(schedule, view.context, readings, stale)
-            if met is not None:
-                self._level_met[schedule.id] = met
+            armed = await run_schedule(env, view, schedule)
+            await self._rearm(env, view, schedule, armed)
+
+    async def _rearm(self, env: Env, view: TickView, schedule: Schedule, armed: bool) -> None:
+        """Arm a price or temperature trigger again once its reading is back past the re-arm value."""
+        if armed or schedule.trigger.type not in LEVEL_TRIGGERS:
+            return
+        readings, stale = sensed(env.device.state(), env.clock())
+        if rearm_due(schedule, view.context, readings, stale):
+            await env.core.set_schedule_armed(env.instance_id, schedule.id, True)
 
     # Test runs
 

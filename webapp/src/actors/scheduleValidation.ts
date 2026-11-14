@@ -7,30 +7,77 @@ import {
   findAction,
   HHMM,
   isWindowTrigger,
+  MAX_GAP_MINUTES,
+  MAX_OFFSET_MINUTES,
   parseNumber,
   parseWhole,
+  refPayload,
   type ActionForm,
   type ConditionRow,
   type FormParam,
   type FormParamValue,
+  type LimitsForm,
   type ReadingChoice,
   type ReadingRow,
   type RestoreForm,
   type RetryForm,
   type ScheduleFormState,
+  type TimeOfDayRow,
   type TriggerForm,
 } from "./scheduleForm";
 
 /** Field key -> message in plain words. Empty when the form can be sent. */
 export type FormErrors = Record<string, string>;
 
+const OFFSET_MESSAGE = `Enter a whole number of minutes from -${MAX_OFFSET_MINUTES} to ${MAX_OFFSET_MINUTES}.`;
+
+/** A blank re-arm value is fine. A typed one must be a number back inside the level: below it for a price or a
+ * rising temperature, above it for a falling temperature. */
+function rearmError(t: TriggerForm): string | null {
+  if (t.rearm.trim() === "") return null;
+  const rearm = parseNumber(t.rearm);
+  if (rearm === null) return "Enter a number, or leave it blank.";
+  if (t.type === "price_above") {
+    const price = parseNumber(t.price);
+    return price !== null && rearm >= price ? "Must be below the price level." : null;
+  }
+  const level = parseNumber(t.level);
+  if (level === null) return null;
+  if (t.op === "gt") return rearm >= level ? "Must be below the level." : null;
+  return rearm <= level ? "Must be above the level." : null;
+}
+
+function levelErrors(t: TriggerForm, missing: { key: string; text: string }, value: string): FormErrors {
+  const errors: FormErrors = parseNumber(value) === null ? { [missing.key]: missing.text } : {};
+  const rearm = rearmError(t);
+  return rearm ? { ...errors, "trigger.rearm": rearm } : errors;
+}
+
+function dayErrors(t: TriggerForm): FormErrors {
+  return t.days.length === 0 ? { "trigger.days": "Tick at least one day." } : {};
+}
+
 function triggerErrors(t: TriggerForm): FormErrors {
   if (isWindowTrigger(t.type)) return t.windowId === "" ? { "trigger.windowId": "Pick a demand window." } : {};
-  if (t.type === "price_above") return parseNumber(t.price) === null ? { "trigger.price": "Enter a price in c/kWh." } : {};
-  if (t.type === "temperature") return parseNumber(t.level) === null ? { "trigger.level": "Enter a temperature in C." } : {};
-  const errors: FormErrors = {};
+  if (t.type === "price_above") return levelErrors(t, { key: "trigger.price", text: "Enter a price in c/kWh." }, t.price);
+  if (t.type === "temperature") return levelErrors(t, { key: "trigger.level", text: "Enter a temperature in C." }, t.level);
+  if (t.type === "sun") {
+    const offset = parseWhole(t.offset);
+    const bad = offset === null || Math.abs(offset) > MAX_OFFSET_MINUTES;
+    return { ...(bad ? { "trigger.offset": OFFSET_MESSAGE } : {}), ...dayErrors(t) };
+  }
+  const errors: FormErrors = dayErrors(t);
   if (!HHMM.test(t.time)) errors["trigger.time"] = "Enter the time as HH:MM, for example 16:00.";
-  if (t.days.length === 0) errors["trigger.days"] = "Tick at least one day.";
+  return errors;
+}
+
+const REF_MESSAGE = `Enter each time as HH:MM, or sunrise or sunset with an offset of up to ${MAX_OFFSET_MINUTES} minutes.`;
+
+function limitsErrors(l: LimitsForm): FormErrors {
+  const errors: FormErrors = {};
+  const gap = parseWhole(l.minGap);
+  if (gap === null || gap < 0 || gap > MAX_GAP_MINUTES) errors["limits.minGap"] = `Enter a whole number of minutes from 0 to ${MAX_GAP_MINUTES}.`;
+  if (l.againAfter !== null && refPayload(l.againAfter) === null) errors["limits.againAfter"] = REF_MESSAGE;
   return errors;
 }
 
@@ -111,7 +158,16 @@ function rowError(row: ConditionRow, choices: RowChoices): string | null {
         : "This demand window is no longer available. Pick another.";
     case "week":
       return null;
+    case "time_of_day":
+      return timeOfDayError(row);
   }
+}
+
+function timeOfDayError(row: TimeOfDayRow): string | null {
+  const start = refPayload(row.start);
+  const end = refPayload(row.end);
+  if (!start || !end) return REF_MESSAGE;
+  return JSON.stringify(start) === JSON.stringify(end) ? "The start and end must be different times." : null;
 }
 
 /** Only ticked rows are checked; an unticked row is saved as typed. */
@@ -159,6 +215,7 @@ export function validateForm(form: ScheduleFormState, capabilities: Capabilities
     ...rowErrors("conditions", form.conditions, choices),
     ...actionErrors(form, capabilities),
     ...restoreErrors(form.restore, choices),
+    ...limitsErrors(form.limits),
     ...retryErrors(form.retry),
   };
 }

@@ -67,14 +67,14 @@ NOW = utc(2026, 11, 5, 1, 5)
 
 
 def test_window_start_due_inside_grace():
-    got = due_triggers(make_schedule(START), make_context(NOW, [WINDOW]), NOW, set(), None)
+    got = due_triggers(make_schedule(START), make_context(NOW, [WINDOW]), NOW, set(), True)
     assert got == [DueTrigger(utc(2026, 11, 5, 1, 0), "Solar soak")]
 
 
 def test_window_start_missed_after_grace():
     now = utc(2026, 11, 5, 1, 30)
     ctx = make_context(now, [WINDOW])
-    assert due_triggers(make_schedule(START), ctx, now, set(), None) == []
+    assert due_triggers(make_schedule(START), ctx, now, set(), True) == []
     assert missed_triggers(make_schedule(START), ctx, now, set()) == [DueTrigger(WINDOW.start, "Solar soak")]
 
 
@@ -82,16 +82,16 @@ def test_ten_minute_boundary():
     sched = make_schedule(START)
     on_edge = WINDOW.start + timedelta(minutes=10)
     ctx = make_context(on_edge, [WINDOW])
-    assert len(due_triggers(sched, ctx, on_edge, set(), None)) == 1
+    assert len(due_triggers(sched, ctx, on_edge, set(), True)) == 1
     assert missed_triggers(sched, ctx, on_edge, set()) == []
     over = on_edge + timedelta(seconds=1)
-    assert due_triggers(sched, ctx, over, set(), None) == []
+    assert due_triggers(sched, ctx, over, set(), True) == []
     assert len(missed_triggers(sched, ctx, over, set())) == 1
 
 
 def test_existing_trigger_not_due_twice():
     ctx = make_context(NOW, [WINDOW])
-    assert due_triggers(make_schedule(START), ctx, NOW, {WINDOW.start}, None) == []
+    assert due_triggers(make_schedule(START), ctx, NOW, {WINDOW.start}, True) == []
     later = utc(2026, 11, 5, 2, 0)
     assert missed_triggers(make_schedule(START), make_context(later, [WINDOW]), later, {WINDOW.start}) == []
 
@@ -99,15 +99,15 @@ def test_existing_trigger_not_due_twice():
 def test_window_end_trigger_uses_end():
     now = utc(2026, 11, 5, 5, 2)
     sched = make_schedule(Trigger("window_end", window_id=7))
-    got = due_triggers(sched, make_context(now, [WINDOW]), now, set(), None)
+    got = due_triggers(sched, make_context(now, [WINDOW]), now, set(), True)
     assert got == [DueTrigger(WINDOW.end, "Solar soak")]
 
 
 def test_other_window_ignored_and_future_window_not_due():
     other = WindowOccurrence(8, "x", WINDOW.start, WINDOW.end)
     early = utc(2026, 11, 5, 0, 55)
-    assert due_triggers(make_schedule(START), make_context(NOW, [other]), NOW, set(), None) == []
-    assert due_triggers(make_schedule(START), make_context(early, [WINDOW]), early, set(), None) == []
+    assert due_triggers(make_schedule(START), make_context(NOW, [other]), NOW, set(), True) == []
+    assert due_triggers(make_schedule(START), make_context(early, [WINDOW]), early, set(), True) == []
 
 
 def test_window_crossing_midnight_uses_exact_start():
@@ -115,7 +115,7 @@ def test_window_crossing_midnight_uses_exact_start():
     win = WindowOccurrence(3, "Night", utc(2026, 11, 5, 12, 0), utc(2026, 11, 5, 15, 0))
     ctx = make_context(utc(2026, 11, 5, 15, 3), [win])
     end = Trigger("window_end", window_id=3)
-    got = due_triggers(make_schedule(end), ctx, ctx.now, set(), None)
+    got = due_triggers(make_schedule(end), ctx, ctx.now, set(), True)
     assert got == [DueTrigger(utc(2026, 11, 5, 15, 0), "Night")]
 
 
@@ -135,7 +135,7 @@ def test_older_than_24h_is_not_reported():
 
 def test_disabled_schedule_yields_nothing():
     sched = make_schedule(START, enabled=False)
-    assert due_triggers(sched, make_context(NOW, [WINDOW]), NOW, set(), None) == []
+    assert due_triggers(sched, make_context(NOW, [WINDOW]), NOW, set(), True) == []
     later = utc(2026, 11, 5, 3, 0)
     assert missed_triggers(sched, make_context(later, [WINDOW]), later, set()) == []
 
@@ -144,10 +144,10 @@ def test_time_trigger_site_local():
     # 12:00 Sydney on 5 Nov 2026 (AEDT) is 01:00Z. 2026-11-05 is a Thursday (3).
     sched = make_schedule(Trigger("time", time="12:00", days_of_week=[3]))
     now = utc(2026, 11, 5, 1, 4)
-    got = due_triggers(sched, make_context(now), now, set(), None)
+    got = due_triggers(sched, make_context(now), now, set(), True)
     assert got == [DueTrigger(utc(2026, 11, 5, 1, 0), "12:00")]
     other_day = make_schedule(Trigger("time", time="12:00", days_of_week=[0, 1]))
-    assert due_triggers(other_day, make_context(now), now, set(), None) == []
+    assert due_triggers(other_day, make_context(now), now, set(), True) == []
 
 
 def test_time_trigger_yesterday_is_missed():
@@ -161,7 +161,7 @@ def test_time_trigger_in_dst_gap_moves_to_end_of_gap():
     # Sydney springs forward 2026-10-04 02:00 -> 03:00 (Sunday, weekday 6).
     sched = make_schedule(Trigger("time", time="02:30", days_of_week=[6]))
     now = utc(2026, 10, 3, 16, 5)  # 03:05 AEDT
-    got = due_triggers(sched, make_context(now), now, set(), None)
+    got = due_triggers(sched, make_context(now), now, set(), True)
     assert got == [DueTrigger(utc(2026, 10, 3, 16, 0), "02:30")]
 
 
@@ -169,44 +169,42 @@ def test_time_trigger_ambiguous_takes_first_occurrence():
     # Sydney falls back 2026-04-05 03:00 AEDT -> 02:00 AEST; 02:30 happens twice.
     sched = make_schedule(Trigger("time", time="02:30", days_of_week=[6]), created_at=utc(2026, 1, 1))
     now = utc(2026, 4, 4, 15, 35)
-    got = due_triggers(sched, make_context(now), now, set(), None)
+    got = due_triggers(sched, make_context(now), now, set(), True)
     assert got == [DueTrigger(utc(2026, 4, 4, 15, 30), "02:30")]
 
 
-def test_price_above_fires_once_per_crossing():
+def test_price_above_fires_once_per_arming():
     sched = make_schedule(Trigger("price_above", c_per_kwh=30.0))
     now = utc(2026, 11, 5, 3, 12, 40)
     ctx = make_context(now, price=45.0)
-    got = due_triggers(sched, ctx, now, set(), False)
+    got = due_triggers(sched, ctx, now, set(), True)
     assert got == [DueTrigger(utc(2026, 11, 5, 3, 10), got[0].label)]
-    assert due_triggers(sched, ctx, now, set(), True) == []
-    assert len(due_triggers(sched, ctx, now, set(), None)) == 1
-    assert due_triggers(sched, ctx, now, {utc(2026, 11, 5, 3, 10)}, False) == []
-    assert due_triggers(sched, make_context(now, price=30.0), now, set(), False) == []
-    assert due_triggers(sched, make_context(now, price=None), now, set(), False) == []
+    assert due_triggers(sched, ctx, now, set(), False) == []
+    assert due_triggers(sched, ctx, now, {utc(2026, 11, 5, 3, 10)}, True) == []
+    assert due_triggers(sched, make_context(now, price=30.0), now, set(), True) == []
+    assert due_triggers(sched, make_context(now, price=None), now, set(), True) == []
     assert missed_triggers(sched, ctx, now, set()) == []
 
 
-def test_temperature_trigger_fires_once_per_crossing():
+def test_temperature_trigger_fires_once_per_arming():
     sched = make_schedule(Trigger("temperature", reading="indoor_temp_c", op="gt", value=28.0))
     now = utc(2026, 11, 5, 3, 12, 40)
     ctx = make_context(now)
     hot, cool = {"indoor_temp_c": 29.5}, {"indoor_temp_c": 27.0}
-    got = due_triggers(sched, ctx, now, set(), False, hot, set())
+    got = due_triggers(sched, ctx, now, set(), True, hot, set())
     assert got == [DueTrigger(utc(2026, 11, 5, 3, 10), "indoor_temp_c above 28")]
-    assert due_triggers(sched, ctx, now, set(), True, hot, set()) == []
-    assert len(due_triggers(sched, ctx, now, set(), None, hot, set())) == 1
-    assert due_triggers(sched, ctx, now, set(), False, cool, set()) == []
-    assert due_triggers(sched, ctx, now, set(), False, hot, {"indoor_temp_c"}) == []
-    assert due_triggers(sched, ctx, now, set(), False) == []
+    assert due_triggers(sched, ctx, now, set(), False, hot, set()) == []
+    assert due_triggers(sched, ctx, now, set(), True, cool, set()) == []
+    assert due_triggers(sched, ctx, now, set(), True, hot, {"indoor_temp_c"}) == []
+    assert due_triggers(sched, ctx, now, set(), True) == []
 
 
 def test_temperature_trigger_falls_below_and_uses_the_site_outdoor_reading():
     sched = make_schedule(Trigger("temperature", reading="outdoor_temp_c", op="lt", value=10.0))
     now = utc(2026, 11, 5, 3, 12, 40)
-    got = due_triggers(sched, make_context(now, outdoor=8.0), now, set(), False)
+    got = due_triggers(sched, make_context(now, outdoor=8.0), now, set(), True)
     assert [d.label for d in got] == ["outdoor_temp_c below 10"]
-    assert due_triggers(sched, make_context(now, outdoor=12.0), now, set(), False) == []
+    assert due_triggers(sched, make_context(now, outdoor=12.0), now, set(), True) == []
 
 
 @pytest.mark.parametrize(

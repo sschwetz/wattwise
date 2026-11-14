@@ -8,9 +8,11 @@ import type {
   ActorSchedule,
   Capabilities,
   ConditionSpec,
+  LimitsSpec,
   ParamDecl,
   RestoreSpec,
   TemperatureReading,
+  TimeRefSpec,
   TriggerSpec,
 } from "./types";
 
@@ -55,7 +57,16 @@ export interface WindowRow extends RowBase {
   windowId: string;
 }
 
-export type ConditionRow = ReadingRow | MembershipRow | WeekRow | WindowRow;
+/** A clock time as typed (HH:MM), or sunrise or sunset with the offset in minutes as typed. */
+export type TimeRefForm = { kind: "clock"; time: string } | { kind: "sun"; event: "sunrise" | "sunset"; offset: string };
+
+export interface TimeOfDayRow extends RowBase {
+  kind: "time_of_day";
+  start: TimeRefForm;
+  end: TimeRefForm;
+}
+
+export type ConditionRow = ReadingRow | MembershipRow | WeekRow | WindowRow | TimeOfDayRow;
 export type ConditionKind = ConditionRow["kind"];
 
 export interface TriggerForm {
@@ -68,6 +79,19 @@ export interface TriggerForm {
   reading: TemperatureReading;
   op: "gt" | "lt";
   level: string;
+  /** Sun trigger: sunrise or sunset, and the offset in minutes (negative is before). */
+  event: "sunrise" | "sunset";
+  offset: string;
+  /** Price and temperature triggers: the value to get back to before it can fire again. Blank means as soon as the level is no longer passed. */
+  rearm: string;
+  /** True until the owner types a re-arm value, so a temperature level change carries it along. */
+  rearmAuto: boolean;
+}
+
+/** Limits on how often the schedule fires. `againAfter` is null when "run again after" is off. */
+export interface LimitsForm {
+  minGap: string;
+  againAfter: TimeRefForm | null;
 }
 
 export interface RestoreForm {
@@ -103,6 +127,7 @@ export interface ScheduleFormState {
   actions: ActionForm[];
   restore: RestoreForm;
   retry: RetryForm;
+  limits: LimitsForm;
   notifyEmail: boolean;
 }
 
@@ -117,6 +142,11 @@ export interface ReadingChoice {
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const DEFAULT_RESTORE_MINUTES = "60";
+/** The minimum gap a temperature trigger starts with, and how far past its level its re-arm value starts. */
+const DEFAULT_TEMPERATURE_GAP = "30";
+const DEFAULT_REARM_MARGIN_C = 2;
+export const MAX_OFFSET_MINUTES = 180;
+export const MAX_GAP_MINUTES = 1440;
 export const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Readings the Core API supplies for every site (actor_capabilities.SITE_READING_IDS). */
@@ -126,8 +156,23 @@ export const SITE_READINGS: ReadingChoice[] = [
   { id: "price_c_per_kwh", label: "Current price", unit: "c/kWh", type: "number", targets: null },
 ];
 
-function emptyLevel(): Pick<TriggerForm, "reading" | "op" | "level"> {
-  return { reading: "outdoor_temp_c", op: "gt", level: "" };
+function emptyLevel(): Pick<TriggerForm, "reading" | "op" | "level" | "event" | "offset" | "rearm" | "rearmAuto"> {
+  return { reading: "outdoor_temp_c", op: "gt", level: "", event: "sunset", offset: "0", rearm: "", rearmAuto: true };
+}
+
+/** The re-arm value a temperature level suggests: two degrees back inside it, or blank while the level is not a number. */
+export function suggestRearm(level: string, op: "gt" | "lt"): string {
+  const n = parseNumber(level);
+  if (n === null) return "";
+  return String(Math.round((op === "gt" ? n - DEFAULT_REARM_MARGIN_C : n + DEFAULT_REARM_MARGIN_C) * 100) / 100);
+}
+
+export function defaultClockRef(time = ""): TimeRefForm {
+  return { kind: "clock", time };
+}
+
+export function sunRef(event: "sunrise" | "sunset"): TimeRefForm {
+  return { kind: "sun", event, offset: "0" };
 }
 
 export function isWindowTrigger(type: TriggerType): boolean {
@@ -254,9 +299,11 @@ export function applyRestorable(form: ScheduleFormState, capabilities: Capabilit
   return { ...form, restore: { ...form.restore, enabled: false } };
 }
 
+/** Switch the trigger type. A temperature trigger also starts the minimum gap at 30 minutes when it is off. */
 export function setTriggerType(form: ScheduleFormState, type: TriggerType): ScheduleFormState {
   const when = restoreOptions(type).includes(form.restore.when) ? form.restore.when : "after_minutes";
-  return { ...form, trigger: { ...form.trigger, type }, restore: { ...form.restore, when } };
+  const gap = type === "temperature" && form.limits.minGap.trim() === "0" ? DEFAULT_TEMPERATURE_GAP : form.limits.minGap;
+  return { ...form, trigger: { ...form.trigger, type }, restore: { ...form.restore, when }, limits: { ...form.limits, minGap: gap } };
 }
 
 /** An on/off reading is tested as "is on" (above 0) or "is off" (below 1), so the server and actor need no special case. */
@@ -301,20 +348,35 @@ export function emptyForm(
       earlyIf: [],
     },
     retry: { maxAttempts: "3", intervalSeconds: "30", giveUpMinutes: "15" },
+    limits: { minGap: "0", againAfter: null },
     notifyEmail: false,
   };
 }
 
 // fromSchedule
 
+function refForm(ref: TimeRefSpec): TimeRefForm {
+  return ref.kind === "clock" ? { kind: "clock", time: ref.time } : { kind: "sun", event: ref.event, offset: String(ref.offset_minutes) };
+}
+
+/** The rearm text of a saved trigger. A saved trigger is not given a suggested value, so `rearmAuto` is off. */
+function rearmText(trigger: TriggerSpec): string {
+  return (trigger.type === "price_above" || trigger.type === "temperature") && trigger.rearm != null ? String(trigger.rearm) : "";
+}
+
 function triggerForm(trigger: TriggerSpec): TriggerForm {
+  const sun = trigger.type === "sun" ? { event: trigger.event, offset: String(trigger.offset_minutes) } : {};
   return {
     type: trigger.type,
     windowId: "window_id" in trigger ? String(trigger.window_id) : "",
     time: trigger.type === "time" ? trigger.time : "",
-    days: trigger.type === "time" ? [...trigger.days_of_week] : [...ALL_DAYS],
+    days: trigger.type === "time" || trigger.type === "sun" ? [...trigger.days_of_week] : [...ALL_DAYS],
     price: trigger.type === "price_above" ? String(trigger.c_per_kwh) : "",
-    ...(trigger.type === "temperature" ? { reading: trigger.reading, op: trigger.op, level: String(trigger.value) } : emptyLevel()),
+    ...emptyLevel(),
+    ...(trigger.type === "temperature" ? { reading: trigger.reading, op: trigger.op, level: String(trigger.value) } : {}),
+    ...sun,
+    rearm: rearmText(trigger),
+    rearmAuto: false,
   };
 }
 
@@ -328,6 +390,8 @@ function conditionRow(c: ConditionSpec, key: number): ConditionRow {
       return { key, use, kind: "week", parity: c.parity };
     case "demand_window":
       return { key, use, kind: "demand_window", op: c.op, windowId: c.window_id === null ? "" : String(c.window_id) };
+    case "time_of_day":
+      return { key, use, kind: "time_of_day", start: refForm(c.start), end: refForm(c.end) };
     default:
       return { key, use, kind: "reading", reading: c.reading, op: c.op, value: String(c.value), target: c.target ?? null };
   }
@@ -364,6 +428,7 @@ export function fromSchedule(schedule: SchedulePayload): ScheduleFormState {
       earlyIf: conditionRows(restore.early_if),
     },
     retry: { maxAttempts: String(retry.max_attempts), intervalSeconds: String(retry.interval_seconds), giveUpMinutes: String(retry.give_up_minutes) },
+    limits: { minGap: String(schedule.limits.min_gap_minutes), againAfter: schedule.limits.run_again_after === null ? null : refForm(schedule.limits.run_again_after) },
     notifyEmail: schedule.notify_email,
   };
 }
@@ -382,11 +447,29 @@ export function parseWhole(text: string): number | null {
   return n !== null && Number.isInteger(n) ? n : null;
 }
 
+/** A time reference as the server takes it, or null when its text is not a time or a whole offset. */
+export function refPayload(ref: TimeRefForm): TimeRefSpec | null {
+  if (ref.kind === "clock") return HHMM.test(ref.time) ? { kind: "clock", time: ref.time } : null;
+  const offset = parseWhole(ref.offset);
+  return offset !== null && Math.abs(offset) <= MAX_OFFSET_MINUTES ? { kind: "sun", event: ref.event, offset_minutes: offset } : null;
+}
+
 function triggerPayload(t: TriggerForm): TriggerSpec {
-  if (t.type === "time") return { type: "time", time: t.time, days_of_week: [...t.days].sort((a, b) => a - b) };
-  if (t.type === "price_above") return { type: "price_above", c_per_kwh: Number(t.price) };
-  if (t.type === "temperature") return { type: "temperature", reading: t.reading, op: t.op, value: Number(t.level) };
+  const days = [...t.days].sort((a, b) => a - b);
+  const rearm = parseNumber(t.rearm);
+  const withRearm = rearm === null ? {} : { rearm };
+  if (t.type === "time") return { type: "time", time: t.time, days_of_week: days };
+  if (t.type === "sun") return { type: "sun", event: t.event, offset_minutes: Number(t.offset), days_of_week: days };
+  if (t.type === "price_above") return { type: "price_above", c_per_kwh: Number(t.price), ...withRearm };
+  if (t.type === "temperature") return { type: "temperature", reading: t.reading, op: t.op, value: Number(t.level), ...withRearm };
   return { type: t.type, window_id: Number(t.windowId) };
+}
+
+/** A time-of-day row. A row whose times are not valid cannot be sent, ticked or not; validateForm flags the ticked ones. */
+function timeOfDayPayload(r: TimeOfDayRow): ConditionSpec[] {
+  const start = refPayload(r.start);
+  const end = refPayload(r.end);
+  return start && end ? [{ kind: "time_of_day", start, end, enabled: r.use }] : [];
 }
 
 /** A reading row: unticked, it is sent as typed with 0 for a missing number (the server does not check
@@ -409,6 +492,8 @@ function rowPayload(r: ConditionRow): ConditionSpec[] {
       return [{ kind: "week", parity: r.parity, enabled: r.use }];
     case "demand_window":
       return [{ kind: "demand_window", op: r.op, window_id: r.windowId === "" ? null : Number(r.windowId), enabled: r.use }];
+    case "time_of_day":
+      return timeOfDayPayload(r);
   }
 }
 
@@ -460,6 +545,10 @@ function actionPayload(card: ActionForm, capabilities: Capabilities): ActionSpec
   return { id: card.actionId, params };
 }
 
+function limitsPayload(l: LimitsForm): LimitsSpec {
+  return { min_gap_minutes: parseWhole(l.minGap) ?? 0, run_again_after: l.againAfter === null ? null : refPayload(l.againAfter) };
+}
+
 export function toPayload(form: ScheduleFormState, capabilities: Capabilities): SchedulePayload {
   const { retry } = form;
   return {
@@ -471,6 +560,7 @@ export function toPayload(form: ScheduleFormState, capabilities: Capabilities): 
     actions: form.actions.map((c) => actionPayload(c, capabilities)),
     restore: restorePayload(form.restore, capabilities),
     retry: { max_attempts: Number(retry.maxAttempts), interval_seconds: Number(retry.intervalSeconds), give_up_minutes: Number(retry.giveUpMinutes) },
+    limits: limitsPayload(form.limits),
     notify_email: form.notifyEmail,
   };
 }

@@ -43,9 +43,30 @@ class Instance:
 
 
 @dataclass(frozen=True)
+class TimeRef:
+    """A clock time (`kind` "clock", with `time` as HH:MM) or sunrise or sunset (`kind` "sun", with `event`)
+    moved by `offset_minutes`."""
+
+    kind: str
+    time: str | None = None
+    event: str | None = None
+    offset_minutes: int = 0
+
+    @classmethod
+    def from_json(cls, data: dict) -> TimeRef:
+        return cls(
+            kind=data["kind"],
+            time=data.get("time"),
+            event=data.get("event"),
+            offset_minutes=data.get("offset_minutes", 0),
+        )
+
+
+@dataclass(frozen=True)
 class Trigger:
-    """One of window_start, window_end, time, price_above or temperature; the fields that
-    do not belong to the type stay None."""
+    """One of window_start, window_end, time, sun, price_above or temperature; the fields that
+    do not belong to the type stay None. A sun trigger has `event` and `offset_minutes` and runs on
+    `days_of_week`. A price or temperature trigger may have `rearm`."""
 
     type: str
     window_id: int | None = None
@@ -55,6 +76,9 @@ class Trigger:
     reading: str | None = None
     op: str | None = None
     value: float | None = None
+    event: str | None = None
+    offset_minutes: int = 0
+    rearm: float | None = None
 
     @classmethod
     def from_json(cls, data: dict) -> Trigger:
@@ -67,13 +91,17 @@ class Trigger:
             reading=data.get("reading"),
             op=data.get("op"),
             value=data.get("value"),
+            event=data.get("event"),
+            offset_minutes=data.get("offset_minutes", 0),
+            rearm=data.get("rearm"),
         )
 
 
 @dataclass(frozen=True)
 class Condition:
-    """A reading row (`kind` "reading") or a calendar row: "months", "days", "week" or "demand_window".
-    Calendar rows leave `reading`, `op` and `value` at their defaults unless the kind uses `op`."""
+    """A reading row (`kind` "reading") or a calendar row: "months", "days", "week", "demand_window" or
+    "time_of_day". Calendar rows leave `reading`, `op` and `value` at their defaults unless the kind uses `op`.
+    A time_of_day row has `start` and `end`."""
 
     reading: str = ""
     op: str = "gt"
@@ -84,6 +112,8 @@ class Condition:
     values: tuple[int, ...] = ()
     parity: str | None = None
     window_id: int | None = None
+    start: TimeRef | None = None
+    end: TimeRef | None = None
 
     @classmethod
     def from_json(cls, data: dict) -> Condition:
@@ -104,6 +134,8 @@ class Condition:
             values=tuple(data.get("values") or ()),
             parity=data.get("parity"),
             window_id=data.get("window_id"),
+            start=None if data.get("start") is None else TimeRef.from_json(data["start"]),
+            end=None if data.get("end") is None else TimeRef.from_json(data["end"]),
         )
 
 
@@ -156,6 +188,20 @@ class RetrySpec:
 
 
 @dataclass(frozen=True)
+class Limits:
+    """How often a schedule may fire: `min_gap_minutes` after its last restore or run, and no new
+    trigger until the next `run_again_after` after its last run."""
+
+    min_gap_minutes: int = 0
+    run_again_after: TimeRef | None = None
+
+    @classmethod
+    def from_json(cls, data: dict) -> Limits:
+        after = data.get("run_again_after")
+        return cls(data.get("min_gap_minutes", 0), None if after is None else TimeRef.from_json(after))
+
+
+@dataclass(frozen=True)
 class Schedule:
     id: int
     instance_id: int
@@ -168,6 +214,9 @@ class Schedule:
     actions: list[ActionSpec]
     restore: RestoreSpec
     retry: RetrySpec
+    limits: Limits = field(default_factory=Limits)
+    # A price or temperature trigger fires only while armed; Core API holds the flag.
+    armed: bool = True
 
     @classmethod
     def from_json(cls, data: dict, instance_id: int) -> Schedule:
@@ -184,6 +233,8 @@ class Schedule:
             actions=_parse_actions(data),
             restore=RestoreSpec.from_json(data["restore"]),
             retry=RetrySpec.from_json(data["retry"]),
+            limits=Limits.from_json(data.get("limits") or {}),
+            armed=data.get("armed", True),
         )
 
 
@@ -200,6 +251,23 @@ class WindowOccurrence:
 
 
 @dataclass(frozen=True)
+class SunDay:
+    """Sunrise and sunset on a local date, as UTC instants; None when the sun does not rise or set that day."""
+
+    date: datetime.date
+    sunrise: datetime.datetime | None
+    sunset: datetime.datetime | None
+
+    @classmethod
+    def from_json(cls, data: dict) -> SunDay:
+        return cls(
+            datetime.date.fromisoformat(data["date"]),
+            _parse_utc_or_none(data["sunrise"]),
+            _parse_utc_or_none(data["sunset"]),
+        )
+
+
+@dataclass(frozen=True)
 class Context:
     now: datetime.datetime
     timezone: str
@@ -207,6 +275,9 @@ class Context:
     battery_soc_pct: float | None
     price_c_per_kwh: float | None
     windows: list[WindowOccurrence]
+    # The local dates from yesterday to two days ahead; empty when the site has no usable location.
+    sun: list[SunDay] = field(default_factory=list)
+    sun_estimated: bool = False
 
     @classmethod
     def from_json(cls, data: dict) -> Context:
@@ -217,6 +288,8 @@ class Context:
             battery_soc_pct=data["battery_soc_pct"],
             price_c_per_kwh=data["price_c_per_kwh"],
             windows=[WindowOccurrence.from_json(w) for w in data["windows"]],
+            sun=[SunDay.from_json(d) for d in data.get("sun", [])],
+            sun_estimated=data.get("sun_estimated", False),
         )
 
 

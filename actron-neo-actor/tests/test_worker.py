@@ -305,8 +305,8 @@ def test_restart_finishes_runs_left_open():
         created = h.core.add_run(schedule_id=2, kind="action", trigger_at=WINDOW_START)
         await h.tick_at(START + 30 * MIN)
         assert (h.core.runs[claimed.id].outcome, h.core.runs[claimed.id].message) == ("ok", "confirmed after a restart")
-        assert (h.core.runs[created.id].outcome, h.core.runs[created.id].message) == (
-            "skipped", "the actor restarted before the run")
+        assert h.core.runs[created.id].outcome == "failed"
+        assert h.core.runs[created.id].message.startswith("never started")
         await h.tick_at(WINDOW_END)
         assert only(h.core.of("restore", 1)).outcome == "ok"
         assert power_commands(h.api) == ["COOL"]
@@ -1072,5 +1072,29 @@ def test_test_now_runs_every_action():
         assert done.steps == [step(0, FAN_LOW), step(1, ActionSpec("system_off"))]
         assert power_commands(h.api) == ["OFF", "COOL"]
         assert h.api.device["UserAirconSettings"]["FanMode"] == "AUTO+CONT"
+
+    run(scenario())
+
+
+def test_pending_run_left_by_a_lost_create_response_is_run():
+    async def scenario() -> None:
+        h = harness()
+        pending = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START)
+        await h.tick_at(WINDOW_START + MIN)
+        done = h.core.runs[pending.id]
+        assert done.outcome == "ok" and done.started_at is not None
+        assert power_commands(h.api) == ["OFF"]
+
+    run(scenario())
+
+
+def test_pending_run_older_than_the_give_up_time_fails():
+    async def scenario() -> None:
+        h = harness()
+        pending = h.core.add_run(schedule_id=1, kind="action", trigger_at=WINDOW_START)
+        await h.tick_at(WINDOW_START + 2 * 60 * MIN)
+        done = h.core.runs[pending.id]
+        assert done.outcome == "failed" and done.message.startswith("never started")
+        assert h.api.commands == []
 
     run(scenario())

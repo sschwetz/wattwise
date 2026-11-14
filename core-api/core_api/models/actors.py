@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import enum
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core_api.encrypted_types import EncryptedJSON
@@ -61,6 +61,11 @@ class ActorSchedule(Base):
     actions: Mapped[list] = mapped_column(JSON, nullable=False)
     restore: Mapped[dict] = mapped_column(JSON, nullable=False)
     retry: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # {"min_gap_minutes": int, "run_again_after": time ref | null}; {} for a schedule saved before limits existed.
+    limits: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    # A level trigger (price, temperature) fires only while armed. The actor clears it on firing and
+    # sets it again when the reading is back past the trigger's `rearm`, or no longer passes the level.
+    armed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     notify_email: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

@@ -71,7 +71,7 @@ function payload(trigger: TriggerSpec): SchedulePayload {
       early_if: [{ reading: "indoor_temp_c", op: "gt", value: 27, enabled: true }],
     },
     retry: { max_attempts: 4, interval_seconds: 20, give_up_minutes: 10 },
-    notify_email: true,
+    limits: { min_gap_minutes: 0, run_again_after: null }, notify_email: true,
   };
 }
 
@@ -95,7 +95,8 @@ describe("toPayload and fromSchedule round-trip", () => {
 
   it("for a new form", () => {
     const form = { ...emptyForm(caps, context), name: "New" };
-    expect(fromSchedule(toPayload(form, caps))).toEqual(form);
+    // A saved schedule is not given a suggested re-arm value, so it loads with rearmAuto off.
+    expect(fromSchedule(toPayload(form, caps))).toEqual({ ...form, trigger: { ...form.trigger, rearmAuto: false } });
   });
 
   it("keeps a restore at a set time and a number param", () => {

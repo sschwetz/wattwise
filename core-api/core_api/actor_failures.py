@@ -113,7 +113,7 @@ def _recent_ok_runs(db: Session, instance: ActorInstance, now: datetime.datetime
     return [
         ActorFailure(
             "run_ok", instance.id, schedule.id, schedule.name, "The action ran",
-            as_utc(run.finished_at), severity=SEVERITY_NOTICE,
+            as_utc(run.finished_at or run.trigger_at), severity=SEVERITY_NOTICE,
         )
         for run, schedule in db.execute(stmt)
     ]

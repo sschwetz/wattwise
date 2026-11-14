@@ -13,6 +13,8 @@ export interface EditorModel {
   /** The demand windows a condition can name, and the site's time zone for the week and day rows. */
   windows: DemandWindow[];
   timezone: string;
+  /** True when the site has its own latitude and longitude; otherwise sun times are estimated from the time zone. */
+  locationSet: boolean;
   /** The unit's latest readings, or null before the actor has reported any. */
   readings: DeviceStatePayload | null;
 }

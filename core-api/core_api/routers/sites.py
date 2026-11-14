@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import datetime
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core_api.deps import get_current_user, get_db_session, require_site_access, require_site_owner
 from core_api.models.identity import Site, SiteAccess, User
-from core_api.schemas import SiteCreate, SiteOut, SiteUpdate
+from core_api.schemas import SiteCreate, SiteOut, SiteSunOut, SiteUpdate
+from core_api.sun import site_location, sun_times
+from core_api.time_utils import site_tz
 
 router = APIRouter(prefix="/sites", tags=["sites"])
 
@@ -45,6 +49,16 @@ def get_site(site: Site = Depends(require_site_access)) -> Site:
     return site
 
 
+@router.get("/{site_id}/sun", response_model=SiteSunOut)
+def get_site_sun(site: Site = Depends(require_site_access)) -> SiteSunOut:
+    location = site_location(site)
+    if location is None:
+        return SiteSunOut(estimated=False, sunrise=None, sunset=None)
+    today = datetime.datetime.now(site_tz(site.timezone)).date()
+    times = sun_times(location, today, site.timezone)
+    return SiteSunOut(estimated=location.estimated, sunrise=times.sunrise, sunset=times.sunset)
+
+
 @router.patch("/{site_id}", response_model=SiteOut)
 def update_site(
     payload: SiteUpdate,
@@ -57,6 +71,8 @@ def update_site(
         site.timezone = payload.timezone
     if payload.enabled is not None:
         site.enabled = payload.enabled
+    if "latitude" in payload.model_fields_set:
+        site.latitude, site.longitude = payload.latitude, payload.longitude
     db.commit()
     db.refresh(site)
     return site

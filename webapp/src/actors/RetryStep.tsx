@@ -36,7 +36,7 @@ function RetryField({ model, field }: { model: EditorModel; field: (typeof FIELD
 export function RetryStep({ model }: { model: EditorModel }) {
   const { form, setForm } = model;
   return (
-    <Step number={6} title="If it fails">
+    <Step number={7} title="If it fails">
       <div className="grid gap-3 sm:grid-cols-3">
         {FIELDS.map((field) => (
           <RetryField key={field.key} model={model} field={field} />

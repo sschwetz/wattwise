@@ -36,6 +36,9 @@ class AsyncCore:
     async def get_schedules(self, instance_id: int) -> list[Schedule]:
         return await asyncio.to_thread(self._client.get_schedules, instance_id)
 
+    async def set_schedule_armed(self, instance_id: int, schedule_id: int, armed: bool) -> None:
+        await asyncio.to_thread(self._client.set_schedule_armed, instance_id, schedule_id, armed)
+
     async def get_context(self, instance_id: int) -> Context:
         return await asyncio.to_thread(self._client.get_context, instance_id)
 

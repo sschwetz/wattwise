@@ -8,6 +8,7 @@ import { ActorStep } from "./ActorStep";
 import { ConditionsEditor } from "./ConditionsEditor";
 import { type DeleteControls, DeleteSchedule } from "./DeleteSchedule";
 import type { EditorModel } from "./editorModel";
+import { LimitsStep } from "./LimitsStep";
 import { RestoreStep } from "./RestoreStep";
 import { RetryStep } from "./RetryStep";
 import { alignParams, applyRestorable, conditionReadings, emptyForm, fromSchedule, type SchedulePayload, toPayload } from "./scheduleForm";
@@ -27,6 +28,8 @@ export interface EditorSetup {
   windows: DemandWindow[];
   /** The site's time zone. */
   timezone: string;
+  /** Whether the site has its own latitude and longitude. */
+  locationSet: boolean;
   canEdit: boolean;
 }
 
@@ -101,7 +104,7 @@ function useEditorForm(setup: EditorSetup, actions: EditorActions) {
   const { canEdit, capabilities } = setup;
   const reportDirty = useReportDirty(canEdit && isDirty(form, baseline));
   const errors = submitted ? validateForm(form, capabilities, setup.windows) : {};
-  const model: EditorModel = { form, setForm, errors, capabilities, canEdit, windows: setup.windows, timezone: setup.timezone, readings: setup.instance.latest_readings };
+  const model: EditorModel = { form, setForm, errors, capabilities, canEdit, windows: setup.windows, timezone: setup.timezone, locationSet: setup.locationSet, readings: setup.instance.latest_readings };
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -135,6 +138,7 @@ export function ScheduleEditor({ setup, actions }: { setup: EditorSetup; actions
           <OnlyIfStep model={model} />
           <ActionStep model={model} />
           <RestoreStep model={model} />
+          <LimitsStep model={model} />
           <RetryStep model={model} />
         </ReadOnlyFieldset>
         {canEdit && <Buttons actions={actions} />}

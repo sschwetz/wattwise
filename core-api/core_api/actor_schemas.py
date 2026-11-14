@@ -37,6 +37,22 @@ class _Strict(BaseModel):
 # Schedule specs (owner-submitted, stored as JSON on actor_schedules)
 
 
+class ClockTime(_Strict):
+    kind: Literal["clock"]
+    time: HHMM
+
+
+class SunTime(_Strict):
+    """Sunrise or sunset at the site, moved by up to three hours either way."""
+
+    kind: Literal["sun"]
+    event: Literal["sunrise", "sunset"]
+    offset_minutes: int = Field(default=0, ge=-180, le=180)
+
+
+TimeRef = Annotated[ClockTime | SunTime, Field(discriminator="kind")]
+
+
 class WindowStartTrigger(_Strict):
     type: Literal["window_start"]
     window_id: int
@@ -55,22 +71,52 @@ class TimeTrigger(_Strict):
     )
 
 
+class SunTrigger(_Strict):
+    type: Literal["sun"]
+    event: Literal["sunrise", "sunset"]
+    offset_minutes: int = Field(default=0, ge=-180, le=180)
+    days_of_week: list[Annotated[int, Field(ge=0, le=6)]] = Field(
+        default_factory=lambda: list(range(7)), min_length=1
+    )
+
+
 class PriceAboveTrigger(_Strict):
+    """Fires when the price crosses above the level. After firing it waits until the price is at or below
+    `rearm`, or, with no `rearm`, until it is no longer above the level."""
+
     type: Literal["price_above"]
     c_per_kwh: float = Field(allow_inf_nan=False)
+    rearm: float | None = Field(default=None, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _rearm_is_below_the_level(self) -> PriceAboveTrigger:
+        if self.rearm is not None and self.rearm >= self.c_per_kwh:
+            raise ValueError("rearm must be below the price level")
+        return self
 
 
 class TemperatureTrigger(_Strict):
-    """Fires when the temperature crosses the level in the given direction."""
+    """Fires when the temperature crosses the level in the given direction. After firing it waits until
+    the reading is back past `rearm` (below it for gt, above it for lt), or, with no `rearm`, until it
+    no longer passes the level."""
 
     type: Literal["temperature"]
     reading: Literal["indoor_temp_c", "outdoor_temp_c"]
     op: Literal["gt", "lt"]
     value: float = Field(allow_inf_nan=False)
+    rearm: float | None = Field(default=None, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _rearm_is_back_inside_the_level(self) -> TemperatureTrigger:
+        if self.rearm is None:
+            return self
+        if (self.op == "gt" and self.rearm >= self.value) or (self.op == "lt" and self.rearm <= self.value):
+            raise ValueError("rearm must be on the far side of the level from the trigger")
+        return self
 
 
 TriggerSpec = Annotated[
-    WindowStartTrigger | WindowEndTrigger | TimeTrigger | PriceAboveTrigger | TemperatureTrigger,
+    WindowStartTrigger | WindowEndTrigger | TimeTrigger | SunTrigger | PriceAboveTrigger | TemperatureTrigger,
     Field(discriminator="type"),
 ]
 
@@ -133,6 +179,22 @@ class DemandWindowCondition(_Strict):
     enabled: bool = True
 
 
+class TimeOfDayCondition(_Strict):
+    """The site's time of day is from `start` up to `end`. When `end` is not later than `start` the span
+    runs through midnight into the next day."""
+
+    kind: Literal["time_of_day"]
+    start: TimeRef
+    end: TimeRef
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def _ends_differ(self) -> TimeOfDayCondition:
+        if self.start == self.end:
+            raise ValueError("start and end must differ")
+        return self
+
+
 def _condition_kind(value: object) -> str | None:
     kind = value.get("kind", "reading") if isinstance(value, dict) else getattr(value, "kind", "reading")
     return kind if isinstance(kind, str) else None
@@ -143,7 +205,8 @@ ConditionSpec = Annotated[
     | Annotated[MonthsCondition, Tag("months")]
     | Annotated[DaysCondition, Tag("days")]
     | Annotated[WeekCondition, Tag("week")]
-    | Annotated[DemandWindowCondition, Tag("demand_window")],
+    | Annotated[DemandWindowCondition, Tag("demand_window")]
+    | Annotated[TimeOfDayCondition, Tag("time_of_day")],
     Discriminator(_condition_kind),
 ]
 
@@ -158,6 +221,12 @@ def _restore_with_flag(restore: dict) -> dict:
     return {**restore, **lists}
 
 
+def _limits_with_defaults(limits: dict) -> dict:
+    """Schedules saved before limits existed have an empty dict: no gap and no lockout."""
+    return {"min_gap_minutes": 0, "run_again_after": None, **limits}
+
+
+StoredLimits = Annotated[dict, AfterValidator(_limits_with_defaults)]
 StoredConditions = Annotated[list, AfterValidator(_conditions_with_flag)]
 StoredRestore = Annotated[dict, AfterValidator(_restore_with_flag)]
 
@@ -190,6 +259,15 @@ class RestoreSpec(_Strict):
         if self.when == "at_time" and self.time is None:
             raise ValueError("time is required when restore happens at a set time")
         return self
+
+
+class LimitsSpec(_Strict):
+    """How often a schedule may fire. `min_gap_minutes` is the time that must pass after its last restore
+    (or after its last run, if it is not restored) before it can trigger again; 0 turns it off.
+    `run_again_after` stops it triggering again until the next time given, counted from its last run."""
+
+    min_gap_minutes: int = Field(default=0, ge=0, le=1440)
+    run_again_after: TimeRef | None = None
 
 
 class RetrySpec(_Strict):
@@ -353,7 +431,14 @@ class ScheduleCreate(_Strict):
     actions: list[ActionSpec] = Field(min_length=1, max_length=8)
     restore: RestoreSpec = Field(default_factory=RestoreSpec)
     retry: RetrySpec = Field(default_factory=RetrySpec)
+    limits: LimitsSpec = Field(default_factory=LimitsSpec)
     notify_email: bool = False
+
+    def time_refs(self) -> list[ClockTime | SunTime]:
+        """Every time reference in the conditions, the restore lists and the limits. A new place that holds one is added here."""
+        rows = [*self.conditions, *self.restore.only_if, *self.restore.early_if]
+        refs = [ref for row in rows if isinstance(row, TimeOfDayCondition) for ref in (row.start, row.end)]
+        return [*refs, *([self.limits.run_again_after] if self.limits.run_again_after else [])]
 
 
 class SchedulePatch(_Strict):
@@ -366,6 +451,7 @@ class SchedulePatch(_Strict):
     actions: list | None = None
     restore: dict | None = None
     retry: dict | None = None
+    limits: dict | None = None
     notify_email: bool | None = None
 
 
@@ -381,6 +467,7 @@ class ScheduleView(BaseModel):
     actions: list[dict]
     restore: StoredRestore
     retry: dict
+    limits: StoredLimits
     notify_email: bool
 
     @computed_field  # type: ignore[prop-decorator]

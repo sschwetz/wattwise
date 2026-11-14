@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 
+from actron_neo_actor.actions import run_created
 from actron_neo_actor.executor import Env, apply_with_retries, settled, shows_action, update
 from actron_neo_actor.models import ActionSpec, RetrySpec, Run
 from actron_neo_actor.restores import execute_restore, take
@@ -18,7 +19,8 @@ from actron_neo_actor.snapshots import snapshot_matches
 from actron_neo_actor.test_runs import finish_interrupted
 from actron_neo_actor.view import HOLDING, OPEN, TickView
 
-NOT_STARTED = "the actor restarted before the run"
+TOO_LATE = "never started: the give-up time passed before the actor could run it"
+SCHEDULE_GONE = "the schedule was removed before the run started"
 CONFIRMED = "confirmed after a restart"
 REAPPLIED = "applied after a restart"
 NOT_CONFIRMED = "the actor restarted before the unit confirmed"
@@ -40,9 +42,25 @@ async def resume(env: Env, view: TickView, in_flight: set[int]) -> None:
 
 async def _resume_action(env: Env, view: TickView, run: Run) -> None:
     if run.outcome == "pending":
-        done = await update(env, run, "skipped", NOT_STARTED)
+        await _start_pending(env, view, run)
+        return
+    done = await _carry_on(env, view, run)
+    if done is not None:
+        view.note(done)
+
+
+async def _start_pending(env: Env, view: TickView, run: Run) -> None:
+    """A pending row is a trigger Core API saved but the actor never started, for example when the
+    create call timed out. It runs as soon as it is found, unless the schedule's give-up time since
+    the trigger has passed. That ends `failed`, not `skipped`, because the action did not happen."""
+    schedule = view.schedules.get(run.schedule_id)
+    if schedule is None:
+        done = await update(env, run, "skipped", SCHEDULE_GONE)
+    elif env.clock() > run.trigger_at + datetime.timedelta(minutes=schedule.retry.give_up_minutes):
+        done = await update(env, run, "failed", TOO_LATE)
     else:
-        done = await _carry_on(env, view, run)
+        await run_created(env, view, schedule, run)
+        return
     if done is not None:
         view.note(done)
 

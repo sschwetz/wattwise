@@ -26,7 +26,8 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `live.py` | `LiveHub`: the in-memory latest live sample per source and the per-site subscriber queues. Never touches the database. |
 | `scheduler.py` | Builds the APScheduler instance. |
 | `actor_schemas.py`, `actor_capabilities.py`, `actor_schedule_validation.py` | Pydantic models for schedules, runs and capabilities, and the checks that tie a saved schedule to an instance's declared capabilities. See [Actors](actors.md). |
-| `actor_context.py`, `actor_runs.py`, `actor_failures.py` | The site context an actor fetches (window occurrences as UTC instants), the one definition of an unfinished action run, and the current-failures rules the Dashboard log and the watchdog share. |
+| `sun.py` | Sunrise and sunset from the NOAA solar equations, good to about a minute away from the poles. It estimates from `/usr/share/zoneinfo/zone.tab` when a site has no point. |
+| `actor_context.py`, `actor_runs.py`, `actor_failures.py` | The site context an actor fetches (window occurrences and sun times as UTC instants), the one definition of an unfinished action run, and the current-failures rules the Dashboard log and the watchdog share. |
 | `service_status.py`, `routers/services.py` | The `service_status` table's read and write helpers, the per-key service allow-list, and the two `/services` endpoints. See [Service status](#service-status). |
 | `jobs/` | The background jobs and their helpers. |
 
@@ -68,7 +69,8 @@ All paths are under `/api/v1`. "Owner" means `require_site_owner`, "Viewer" mean
 | Two-factor | `POST /auth/totp/setup/start`, `/setup/confirm`, `/verify` | Scoped tokens |
 | Password reset | `POST /auth/password-reset/request`, `/confirm` | Anyone |
 | Account | `GET/PATCH /users/me`, `PATCH /users/me/profile`, `POST/GET/DELETE /users/me/avatar`, `POST /users/me/password`, `POST /users/me/email/change/request` and `/confirm`, `POST /users/me/totp/reenroll/start` and `/confirm` | Logged-in user. Password, email and TOTP changes require a current password or code. |
-| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}` | Owner for writes. `PATCH` takes `name`, `timezone` and `enabled`. A `timezone` that is not an IANA zone name returns 422. `GET /sites` returns disabled sites too, with `enabled: false`. |
+| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}` | Owner for writes. `PATCH` takes `name`, `timezone`, `enabled`, `latitude` and `longitude`. A `timezone` that is not an IANA zone name returns 422. `latitude` (-90 to 90) and `longitude` (-180 to 180) must both be set or both be null, otherwise 422. Null clears the location. `SiteOut` returns both, null when unset. `GET /sites` returns disabled sites too, with `enabled: false`. |
+| Site sun times | `GET /sites/{id}/sun` | Site access. Returns `{estimated, sunrise, sunset}` for today in the site's time zone, as UTC instants. `estimated` is true when the point comes from the time zone's reference city. `sunrise` and `sunset` are null when the sun does not rise or set that day, and both are null with `estimated` false when there is no usable location. |
 | Invitations (site side) | `POST/GET /sites/{id}/invites`, `GET /sites/{id}/invites/{iid}`, `POST /sites/{id}/invites/{iid}/revoke` | Owner creates. `GET` list: owner sees all invites, a viewer sees only their own. Revoke: the owner can revoke an `invited` or `accepted` invite. The invitee can revoke only an `accepted` one. |
 | Invitations (recipient side) | `GET /invites/pending`, `POST /invites/{iid}/accept`, `POST /invites/{iid}/decline` | Logged-in user whose confirmed email matches the invite, ignoring case |
 
@@ -138,7 +140,7 @@ The contract an actor follows is in [Actors](actors.md#the-contract). There are 
 | Actor | `/actor` | `X-Actor-Key`, and `X-Actor-Provider` on per-instance routes | The actor container |
 | Owner | `/sites/{id}/actors` | JWT. Reads need site access, writes need the owner. | The web app |
 
-Actor routes (`routers/actor.py`): `GET /actor/instances?provider=`, then under `/actor/instances/{id}`: `PATCH /discovered-config`, `PUT /capabilities`, `PUT|DELETE /alerts/{code}` (same body and rules as the source alert endpoints, keyed to the instance), `GET /schedules`, `GET /context`, `PUT /readings`, `GET /runs`, `POST /runs`, `PATCH /runs/{run_id}`.
+Actor routes (`routers/actor.py`): `GET /actor/instances?provider=`, then under `/actor/instances/{id}`: `PATCH /discovered-config`, `PUT /capabilities`, `PUT|DELETE /alerts/{code}` (same body and rules as the source alert endpoints, keyed to the instance), `GET /schedules`, `PATCH /schedules/{schedule_id}` (body `{"armed": bool}`, 204), `GET /context`, `PUT /readings`, `GET /runs`, `POST /runs`, `PATCH /runs/{run_id}`.
 
 Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 

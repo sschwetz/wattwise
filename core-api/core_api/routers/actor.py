@@ -13,7 +13,15 @@ from core_api.actor_capabilities import Capabilities
 from core_api.actor_context import ActorContext, build_context
 from core_api.actor_email import site_local_time, site_owner
 from core_api.actor_runs import has_unfinished_action_run, unfinished_action_runs
-from core_api.actor_schemas import AwareUtc, RunCreate, RunOut, RunUpdate, StoredConditions, StoredRestore
+from core_api.actor_schemas import (
+    AwareUtc,
+    RunCreate,
+    RunOut,
+    RunUpdate,
+    StoredConditions,
+    StoredLimits,
+    StoredRestore,
+)
 from core_api.alerts import AlertCode, clear_alert, report_notification_result, set_alert
 from core_api.deps import get_actor_instance, get_db_session, get_email_sender, require_actor_key
 from core_api.email_sender import EmailSender, try_send_email
@@ -62,6 +70,8 @@ class ActorScheduleOut(BaseModel):
     actions: list[dict]
     restore: StoredRestore
     retry: dict
+    limits: StoredLimits
+    armed: bool
     notify_email: bool
     created_at: AwareUtc
 
@@ -79,6 +89,12 @@ class WindowOccurrenceOut(BaseModel):
     end: AwareDatetime
 
 
+class SunDayOut(BaseModel):
+    date: datetime.date
+    sunrise: AwareDatetime | None
+    sunset: AwareDatetime | None
+
+
 class ActorContextOut(BaseModel):
     now: AwareDatetime
     timezone: str
@@ -86,6 +102,8 @@ class ActorContextOut(BaseModel):
     battery_soc_pct: float | None
     price_c_per_kwh: float | None
     windows: list[WindowOccurrenceOut]
+    sun: list[SunDayOut]
+    sun_estimated: bool
 
 
 def actor_instances_for_provider(db: Session, provider: str) -> list[tuple[ActorInstance, Site, bool]]:
@@ -192,6 +210,27 @@ def list_actor_schedules(
     ]
 
 
+class ArmedIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    armed: bool
+
+
+@router.patch("/instances/{instance_id}/schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
+def set_schedule_armed(
+    schedule_id: int,
+    payload: ArmedIn,
+    instance: ActorInstance = Depends(get_actor_instance),
+    db: Session = Depends(get_db_session),
+) -> None:
+    """The actor clears `armed` when a level trigger fires and sets it when the reading is back past the re-arm value."""
+    schedule = db.get(ActorSchedule, schedule_id)
+    if schedule is None or schedule.instance_id != instance.id:
+        raise AppError(404, "not_found", "Schedule not found")
+    schedule.armed = payload.armed
+    db.commit()
+
+
 @router.get("/instances/{instance_id}/context", response_model=ActorContextOut)
 def get_actor_context(
     instance: ActorInstance = Depends(get_actor_instance),
@@ -228,6 +267,8 @@ def _context_out(context: ActorContext) -> ActorContextOut:
             )
             for w in context.windows
         ],
+        sun=[SunDayOut(date=d.date, sunrise=d.sunrise, sunset=d.sunset) for d in context.sun],
+        sun_estimated=context.sun_estimated,
     )
 
 

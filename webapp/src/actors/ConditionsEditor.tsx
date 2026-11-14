@@ -4,10 +4,11 @@ import { SHORT_DAYS, SHORT_MONTHS } from "../sources/rateWindowUi";
 import { changeKind, currentWeekParity } from "./calendarConditions";
 import { windowLabel } from "./demandWindows";
 import { formatUnit, invalidProps } from "./editorModel";
-import { addCondition, type ConditionKind, type ConditionRow, isSwitchedOn, type MembershipRow, pointAtReading, type ReadingChoice, type ReadingRow, setSwitch, type WeekRow, type WindowRow } from "./scheduleForm";
+import { addCondition, type ConditionKind, type ConditionRow, isSwitchedOn, type MembershipRow, pointAtReading, type ReadingChoice, type ReadingRow, setSwitch, type TimeOfDayRow, type WeekRow, type WindowRow } from "./scheduleForm";
 import { targetOffered, type FormErrors } from "./scheduleValidation";
 import { FieldError } from "./Step";
 import { compactInputClass, hintClass, secondaryButtonClass } from "./styles";
+import { TimeRefField } from "./TimeRefField";
 
 export interface CalendarModel {
   windows: DemandWindow[];
@@ -49,6 +50,7 @@ const CALENDAR_KINDS: { kind: ConditionKind; label: string }[] = [
   { kind: "days", label: "Day of week" },
   { kind: "week", label: "Week" },
   { kind: "demand_window", label: "Demand window" },
+  { kind: "time_of_day", label: "Time of day" },
 ];
 
 const NO_TARGET = [{ value: "", label: "No target" }];
@@ -193,6 +195,19 @@ function WindowControls({ model }: { model: KindModel<WindowRow> }) {
   );
 }
 
+/** "is between" two times, each a clock time or sunrise or sunset. A span that ends before it starts runs through midnight. */
+function TimeOfDayControls({ model }: { model: KindModel<TimeOfDayRow> }) {
+  const { row, number, onChange, error, errorId } = model;
+  return (
+    <>
+      <span>is between</span>
+      <TimeRefField label={`Start ${number}`} value={row.start} onChange={(start) => onChange({ ...row, start })} error={{ id: errorId, message: error }} />
+      <span>and</span>
+      <TimeRefField label={`End ${number}`} value={row.end} onChange={(end) => onChange({ ...row, end })} error={{ id: errorId, message: error }} />
+    </>
+  );
+}
+
 function RowControls({ model }: { model: RowModel & { errorId: string } }) {
   const { row } = model;
   switch (row.kind) {
@@ -205,6 +220,8 @@ function RowControls({ model }: { model: RowModel & { errorId: string } }) {
       return <WeekControls model={{ ...model, row }} />;
     case "demand_window":
       return <WindowControls model={{ ...model, row }} />;
+    case "time_of_day":
+      return <TimeOfDayControls model={{ ...model, row }} />;
   }
 }
 
@@ -228,7 +245,7 @@ function ConditionLine({ model }: { model: RowModel }) {
   );
 }
 
-/** A list of condition rows: a reading above or below a value, a month, day, week or demand window test. Each row has a tick box; an unticked row is kept
+/** A list of condition rows: a reading above or below a value, a month, day, week, demand window or time of day test. Each row has a tick box; an unticked row is kept
  * and saved switched off, and only ticked rows count. */
 export function ConditionsEditor({ model }: { model: ConditionsModel }) {
   const { legend, legendHidden, hint, rows, onChange, readings, calendar, errors, errorPrefix, canEdit } = model;

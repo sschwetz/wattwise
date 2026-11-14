@@ -120,6 +120,7 @@ function triggerProblems(body: SchedulePayload): string[] {
   }
   if (t.type === "price_above") return isFiniteNumber(t.c_per_kwh) ? [] : ["trigger price"];
   if (t.type === "temperature") return isFiniteNumber(t.value) ? [] : ["trigger temperature"];
+  if (t.type === "sun") return [];
   return Number.isInteger(t.window_id) ? [] : ["trigger window_id"];
 }
 

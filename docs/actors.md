@@ -26,8 +26,9 @@ All paths are under `/api/v1/actor`.
 | Discover | `GET /instances?provider=` | The `X-Actor-Provider` header must name the same provider. Lists the provider's instances on enabled sites, with the site `timezone` and the stored `config`. An instance with an unfinished action run stays in the list when it or its site is disabled, with `restore_only: true`, so the actor can still put the unit back. |
 | Report sign-in | `PATCH /instances/{id}/discovered-config` | Merges `config` (the refresh token) into the stored config and sets `auth_state` (the sign-in code and link, or `needs_sign_in`). |
 | Declare | `PUT /instances/{id}/capabilities` | Sends the actions and readings the device supports. See [Capabilities](#capabilities). |
-| Fetch schedules | `GET /instances/{id}/schedules` | Enabled schedules, plus any disabled schedule that still has an unfinished action run. |
-| Fetch context | `GET /instances/{id}/context` | `now`, the site `timezone`, `outdoor_temp_c`, `battery_soc_pct`, `price_c_per_kwh`, and `windows`. |
+| Fetch schedules | `GET /instances/{id}/schedules` | Enabled schedules, plus any disabled schedule that still has an unfinished action run. Each entry has `limits` and `armed`. |
+| Set armed | `PATCH /instances/{id}/schedules/{schedule_id}` | Body `{"armed": bool}`, response 204, 404 `not_found` for a schedule of another instance. See [Level triggers](#level-triggers). |
+| Fetch context | `GET /instances/{id}/context` | `now`, the site `timezone`, `outdoor_temp_c`, `battery_soc_pct`, `price_c_per_kwh`, `windows`, `sun` and `sun_estimated`. |
 | Report readings | `PUT /instances/{id}/readings` | Replaces `latest_readings` with the body's `state` object and sets `last_seen_at`. Only the latest value is kept. |
 | List runs | `GET /instances/{id}/runs` | Needs exactly one of `unfinished=true`, `pending_test=true` or `since=<time>`; anything else is 422 `invalid_filter`. |
 | Create a run | `POST /instances/{id}/runs` | Creates a run in outcome `pending`. |
@@ -50,9 +51,11 @@ Core API works out the demand window times so the actor does no time zone logic.
 
 `outdoor_temp_c` and `battery_soc_pct` come from the latest reading in the past 15 minutes, and are `null` when there is none. `price_c_per_kwh` is the buy price of the interval that covers `now`.
 
+`sun` lists sunrise and sunset for each local date from yesterday to two days ahead, as `{date, sunrise, sunset}` with UTC instants, so the actor does no astronomy. A time is `null` when the sun does not rise or set that day. The list is empty when the site has no usable location. `sun_estimated` is true when the times come from the time zone's reference city, not a point set on the site. The maths is in [`sun.py`](../core-api/core_api/sun.py), the NOAA solar equations, good to about a minute away from the poles. Without a point on the site, `sun.py` reads the reference city for the time zone from `/usr/share/zoneinfo/zone.tab`. A system without that file has no estimate. The site's location is set on the General tab. See [Core API](core-api.md#people).
+
 ### Schedules
 
-A schedule has one trigger, optional conditions, a list of 1 to 8 actions, a restore rule and a retry rule. All actions fire at the same trigger, behind the same conditions, and run in list order with no wait between them. The JSON shapes are in [Data model](data-model.md#actor-tables).
+A schedule has one trigger, optional conditions, a list of 1 to 8 actions, a restore rule, a retry rule and optional [limits](#limits). All actions fire at the same trigger, behind the same conditions, and run in list order with no wait between them. The JSON shapes are in [Data model](data-model.md#actor-tables).
 
 Not in this version: per-action triggers, conditions or delays, conditional flow between actions ("only if the previous one worked"), per-zone mode, and per-zone fan speed. The unit's raw state showed no named zone fan field. Design: [multi-action schedules](superpowers/specs/2026-11-11-multi-action-schedules-design.md).
 
@@ -60,8 +63,25 @@ Not in this version: per-action triggers, conditions or delays, conditional flow
 |---|---|
 | `window_start`, `window_end` | At the start or end of each occurrence of a demand window of the site's tariff |
 | `time` | At a set `HH:MM` in the site time zone on chosen days (0 is Monday). At least one day is required. |
-| `price_above` | When the buy price rises above a level, at most once per 5-minute step. After an actor restart the previous price is unknown, so a price already above the level counts as a crossing. After an owner override and an actor restart, a price trigger that fires again acts again. |
-| `temperature` | When the indoor or outdoor temperature rises above or falls below a level (`reading` is `indoor_temp_c` or `outdoor_temp_c`, `op` is `gt` or `lt`, `value` is in C), at most once per 5-minute step. It uses the device's reading first and the site's outdoor reading second. A missing or stale reading never fires and does not reset the crossing. After an actor restart a level already passed counts as a crossing, as with `price_above`. |
+| `sun` | At sunrise or sunset (`event`), moved by `offset_minutes` (-180 to 180, negative is before), on chosen `days_of_week`. The days are those of the local date the sun event falls on. Needs a site location, which can be the time zone estimate. |
+| `price_above` | When the buy price is above `c_per_kwh` and the trigger is armed, at most once per 5-minute step. Optional `rearm`. See [Level triggers](#level-triggers). |
+| `temperature` | When the indoor or outdoor temperature is above (`gt`) or below (`lt`) `value` in C and the trigger is armed, at most once per 5-minute step. `reading` is `indoor_temp_c` or `outdoor_temp_c`. It uses the device's reading first and the site's outdoor reading second. A missing or stale reading never fires and never re-arms. Optional `rearm`. See [Level triggers](#level-triggers). |
+
+#### Level triggers
+
+`price_above` and `temperature` are level triggers: they fire while the level is passed, not on a change. Without a guard, a reading that hovers around the level starts and stops the unit over and over. Two things prevent it, `armed` and the schedule's [limits](#limits).
+
+`actor_schedules.armed` is stored in Core API, so an actor restart does not re-fire a trigger that has already fired. The actor clears it with `PATCH /instances/{id}/schedules/{schedule_id}` when a level trigger fires. It sets it again when the reading is back past `rearm`:
+
+| Trigger | Re-armed when | With `rearm` null |
+|---|---|---|
+| `price_above` | The price is at or below `rearm` | The price is no longer above the level |
+| `temperature`, `gt` | The reading is at or below `rearm` | The reading is no longer above the level |
+| `temperature`, `lt` | The reading is at or above `rearm` | The reading is no longer below the level |
+
+Core API refuses `rearm` at or above the level for `price_above` and for `gt`, and at or below the level for `lt`, with 422 `invalid_schedule`. Core API sets `armed` back to true when a save changes the trigger. A reading that is missing or stale never re-arms.
+
+A level trigger that a limit holds back records nothing and stays armed, so it fires when the limit ends if the level is still passed. A time, window or sun trigger held back by a limit is recorded as a `skipped` run, such as `waiting until Sun 06:00`.
 
 Conditions ("only if") all have to pass or the run is skipped. A reading that is missing or stale fails a condition. A device reading is stale after 5 minutes. The site readings (`outdoor_temp_c`, `battery_soc_pct`, `price_c_per_kwh`) come from the [context](#context), where outdoor temperature and battery charge older than 15 minutes are `null`. A condition row can be switched off with its tick box: it is kept but ignored.
 
@@ -73,8 +93,24 @@ Besides readings, a condition can test the calendar and the demand windows. Thes
 | Day of week is / is not | The current day is, or is not, one of the days picked |
 | Week is odd / even | The week is odd or even. Weeks run Monday to Sunday and count from the week holding 1970-01-01, which is even. A new row starts on the parity of the current week. |
 | Demand window is / is not active | A window, or any window, is running now (start up to but not including end) |
+| Time of day is between | Now is from `start` up to `end`. Each is a clock time (`HH:MM`) or sunrise or sunset with an offset of up to 3 hours either way. An `end` not later than `start` runs through midnight, so 22:00 to 06:00 covers the night. `start` and `end` must differ. |
+
+A time of day row with a sunrise or sunset needs sun data. When the context has none for the day, the row fails as a condition, with the message `sun times unavailable`. In `restore.only_if` it never holds a restore, because a gate with no data passes, as for a missing reading. A time of day row is also usable in `restore.early_if`.
 
 "Only in summer, if it is over 30 outside and over 25 inside, and no demand window is running" is a Month row (Dec, Jan, Feb), two reading rows and a Demand window row set to "is not active". The shapes are in [Data model](data-model.md#actor-tables).
+
+### Limits
+
+`limits` is `{"min_gap_minutes", "run_again_after"}`. A schedule saved before limits existed has `{}`, which means no limit. Both limits count only the schedule's own `action` and `restore` runs that did not end `skipped`. Test runs and skipped runs do not count.
+
+| Field | Meaning |
+|---|---|
+| `min_gap_minutes` | 0 to 1440. The schedule cannot trigger until this many minutes after the end of its last restore or action run. 0 turns it off. |
+| `run_again_after` | A time reference or null. The schedule cannot trigger again until the next such time after the start of its last action run. |
+
+A time reference is `{"kind": "clock", "time": "HH:MM"}` or `{"kind": "sun", "event": "sunrise" or "sunset", "offset_minutes": -180 to 180}`. The actor evaluates the limits in [`schedule_eval.py`](../actron-neo-actor/actron_neo_actor/schedule_eval.py) (`blocked_until`).
+
+Core API refuses a schedule that uses sunrise or sunset (in the trigger, a time of day row or `run_again_after`) with 422 `invalid_schedule` when the site has no usable location. The time zone estimate counts as usable. `limits` can be changed while the schedule holds the unit off, because it does not affect the restore.
 
 ### Restore
 
@@ -185,7 +221,7 @@ The sign-in code and link are shown to the site owner only. Every route that ret
 | `DELETE /instances/{id}` | Delete the instance, its schedules and their run history |
 | `POST /instances/{id}/sign-in/reset` | Drop the stored refresh token so the actor starts a new sign-in |
 | `GET /schedules`, `POST /schedules` | List and create. Both take `actions` and reject an `action` key. `POST` takes the body as a raw dict and validates it as `PATCH` does, so the create body does not show in OpenAPI. |
-| `PATCH /schedules/{id}` | Merges the fields sent into the stored schedule, then validates the whole. While this schedule holds the unit off, a change to `trigger`, `actions` or `restore` is refused with 409 `unit_held_off`. |
+| `PATCH /schedules/{id}` | Merges the fields sent into the stored schedule, then validates the whole. A change to `trigger` sets `armed` back to true. While this schedule holds the unit off, a change to `trigger`, `actions` or `restore` is refused with 409 `unit_held_off`. |
 | `DELETE /schedules/{id}` | Delete the schedule and its run history |
 | `POST /schedules/{id}/test` | Queue a test run |
 | `GET /runs?limit=` | The site's newest runs with `schedule_name` (1 to 200, default 50) |
@@ -224,7 +260,8 @@ The watchdog job (`actor_watchdog` in [`scheduler.py`](../core-api/core_api/sche
 | Situation | What you see | Recovery |
 |---|---|---|
 | Actor container stopped while the unit is off | `actor_silent` after 5 minutes. The watchdog email goes out if the schedule has email on. | Start the container. It resumes the open runs from Core API and restores. |
-| Actor restarted mid-run | A run left `running` is finished from the unit's state. The actor checks each action and does not repeat one the unit already shows. The run ends `ok` (`confirmed after a restart`), `partial` or `failed`, with missing actions applied again within the give-up time. A `pending` run is `skipped: the actor restarted before the run`. | Automatic on the next tick |
+| Actor restarted mid-run | A run left `running` is finished from the unit's state. The actor checks each action and does not repeat one the unit already shows. The run ends `ok` (`confirmed after a restart`), `partial` or `failed`, with missing actions applied again within the give-up time. A `pending` run is started on the next tick, whatever the cause, unless the give-up time since its trigger has passed. Then it ends `failed: never started: the give-up time passed before the actor could run it`. | Automatic on the next tick |
+| Core API times out while the actor creates a run | Core API can save the row after the actor's request times out. The tick fails with `CoreApiError`, and the next tick finds the `pending` row and runs it. | Automatic on the next tick |
 | Unit does not confirm a command | The action retries, then its step is `failed` with `failed after N attempts: not confirmed`. A last look 15 seconds later counts a late command as `ok`. | Check the unit. Use **Test now** after fixing. |
 | One action of several fails | The other actions still run. The run ends `partial` (`2 of 3 ran. Failed: ...`), shows on the Dashboard as a failure, and owes a restore for the actions that worked. | Read the failed step in the run history. Use **Test now** after fixing. |
 | Schedule edited while the actor was down mid-run | The actor sends nothing and the run ends `partial` with `the schedule changed before the actor restarted`. The restore then puts back the whole snapshot. | Automatic |

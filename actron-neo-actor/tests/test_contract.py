@@ -71,6 +71,10 @@ def test_schedules_list_entry_parses():
     assert (schedule.trigger.days_of_week, schedule.actions[0].id) == ([0, 1, 2, 3, 4], "set_zones")
     assert schedule.restore.early_if[0].target == "Family"
     assert schedule.created_at == datetime.datetime(2026, 11, 1, tzinfo=datetime.UTC)
+    assert schedule.armed is True
+    assert (schedule.limits.min_gap_minutes, schedule.limits.run_again_after.event) == (30, "sunrise")
+    time_of_day = schedule.conditions[-1]
+    assert (time_of_day.kind, time_of_day.start.offset_minutes, time_of_day.end.time) == ("time_of_day", -30, "23:00")
 
 
 @respx.mock
@@ -79,6 +83,8 @@ def test_context_parses():
     context = client().get_context(1)
     assert (context.outdoor_temp_c, context.price_c_per_kwh) == (31.5, 42.1)
     assert context.windows[0].window_id == 7
+    assert context.sun_estimated is False
+    assert (context.sun[0].date, context.sun[0].sunrise.hour) == (datetime.date(2026, 11, 5), 19)
 
 
 @respx.mock

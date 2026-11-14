@@ -9,28 +9,45 @@ from actron_neo_actor.device import DeviceError
 from actron_neo_actor.executor import Attempt, Cutoff, Env, apply_with_retries, create, record, update
 from actron_neo_actor.models import ActionSpec, RetrySpec, Run, Schedule
 from actron_neo_actor.run_steps import RunResult, StepResult, finish_run, from_attempt, gave_up
-from actron_neo_actor.schedule_eval import due_triggers, evaluate_conditions, missed_triggers
+from actron_neo_actor.schedule_eval import LEVEL_TRIGGERS, due_triggers, evaluate_conditions, missed_triggers
 from actron_neo_actor.view import TickView, sensed
 
 OTHER_ACTIVE = "another schedule is active"
 
 
-async def run_schedule(env: Env, view: TickView, schedule: Schedule, was_met: bool | None) -> None:
-    """`was_met` is whether a price or temperature trigger's level was passed at the last tick."""
+async def run_schedule(env: Env, view: TickView, schedule: Schedule) -> bool:
+    """Record missed triggers and run each due one. Returns whether the schedule is still armed:
+    a price or temperature trigger that fires is disarmed in Core API until its reading allows it again.
+    A trigger a limit holds back is recorded as skipped, except a level trigger, which stays armed and unrecorded."""
     existing = view.action_trigger_ats(schedule.id)
     for missed in missed_triggers(schedule, view.context, view.now, existing):
         run = await record(env, schedule.id, "action", missed.trigger_at, "missed")
         if run is not None:
             view.note(run)
     readings, stale = sensed(env.device.state(), env.clock())
-    for due in due_triggers(schedule, view.context, view.now, existing, was_met, readings, stale):
+    armed = schedule.armed
+    for due in due_triggers(schedule, view.context, view.now, existing, armed, readings, stale, view.recent):
+        if due.blocked is not None:
+            held = await record(env, schedule.id, "action", due.trigger_at, due.blocked)
+            if held is not None:
+                view.note(held)
+            continue
         await _run_trigger(env, view, schedule, due.trigger_at)
+        if schedule.trigger.type in LEVEL_TRIGGERS:
+            await env.core.set_schedule_armed(env.instance_id, schedule.id, False)
+            armed = False
+    return armed
 
 
 async def _run_trigger(env: Env, view: TickView, schedule: Schedule, at: datetime.datetime) -> None:
     run = await create(env, schedule.id, "action", at)
-    if run is None:
-        return
+    if run is not None:
+        await run_created(env, view, schedule, run)
+
+
+async def run_created(env: Env, view: TickView, schedule: Schedule, run: Run) -> None:
+    """Check and run an action row that exists but has not started. The create call can time out
+    after Core API saved the row, so a later tick runs it through here as well."""
     view.note(run)
     reason = _skip_reason(env, view, schedule, run)
     if reason is not None:

@@ -79,8 +79,8 @@ function useScheduleActions({ siteId, schedule, onSelect }: ScheduleDetailProps)
   };
 }
 
-function DetailBody(props: ScheduleDetailProps & { title: string; timezone: string }) {
-  const { siteId, schedule, instance, canEdit, title, timezone } = props;
+function DetailBody(props: ScheduleDetailProps & { title: string; timezone: string; locationSet: boolean }) {
+  const { siteId, schedule, instance, canEdit, title, timezone, locationSet } = props;
   const windows = useCurrentDemandWindows(siteId);
   const actions = useScheduleActions(props);
   const heading = <h2 className="text-lg font-medium text-ink">{title}</h2>;
@@ -92,7 +92,7 @@ function DetailBody(props: ScheduleDetailProps & { title: string; timezone: stri
   return (
     <ScheduleEditor
       key={`${instance.id}-${schedule?.id ?? "new"}`}
-      setup={{ title, schedule, instance, capabilities: instance.capabilities, windows: windows.windows, timezone, canEdit }}
+      setup={{ title, schedule, instance, capabilities: instance.capabilities, windows: windows.windows, timezone, locationSet, canEdit }}
       actions={actions}
     />
   );
@@ -109,7 +109,7 @@ export function ScheduleDetail(props: ScheduleDetailProps) {
   return (
     <div className="space-y-4">
       <section className={`${cardClass} space-y-6`}>
-        <DetailBody {...props} title={schedule ? schedule.name : "New schedule"} timezone={site?.timezone ?? browserTimezone()} />
+        <DetailBody {...props} title={schedule ? schedule.name : "New schedule"} timezone={site?.timezone ?? browserTimezone()} locationSet={site?.latitude != null} />
         {schedule && canEdit && <TestNow key={schedule.id} siteId={siteId} scheduleId={schedule.id} />}
         {schedule && (site ? <ScheduleRunHistory site={site} schedule={schedule} instance={instance} /> : <Spinner />)}
       </section>

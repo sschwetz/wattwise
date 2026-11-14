@@ -18,7 +18,7 @@ function previousDayKey(key: string): string {
   return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 }
 
-function clock(date: Date, timezone: string): string {
+export function clock(date: Date, timezone: string): string {
   return new Intl.DateTimeFormat("en-AU", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
 }
 

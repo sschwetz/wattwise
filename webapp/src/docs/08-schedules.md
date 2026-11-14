@@ -32,11 +32,25 @@ Click **New schedule**. The form has numbered steps. Click **Save schedule** at 
 | Step | What you choose |
 |------|-----------------|
 | **Actor** | A name for the schedule. The device it commands is shown under the name. An **Enabled** switch turns the whole schedule on or off. |
-| **When** | The trigger: a demand window starts or ends, a set time on chosen days, the price goes above a level, or the indoor or outdoor temperature crosses a level. |
+| **When** | The trigger: a demand window starts or ends, a set time on chosen days, sunrise or sunset, the price goes above a level, or the indoor or outdoor temperature crosses a level. |
 | **Only if** | Optional conditions. Every ticked row must pass or the run is skipped. |
 | **Do this** | One to eight actions, run in order, such as turn off, set mode, set temperature, set fan speed, switch zones or set the temperature of one or more zones. |
 | **When it ends** | Whether and when to put the unit back as it was. |
+| **How often** | Optional limits: **Minutes between runs** and **Do not run again until**. |
 | **If it fails** | How many tries, the seconds between tries, when to give up, and **Email me if it still fails**. |
+
+### When: sunrise and sunset, price and temperature
+
+**At sunrise or sunset** takes an **Event**, **Minutes after (negative is before)**, from -180 to 180, and the **Days** it runs. "30 minutes before sunset on weekdays" is Sunset, -30, Monday to Friday. A note under the fields says whether the times come from the site's location or are [estimated from its time zone](04-sites.md#location-and-sun-times). WattWise refuses to save a schedule that uses sunrise or sunset when the site has neither.
+
+**Price goes above a level** and **A temperature crosses a level** fire while the level is passed, not only at the moment it is crossed. Each has a re-arm field:
+
+- **Can fire again once it is back at or below (c/kWh)** for a price.
+- **Can fire again once it is back at or below (C)** for a temperature that rises above a level, or **at or above (C)** for one that falls below it.
+
+After the schedule fires, it waits until the reading is back past the re-arm value. This stops an air conditioner starting and stopping every few minutes while a reading hovers around the level. For a trigger at 30 C, a re-arm value of 28 C means the schedule fires again only after the temperature has dropped to 28 C or lower. Leave the field blank to allow it as soon as the level is no longer passed. For a temperature, the editor suggests 2 degrees back inside the level until you type a value. The re-arm value must be on the far side of the level: below it for a price or a rise, above it for a fall.
+
+A schedule that is waiting to re-arm is **disarmed**. WattWise remembers this, so restarting the actor does not fire the schedule again. Saving a change to the trigger arms it again.
 
 ### Only if
 
@@ -48,6 +62,9 @@ A row can test a reading, such as indoor temperature above 27, or the calendar. 
 | **Day of week** | The current day is, or is not, one you picked |
 | **Week** | The week is odd or even. Weeks run Monday to Sunday. |
 | **Demand window** | A window, or any window, is running now, or is not |
+| **Time of day** | The time is **between** a start and an end |
+
+A **Time of day** row has two times. Each is a **Clock time** such as 18:00 in the site's time zone, or **Sunrise** or **Sunset** with an offset in minutes. The row passes from the start up to the end. An end that is not later than the start runs through midnight, so Sunset to Sunrise is the night. The start and end must differ. A row that uses sunrise or sunset fails on a day when the sun does not rise or set. In **Only restore if** it never keeps the unit off for that reason.
 
 For example, "only in summer, when it is over 30 outside and no demand window is running" is a Month row for December to February, a reading row for the outdoor temperature and a Demand window row set to is not active. Untick a row to keep it but ignore it.
 
@@ -63,6 +80,21 @@ The unit is put back only if every action in the schedule can be undone. The cho
 Two optional condition lists refine this. **Only restore if** holds the unit off until every ticked row passes. **Restore early when** puts it back sooner when every ticked row is true. A reading that is missing counts as passing the first list, so a dead sensor never keeps the unit off.
 
 If you changed a setting on the unit by hand while it was off, WattWise leaves that setting alone when it restores.
+
+## How often
+
+Step 6, **How often**, limits how soon a schedule can run again:
+
+| Field | What it does |
+|-------|--------------|
+| **Minutes between runs** | The schedule does not run again until this long after it was last put back, or after it last ran if it is not put back. 0 turns it off. The editor sets 30 when you choose a temperature trigger and the field is 0. The limit is 1440 (a day). |
+| **Do not run again until** | After a run, the schedule waits for the next time you give: a clock time, or sunrise or sunset with an offset. It is counted from the start of the last run. |
+
+Skipped runs and test runs do not count towards either limit.
+
+What you see while a limit holds depends on the trigger. A set time, a demand window or sunrise or sunset is recorded in the run history as **Skipped** with a message such as *waiting until Sun 06:00*. A price or temperature trigger records nothing and stays armed, so it fires when the limit ends if the price or temperature is still past the level.
+
+Use **Minutes between runs** and the re-arm field together for a temperature trigger. The gap stops back-to-back runs. Re-arm stops a reading that hovers around the level from restarting the schedule the moment the gap ends.
 
 ## Testing
 

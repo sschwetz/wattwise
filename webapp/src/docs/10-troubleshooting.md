@@ -72,6 +72,13 @@ Open the **Schedule** tab in [Site settings](04-sites.md#site-settings) and the 
 | The page says **Not updating** | The actor has not reported for 2 minutes. Ask your administrator to check the actor's log. |
 | A run says **Skipped** | Read its message. Common causes are a condition that failed, a reading that was missing, or another schedule holding the unit. |
 | **You took over** | You changed the unit yourself after the action, so WattWise did not restore it. |
+| A run says **Skipped** with *waiting until* and a time | The schedule's [**How often**](08-schedules.md#how-often) limits hold it back. It can run again at that time. |
+| A price or temperature schedule fired once and then stopped | It is waiting to re-arm: the reading has not yet come back past the [re-arm value](08-schedules.md#when-sunrise-and-sunset-price-and-temperature). Check the value, or leave it blank. |
+| A price or temperature schedule did not fire although the level is passed | It has not re-armed since it last fired, or **Minutes between runs** has not passed. A gap hold leaves no entry in the run history. |
+| The schedule starts and stops the unit every few minutes | The reading hovers around the level. Set a re-arm value further from the level and **Minutes between runs** to 30 or more. |
+| Saving says sunrise and sunset need a site location | The site has no point and its time zone has no reference city. Set the [location](04-sites.md#location-and-sun-times) on the **General** tab. |
+| Sunrise or sunset is a few minutes or more out | The site has no location, so the times are estimated from the time zone. Set the [location](04-sites.md#location-and-sun-times). |
+| The map on the **General** tab is grey | Your browser could not load the map tiles from OpenStreetMap. Type the latitude and longitude instead. |
 
 ## Weather tiles are missing
 
