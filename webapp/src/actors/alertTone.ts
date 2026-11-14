@@ -10,10 +10,13 @@ export function tileTone(failures: ActorFailure[]): Tone {
   return ORDER.find((s) => open.some((f) => f.severity === s)) ?? "neutral";
 }
 
-const sinceMs = (f: ActorFailure) => new Date(f.since).getTime();
+/** needs_sign_in has no real start time (the server sends "now"), so it counts as oldest. */
+const sinceMs = (f: ActorFailure) => (f.kind === "needs_sign_in" ? 0 : new Date(f.since).getTime() || 0);
 
 /** Unresolved rows first, by severity and then newest first; cleared rows come last. */
 export function orderFailures(failures: ActorFailure[]): ActorFailure[] {
   const rank = (f: ActorFailure) => (f.cleared_at === null ? 0 : ORDER.length) + ORDER.indexOf(f.severity);
-  return [...failures].sort((a, b) => rank(a) - rank(b) || sinceMs(b) - sinceMs(a));
+  return [...failures].sort(
+    (a, b) => rank(a) - rank(b) || sinceMs(b) - sinceMs(a) || (a.instance_id ?? 0) - (b.instance_id ?? 0),
+  );
 }

@@ -35,17 +35,17 @@ function rowText(failure: ActorFailure): string {
   return label ? `${label} - ${message}` : message;
 }
 
-function DismissButton({ siteId, alertId }: { siteId: number; alertId: number | null }) {
+function DismissButton({ siteId, alertId, text }: { siteId: number; alertId: number | null; text: string }) {
   const dismiss = useDismissAlert(siteId);
   return (
-    <button type="button" className={buttonClass} disabled={dismiss.isPending || alertId === null} onClick={() => alertId !== null && dismiss.mutate(alertId)}>
+    <button type="button" aria-label={`Dismiss: ${text}`} className={buttonClass} disabled={dismiss.isPending || alertId === null} onClick={() => alertId !== null && dismiss.mutate(alertId)}>
       Dismiss
     </button>
   );
 }
 
 function RowAction({ failure, siteId }: { failure: ActorFailure; siteId: number }) {
-  if (failure.sticky) return <DismissButton siteId={siteId} alertId={failure.alert_id} />;
+  if (failure.sticky) return <DismissButton siteId={siteId} alertId={failure.alert_id} text={rowText(failure)} />;
   const isAlert = failure.kind === "alert";
   return <Link to={isAlert ? collectorsHref(siteId) : scheduleHref(siteId)} className={linkClass}>{isAlert ? "Open Collectors" : "Open Schedule"}</Link>;
 }

@@ -46,4 +46,18 @@ describe("orderFailures", () => {
     orderFailures(rows);
     expect(rows[0].severity).toBe("notice");
   });
+
+  it("sorts needs_sign_in last in its severity, by instance id, whatever its since", () => {
+    const signIn = (id: number, since: string): ActorFailure => ({ ...row("failure"), kind: "needs_sign_in", instance_id: id, since });
+    const older = at(row("failure"), "2026-01-01T00:00:00Z", 1);
+    const a = orderFailures([signIn(2, "2026-11-14T10:00:01Z"), signIn(1, "2026-11-14T10:00:02Z"), older]);
+    const b = orderFailures([signIn(2, "2026-11-14T10:00:20Z"), signIn(1, "2026-11-14T10:00:19Z"), older]);
+    expect(a.map((r) => r.instance_id)).toEqual([null, 1, 2]);
+    expect(b.map((r) => r.instance_id)).toEqual([null, 1, 2]);
+  });
+
+  it("keeps input order for equal since and survives an invalid date", () => {
+    const rows = [at(row("failure"), "2026-11-13T09:00:00Z", 1), at(row("failure"), "2026-11-13T09:00:00Z", 2), at(row("failure"), "nonsense", 3)];
+    expect(orderFailures(rows).map((r) => r.alert_id)).toEqual([1, 2, 3]);
+  });
 });

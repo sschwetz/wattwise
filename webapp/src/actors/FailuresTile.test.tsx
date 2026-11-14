@@ -116,10 +116,10 @@ describe("FailuresTile", () => {
     expect(within(tile).getByText(/Needs attention/)).toHaveTextContent("3");
     const rows = within(within(tile).getByRole("list")).getAllByRole("listitem");
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toHaveTextContent("Schedule 3 - Needs sign-in");
-    expect(rows[1]).toHaveTextContent("Not reporting");
-    expect(rows[1]).not.toHaveTextContent("null");
-    expect(rows[2]).toHaveTextContent("Schedule 1 - Still off");
+    expect(rows[2]).toHaveTextContent("Schedule 3 - Needs sign-in");
+    expect(rows[0]).toHaveTextContent("Not reporting");
+    expect(rows[0]).not.toHaveTextContent("null");
+    expect(rows[1]).toHaveTextContent("Schedule 1 - Still off");
     expect(within(tile).getAllByRole("link", { name: "Open Schedule" })[0]).toHaveAttribute("href", "/settings/sites/7/schedule");
     expect(within(tile).getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
@@ -197,6 +197,22 @@ describe("FailuresTile", () => {
     expect(container.querySelectorAll("time")).toHaveLength(1);
   });
 
+  it("never lets a needs_sign_in row push out an older failure", async () => {
+    const signIn = failure(9, { kind: "needs_sign_in", since: new Date().toISOString() });
+    mockData({ failures: [signIn, ...[5, 4, 3, 2, 1].map((n) => failure(n))] });
+    renderTile();
+    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    expect(within(tile).getAllByRole("listitem")).toHaveLength(5);
+    expect(tile.textContent).not.toContain("Schedule 9");
+    expect(within(tile).getByRole("link", { name: "and 1 more" })).toBeInTheDocument();
+  });
+
+  it("names each Dismiss button after its row", async () => {
+    mockData({ failures: [alert(1, { sticky: true, alert_id: 9, subject: "Roof Envoy", message: "Certificate changed" })] });
+    renderTile();
+    expect(await screen.findByRole("button", { name: "Dismiss: Roof Envoy - Certificate changed" })).toBeInTheDocument();
+  });
+
   it("viewer sees the tile", async () => {
     mockData({ failures: [failure(1)] });
     renderTile();
@@ -220,7 +236,7 @@ describe("FailuresTile", () => {
     renderTile();
     const tile = await screen.findByRole("region", { name: "Needs attention" });
     expect(within(tile).queryByRole("link", { name: "Open Collectors" })).not.toBeInTheDocument();
-    await userEvent.click(within(tile).getByRole("button", { name: "Dismiss" }));
+    await userEvent.click(within(tile).getByRole("button", { name: /^Dismiss/ }));
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/v1/sites/7/actors/alerts/9", { method: "DELETE" }));
   });
 
@@ -230,10 +246,10 @@ describe("FailuresTile", () => {
     vi.mocked(apiFetch).mockImplementation((path: string = "", init?: RequestInit) =>
       init?.method === "DELETE" ? Promise.reject(new Error("boom")) : base(path, init));
     renderTile();
-    const button = await screen.findByRole("button", { name: "Dismiss" });
+    const button = await screen.findByRole("button", { name: /^Dismiss/ });
     await userEvent.click(button);
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/alerts/9"), { method: "DELETE" }));
-    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Dismiss" })).toBeEnabled());
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: /^Dismiss/ })).toBeEnabled());
     expect(screen.getByText(/Message 1/)).toBeInTheDocument();
   });
 
