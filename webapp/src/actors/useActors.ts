@@ -95,6 +95,15 @@ function useActorMutation<TArg, TResult>(
   });
 }
 
+/** Dismisses a kept alert; the variable is the alert id. */
+export function useDismissAlert(siteId: number) {
+  return useActorMutation(
+    siteId,
+    (alertId: number) => apiFetch<void>(`${base(siteId)}/alerts/${alertId}`, { method: "DELETE" }),
+    (s) => [actorKeys.failures(s)],
+  );
+}
+
 function invalidateAll(queryClient: QueryClient, keys: Key[]) {
   return Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
 }

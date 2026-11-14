@@ -114,7 +114,9 @@ The editor counts as changed while its form differs from the schedule as last sa
 
 - No air conditioner set up: nothing is shown.
 - No failures: "All schedules OK" and a link to the Schedule tab.
-- Failures: **Needs attention (N)** in the `danger-glow` style. Each row has a label (Run failed, Still off, Actor not reporting, Needs sign-in), the schedule name, the message and the time. It lists the five oldest and links "and N more". A `needs_sign_in` row shows no time, because Core API has none to give.
+- Failures and alerts: **Needs attention (N)**, where N counts unresolved rows. The heading has no count when only cleared rows remain. The tile glows red (`danger-glow`), amber (`partial-glow`) or blue (`notice-glow`) by the worst unresolved bulb, and has no glow when every row is cleared.
+- Each row is one line: a `Bulb`, the time (`YYYY-MM-DD HH:MM` in the site's time zone), `Source - message`, and one button on the right. The source is the alert's `subject` or the schedule name. The button is **Dismiss** for a `sticky` alert (it calls `DELETE /api/v1/sites/{id}/actors/alerts/{alert_id}`, stays disabled while the request runs, and the row stays if the request fails), else **Open Collectors** for an alert, else **Open Schedule**.
+- `orderFailures` (`alertTone.ts`) sorts the rows: unresolved first, red then amber then blue, newest first within a colour, cleared rows last. The tile shows the first five and links "and N more". A `needs_sign_in` row shows no time, because Core API has none to give.
 - If the request fails, "Schedule status unavailable".
 
 ## Runtime configuration

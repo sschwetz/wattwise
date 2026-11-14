@@ -1,67 +1,84 @@
 import { Link } from "react-router-dom";
 import { useSites } from "../sites/useSites";
-import { formatRunTime } from "./runFormat";
-import { useNow } from "../dashboard/useNow";
+import { Bulb } from "./Bulb";
+import { orderFailures, tileTone, type Tone } from "./alertTone";
+import { formatAlertTime } from "./runFormat";
 import { hintClass } from "./styles";
-import type { ActorFailure, ActorFailureKind } from "./types";
-import { useActorFailures, useActorInstances } from "./useActors";
+import type { ActorFailure } from "./types";
+import { useActorFailures, useActorInstances, useDismissAlert } from "./useActors";
 
 const MAX_SHOWN = 5;
-const CLOCK_MS = 60_000;
 
-const KIND_LABEL: Record<ActorFailureKind, string> = {
-  run_failed: "Run failed",
-  still_off: "Still off: the unit may still be off",
-  actor_silent: "Actor not reporting: the device program stopped reporting",
+const GLOW: Record<Tone, string> = {
+  failure: " danger-glow",
+  partial: " partial-glow",
+  notice: " notice-glow",
+  neutral: "",
+};
+
+const SHORT_MESSAGE: Partial<Record<ActorFailure["kind"], string>> = {
+  still_off: "Still off",
+  actor_silent: "Not reporting",
   needs_sign_in: "Needs sign-in",
-  alert: "Problem",
 };
 
 const linkClass = "text-sm font-medium text-ink underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
+const buttonClass = "shrink-0 rounded-md border border-line px-2 py-0.5 text-sm font-medium text-ink hover:bg-surface-2 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
 const tileClass = "rounded-xl border border-line bg-surface p-4";
-
-function oldestFirst(failures: ActorFailure[]): ActorFailure[] {
-  return [...failures].sort((a, b) => new Date(a.since).getTime() - new Date(b.since).getTime());
-}
-
-/** needs_sign_in has no real start time: the server sends "now" on every request, so no time is shown. */
-function FailureRow({ failure, timezone }: { failure: ActorFailure; timezone: string | undefined }) {
-  const now = useNow(CLOCK_MS);
-  const label = failure.schedule_name ?? failure.subject;
-  return (
-    <li className="space-y-0.5 border-t border-line pt-2 text-sm first:border-t-0 first:pt-0">
-      <p className="font-medium text-danger">{KIND_LABEL[failure.kind] ?? failure.kind}</p>
-      {label && <p className="text-ink">{label}</p>}
-      <p className="text-ink">{failure.message}</p>
-      {timezone && failure.kind !== "needs_sign_in" && (
-        <time dateTime={failure.since} className="block text-ink-muted">
-          {formatRunTime(failure.since, timezone, now)}
-        </time>
-      )}
-    </li>
-  );
-}
 
 const scheduleHref = (siteId: number) => `/settings/sites/${siteId}/schedule`;
 const collectorsHref = (siteId: number) => `/settings/sites/${siteId}/collectors`;
 
+function rowText(failure: ActorFailure): string {
+  const label = failure.kind === "alert" ? failure.subject : failure.schedule_name;
+  const message = SHORT_MESSAGE[failure.kind] ?? failure.message;
+  return label ? `${label} - ${message}` : message;
+}
+
+function DismissButton({ siteId, alertId }: { siteId: number; alertId: number | null }) {
+  const dismiss = useDismissAlert(siteId);
+  return (
+    <button type="button" className={buttonClass} disabled={dismiss.isPending || alertId === null} onClick={() => alertId !== null && dismiss.mutate(alertId)}>
+      Dismiss
+    </button>
+  );
+}
+
+function RowAction({ failure, siteId }: { failure: ActorFailure; siteId: number }) {
+  if (failure.sticky) return <DismissButton siteId={siteId} alertId={failure.alert_id} />;
+  const isAlert = failure.kind === "alert";
+  return <Link to={isAlert ? collectorsHref(siteId) : scheduleHref(siteId)} className={linkClass}>{isAlert ? "Open Collectors" : "Open Schedule"}</Link>;
+}
+
+/** needs_sign_in has no real start time: the server sends "now" on every request, so no time is shown. */
+function FailureRow({ failure, siteId, timezone }: { failure: ActorFailure; siteId: number; timezone: string | undefined }) {
+  const showTime = timezone && failure.kind !== "needs_sign_in";
+  return (
+    <li className="flex items-center gap-2 border-t border-line pt-2 text-sm first:border-t-0 first:pt-0">
+      <Bulb severity={failure.severity} cleared={failure.cleared_at !== null} />
+      {showTime && <time dateTime={failure.since} className="shrink-0 text-ink-muted">{formatAlertTime(failure.since, timezone)}</time>}
+      <span className="min-w-0 flex-1 truncate text-ink" title={rowText(failure)}>{rowText(failure)}</span>
+      <RowAction failure={failure} siteId={siteId} />
+    </li>
+  );
+}
+
+const rowKey = (f: ActorFailure) => `${f.kind}-${f.alert_id}-${f.instance_id}-${f.schedule_id}-${f.subject}-${f.message}`;
+
 function FailureList({ failures, siteId }: { failures: ActorFailure[]; siteId: number }) {
   const timezone = useSites().data?.find((s) => s.id === siteId)?.timezone;
-  const shown = oldestFirst(failures).slice(0, MAX_SHOWN);
-  const hidden = failures.length - shown.length;
-  const hasAlerts = failures.some((f) => f.kind === "alert");
-  const hasScheduleFailures = failures.some((f) => f.kind !== "alert");
+  const ordered = orderFailures(failures);
+  const shown = ordered.slice(0, MAX_SHOWN);
+  const hidden = ordered.length - shown.length;
+  const open = failures.filter((f) => f.cleared_at === null).length;
+  const hasSchedule = failures.some((f) => f.kind !== "alert");
   return (
     <>
-      <h2 className="font-display text-lg font-semibold text-ink">Needs attention ({failures.length})</h2>
+      <h2 className="font-display text-lg font-semibold text-ink">{open > 0 ? `Needs attention (${open})` : "Needs attention"}</h2>
       <ul className="mt-3 space-y-2">
-        {shown.map((f) => (
-          <FailureRow key={`${f.kind}-${f.instance_id}-${f.schedule_id}-${f.subject}-${f.message}`} failure={f} timezone={timezone} />
-        ))}
+        {shown.map((f) => <FailureRow key={rowKey(f)} failure={f} siteId={siteId} timezone={timezone} />)}
       </ul>
-      {hidden > 0 && <Link to={hasScheduleFailures ? scheduleHref(siteId) : collectorsHref(siteId)} className={`${linkClass} mt-2 block`}>and {hidden} more</Link>}
-      {hasScheduleFailures && <Link to={scheduleHref(siteId)} className={`${linkClass} mt-3 block`}>Open the Schedule tab</Link>}
-      {hasAlerts && <Link to={collectorsHref(siteId)} className={`${linkClass} mt-3 block`}>Open the Collectors tab</Link>}
+      {hidden > 0 && <Link to={hasSchedule ? scheduleHref(siteId) : collectorsHref(siteId)} className={`${linkClass} mt-2 block`}>and {hidden} more</Link>}
     </>
   );
 }
@@ -89,7 +106,7 @@ export function FailuresTile({ siteId }: { siteId: number }) {
     );
   }
   return (
-    <section aria-label="Needs attention" className={`${tileClass} danger-glow`}>
+    <section aria-label="Needs attention" className={`${tileClass}${GLOW[tileTone(current)]}`}>
       <div role="status" aria-live="polite">
         <FailureList failures={current} siteId={siteId} />
       </div>
