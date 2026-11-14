@@ -22,15 +22,41 @@ export type SchedulePayload = Omit<ActorSchedule, "id">;
 export type FormParamValue = string | boolean | string[];
 export type FormParam = { kind: "number"; text: string } | { kind: "value"; value: FormParamValue };
 
-export interface ConditionRow {
+interface RowBase {
   key: number;
   /** The tick box. Unticked rows are saved with enabled false and ignored by the server and the actor. */
   use: boolean;
+}
+
+export interface ReadingRow extends RowBase {
+  kind: "reading";
   reading: string;
   op: "gt" | "lt";
   value: string;
   target: string | null;
 }
+
+/** Month or day of the week: Jan is 1, Mon is 0. */
+export interface MembershipRow extends RowBase {
+  kind: "months" | "days";
+  op: "in" | "not_in";
+  values: number[];
+}
+
+export interface WeekRow extends RowBase {
+  kind: "week";
+  parity: "odd" | "even";
+}
+
+export interface WindowRow extends RowBase {
+  kind: "demand_window";
+  op: "active" | "not_active";
+  /** A window id as text; empty means any demand window. */
+  windowId: string;
+}
+
+export type ConditionRow = ReadingRow | MembershipRow | WeekRow | WindowRow;
+export type ConditionKind = ConditionRow["kind"];
 
 export interface TriggerForm {
   type: TriggerType;
@@ -234,23 +260,23 @@ export function setTriggerType(form: ScheduleFormState, type: TriggerType): Sche
 }
 
 /** An on/off reading is tested as "is on" (above 0) or "is off" (below 1), so the server and actor need no special case. */
-export function setSwitch(row: ConditionRow, on: boolean): ConditionRow {
+export function setSwitch(row: ReadingRow, on: boolean): ReadingRow {
   return { ...row, op: on ? "gt" : "lt", value: on ? "0" : "1" };
 }
 
-export function isSwitchedOn(row: ConditionRow): boolean {
+export function isSwitchedOn(row: ReadingRow): boolean {
   return row.op !== "lt";
 }
 
 /** The row pointed at `reading`: its first target, and "is on" when the reading is an on/off one. */
-export function pointAtReading(row: ConditionRow, reading: ReadingChoice | undefined): ConditionRow {
+export function pointAtReading(row: ReadingRow, reading: ReadingChoice | undefined): ReadingRow {
   const next = { ...row, reading: reading?.id ?? row.reading, target: reading?.targets?.[0]?.value ?? null };
   return reading?.type === "bool" ? setSwitch(next, true) : next;
 }
 
 export function addCondition(rows: ConditionRow[], readings: ReadingChoice[]): ConditionRow[] {
   const key = rows.reduce((max, r) => Math.max(max, r.key + 1), 0);
-  return [...rows, pointAtReading({ key, use: true, reading: "", op: "gt", value: "", target: null }, readings[0])];
+  return [...rows, pointAtReading({ key, use: true, kind: "reading", reading: "", op: "gt", value: "", target: null }, readings[0])];
 }
 
 export function emptyForm(
@@ -292,10 +318,23 @@ function triggerForm(trigger: TriggerSpec): TriggerForm {
   };
 }
 
+function conditionRow(c: ConditionSpec, key: number): ConditionRow {
+  const use = c.enabled !== false;
+  switch (c.kind) {
+    case "months":
+    case "days":
+      return { key, use, kind: c.kind, op: c.op, values: [...c.values] };
+    case "week":
+      return { key, use, kind: "week", parity: c.parity };
+    case "demand_window":
+      return { key, use, kind: "demand_window", op: c.op, windowId: c.window_id === null ? "" : String(c.window_id) };
+    default:
+      return { key, use, kind: "reading", reading: c.reading, op: c.op, value: String(c.value), target: c.target ?? null };
+  }
+}
+
 function conditionRows(conditions: ConditionSpec[]): ConditionRow[] {
-  return conditions.map((c, key) => ({
-    key, use: c.enabled !== false, reading: c.reading, op: c.op, value: String(c.value), target: c.target ?? null,
-  }));
+  return conditions.map(conditionRow);
 }
 
 function formParam(value: ActionParamValue): FormParam {
@@ -350,15 +389,31 @@ function triggerPayload(t: TriggerForm): TriggerSpec {
   return { type: t.type, window_id: Number(t.windowId) };
 }
 
-/** Every unticked row, sent as typed with 0 for a missing number (the server does not check
- * switched-off rows), and ticked rows with a number. A ticked row without one cannot be sent;
- * validateForm flags the visible ones. */
+/** A reading row: unticked, it is sent as typed with 0 for a missing number (the server does not check
+ * switched-off rows). A ticked row without a number cannot be sent; validateForm flags the visible ones. */
+function readingPayload(r: ReadingRow): ConditionSpec[] {
+  const value = parseNumber(r.value);
+  if (r.use && value === null) return [];
+  return [{ reading: r.reading, op: r.op, value: value ?? 0, ...(r.target ? { target: r.target } : {}), enabled: r.use }];
+}
+
+function rowPayload(r: ConditionRow): ConditionSpec[] {
+  switch (r.kind) {
+    case "reading":
+      return readingPayload(r);
+    case "months":
+    case "days":
+      if (r.use && r.values.length === 0) return [];
+      return [{ kind: r.kind, op: r.op, values: [...r.values].sort((a, b) => a - b), enabled: r.use }];
+    case "week":
+      return [{ kind: "week", parity: r.parity, enabled: r.use }];
+    case "demand_window":
+      return [{ kind: "demand_window", op: r.op, window_id: r.windowId === "" ? null : Number(r.windowId), enabled: r.use }];
+  }
+}
+
 function conditionsPayload(rows: ConditionRow[]): ConditionSpec[] {
-  return rows.flatMap((r) => {
-    const value = parseNumber(r.value);
-    if (r.use && value === null) return [];
-    return [{ reading: r.reading, op: r.op, value: value ?? 0, ...(r.target ? { target: r.target } : {}), enabled: r.use }];
-  });
+  return rows.flatMap(rowPayload);
 }
 
 function paramValue(param: FormParam): ActionParamValue {
@@ -368,7 +423,7 @@ function paramValue(param: FormParam): ActionParamValue {
 /** Would the server's capability check accept this condition? Mirrors actor_capabilities.validate_conditions_against,
  * which skips switched-off conditions. */
 export function conditionAccepted(c: ConditionSpec, capabilities: Capabilities): boolean {
-  if (c.enabled === false) return true;
+  if (c.enabled === false || c.kind !== undefined) return true;
   const target = c.target ?? null;
   const device = capabilities.readings.find((r) => r.id === c.reading);
   if (!device) return SITE_READINGS.some((r) => r.id === c.reading) && target === null;

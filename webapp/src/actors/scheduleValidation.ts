@@ -1,4 +1,5 @@
 // Checks on the schedule editor's form before it is sent, in plain words.
+import type { DemandWindow } from "../billing/useBilling";
 import type { Capabilities, ParamDecl } from "./types";
 import {
   conditionReadings,
@@ -13,6 +14,7 @@ import {
   type FormParam,
   type FormParamValue,
   type ReadingChoice,
+  type ReadingRow,
   type RestoreForm,
   type RetryForm,
   type ScheduleFormState,
@@ -78,30 +80,53 @@ function actionErrors(form: ScheduleFormState, capabilities: Capabilities): Form
 }
 
 /** True when the row's target is one the reading still offers, or the row has no target. */
-export function targetOffered(row: ConditionRow, reading: ReadingChoice | undefined): boolean {
+export function targetOffered(row: ReadingRow, reading: ReadingChoice | undefined): boolean {
   return !row.target || (reading?.targets ?? []).some((t) => t.value === row.target);
 }
 
-function rowError(row: ConditionRow, readings: ReadingChoice[]): string | null {
+function readingError(row: ReadingRow, readings: ReadingChoice[]): string | null {
   const reading = readings.find((r) => r.id === row.reading);
   if (!reading) return "This reading is no longer available. Pick another.";
   if (!targetOffered(row, reading)) return `Target "${row.target}" is no longer offered for ${reading.label}. Pick another.`;
   return parseNumber(row.value) === null ? `Enter a number for ${reading.label}.` : null;
 }
 
+/** What a row is checked against: the readings the device and site offer, and the demand windows still running. */
+interface RowChoices {
+  readings: ReadingChoice[];
+  windows: DemandWindow[];
+}
+
+function rowError(row: ConditionRow, choices: RowChoices): string | null {
+  switch (row.kind) {
+    case "reading":
+      return readingError(row, choices.readings);
+    case "months":
+      return row.values.length === 0 ? "Pick at least one month." : null;
+    case "days":
+      return row.values.length === 0 ? "Pick at least one day." : null;
+    case "demand_window":
+      return row.windowId === "" || choices.windows.some((w) => String(w.id) === row.windowId)
+        ? null
+        : "This demand window is no longer available. Pick another.";
+    case "week":
+      return null;
+  }
+}
+
 /** Only ticked rows are checked; an unticked row is saved as typed. */
-function rowErrors(prefix: string, rows: ConditionRow[], readings: ReadingChoice[]): FormErrors {
+function rowErrors(prefix: string, rows: ConditionRow[], choices: RowChoices): FormErrors {
   const errors: FormErrors = {};
   for (const row of rows.filter((r) => r.use)) {
-    const message = rowError(row, readings);
+    const message = rowError(row, choices);
     if (message) errors[`${prefix}.${row.key}`] = message;
   }
   return errors;
 }
 
-function restoreErrors(r: RestoreForm, readings: ReadingChoice[]): FormErrors {
+function restoreErrors(r: RestoreForm, choices: RowChoices): FormErrors {
   if (!r.enabled) return {};
-  const errors: FormErrors = { ...rowErrors("restore.onlyIf", r.onlyIf, readings), ...rowErrors("restore.earlyIf", r.earlyIf, readings) };
+  const errors: FormErrors = { ...rowErrors("restore.onlyIf", r.onlyIf, choices), ...rowErrors("restore.earlyIf", r.earlyIf, choices) };
   const minutes = parseWhole(r.minutes);
   if (r.when === "after_minutes" && (minutes === null || minutes < 1)) errors["restore.minutes"] = "Enter a whole number of minutes, at least 1.";
   if (r.when === "at_time" && !HHMM.test(r.time)) errors["restore.time"] = "Enter the restore time as HH:MM, for example 21:00.";
@@ -124,16 +149,16 @@ function retryErrors(r: RetryForm): FormErrors {
   return errors;
 }
 
-export function validateForm(form: ScheduleFormState, capabilities: Capabilities): FormErrors {
-  const readings = conditionReadings(capabilities);
+export function validateForm(form: ScheduleFormState, capabilities: Capabilities, windows: DemandWindow[]): FormErrors {
+  const choices = { readings: conditionReadings(capabilities), windows };
   const name = form.name.trim();
   const nameError = name === "" ? "Enter a name for this schedule." : name.length > 200 ? "Keep the name to 200 characters or fewer." : null;
   return {
     ...(nameError ? { name: nameError } : {}),
     ...triggerErrors(form.trigger),
-    ...rowErrors("conditions", form.conditions, readings),
+    ...rowErrors("conditions", form.conditions, choices),
     ...actionErrors(form, capabilities),
-    ...restoreErrors(form.restore, readings),
+    ...restoreErrors(form.restore, choices),
     ...retryErrors(form.retry),
   };
 }

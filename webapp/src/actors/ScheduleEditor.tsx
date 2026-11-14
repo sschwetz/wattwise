@@ -97,13 +97,13 @@ function useEditorForm(setup: EditorSetup, actions: EditorActions) {
   const [submitted, setSubmitted] = useState(false);
   const { canEdit, capabilities } = setup;
   const reportDirty = useReportDirty(canEdit && isDirty(form, baseline));
-  const errors = submitted ? validateForm(form, capabilities) : {};
+  const errors = submitted ? validateForm(form, capabilities, setup.windows) : {};
   const model: EditorModel = { form, setForm, errors, capabilities, canEdit, readings: setup.instance.latest_readings };
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (Object.keys(validateForm(form, capabilities)).length > 0) return;
+    if (Object.keys(validateForm(form, capabilities, setup.windows)).length > 0) return;
     actions.save(toPayload(form, capabilities), () => {
       setBaseline(form);
       reportDirty(false);

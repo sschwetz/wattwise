@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { formatUnit, invalidProps } from "./editorModel";
-import { addCondition, type ConditionRow, isSwitchedOn, pointAtReading, type ReadingChoice, setSwitch } from "./scheduleForm";
+import { addCondition, type ConditionRow, isSwitchedOn, pointAtReading, type ReadingChoice, type ReadingRow, setSwitch } from "./scheduleForm";
 import { targetOffered, type FormErrors } from "./scheduleValidation";
 import { FieldError } from "./Step";
 import { compactInputClass, hintClass, secondaryButtonClass } from "./styles";
@@ -20,7 +20,7 @@ export interface ConditionsModel {
 }
 
 interface RowModel {
-  row: ConditionRow;
+  row: ReadingRow;
   number: number;
   readings: ReadingChoice[];
   onChange: (row: ConditionRow) => void;
@@ -33,7 +33,7 @@ const NO_TARGET = [{ value: "", label: "No target" }];
 
 /** The reading's targets, with a stored target it no longer offers listed first so the select shows what is held.
  * A reading without targets offers "No target" next to such a stale one. Null when there is nothing to pick. */
-function targetChoices(row: ConditionRow, reading: ReadingChoice | undefined): { value: string; label: string }[] | null {
+function targetChoices(row: ReadingRow, reading: ReadingChoice | undefined): { value: string; label: string }[] | null {
   const stale = targetOffered(row, reading) ? [] : [{ value: row.target ?? "", label: `${row.target} (no longer offered)` }];
   if (!reading?.targets && stale.length === 0) return null;
   return [...stale, ...(reading?.targets ?? NO_TARGET)];
@@ -114,7 +114,7 @@ export function ConditionsEditor({ model }: { model: ConditionsModel }) {
       <legend className={legendHidden ? "sr-only" : "text-sm font-medium text-ink"}>{legend}</legend>
       {rows.length > 0 && (
         <ul className="space-y-2">
-          {rows.map((row, i) => (
+          {rows.map((row, i) => row.kind !== "reading" ? null : (
             <ConditionLine
               key={row.key}
               model={{

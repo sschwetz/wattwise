@@ -13,10 +13,10 @@ function canonicalText(text: string, field: string): string {
   return n === null ? trimmed : String(n);
 }
 
-/** Days and multi-choice values (`value` arrays) are sets, so their order does not count. */
+/** Days, months and multi-choice values (`value` and `values` arrays) are sets, so their order does not count. */
 function canonicalArray(items: unknown[], field: string): Canonical[] {
   const values = items.map((item) => canonical(item, field));
-  return field === "days" || field === "value" ? [...values].sort() : values;
+  return field === "days" || field === "value" || field === "values" ? [...values].sort() : values;
 }
 
 function canonicalObject(value: object): Canonical {

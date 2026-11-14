@@ -118,3 +118,22 @@ describe("isDirty", () => {
     expect(isDirty({ ...changed, name: "Peak off" }, baseline)).toBe(false);
   });
 });
+
+describe("isDirty with calendar rows", () => {
+  const withMonths = fromSchedule({ ...saved, conditions: [{ kind: "months", op: "in", values: [12, 1], enabled: true }] });
+
+  it("notices a changed month list and ignores the order picked", () => {
+    const reordered = structuredClone(withMonths);
+    const row = reordered.conditions[0];
+    if (row.kind === "months") row.values = [1, 12];
+    expect(isDirty(reordered, withMonths)).toBe(false);
+    if (row.kind === "months") row.values = [1];
+    expect(isDirty(reordered, withMonths)).toBe(true);
+  });
+
+  it("ignores a changed row key", () => {
+    const rekeyed = structuredClone(withMonths);
+    rekeyed.conditions[0].key = 9;
+    expect(isDirty(rekeyed, withMonths)).toBe(false);
+  });
+});
