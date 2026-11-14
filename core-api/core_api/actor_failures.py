@@ -20,8 +20,17 @@ from sqlalchemy.orm import Session, aliased
 from core_api.actor_context import window_occurrences
 from core_api.actor_runs import unfinished_action_runs
 from core_api.actor_schemas import RestoreSpec, RetrySpec
+from core_api.alerts import ALERT_CLEARED_TTL
 from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
-from core_api.models.alerts import SUBJECT_INSTANCE, SUBJECT_SITE, SUBJECT_SOURCE, Alert
+from core_api.models.alerts import (
+    SEVERITY_FAILURE,
+    SEVERITY_NOTICE,
+    SEVERITY_PARTIAL,
+    SUBJECT_INSTANCE,
+    SUBJECT_SITE,
+    SUBJECT_SOURCE,
+    Alert,
+)
 from core_api.models.identity import Site
 from core_api.models.sources import Source
 from core_api.time_utils import as_utc, site_tz
@@ -46,6 +55,10 @@ class ActorFailure:
     since: datetime.datetime
     # What an "alert" is about: the source or actor name, or "Site". None for the other kinds.
     subject: str | None = None
+    severity: str = SEVERITY_FAILURE
+    alert_id: int | None = None
+    cleared_at: datetime.datetime | None = None
+    sticky: bool = False
 
 
 @dataclass(frozen=True)
@@ -58,18 +71,32 @@ class HeldOffFailure:
 
 
 def current_failures(db: Session, site_id: int, now: datetime.datetime) -> list[ActorFailure]:
-    """Every current failure at the site, oldest first. Disabled instances and
+    """Every current failure at the site: unresolved first by severity, newest first, then recently cleared alerts. Disabled instances and
     schedules are included while the condition holds."""
     site = db.get(Site, site_id)
     if site is None:
         return []
     now = as_utc(now)
-    found: list[ActorFailure] = _alert_failures(db, site_id)
+    found: list[ActorFailure] = _alert_failures(db, site_id, now)
     for instance in _site_instances(db, site_id):
         found.extend(_sign_in_failures(instance, now))
         found.extend(_failed_runs(db, instance))
         found.extend(held.failure for held in held_off_failures(db, site, instance, now))
-    return sorted(found, key=lambda f: (f.since, f.instance_id or 0, f.schedule_id or 0))
+    return sorted(found, key=_sort_key)
+
+
+_SEVERITY_RANK = {SEVERITY_FAILURE: 0, SEVERITY_PARTIAL: 1, SEVERITY_NOTICE: 2}
+
+
+def _sort_key(f: ActorFailure) -> tuple[bool, int, float, int, int]:
+    """Unresolved before cleared, then failure, partial, notice, then newest first."""
+    return (
+        f.cleared_at is not None,
+        _SEVERITY_RANK.get(f.severity, len(_SEVERITY_RANK)),
+        -f.since.timestamp(),
+        f.instance_id or 0,
+        f.schedule_id or 0,
+    )
 
 
 def held_off_failures(db: Session, site: Site, instance: ActorInstance, now: datetime.datetime) -> list[HeldOffFailure]:
@@ -94,11 +121,10 @@ def _site_instances(db: Session, site_id: int) -> list[ActorInstance]:
     return list(db.scalars(stmt))
 
 
-def _alert_failures(db: Session, site_id: int) -> list[ActorFailure]:
+def _alert_failures(db: Session, site_id: int, now: datetime.datetime) -> list[ActorFailure]:
     """The site's alerts. Those of a disabled source or actor instance are left out, since nothing is left to clear them."""
-    # Task 2 replaces this filter with the one-hour rule for cleared alerts.
-    stmt = select(Alert).where(Alert.site_id == site_id, Alert.cleared_at.is_(None)).order_by(Alert.id)
-    alerts = list(db.scalars(stmt))
+    stmt = select(Alert).where(Alert.site_id == site_id).order_by(Alert.id)
+    alerts = [a for a in db.scalars(stmt) if a.cleared_at is None or now - as_utc(a.cleared_at) < ALERT_CLEARED_TTL]
     if not alerts:
         return []
     sources = {
@@ -117,8 +143,16 @@ def _alert_failures(db: Session, site_id: int) -> list[ActorFailure]:
     for alert in alerts:
         subject = _alert_subject(alert, sources, instances)
         if subject is not None:
-            found.append(ActorFailure("alert", None, None, None, alert.message, as_utc(alert.since), subject))
+            found.append(_alert_failure(alert, subject))
     return found
+
+
+def _alert_failure(alert: Alert, subject: str) -> ActorFailure:
+    cleared_at = None if alert.cleared_at is None else as_utc(alert.cleared_at)
+    return ActorFailure(
+        "alert", None, None, None, alert.message, as_utc(alert.since), subject,
+        severity=alert.severity, alert_id=alert.id, cleared_at=cleared_at, sticky=alert.sticky,
+    )
 
 
 def _alert_subject(alert: Alert, sources: dict, instances: dict) -> str | None:
@@ -174,7 +208,8 @@ def _run_failed(instance: ActorInstance, run: ActorRun, schedule: ActorSchedule)
         what = "The action partly failed" if run.outcome == RunOutcome.PARTIAL else "The action failed"
     message = f"{what}: {run.message}" if run.message else what
     since = as_utc(run.finished_at or run.trigger_at)
-    return ActorFailure("run_failed", instance.id, schedule.id, schedule.name, message, since)
+    severity = SEVERITY_PARTIAL if run.outcome == RunOutcome.PARTIAL else SEVERITY_FAILURE
+    return ActorFailure("run_failed", instance.id, schedule.id, schedule.name, message, since, severity=severity)
 
 
 _HELD_OFF_MESSAGES: dict[FailureKind, str] = {

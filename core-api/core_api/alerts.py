@@ -9,7 +9,11 @@ from fastapi import Path
 from sqlalchemy import CursorResult, select, update
 from sqlalchemy.orm import Session
 
+from core_api.errors import AppError
 from core_api.models.alerts import SEVERITY_FAILURE, SUBJECT_SITE, Alert
+
+# How long a cleared alert stays in the failures list.
+ALERT_CLEARED_TTL = datetime.timedelta(hours=1)
 
 # The path parameter naming an alert, for example "token" or "cert".
 AlertCode = Annotated[str, Path(pattern=r"^[a-z0-9_]{1,64}$")]
@@ -58,6 +62,17 @@ def clear_alert(db: Session, subject_kind: str, subject_id: int, code: str) -> N
     )
     if cast(CursorResult, result).rowcount:
         db.commit()
+
+
+def dismiss_alert(db: Session, site_id: int, alert_id: int) -> None:
+    """Deletes a sticky alert of the site. Other alerts clear themselves, so they are refused."""
+    alert = db.get(Alert, alert_id)
+    if alert is None or alert.site_id != site_id:
+        raise AppError(404, "not_found", "Alert not found")
+    if not alert.sticky:
+        raise AppError(409, "not_dismissable", "This alert clears itself when the problem is fixed")
+    db.delete(alert)
+    db.commit()
 
 
 def report_notification_result(db: Session, site_id: int, sent: bool) -> None:

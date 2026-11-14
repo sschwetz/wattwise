@@ -223,10 +223,10 @@ def test_one_run_failed_per_schedule_dated_by_the_latest_failure(db, site):
     make_run(db, other, NOW - datetime.timedelta(hours=6), RunOutcome.FAILED)
     failures = current_failures(db, site.id, NOW)
     assert [(f.kind, f.schedule_id, f.since) for f in failures] == [
-        ("run_failed", other.id, NOW - datetime.timedelta(hours=6)),
         ("run_failed", schedule.id, NOW - datetime.timedelta(hours=1)),
+        ("run_failed", other.id, NOW - datetime.timedelta(hours=6)),
     ]
-    assert failures[1].message.startswith("The restore failed")
+    assert failures[0].message.startswith("The restore failed")
 
 
 def test_silent_actor_without_unfinished_run_is_not_a_failure(db, site):
@@ -342,3 +342,48 @@ def test_partial_run_shows_in_failures_until_later_ok(db, site):
     assert failure.message == "The action partly failed: unit did not answer"
     make_run(db, schedule, NOW - datetime.timedelta(hours=1), RunOutcome.OK, kind=RunKind.TEST)
     assert "run_failed" not in kinds(db, site)
+
+
+def add_listed_alert(db, site, code, *, severity="failure", since=None, cleared_at=None, sticky=False) -> Alert:
+    alert = Alert(site_id=site.id, subject_kind="site", subject_id=site.id, code=code, message=code, severity=severity,
+                  since=since or NOW - datetime.timedelta(hours=2), cleared_at=cleared_at, sticky=sticky)
+    db.add(alert)
+    db.commit()
+    return alert
+
+
+def test_cleared_alert_is_listed_for_an_hour(db, site):
+    add_listed_alert(db, site, "recent", cleared_at=NOW - datetime.timedelta(minutes=59))
+    add_listed_alert(db, site, "old", cleared_at=NOW - datetime.timedelta(minutes=61))
+    [item] = current_failures(db, site.id, NOW)
+    assert item.message == "recent"
+    assert item.cleared_at == NOW - datetime.timedelta(minutes=59)
+
+
+def test_alert_failure_carries_severity_id_and_sticky(db, site):
+    alert = add_listed_alert(db, site, "kept", severity="notice", sticky=True)
+    [item] = current_failures(db, site.id, NOW)
+    assert (item.severity, item.alert_id, item.sticky, item.cleared_at) == ("notice", alert.id, True, None)
+
+
+def test_partial_run_failure_has_severity_partial(db, site):
+    schedule = make_schedule(db, make_instance(db, site))
+    make_run(db, schedule, NOW - datetime.timedelta(hours=2), RunOutcome.PARTIAL)
+    [partial] = [f for f in current_failures(db, site.id, NOW) if f.kind == "run_failed"]
+    assert (partial.severity, partial.alert_id) == ("partial", None)
+    other = make_schedule(db, make_instance(db, site))
+    make_run(db, other, NOW - datetime.timedelta(hours=1), RunOutcome.FAILED)
+    by_schedule = {f.schedule_id: f for f in current_failures(db, site.id, NOW) if f.kind == "run_failed"}
+    assert (by_schedule[other.id].severity, by_schedule[other.id].alert_id) == ("failure", None)
+
+
+def test_ordering(db, site):
+    hour = datetime.timedelta(hours=1)
+    add_listed_alert(db, site, "notice", severity="notice", since=NOW - hour)
+    add_listed_alert(db, site, "partial", severity="partial", since=NOW - hour)
+    add_listed_alert(db, site, "failure_old", since=NOW - 3 * hour)
+    add_listed_alert(db, site, "failure_new", since=NOW - 2 * hour)
+    add_listed_alert(db, site, "cleared", since=NOW - 5 * hour, cleared_at=NOW - datetime.timedelta(minutes=5))
+    assert [f.message for f in current_failures(db, site.id, NOW)] == [
+        "failure_new", "failure_old", "partial", "notice", "cleared",
+    ]

@@ -12,6 +12,7 @@ from core_api.actor_schemas import ActorInstanceView, instance_view, shown_auth_
 from core_api.deps import get_current_user, get_db_session
 from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
+from core_api.models.alerts import Alert
 from core_api.models.billing import DemandWindow, SiteTariff
 from core_api.models.identity import Site, SiteAccess, User
 from core_api.routers.actors import router
@@ -663,3 +664,48 @@ def test_partial_run_blocks_delete_with_unit_held_off(http, db, site):
         assert (r.status_code, r.json()["code"]) == (409, "unit_held_off")
     [listed] = http.get(f"{_base(site)}/runs").json()
     assert listed["outcome"] == "partial" and listed["steps"] == run.steps
+
+
+# Dismiss an alert
+
+
+def _alert(db, site, sticky=True) -> Alert:
+    alert = Alert(site_id=site.id, subject_kind="site", subject_id=site.id, code="firmware", message="m",
+                  since=datetime.datetime.now(UTC), severity="notice", sticky=sticky)
+    db.add(alert)
+    db.commit()
+    return alert
+
+
+def test_dismiss_removes_a_sticky_alert(http, db, site):
+    alert = _alert(db, site)
+    alert_id = alert.id
+    assert http.delete(f"{_base(site)}/alerts/{alert_id}").status_code == 204
+    db.expire_all()
+    assert db.get(Alert, alert_id) is None
+
+
+def test_dismiss_other_sites_alert_is_404(http, db, site):
+    other = Site(owner_user_id=site.owner_user_id, name="Other", timezone="Australia/Sydney")
+    db.add(other)
+    db.commit()
+    alert = _alert(db, other)
+    r = http.delete(f"{_base(site)}/alerts/{alert.id}")
+    assert (r.status_code, r.json()["code"]) == (404, "not_found")
+    assert http.delete(f"{_base(site)}/alerts/999999").status_code == 404
+
+
+def test_dismiss_non_sticky_alert_is_409(http, db, site):
+    alert = _alert(db, site, sticky=False)
+    r = http.delete(f"{_base(site)}/alerts/{alert.id}")
+    assert (r.status_code, r.json()["code"]) == (409, "not_dismissable")
+    assert db.get(Alert, alert.id) is not None
+
+
+def test_dismiss_requires_login(db, site):
+    alert = _alert(db, site)
+    app = FastAPI()
+    install_error_handlers(app)
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_db_session] = lambda: db
+    assert TestClient(app).delete(f"{_base(site)}/alerts/{alert.id}").status_code == 401

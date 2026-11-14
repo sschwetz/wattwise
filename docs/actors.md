@@ -204,7 +204,7 @@ While a schedule holds the unit off, its name, `enabled`, conditions, retry and 
 
 | `alert` | A row in the `alerts` table for a source, an actor instance or the site. See [Alerts](collectors.md#alerts). | The service clears it, or the site's next notification email sends (`notify_email`) |
 
-Alerts on a disabled source or actor instance are left out. Each row has `kind`, `instance_id`, `schedule_id`, `schedule_name`, `message` and `since`, oldest first. An `alert` row also has `subject` (the source or actor name, or `Site`), and its `instance_id`, `schedule_id` and `schedule_name` are null.
+Alerts on a disabled source or actor instance are left out. Each row has `kind`, `instance_id`, `schedule_id`, `schedule_name`, `message`, `since`, `severity` (`failure`, `partial` or `notice`), `alert_id`, `cleared_at` and `sticky`. Unresolved rows come first by severity, newest first. An alert cleared in the last hour stays listed after them with `cleared_at` set. `DELETE .../alerts/{alert_id}` removes a sticky alert (204; 404 if unknown, 409 if not sticky). An `alert` row also has `subject` (the source or actor name, or `Site`), and its `instance_id`, `schedule_id` and `schedule_name` are null.
 
 The watchdog job (`actor_watchdog` in [`scheduler.py`](../core-api/core_api/scheduler.py)) runs every minute. For each `still_off` or `actor_silent` case on a schedule with email on, it sets `watchdog_notified_at` on the run and emails the site owner once. A conditional update claims the run first, so two job runs never both send. A run gets one watchdog email in total, whichever case came first. A send that fails is not retried.
 

@@ -149,7 +149,8 @@ Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 | `GET/POST /schedules`, `PATCH/DELETE /schedules/{sid}` | Manage schedules. Writes are validated against the instance's capabilities (422 `invalid_schedule` or `no_capabilities`). |
 | `POST /schedules/{sid}/test` | Queue a test run. 409 `instance_disabled` or `no_capabilities`. |
 | `GET /runs?limit=`, `GET /schedules/{sid}/runs?limit=` | Run history, newest first. `limit` is 1 to 200, default 50. |
-| `GET /failures` | The current failures for the Dashboard tile. Also returns kind `alert` entries from the `alerts` table, with a `subject` field (the source or actor name, or `Site`) and `instance_id`, `schedule_id` and `schedule_name` null. Alerts on a disabled source or actor instance are left out. |
+| `GET /failures` | The current failures for the Dashboard tile. Also returns kind `alert` entries from the `alerts` table, with a `subject` field (the source or actor name, or `Site`) and `instance_id`, `schedule_id` and `schedule_name` null. Alerts on a disabled source or actor instance are left out. Every entry has `severity` (`failure`, `partial` or `notice`; a partial run is `partial`), `alert_id`, `cleared_at` and `sticky`. `alert_id` is null except for `alert` entries. A cleared alert stays listed for one hour with `cleared_at` set. The list is ordered with unresolved entries first by severity, newest first, and cleared entries last. |
+| `DELETE /alerts/{alert_id}` | Dismiss a sticky alert of the site. Returns 204. 404 `not_found` for an unknown alert or one of another site, 409 `not_dismissable` when the alert is not sticky. |
 
 ### Service status
 

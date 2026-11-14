@@ -22,6 +22,7 @@ from core_api.actor_schemas import (
     ScheduleView,
     instance_view,
 )
+from core_api.alerts import dismiss_alert
 from core_api.deps import get_current_user, get_db_session, require_site_access, require_site_owner
 from core_api.errors import AppError
 from core_api.models.actors import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
@@ -325,3 +326,9 @@ def list_schedule_runs(
 @router.get("/failures", response_model=list[ActorFailure])
 def list_failures(site: Site = Depends(require_site_access), db: Session = Depends(get_db_session)):
     return current_failures(db, site.id, datetime.datetime.now(datetime.UTC))
+
+
+@router.delete("/alerts/{alert_id}", status_code=status.HTTP_204_NO_CONTENT)
+def dismiss_failure_alert(alert_id: int, site: Site = Depends(require_site_access), db: Session = Depends(get_db_session)):
+    dismiss_alert(db, site.id, alert_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
