@@ -29,6 +29,11 @@ function withoutInstance({ instance_id: _instance, ...patch }: SchedulePayload) 
   return patch;
 }
 
+/** The time zone the browser is set to, used until the site loads. */
+function browserTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 const IDLE: SaveState = { isPending: false, isSuccess: false, submittedAt: 0 };
 
 /** What follows a create or a delete. The editor is marked clean first, so the selection
@@ -74,8 +79,8 @@ function useScheduleActions({ siteId, schedule, onSelect }: ScheduleDetailProps)
   };
 }
 
-function DetailBody(props: ScheduleDetailProps & { title: string }) {
-  const { siteId, schedule, instance, canEdit, title } = props;
+function DetailBody(props: ScheduleDetailProps & { title: string; timezone: string }) {
+  const { siteId, schedule, instance, canEdit, title, timezone } = props;
   const windows = useCurrentDemandWindows(siteId);
   const actions = useScheduleActions(props);
   const heading = <h2 className="text-lg font-medium text-ink">{title}</h2>;
@@ -87,7 +92,7 @@ function DetailBody(props: ScheduleDetailProps & { title: string }) {
   return (
     <ScheduleEditor
       key={`${instance.id}-${schedule?.id ?? "new"}`}
-      setup={{ title, schedule, instance, capabilities: instance.capabilities, windows: windows.windows, canEdit }}
+      setup={{ title, schedule, instance, capabilities: instance.capabilities, windows: windows.windows, timezone, canEdit }}
       actions={actions}
     />
   );
@@ -104,7 +109,7 @@ export function ScheduleDetail(props: ScheduleDetailProps) {
   return (
     <div className="space-y-4">
       <section className={`${cardClass} space-y-6`}>
-        <DetailBody {...props} title={schedule ? schedule.name : "New schedule"} />
+        <DetailBody {...props} title={schedule ? schedule.name : "New schedule"} timezone={site?.timezone ?? browserTimezone()} />
         {schedule && canEdit && <TestNow key={schedule.id} siteId={siteId} scheduleId={schedule.id} />}
       </section>
       {site ? <UnitStatePanel instance={instance} timezone={site.timezone} /> : <Placeholder />}
