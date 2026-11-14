@@ -914,6 +914,10 @@ def test_get_demand_charges_for_site(client, app_and_db_url):
     assert response.status_code == 200, response.text
     assert len(response.json()) == 1
     assert response.json()[0]["charge_amount"] == "450.0000"
+    # SQLite returns naive datetimes. Without an offset the browser reads them as its own local time and shows the wrong day.
+    assert response.json()[0]["billing_period_start"].endswith(("Z", "+00:00"))
+    assert response.json()[0]["billing_period_end"].endswith(("Z", "+00:00"))
+    assert response.json()[0]["peak_interval_start"].endswith(("Z", "+00:00"))
 
 
 def test_get_active_demand_window_when_one_currently_matches(client, app_and_db_url):
