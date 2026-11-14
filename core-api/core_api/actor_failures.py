@@ -1,4 +1,4 @@
-"""The current actor failures at a site, for the Dashboard tile and the watchdog job.
+"""The current actor failures at a site, for the Dashboard log and the watchdog job.
 
 A failure is current while its cause holds: a failed or partial action run until a later
 run of the same schedule ends ok, skipped or overridden, and a failed restore
@@ -35,9 +35,11 @@ from core_api.models.identity import Site
 from core_api.models.sources import Source
 from core_api.time_utils import as_utc, site_tz
 
-FailureKind = Literal["run_failed", "still_off", "actor_silent", "needs_sign_in", "alert"]
+FailureKind = Literal["run_failed", "run_ok", "still_off", "actor_silent", "needs_sign_in", "alert"]
 
 SILENT_AFTER = datetime.timedelta(minutes=5)
+# How long a successful action run stays in the Dashboard log.
+OK_RUN_TTL = datetime.timedelta(hours=24)
 # The latest a restore can fall: a window end with no matching occurrence, and a
 # conditions-only restore whose condition never holds, both restore a day after the trigger.
 RESTORE_CAP = datetime.timedelta(hours=24)
@@ -85,6 +87,36 @@ def current_failures(db: Session, site_id: int, now: datetime.datetime) -> list[
         found.extend(_failed_runs(db, instance))
         found.extend(held.failure for held in held_off_failures(db, site, instance, now))
     return sorted(found, key=_sort_key)
+
+
+def site_log(db: Session, site_id: int, now: datetime.datetime) -> list[ActorFailure]:
+    """The Dashboard log: the current failures, then the successful action runs of the last 24 hours as notices."""
+    now = as_utc(now)
+    found = current_failures(db, site_id, now)
+    for instance in _site_instances(db, site_id):
+        found.extend(_recent_ok_runs(db, instance, now))
+    return sorted(found, key=_sort_key)
+
+
+def _recent_ok_runs(db: Session, instance: ActorInstance, now: datetime.datetime) -> list[ActorFailure]:
+    stmt = (
+        select(ActorRun, ActorSchedule)
+        .join(ActorSchedule, ActorSchedule.id == ActorRun.schedule_id)
+        .where(
+            ActorSchedule.instance_id == instance.id,
+            ActorRun.kind == RunKind.ACTION,
+            ActorRun.outcome == RunOutcome.OK,
+            ActorRun.finished_at > now - OK_RUN_TTL,
+        )
+        .order_by(ActorRun.id)
+    )
+    return [
+        ActorFailure(
+            "run_ok", instance.id, schedule.id, schedule.name, "The action ran",
+            as_utc(run.finished_at), severity=SEVERITY_NOTICE,
+        )
+        for run, schedule in db.execute(stmt)
+    ]
 
 
 _SEVERITY_RANK = {SEVERITY_FAILURE: 0, SEVERITY_PARTIAL: 1, SEVERITY_NOTICE: 2}

@@ -4,9 +4,9 @@ export type Tone = AlertSeverity | "neutral";
 
 const ORDER: AlertSeverity[] = ["failure", "partial", "notice"];
 
-/** The tile colour: the worst severity among rows that are not cleared. */
+/** The tile colour: the worst severity among rows that are not cleared. Successful runs do not colour it. */
 export function tileTone(failures: ActorFailure[]): Tone {
-  const open = failures.filter((f) => f.cleared_at === null);
+  const open = failures.filter((f) => f.cleared_at === null && f.kind !== "run_ok");
   return ORDER.find((s) => open.some((f) => f.severity === s)) ?? "neutral";
 }
 

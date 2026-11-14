@@ -26,7 +26,7 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `live.py` | `LiveHub`: the in-memory latest live sample per source and the per-site subscriber queues. Never touches the database. |
 | `scheduler.py` | Builds the APScheduler instance. |
 | `actor_schemas.py`, `actor_capabilities.py`, `actor_schedule_validation.py` | Pydantic models for schedules, runs and capabilities, and the checks that tie a saved schedule to an instance's declared capabilities. See [Actors](actors.md). |
-| `actor_context.py`, `actor_runs.py`, `actor_failures.py` | The site context an actor fetches (window occurrences as UTC instants), the one definition of an unfinished action run, and the current-failures rules the Dashboard tile and the watchdog share. |
+| `actor_context.py`, `actor_runs.py`, `actor_failures.py` | The site context an actor fetches (window occurrences as UTC instants), the one definition of an unfinished action run, and the current-failures rules the Dashboard log and the watchdog share. |
 | `service_status.py`, `routers/services.py` | The `service_status` table's read and write helpers, the per-key service allow-list, and the two `/services` endpoints. See [Service status](#service-status). |
 | `jobs/` | The background jobs and their helpers. |
 
@@ -149,7 +149,7 @@ Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 | `GET/POST /schedules`, `PATCH/DELETE /schedules/{sid}` | Manage schedules. Writes are validated against the instance's capabilities (422 `invalid_schedule` or `no_capabilities`). |
 | `POST /schedules/{sid}/test` | Queue a test run. 409 `instance_disabled` or `no_capabilities`. |
 | `GET /runs?limit=`, `GET /schedules/{sid}/runs?limit=` | Run history, newest first. `limit` is 1 to 200, default 50. |
-| `GET /failures` | The current failures for the Dashboard tile. Also returns kind `alert` entries from the `alerts` table, with a `subject` field (the source or actor name, or `Site`) and `instance_id`, `schedule_id` and `schedule_name` null. Alerts on a disabled source or actor instance are left out. Every entry has `severity` (`failure`, `partial` or `notice`; a partial run is `partial`), `alert_id`, `cleared_at` and `sticky`. `alert_id` is null except for `alert` entries. A cleared alert stays listed for one hour with `cleared_at` set. The list is ordered with unresolved entries first by severity, newest first, and cleared entries last. |
+| `GET /failures` | The Dashboard log: the current failures, then kind `run_ok` entries (severity `notice`, message `The action ran`) for action runs that finished `ok` in the last 24 hours. The watchdog uses `current_failures`, which has no `run_ok`. Also returns kind `alert` entries from the `alerts` table, with a `subject` field (the source or actor name, or `Site`) and `instance_id`, `schedule_id` and `schedule_name` null. Alerts on a disabled source or actor instance are left out. Every entry has `severity` (`failure`, `partial` or `notice`; a partial run is `partial`), `alert_id`, `cleared_at` and `sticky`. `alert_id` is null except for `alert` entries. A cleared alert stays listed for one hour with `cleared_at` set. The list is ordered with unresolved entries first by severity, newest first, and cleared entries last. |
 | `DELETE /alerts/{alert_id}` | Any user with site access can dismiss a sticky alert of the site. Returns 204. 404 `not_found` for an unknown alert or one of another site, 409 `not_dismissable` when the alert is not sticky. |
 
 ### Service status

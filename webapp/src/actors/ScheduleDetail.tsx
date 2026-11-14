@@ -111,9 +111,9 @@ export function ScheduleDetail(props: ScheduleDetailProps) {
       <section className={`${cardClass} space-y-6`}>
         <DetailBody {...props} title={schedule ? schedule.name : "New schedule"} timezone={site?.timezone ?? browserTimezone()} />
         {schedule && canEdit && <TestNow key={schedule.id} siteId={siteId} scheduleId={schedule.id} />}
+        {schedule && (site ? <ScheduleRunHistory site={site} schedule={schedule} instance={instance} /> : <Spinner />)}
       </section>
       {site ? <UnitStatePanel instance={instance} timezone={site.timezone} /> : <Placeholder />}
-      {schedule && (site ? <ScheduleRunHistory site={site} schedule={schedule} instance={instance} /> : <Placeholder />)}
     </div>
   );
 }

@@ -115,7 +115,7 @@ The file exists only if the database had no users at first start. If you don't d
 | API answering | `curl http://localhost:8000/health` | `{"status":"ok"}` |
 | Data flowing | Dashboard live tiles | Values change within a minute or two |
 | Services reporting | **About** in the user menu, Containers tab | Each of the 7 services shows a commit, not "not reporting" (the webapp row needs `FRONTEND_BASE_URL` to be reachable from core-api, see below) |
-| Per-source problems | **Needs attention** tile, then logs (below) | No alerts, no repeating errors |
+| Per-source problems | Dashboard log, then logs (below) | No alerts, no repeating errors |
 
 If a site's data stops and its sources look healthy, check whether the site was disabled: open **Site settings** in the webapp and look at **Enabled** on the **General** tab. A disabled site is dimmed in the site chips and its collectors log 403 `site_disabled` if they still hold the old source list. The data is kept. Turning **Enabled** on resumes collection within one discovery refresh (`DISCOVERY_REFRESH_SECONDS`).
 
@@ -170,12 +170,13 @@ Lines carry the instance id and the error type, never a message from Actron or C
 
 ### What each Dashboard entry means
 
-The tile **Needs attention** appears at the top of the site Dashboard while a schedule has a failure or an alert is raised. It refreshes every 15 seconds. With an air conditioner set up and nothing wrong it reads **All schedules OK**. Without one it appears only when an alert exists.
+The Dashboard log appears at the top of the site Dashboard while a schedule has a failure, an alert is raised or an action run finished OK in the last 24 hours. It refreshes every 15 seconds. With nothing to show it does not appear. Without an air conditioner it lists alerts only.
 
-Each row has a coloured bulb: red for a failure, amber for a partial problem (part of a device still works) and blue for a notice. The tile glows in the colour of its worst unresolved row. Unresolved rows come first, then rows the service cleared in the last hour, shown dimmed. Each row has one button: **Dismiss** for a sticky notice, **Open Collectors** for any other alert and **Open Schedule** for a schedule failure.
+Each row has a coloured bulb: red for a failure, amber for a partial problem (part of a device still works) and blue for a notice. The tile glows in the colour of its worst unresolved row. Unresolved rows come first, then rows the service cleared in the last hour, shown dimmed. A successful action run is a blue row, "Ran OK", that does not change the glow. Each row has at most one button: **Dismiss** for a sticky notice, **Open Collectors** for any other alert and **Open Schedule** for a schedule failure. A Ran OK row has none.
 
 | Entry | Meaning | What to do |
 |---|---|---|
+| Ran OK | An action run finished OK in the last 24 hours. Test and restore runs are not listed. | Nothing. |
 | Run failed | An action or restore did not succeed after its tries. The message says why. | Check the unit and turn it on if a restore failed. A later good run clears the entry; a skipped run clears a failed action but not a failed restore. |
 | Still off | The unit is still off after its restore time and the schedule's give-up minutes. A restore set to happen only on a condition counts its restore time as 24 hours after the trigger. | Turn the unit on. Then check the restore settings. A "only restore if" condition that never passes causes this. |
 | Actor not reporting | The unit is held off and the actor has not reported for 5 minutes. The actor also stops reporting when it cannot reach the unit through the Actron cloud or its sign-in is lost. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. If it needs signing in, press **Sign in again**. |
@@ -303,7 +304,7 @@ The consequences for you:
 | What | When | How you notice | Fix |
 |---|---|---|---|
 | Envoy access token | About 1 year after issue | Envoy collector logs `still invalid`, with the renewal URL. Dashboard goes stale. | Store the Enlighten login on the source (automatic renewal), or paste a new token. |
-| Envoy TLS certificate | The Envoy renews it when within 100 days of expiry, and may replace it on a firmware upgrade | Warning log line when re-pinned. If refused, an error log line and a **Problem** entry in **Needs attention** | Normally automatic. If refused, see [Collectors](collectors.md#failure-behaviour-at-a-glance). |
+| Envoy TLS certificate | The Envoy renews it when within 100 days of expiry, and may replace it on a firmware upgrade | Warning log line when re-pinned, and a notice in the Dashboard log until dismissed. If refused, an error log line and a red entry in the Dashboard log | Normally automatic. If refused, see [Collectors](collectors.md#failure-behaviour-at-a-glance). |
 | Amber API key | If revoked or rotated | Pricing log errors, no new prices | New key in Account settings |
 | Raw readings | Past 365 days | Not visible. They turn into 5-minute averages overnight. | None |
 | Demand charge estimates | Until a billing period closes | `is_estimated` flag on the Billing page | Becomes final at the next 00:10 job after the period closes |
@@ -314,7 +315,7 @@ The consequences for you:
 - Core API must run as a single worker (the default `uvicorn` command). Lockouts and the job scheduler are per process.
 - The live tile store and its WebSocket subscribers are also per process, and live samples are lost on restart.
 - Lost readings are not queued. A restart of `core-api` during a collector's push drops that cycle.
-- There is no bundled monitoring or external alerting. The **Needs attention** tile covers the problems listed in [Alerts](collectors.md#alerts). Other failures are logged only, including failures of core-api scheduled jobs.
+- There is no bundled monitoring or external alerting. The Dashboard log covers the problems listed in [Alerts](collectors.md#alerts). Other failures are logged only, including failures of core-api scheduled jobs.
 
 ## Handover checklist
 

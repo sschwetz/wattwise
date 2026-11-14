@@ -71,7 +71,7 @@ describe("FailuresTile", () => {
       failures: [failure(1, { kind: "alert", instance_id: null, schedule_id: null, schedule_name: null, subject: "Roof Envoy", message: "Certificate changed" })],
     });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     expect(within(tile).getByText("Roof Envoy - Certificate changed")).toBeInTheDocument();
     expect(within(tile).getByRole("link", { name: "Open Collectors" })).toHaveAttribute("href", "/settings/sites/7/collectors");
     expect(within(tile).queryByRole("link", { name: "Open Schedule" })).not.toBeInTheDocument();
@@ -82,7 +82,7 @@ describe("FailuresTile", () => {
       failures: [failure(1), failure(2, { kind: "alert", instance_id: null, schedule_id: null, schedule_name: null, subject: "Site", message: "Email failed" })],
     });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     expect(within(tile).getByRole("link", { name: "Open Schedule" })).toBeInTheDocument();
     expect(within(tile).getByRole("link", { name: "Open Collectors" })).toBeInTheDocument();
   });
@@ -92,16 +92,30 @@ describe("FailuresTile", () => {
     renderTile();
     const row = await screen.findByText("Schedule 1 - Run failed");
     expect(row).toHaveAttribute("title", "Schedule 1 - The action partly failed");
-    expect(screen.getByText("Needs attention (1)")).toBeInTheDocument();
   });
 
-  it("shows All schedules OK", async () => {
+  it("renders nothing when the log is empty", async () => {
     mockData({});
+    const { container } = renderTile();
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("logs a successful run as an info row without a link", async () => {
+    mockData({ failures: [failure(1, { kind: "run_ok", severity: "notice", message: "The action ran" }), failure(2)] });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Schedule status" });
-    expect(within(tile).getByText("All schedules OK")).toBeInTheDocument();
-    expect(within(tile).getByRole("link", { name: /schedule tab/i })).toHaveAttribute("href", "/settings/sites/7/schedule");
-    expect(tile.className).not.toContain("danger-glow");
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
+    const rows = within(tile).getAllByRole("listitem");
+    expect(rows[1]).toHaveTextContent("Schedule 1 - Ran OK");
+    expect(within(rows[1]).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(rows[0]).getByRole("link", { name: "Open Schedule" })).toBeInTheDocument();
+  });
+
+  it("does not colour the tile for successful runs alone", async () => {
+    mockData({ failures: [failure(1, { kind: "run_ok", severity: "notice" })] });
+    renderTile();
+    expect((await screen.findByRole("region", { name: "Schedule log" })).className).not.toMatch(/-glow/);
   });
 
   it("lists failures with a link to the Schedule page", async () => {
@@ -113,8 +127,7 @@ describe("FailuresTile", () => {
       ],
     });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
-    expect(within(tile).getByText(/Needs attention/)).toHaveTextContent("3");
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     const rows = within(within(tile).getByRole("list")).getAllByRole("listitem");
     expect(rows).toHaveLength(3);
     expect(rows[2]).toHaveTextContent("Schedule 3 - Needs sign-in");
@@ -128,18 +141,15 @@ describe("FailuresTile", () => {
   it("uses the danger style only when failures exist", async () => {
     mockData({ failures: [failure(1)] });
     const { unmount } = renderTile();
-    expect((await screen.findByRole("region", { name: "Needs attention" })).className).toContain("danger-glow");
+    expect((await screen.findByRole("region", { name: "Schedule log" })).className).toContain("danger-glow");
     unmount();
-    mockData({});
-    renderTile();
-    expect((await screen.findByRole("region", { name: "Schedule status" })).className).not.toContain("danger-glow");
   });
 
   it("shows the five newest first and an and N more line", async () => {
     const all = [1, 2, 3, 4, 5, 6, 7].map((n) => failure(n));
     mockData({ failures: all });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     const rows = within(tile).getAllByRole("listitem");
     expect(rows.map((r) => /Schedule (\d)/.exec(r.textContent ?? "")?.[1])).toEqual(["7", "6", "5", "4", "3"]);
     const more = within(tile).getByRole("link", { name: "and 2 more" });
@@ -150,19 +160,18 @@ describe("FailuresTile", () => {
     mockData({ failures: new Error("boom") });
     renderTile();
     expect(await screen.findByText("Schedule status unavailable")).toBeInTheDocument();
-    expect(screen.queryByText("All schedules OK")).not.toBeInTheDocument();
   });
 
   it("keeps showing cached failures when a background refetch errors", async () => {
     mockData({ failures: [failure(1)] });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderTile(queryClient);
-    await screen.findByRole("region", { name: "Needs attention" });
+    await screen.findByRole("region", { name: "Schedule log" });
     mockData({ failures: new Error("boom") });
     await queryClient.refetchQueries();
     await vi.waitFor(() => expect(queryClient.getQueryCache().getAll().some((q) => q.state.status === "error")).toBe(true));
     await new Promise((r) => setTimeout(r, 20));
-    expect(screen.getByRole("region", { name: "Needs attention" })).toHaveTextContent("Schedule 1 - Run failed");
+    expect(screen.getByRole("region", { name: "Schedule log" })).toHaveTextContent("Schedule 1 - Run failed");
     expect(screen.queryByText("Schedule status unavailable")).not.toBeInTheDocument();
   });
 
@@ -170,7 +179,7 @@ describe("FailuresTile", () => {
     let resolveSites: (s: unknown[]) => void = () => {};
     mockData({ failures: [failure(1)], sites: new Promise((r) => { resolveSites = r; }) });
     const { container } = renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     expect(container.querySelector("time")).toBeNull();
     expect(tile.textContent).not.toMatch(/UTC/);
     expect(tile.textContent).not.toMatch(/2026|00:30|14:30/);
@@ -184,7 +193,7 @@ describe("FailuresTile", () => {
   it("a needs_sign_in row shows no time", async () => {
     mockData({ failures: [failure(1, { kind: "needs_sign_in", since: "2026-11-05T03:00:00Z" })] });
     const { container } = renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     await within(tile).findByText("Schedule 1 - Needs sign-in");
     await new Promise((r) => setTimeout(r, 20));
     expect(container.querySelector("time")).toBeNull();
@@ -202,7 +211,7 @@ describe("FailuresTile", () => {
     const signIn = failure(9, { kind: "needs_sign_in", since: new Date().toISOString() });
     mockData({ failures: [signIn, ...[5, 4, 3, 2, 1].map((n) => failure(n))] });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     expect(within(tile).getAllByRole("listitem")).toHaveLength(5);
     expect(tile.textContent).not.toContain("Schedule 9");
     expect(within(tile).getByRole("link", { name: "and 1 more" })).toBeInTheDocument();
@@ -217,7 +226,7 @@ describe("FailuresTile", () => {
   it("viewer sees the tile", async () => {
     mockData({ failures: [failure(1)] });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     expect(within(tile).getByText("Schedule 1 - Run failed")).toBeInTheDocument();
     expect(within(tile).queryByRole("button")).not.toBeInTheDocument();
     expect(within(tile).getByRole("link", { name: "Open Schedule" })).toBeInTheDocument();
@@ -226,7 +235,7 @@ describe("FailuresTile", () => {
   it("shows one line per alert: time, source and message", async () => {
     mockData({ failures: [alert(1, { subject: "Weatherlink Live", message: "Cannot connect to the API", since: "2026-10-01T04:30:00Z" })] });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     expect(await within(tile).findByText("2026-10-01 14:30")).toBeInTheDocument();
     expect(within(tile).getByText("Weatherlink Live - Cannot connect to the API")).toBeInTheDocument();
     expect(within(tile).queryByText("Problem")).not.toBeInTheDocument();
@@ -235,7 +244,7 @@ describe("FailuresTile", () => {
   it("shows Dismiss for sticky alerts and calls the dismiss route", async () => {
     mockData({ failures: [alert(1, { sticky: true, alert_id: 9, severity: "notice" })] });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     expect(within(tile).queryByRole("link", { name: "Open Collectors" })).not.toBeInTheDocument();
     await userEvent.click(within(tile).getByRole("button", { name: /^Dismiss/ }));
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/v1/sites/7/actors/alerts/9", { method: "DELETE" }));
@@ -263,7 +272,7 @@ describe("FailuresTile", () => {
     for (const [severities, glow] of cases) {
       mockData({ failures: severities.map((s, i) => alert(i + 1, { severity: s })) });
       const { unmount } = renderTile();
-      expect((await screen.findByRole("region", { name: "Needs attention" })).className).toContain(glow);
+      expect((await screen.findByRole("region", { name: "Schedule log" })).className).toContain(glow);
       unmount();
     }
   });
@@ -271,15 +280,9 @@ describe("FailuresTile", () => {
   it("a cleared alert is neutral and does not count", async () => {
     mockData({ failures: [alert(1, { cleared_at: "2026-10-02T00:00:00Z", severity: "failure" })] });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
-    expect(within(tile).getByRole("heading", { name: "Needs attention" })).toBeInTheDocument();
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
+    expect(within(tile).queryByRole("heading")).not.toBeInTheDocument();
     expect(tile.className).not.toMatch(/-glow/);
-  });
-
-  it("counts only unresolved rows in the heading", async () => {
-    mockData({ failures: [alert(1), alert(2, { cleared_at: "2026-10-02T00:00:00Z" })] });
-    renderTile();
-    expect(await screen.findByRole("heading", { name: "Needs attention (1)" })).toBeInTheDocument();
   });
 
   it("orders unresolved by severity, cleared last", async () => {
@@ -292,7 +295,7 @@ describe("FailuresTile", () => {
       ],
     });
     renderTile();
-    const tile = await screen.findByRole("region", { name: "Needs attention" });
+    const tile = await screen.findByRole("region", { name: "Schedule log" });
     const order = within(tile).getAllByRole("listitem").map((r) => /(red|amber|blue|cleared)/.exec(r.textContent ?? "")?.[1]);
     expect(order).toEqual(["red", "amber", "blue", "cleared"]);
   });

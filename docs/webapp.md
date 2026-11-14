@@ -28,7 +28,7 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 | `/sites/new` | `AddSitePage` | Create a site and pick its time zone |
 | `/account` | `AccountPage` | Name, photo, password, email, authenticator, Amber key |
 | `/help/:slug?` | `HelpPage` | The user guide |
-| `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts, and the **Needs attention** tile (`FailuresTile`) when the site has an air conditioner set up |
+| `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts, and the schedule log (`FailuresTile`) when it has something to show |
 | `/sites/:siteId/reporting` | `ReportingPage` | Month picker, Net/Gross option, a chart (`TotalsChart`) and a sortable totals table (`TotalsTable`) with a total row (`totalsSummary.ts`) at the bottom. Clicking a day, on the chart or in the table, lists its hours, and clicking an hour lists its minutes. While totals load, a spinner shows, over the dimmed previous rows when the level stays the same. The level is in the URL as `?month=&day=&hour=` (see `reportingView.ts`), so the browser back button works. |
 | `/settings`, `/settings/sites/:siteId`, `/settings/sites/:siteId/:tab` | `SettingsPage` | Site chips and a tab rail. `:tab` is `general`, `collectors`, `tariffs`, `billing`, `schedule` or `sharing`. The `schedule` tab (`ScheduleTab`) adds an air conditioner, builds schedules, tests them and shows the run history. See [The Schedule tab](#the-schedule-tab). `/settings` goes to the first enabled site's `general` tab. An unknown site goes to the first enabled site and keeps a valid tab. An unknown or missing tab keeps the site and goes to `general`. Viewers see every tab read-only. If a background refresh of the sites fails, the page stays and shows a **Retry** alert. |
 | `/sites/:siteId/sources`, `/sites/:siteId/billing`, `/sites/:siteId/schedule` | Redirects | Go to the `collectors`, `billing` and `schedule` settings tabs |
@@ -44,7 +44,7 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 </tr>
 </table>
 
-The Schedule tab and the Needs attention tile are shown in the user guide chapter [Schedules and the air conditioner](../webapp/src/docs/08-schedules.md). More screenshots, with the explanation of every tile and field, are in the [user guide](../webapp/src/docs/index.md).
+The Schedule tab and the dashboard log are shown in the user guide chapter [Schedules and the air conditioner](../webapp/src/docs/08-schedules.md). More screenshots, with the explanation of every tile and field, are in the [user guide](../webapp/src/docs/index.md).
 
 ## Source layout
 
@@ -96,7 +96,7 @@ Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadin
 | `NeedsSignInNotice` | "The Actron account needs to sign in again." with **Sign in again**, which calls `POST .../instances/{id}/sign-in/reset`. A 409 `unit_held_off` shows as the error. |
 | `DisabledNotice` | Shown when the instance is disabled, with **Turn on** |
 | `ScheduleList` | The schedules per instance with an On or Off pill and the last run. **New schedule**. |
-| `ScheduleDetail` | The editor, **Test now**, the unit state and the run history for the selected schedule |
+| `ScheduleDetail` | The editor, **Test now** and the run history for the selected schedule in one card, then the unit state below it |
 | `ScheduleEditor` | The numbered form: `ActorStep`, `WhenStep`, the "Only if" step with `ConditionsEditor`, `ActionStep`, `RestoreStep` ("When it ends") and `RetryStep` ("If it fails", with **Email me if it still fails**). `DeleteSchedule` confirms a delete. |
 | `UnitStatePanel` | Read-only power, mode, setpoints, readings and each zone, with the update time. Shows **Not updating** when `last_seen_at` is more than 2 minutes old (`STALE_MS`). |
 | `TestNow` | **Test now**. Shows "Test queued" after the request. |
@@ -113,9 +113,9 @@ The editor counts as changed while its form differs from the schedule as last sa
 [`FailuresTile`](../webapp/src/actors/FailuresTile.tsx) sits above the other tiles in `DashboardPage.tsx`. It reads `GET .../actors/failures` every 15 seconds (`FAILURES_POLL_MS`).
 
 - No air conditioner set up and no alert: nothing is shown.
-- An air conditioner set up and no failures or alerts: "All schedules OK" and a link to the Schedule tab.
-- Failures and alerts: **Needs attention (N)**, where N counts unresolved rows. The heading has no count when only cleared rows remain. The tile glows red (`danger-glow`), amber (`partial-glow`) or blue (`notice-glow`) by the worst unresolved bulb, and has no glow when every row is cleared.
-- Each row is one line: a `Bulb`, the time (`YYYY-MM-DD HH:MM` in the site's time zone), `Source - message`, and one button on the right. The source is the alert's `subject` or the schedule name. The button is **Dismiss** for a `sticky` alert (it calls `DELETE /api/v1/sites/{id}/actors/alerts/{alert_id}`, stays disabled while the request runs, and the row stays if the request fails), else **Open Collectors** for an alert, else **Open Schedule**.
+- Nothing to list: the tile renders nothing.
+- Rows: a section named "Schedule log" with no heading or count. The tile glows red (`danger-glow`), amber (`partial-glow`) or blue (`notice-glow`) by the worst unresolved bulb. It has no glow when every row is cleared, and `run_ok` rows do not count.
+- Each row is one line: a `Bulb` (red and amber bulbs pulse while unresolved, blue ones stay lit, and a cleared bulb has a grey centre inside a ring in its colour), the time (`YYYY-MM-DD HH:MM` in the site's time zone), `Source - message`, and one button on the right (none for `run_ok`, which reads `Schedule - Ran OK`). The source is the alert's `subject` or the schedule name. The button is **Dismiss** for a `sticky` alert (it calls `DELETE /api/v1/sites/{id}/actors/alerts/{alert_id}`, stays disabled while the request runs, and the row stays if the request fails), else **Open Collectors** for an alert, else **Open Schedule**.
 - `orderFailures` (`alertTone.ts`) sorts the rows: unresolved first, red then amber then blue, newest first within a colour, cleared rows last. The tile shows the first five and links "and N more". A `needs_sign_in` row shows no time, because Core API has none to give.
 - If the request fails, "Schedule status unavailable".
 

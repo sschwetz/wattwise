@@ -907,10 +907,13 @@ describe("DashboardPage failures tile", () => {
     const base = vi.mocked(apiFetch).getMockImplementation()!;
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path.endsWith("/actors/instances")) return Promise.resolve([{ id: 3, auth_state: null }]);
+      if (path.endsWith("/actors/failures")) {
+        return Promise.resolve([{ kind: "run_ok", instance_id: 3, schedule_id: 1, schedule_name: "Cool", message: "The action ran", since: "2026-10-01T00:00:00Z", subject: null, severity: "notice", alert_id: null, cleared_at: null, sticky: false }]);
+      }
       return base(path);
     });
     renderPage();
-    const tile = await screen.findByText("All schedules OK");
+    const tile = await screen.findByText("Cool - Ran OK");
     const live = await screen.findByText("2500 W");
     expect(tile.compareDocumentPosition(live) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

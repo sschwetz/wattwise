@@ -216,7 +216,7 @@ export interface ActorRunListItem extends ActorRun {
   schedule_name: string;
 }
 
-export type ActorFailureKind = "run_failed" | "still_off" | "actor_silent" | "needs_sign_in" | "alert";
+export type ActorFailureKind = "run_failed" | "run_ok" | "still_off" | "actor_silent" | "needs_sign_in" | "alert";
 
 export type AlertSeverity = "failure" | "partial" | "notice";
 

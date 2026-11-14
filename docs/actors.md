@@ -204,7 +204,7 @@ While a schedule holds the unit off, its name, `enabled`, conditions, retry and 
 
 ## Failures
 
-`GET .../failures` lists what is wrong now. The Dashboard tile reads it every 15 seconds.
+`GET .../failures` lists what is wrong now, then the recent successful runs (`run_ok`). The Dashboard log reads it every 15 seconds. The watchdog uses `current_failures`, which leaves out `run_ok`.
 
 | Kind | Raised when | Cleared when |
 |---|---|---|
@@ -212,6 +212,7 @@ While a schedule holds the unit off, its name, `enabled`, conditions, retry and 
 | `still_off` | An action run is unfinished (including `partial`) and now is past its restore time plus the schedule's give-up minutes. For `conditions_only` the restore time is the 24-hour cap. | The restore finishes |
 | `actor_silent` | An action run is unfinished and the actor has not reported for more than 5 minutes (or never has, dated from the trigger). The actor stops its heartbeat when it loses sight of the unit, so a lost sign-in or a cloud outage raises this too. | The actor reports again |
 | `needs_sign_in` | The instance's `auth_state` says `needs_sign_in` | The stored token works again, or the owner starts a new sign-in. It has no start time. |
+| `run_ok` | An action run of a schedule finished `ok` in the last 24 hours. Test and restore runs are not included. Severity is `notice` and the message is "The action ran". | It ages out after 24 hours |
 | `alert` | A row in the `alerts` table for a source, an actor instance or the site. See [Alerts](collectors.md#alerts). | The service clears it, or the site's next notification email sends (`notify_email`) |
 
 Alerts on a disabled source or actor instance are left out. Each row has `kind`, `instance_id`, `schedule_id`, `schedule_name`, `message`, `since`, `severity` (`failure`, `partial` or `notice`), `alert_id`, `cleared_at` and `sticky`. Unresolved rows come first by severity, newest first. An alert cleared in the last hour stays listed after them with `cleared_at` set. `DELETE .../alerts/{alert_id}` removes a sticky alert (204; 404 if unknown, 409 if not sticky). An `alert` row also has `subject` (the source or actor name, or `Site`), and its `instance_id`, `schedule_id` and `schedule_name` are null.
@@ -272,9 +273,9 @@ flowchart LR
 | Set temperature (`set_temperature`) | `temperature_c`, within the unit's limits | Puts the saved setpoint back |
 | Set fan speed (`set_fan_mode`) | `fan_mode`: `AUTO`, `LOW`, `MED`, `HIGH` (not yet confirmed on a real unit) | Puts the saved speed back |
 | Switch zones (`set_zones`) | `zones` (by name), `enabled` | Puts back only the zones the action changed |
-| Set zone temperature (`set_zone_temperature`) | `zone` (a zone title), `temperature_c` | Puts back the zone's saved setpoint, after the main fields |
+| Set zone temperature (`set_zone_temperature`) | `zones` (zone titles), `temperature_c` | Puts back each zone's saved setpoint, after the main fields. A zone the owner changed since is skipped |
 
-The allowed range for `set_zone_temperature` comes from the library's zone limits: the unit's own limits for the current mode, narrowed to the main setpoint plus or minus the zone variance the unit reports. No number is hard-coded. The actor checks the range at send time against the live status. Outside it, the action fails and sends nothing, because the library would clamp the value and report success. The range depends on the main setpoint, so an earlier `set_temperature` in the same list moves it. A unit in `FAN` or `OFF` mode refuses zone setpoints, and the action fails with the library's text. The actor sends `zone_setpoints_c` and `zone_ranges_c` in its readings (`PUT .../readings`), and the editor shows the range from them as a hint.
+The allowed range for `set_zone_temperature` comes from the library's zone limits: the unit's own limits for the current mode, narrowed to the main setpoint plus or minus the zone variance the unit reports. No number is hard-coded. The actor checks every named zone's range at send time against the live status. If any zone is outside its range, the action fails and sends nothing for any zone, because the library would clamp the value and report success. The range depends on the main setpoint, so an earlier `set_temperature` in the same list moves it. A unit in `FAN` or `OFF` mode refuses zone setpoints, and the action fails with the library's text. The actor sends `zone_setpoints_c` and `zone_ranges_c` in its readings (`PUT .../readings`), and the editor shows the range all ticked zones allow as a hint. A schedule saved with the older single `zone` param still runs; edit it to tick the zone again.
 
 Readings for conditions: `indoor_temp_c`, `outdoor_temp_c`, `humidity_pct`, `is_on` (declared as an on/off reading, stored as 1 or 0; the editor shows "is On" or "is Off") and `zone_temp_c` (one target per zone). A zone whose sensor reports no temperature has no `zone_temp_c` reading, so a condition on it fails as unavailable. The actor does not expose the library's continuous, quiet, turbo or away modes.
 

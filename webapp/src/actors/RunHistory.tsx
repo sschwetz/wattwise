@@ -2,7 +2,6 @@ import { QueryError } from "../components/QueryError";
 import { Spinner } from "../components/Spinner";
 import { formatRunTime, outcomeLabel, outcomeTone, runDescription, stepLines, actionLabeler, actionsSummary } from "./runFormat";
 import { useNow } from "../dashboard/useNow";
-import { cardClass } from "./styles";
 import type { ActorInstance, ActorRun, ActorSchedule } from "./types";
 import { useScheduleRuns } from "./useActors";
 
@@ -59,8 +58,8 @@ function RunRow({ row }: { row: RunRowData }) {
 export function RunHistory({ runs, timezone, labels }: RunHistoryProps) {
   const now = useNow(60_000);
   return (
-    <section className={`${cardClass} space-y-3`}>
-      <h2 className="text-lg font-medium text-ink">Run history</h2>
+    <div className="space-y-3">
+      <h3 className="text-base font-medium text-ink">Run history</h3>
       {runs.length === 0 ? (
         <p className="text-sm text-ink-muted">No runs yet.</p>
       ) : (
@@ -69,7 +68,7 @@ export function RunHistory({ runs, timezone, labels }: RunHistoryProps) {
         </ul>
       )}
       {runs.length >= RUN_LIMIT && <p className="text-xs text-ink-muted">Showing the {RUN_LIMIT} newest runs.</p>}
-    </section>
+    </div>
   );
 }
 
@@ -81,7 +80,7 @@ export function ScheduleRunHistory({ site, schedule, instance }: {
 }) {
   const runs = useScheduleRuns(site.id, schedule.id);
   const of = actionLabeler(instance);
-  if (runs.isError) return <section className={cardClass}><QueryError error={runs.error} fallback="Could not load the run history." onRetry={() => void runs.refetch()} /></section>;
-  if (!runs.data) return <section className={cardClass}><Spinner /></section>;
+  if (runs.isError) return <QueryError error={runs.error} fallback="Could not load the run history." onRetry={() => void runs.refetch()} />;
+  if (!runs.data) return <Spinner />;
   return <RunHistory runs={runs.data} timezone={site.timezone} labels={{ summary: actionsSummary(schedule, of), of }} />;
 }

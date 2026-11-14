@@ -34,7 +34,7 @@ Click **New schedule**. The form has numbered steps. Click **Save schedule** at 
 | **Actor** | A name for the schedule. The device it commands is shown under the name. An **Enabled** switch turns the whole schedule on or off. |
 | **When** | The trigger: a demand window starts or ends, a set time on chosen days, the price goes above a level, or the indoor or outdoor temperature crosses a level. |
 | **Only if** | Optional conditions. Every ticked row must pass or the run is skipped. |
-| **Do this** | One to eight actions, run in order, such as turn off, set mode, set temperature, set fan speed, switch zones or set a zone's temperature. |
+| **Do this** | One to eight actions, run in order, such as turn off, set mode, set temperature, set fan speed, switch zones or set the temperature of one or more zones. |
 | **When it ends** | Whether and when to put the unit back as it was. |
 | **If it fails** | How many tries, the seconds between tries, when to give up, and **Email me if it still fails**. |
 

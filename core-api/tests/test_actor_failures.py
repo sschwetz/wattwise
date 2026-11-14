@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from core_api.actor_failures import current_failures
+from core_api.actor_failures import current_failures, site_log
 from core_api.deps import get_current_user, get_db_session
 from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
@@ -20,6 +20,7 @@ from tests.conftest import UTC, sydney_local
 
 NOW = datetime.datetime(2026, 11, 5, 9, 0, tzinfo=UTC)
 ACTION = {"id": "set_mode", "params": {"mode": "off"}}
+NO_RESTORE = {"enabled": False, "when": "after_minutes", "minutes": 60}
 
 
 def make_instance(db, site, *, last_seen_at=NOW, **kw) -> ActorInstance:
@@ -392,3 +393,21 @@ def test_ordering(db, site):
     assert [f.message for f in current_failures(db, site.id, NOW)] == [
         "failure_new", "failure_old", "partial", "notice", "cleared",
     ]
+
+
+def test_site_log_lists_ok_action_runs_of_the_last_day_as_notices(db, site):
+    schedule = make_schedule(db, make_instance(db, site), restore=NO_RESTORE)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=2), RunOutcome.OK)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=25), RunOutcome.OK)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=1), RunOutcome.OK, kind=RunKind.RESTORE)
+    log = site_log(db, site.id, NOW)
+    assert [(f.kind, f.severity, f.schedule_name) for f in log] == [("run_ok", "notice", "Peak off")]
+    assert log[0].since == NOW - datetime.timedelta(hours=2)
+
+
+def test_site_log_puts_failures_before_ok_runs(db, site):
+    schedule = make_schedule(db, make_instance(db, site), restore=NO_RESTORE)
+    make_run(db, schedule, NOW - datetime.timedelta(hours=3), RunOutcome.OK)
+    other = make_schedule(db, db.get(ActorInstance, schedule.instance_id), restore=NO_RESTORE)
+    make_run(db, other, NOW - datetime.timedelta(hours=4), RunOutcome.FAILED)
+    assert [f.kind for f in site_log(db, site.id, NOW)] == ["run_failed", "run_ok"]

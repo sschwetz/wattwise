@@ -21,6 +21,7 @@ const SHORT_MESSAGE: Partial<Record<ActorFailure["kind"], string>> = {
   actor_silent: "Not reporting",
   needs_sign_in: "Needs sign-in",
   run_failed: "Run failed",
+  run_ok: "Ran OK",
 };
 
 const linkClass = "text-sm font-medium text-ink underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
@@ -49,6 +50,7 @@ function DismissButton({ siteId, alertId, text }: { siteId: number; alertId: num
 }
 
 function RowAction({ failure, siteId }: { failure: ActorFailure; siteId: number }) {
+  if (failure.kind === "run_ok") return null;
   if (failure.sticky) return <DismissButton siteId={siteId} alertId={failure.alert_id} text={rowText(failure)} />;
   const isAlert = failure.kind === "alert";
   return <Link to={isAlert ? collectorsHref(siteId) : scheduleHref(siteId)} className={linkClass}>{isAlert ? "Open Collectors" : "Open Schedule"}</Link>;
@@ -74,12 +76,10 @@ function FailureList({ failures, siteId }: { failures: ActorFailure[]; siteId: n
   const ordered = orderFailures(failures);
   const shown = ordered.slice(0, MAX_SHOWN);
   const hidden = ordered.length - shown.length;
-  const open = failures.filter((f) => f.cleared_at === null).length;
   const hasSchedule = failures.some((f) => f.kind !== "alert");
   return (
     <>
-      <h2 className="font-display text-lg font-semibold text-ink">{open > 0 ? `Needs attention (${open})` : "Needs attention"}</h2>
-      <ul className="mt-3 space-y-2">
+      <ul className="space-y-2">
         {shown.map((f) => <FailureRow key={rowKey(f)} failure={f} siteId={siteId} timezone={timezone} />)}
       </ul>
       {hidden > 0 && <Link to={hasSchedule ? scheduleHref(siteId) : collectorsHref(siteId)} className={`${linkClass} mt-2 block`}>and {hidden} more</Link>}
@@ -87,30 +87,20 @@ function FailureList({ failures, siteId }: { failures: ActorFailure[]; siteId: n
   );
 }
 
-/** Dashboard summary of current schedule failures and alerts. Without an actor it shows alerts only. */
+/** Dashboard log of current schedule failures and alerts, and of successful runs in the last day.
+ * Without an actor it shows alerts only. It renders nothing when the log is empty. */
 export function FailuresTile({ siteId }: { siteId: number }) {
   const instances = useActorInstances(siteId);
   const failures = useActorFailures(siteId);
   if (!instances.data) return null;
   const hasActors = instances.data.length > 0;
-  const href = scheduleHref(siteId);
   // A failed background refetch keeps the failures already shown.
   if (failures.isError && !failures.data) return hasActors ? <p className={hintClass}>Schedule status unavailable</p> : null;
   if (!failures.data) return null;
   const current = hasActors ? failures.data : failures.data.filter((f) => f.kind === "alert");
-  if (current.length === 0) {
-    if (!hasActors) return null;
-    return (
-      <section aria-label="Schedule status" className={tileClass}>
-        <div role="status" aria-live="polite" className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-sm text-ink-muted">All schedules OK</p>
-          <Link to={href} className={linkClass}>Open the Schedule tab</Link>
-        </div>
-      </section>
-    );
-  }
+  if (current.length === 0) return null;
   return (
-    <section aria-label="Needs attention" className={`${tileClass}${GLOW[tileTone(current)]}`}>
+    <section aria-label="Schedule log" className={`${tileClass}${GLOW[tileTone(current)]}`}>
       <div role="status" aria-live="polite">
         <FailureList failures={current} siteId={siteId} />
       </div>

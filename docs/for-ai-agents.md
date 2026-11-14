@@ -104,7 +104,7 @@ DELETE /sources/{id}/alerts/{code}
 - Energy metrics: `production_w`, `consumption_w`, `grid_import_w`, `grid_export_w`, `battery_charge_w`, `battery_discharge_w`, `battery_soc_pct`, `production_wh_lifetime`, `grid_import_wh_lifetime`, `grid_export_wh_lifetime`, `grid_voltage_ph_a_v`, `grid_voltage_ph_b_v`, `grid_voltage_ph_c_v`, `grid_relay_state`.
 - Weather metrics: `temp_c`, `humidity_pct`, `wind_speed_kph`, `wind_direction_deg`, `rain_mm`, `solar_radiation_wm2`, `barometric_pressure_hpa`.
 - Price channels: `buy`, `sell`, `controlled_load` (`demand` exists but nothing uses it).
-- Actor providers: `actron_neo`. Run kinds: `action`, `restore`, `test`. Run outcomes: `pending`, `running`, `ok`, `skipped`, `partial`, `failed`, `overridden`. Failure kinds: `run_failed`, `still_off`, `actor_silent`, `needs_sign_in`, `alert`. Alert severities: `failure`, `partial`, `notice`. Trigger types: `window_start`, `window_end`, `time`, `price_above`, `temperature`.
+- Actor providers: `actron_neo`. Run kinds: `action`, `restore`, `test`. Run outcomes: `pending`, `running`, `ok`, `skipped`, `partial`, `failed`, `overridden`. Failure kinds: `run_failed`, `run_ok`, `still_off`, `actor_silent`, `needs_sign_in`, `alert`. Alert severities: `failure`, `partial`, `notice`. Trigger types: `window_start`, `window_end`, `time`, `price_above`, `temperature`.
 
 ## Working in this repository
 

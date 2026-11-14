@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from core_api.actor_failures import ActorFailure, current_failures
+from core_api.actor_failures import ActorFailure, site_log
 from core_api.actor_runs import unfinished_action_runs
 from core_api.actor_schedule_validation import parse_schedule, validate_schedule
 from core_api.actor_schemas import (
@@ -325,7 +325,7 @@ def list_schedule_runs(
 
 @router.get("/failures", response_model=list[ActorFailure])
 def list_failures(site: Site = Depends(require_site_access), db: Session = Depends(get_db_session)):
-    return current_failures(db, site.id, datetime.datetime.now(datetime.UTC))
+    return site_log(db, site.id, datetime.datetime.now(datetime.UTC))
 
 
 @router.delete("/alerts/{alert_id}", status_code=status.HTTP_204_NO_CONTENT)
