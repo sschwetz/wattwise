@@ -149,9 +149,9 @@
       "restorable": true,
       "params": [
         {
-          "name": "zone",
-          "label": "Zone",
-          "type": "choice",
+          "name": "zones",
+          "label": "Zones",
+          "type": "multi_choice",
           "options": [
             {
               "value": "Family",

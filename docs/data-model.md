@@ -312,7 +312,7 @@ That is a reading row. Four more kinds of row carry a `kind`, and all of them us
 ```json
 [
   { "id": "set_zones", "params": { "zones": ["Study"], "enabled": false } },
-  { "id": "set_zone_temperature", "params": { "zone": "Family", "temperature_c": 23.0 } }
+  { "id": "set_zone_temperature", "params": { "zones": ["Family", "Kids"], "temperature_c": 23.0 } }
 ]
 ```
 
@@ -364,7 +364,7 @@ A param `type` is `number` (with optional `min`, `max`, `unit`), `choice`, `bool
 `steps` on an action run is a list with one entry per action, in list order. It is written when the run finishes. After a restart the actor re-derives progress from the unit's state:
 
 ```json
-{ "index": 1, "action_id": "set_zone_temperature", "params": { "zone": "Study", "temperature_c": 28.0 },
+{ "index": 1, "action_id": "set_zone_temperature", "params": { "zones": ["Study"], "temperature_c": 28.0 },
   "outcome": "failed", "message": "Study 28°C is outside 20.0–24.0°C (the unit is set to 22.0°C)", "attempts": 1 }
 ```
 

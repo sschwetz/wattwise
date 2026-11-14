@@ -794,7 +794,7 @@ def test_not_signed_in_does_nothing_with_the_unit():
 
 STUDY_ZONES: list[tuple[str, bool, float]] = [("Study", True, 21.0), ("Lounge", True, 23.0)]
 FAN_LOW = ActionSpec("set_fan_mode", {"fan_mode": "LOW"})
-STUDY_28 = ActionSpec("set_zone_temperature", {"zone": "Study", "temperature_c": 28.0})
+STUDY_28 = ActionSpec("set_zone_temperature", {"zones": ["Study"], "temperature_c": 28.0})
 LOUNGE_OFF = ActionSpec("set_zones", {"zones": ["Lounge"], "enabled": False})
 STUDY_28_FAILED = "failed after 1 attempt: Study 28.0°C is outside 20.0–24.0°C (the unit is set to 22.0°C)"
 ONE_TRY = RetrySpec(1, 10, 5)

@@ -34,6 +34,7 @@ from actron_neo_actor.device_snapshot import (
     check_zone_range,
     check_zones,
     plan_restore,
+    zone_names,
 )
 from actron_neo_actor.device_snapshot import matches_action as _matches_action
 from actron_neo_actor.device_snapshot import snapshot_for as _snapshot_for
@@ -103,16 +104,19 @@ async def _switch_zones(status: ActronAirStatus, params: dict, state: DeviceStat
 
 
 async def _set_zone_temperature(status: ActronAirStatus, params: dict) -> bool:
-    """Check the range first: the library clamps an out-of-range value and sends it.
+    """Check the range of every zone first, so a zone out of range sends nothing for any zone.
+    The library clamps an out-of-range value and sends it.
 
     The range comes from the live status, the values the library clamps with. The
     library updates the status after each send, so an earlier command in the same
     batch (a main setpoint restore) has already moved it; the cached state has not."""
-    title, value = str(params["zone"]), float(params["temperature_c"])
-    zone = _zone(status, title)
+    value = float(params["temperature_c"])
+    zones = [(title, _zone(status, title)) for title in zone_names(params)]
     unit_setpoint = float(status.user_aircon_settings.current_setpoint)
-    check_zone_range(title, value, (float(zone.min_temp), float(zone.max_temp)), unit_setpoint)
-    await zone.set_temperature(value)
+    for title, zone in zones:
+        check_zone_range(title, value, (float(zone.min_temp), float(zone.max_temp)), unit_setpoint)
+    for _, zone in zones:
+        await zone.set_temperature(value)
     return True
 
 

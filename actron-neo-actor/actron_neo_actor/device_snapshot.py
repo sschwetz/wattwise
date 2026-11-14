@@ -34,8 +34,10 @@ By action:
     set_zones            applied {"zones": {"<title>": <bool>}}
                          saved   {"zones": {"<title>": <bool>}}
         set_zones lists only the named zones whose state the action changes.
-    set_zone_temperature applied {"zone": "<title>", "setpoint_c": <float>}
-                         saved   {"zone": "<title>", "cool_setpoint_c": <float>, "heat_setpoint_c": <float>}
+    set_zone_temperature applied {"zones": {"<title>": <float>}}
+                         saved   {"zones": {"<title>": {"cool_setpoint_c": <float>, "heat_setpoint_c": <float>}}}
+        Entries saved when the action took one zone hold `{"zone": "<title>", "setpoint_c": ...}` and
+        `{"zone": "<title>", "cool_setpoint_c": ..., "heat_setpoint_c": ...}`. Restore reads both, one zone at a time.
 
 Restore reports fields as "power" (is_on with mode), "mode", "setpoint",
 "fan_mode", "zone:<title>" and "zone_temp:<title>". A field is skipped when its current value
@@ -47,7 +49,7 @@ on in the owner's mode, not the saved one.
 The set_temperature `setpoint_c` is the clamped value the unit ends up at
 (see device_state.clamp_setpoint), not the value requested. The library
 clamps a zone setpoint too, but set_zone_temperature refuses a value outside
-the zone's range instead (see check_zone_range), so its `setpoint_c` is the
+the zone's range instead (see check_zone_range), so its setpoints are the
 value requested. The range is read when the command is sent, because an
 earlier command in the same batch can move it.
 """
@@ -106,6 +108,11 @@ def check_zones(names: list[str], state: DeviceState) -> None:
         raise DeviceError(f"unknown zone: {', '.join(unknown)}")
 
 
+def zone_names(params: dict) -> list[str]:
+    """The zones a set_zone_temperature action names. A schedule saved when the action took one zone has `zone`."""
+    return list(params["zones"]) if "zones" in params else [params["zone"]]
+
+
 def _check_zone_known(zone: str, state: DeviceState) -> None:
     if zone not in state.zone_ranges_c:
         raise DeviceError(f"unknown zone: {zone}")
@@ -138,7 +145,7 @@ def matches_action(action_id: str, params: dict, state: DeviceState) -> bool:
     if action_id == "set_temperature":
         return _near(active_setpoint(state), clamp_setpoint(state, float(params["temperature_c"])))
     if action_id == "set_zone_temperature":
-        return _near(state.zone_setpoints_c.get(params["zone"]), float(params["temperature_c"]))
+        return all(_near(state.zone_setpoints_c.get(zone), float(params["temperature_c"])) for zone in zone_names(params))
     if action_id == "set_fan_mode":
         return base_fan_mode(state.fan_mode) == params["fan_mode"]
     return all(state.enabled_zones.get(zone) == params["enabled"] for zone in params["zones"])
@@ -155,11 +162,18 @@ def _applied(action_id: str, params: dict, state: DeviceState) -> dict:
         return {"fan_mode": params["fan_mode"]}
     if action_id == "set_zone_temperature":
         # No range check here: an earlier action in the same run can move the range.
-        _check_zone_known(params["zone"], state)
-        return {"zone": params["zone"], "setpoint_c": float(params["temperature_c"])}
+        names = zone_names(params)
+        for zone in names:
+            _check_zone_known(zone, state)
+        return {"zones": {zone: float(params["temperature_c"]) for zone in names}}
     check_zones(list(params["zones"]), state)
     enabled = bool(params["enabled"])
     return {"zones": {zone: enabled for zone in params["zones"] if state.enabled_zones[zone] != enabled}}
+
+
+def _cool_heat(state: DeviceState, zone: str) -> dict:
+    cool, heat = state.zone_cool_heat_c[zone]
+    return {"cool_setpoint_c": cool, "heat_setpoint_c": heat}
 
 
 def _saved(action_id: str, applied: dict, state: DeviceState) -> dict:
@@ -170,8 +184,7 @@ def _saved(action_id: str, applied: dict, state: DeviceState) -> dict:
     if action_id == "set_fan_mode":
         return {"fan_mode": state.fan_mode}
     if action_id == "set_zone_temperature":
-        cool, heat = state.zone_cool_heat_c[applied["zone"]]
-        return {"zone": applied["zone"], "cool_setpoint_c": cool, "heat_setpoint_c": heat}
+        return {"zones": {zone: _cool_heat(state, zone) for zone in applied["zones"]}}
     return {"zones": {zone: state.enabled_zones[zone] for zone in applied["zones"]}}
 
 
@@ -265,7 +278,7 @@ def _plan_zone_setpoint(applied: dict, saved: dict, current: DeviceState, target
         return state.zone_setpoints_c.get(zone)
 
     def command_for(state: DeviceState) -> Command:
-        return ("set_zone_temperature", {"zone": zone, "temperature_c": _saved_for_mode(saved, state)})
+        return ("set_zone_temperature", {"zones": [zone], "temperature_c": _saved_for_mode(saved, state)})
 
     return _plan_mode_setpoint(f"zone_temp:{zone}", applied["setpoint_c"], read, command_for, (current, target))
 
@@ -318,10 +331,24 @@ def _combine(earlier: dict, later: dict) -> dict:
     return {"action": later["action"], "applied": applied, "saved": saved}
 
 
+def _per_zone(entry: dict) -> list[dict]:
+    """A set_zone_temperature entry as one single-zone entry per zone, the form the restore plans work on."""
+    if entry["action"] != "set_zone_temperature" or "zone" in entry["applied"]:
+        return [entry]
+    return [
+        {
+            "action": "set_zone_temperature",
+            "applied": {"zone": zone, "setpoint_c": setpoint},
+            "saved": {"zone": zone, **entry["saved"]["zones"][zone]},
+        }
+        for zone, setpoint in entry["applied"]["zones"].items()
+    ]
+
+
 def merge_entries(found: list[dict]) -> list[tuple[str, dict]]:
     """One entry per field, in restore order. Zone setpoints keep their schedule order."""
     merged: dict[str, dict] = {}
-    for entry in found:
+    for entry in (single for raw in found for single in _per_zone(raw)):
         name = _field(entry)
         merged[name] = _combine(merged[name], entry) if name in merged else entry
     return sorted(merged.items(), key=lambda item: _FIELD_ORDER.get(item[0], len(_FIELD_ORDER)))

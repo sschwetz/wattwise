@@ -106,9 +106,9 @@ describe("partial and steps", () => {
   it("stepLines tells repeated actions apart by their params", () => {
     const steps = [
       step(0, "set_zone_temperature", "ok", { params: { zone: "Study", temperature: 24 } }),
-      step(1, "set_zone_temperature", "ok", { params: { zone: "Lounge", temperature: 22 } }),
+      step(1, "set_zone_temperature", "ok", { params: { zones: ["Lounge", "Kids"], temperature: 22 } }),
     ];
-    expect(stepLines(run({ steps }), labelFor).map((l) => l.text)).toEqual(["Set zone (Study, 24)", "Set zone (Lounge, 22)"]);
+    expect(stepLines(run({ steps }), labelFor).map((l) => l.text)).toEqual(["Set zone (Study, 24)", "Set zone (Lounge, Kids, 22)"]);
   });
 
   it("stepLines is empty without steps", () => {

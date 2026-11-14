@@ -9,12 +9,15 @@ const ZONE_TEMPERATURE = "set_zone_temperature";
 const iconButtonClass =
   "rounded-md px-2 py-1 text-sm text-ink-muted underline hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:no-underline disabled:opacity-40";
 
-/** The range the zone allows right now, from the unit's latest readings. Null when unknown. */
+/** The range every ticked zone allows right now, from the unit's latest readings. Null when no zone is ticked or one has no reading. */
 function allowedRange(model: EditorModel, card: ActionForm): string | null {
-  const zone = card.params.zone;
-  if (zone?.kind !== "value" || typeof zone.value !== "string") return null;
-  const range = model.readings?.zone_ranges_c?.[zone.value];
-  return range ? `Allowed now: ${range[0]}–${range[1]}${formatUnit("C")}` : null;
+  const zones = card.params.zones;
+  if (zones?.kind !== "value" || !Array.isArray(zones.value) || zones.value.length === 0) return null;
+  const ranges = zones.value.map((zone) => model.readings?.zone_ranges_c?.[zone]);
+  if (ranges.some((range) => !range)) return null;
+  const low = Math.max(...ranges.map((range) => range![0]));
+  const high = Math.min(...ranges.map((range) => range![1]));
+  return `Allowed now: ${low}–${high}${formatUnit("C")}`;
 }
 
 function ZoneRangeHint({ model, card }: { model: EditorModel; card: ActionForm }) {

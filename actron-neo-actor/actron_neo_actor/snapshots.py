@@ -7,7 +7,7 @@ See device_snapshot.py for the shapes and how restore combines entries.
 
 from __future__ import annotations
 
-from actron_neo_actor.device_snapshot import DeviceError, entries, snapshot_for
+from actron_neo_actor.device_snapshot import DeviceError, entries, snapshot_for, zone_names
 from actron_neo_actor.device_state import DeviceState
 from actron_neo_actor.models import ActionSpec
 
@@ -66,5 +66,5 @@ def _entry_matches(entry: dict, action: ActionSpec) -> bool:
         # `applied` lists only the zones the run changed, so each must still be in the action.
         return set(applied["zones"]) <= set(params.get("zones") or [])
     if action.id == "set_zone_temperature":
-        return applied["zone"] == params.get("zone")
+        return set(applied["zones"] if "zones" in applied else [applied["zone"]]) == set(zone_names(params))
     return all(applied[key] == params.get(key) for key in ("mode", "fan_mode") if key in applied)

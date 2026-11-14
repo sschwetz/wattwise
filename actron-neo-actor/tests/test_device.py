@@ -743,7 +743,7 @@ def test_state_carries_zone_setpoints_and_ranges():
 def test_zone_temperature_inside_range_sends_command():
     device, api, clock = make(study_unit())
     run(device.refresh())
-    run(device.apply("set_zone_temperature", {"zone": "Study", "temperature_c": 23.5}))
+    run(device.apply("set_zone_temperature", {"zones": ["Study"], "temperature_c": 23.5}))
     assert api.commands == [{"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 23.5}]
     assert device.state().zone_setpoints_c["Study"] == 23.5
     assert clock.elapsed() < 45
@@ -752,8 +752,8 @@ def test_zone_temperature_inside_range_sends_command():
 def test_zone_temperature_at_min_and_max_is_accepted():
     device, api, _ = make(study_unit())
     run(device.refresh())
-    run(device.apply("set_zone_temperature", {"zone": "Study", "temperature_c": 20.0}))
-    run(device.apply("set_zone_temperature", {"zone": "Lounge", "temperature_c": 24.0}))
+    run(device.apply("set_zone_temperature", {"zones": ["Study"], "temperature_c": 20.0}))
+    run(device.apply("set_zone_temperature", {"zones": ["Lounge"], "temperature_c": 24.0}))
     assert api.commands == [
         {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 20.0},
         {"type": "set-settings", "RemoteZoneInfo[1].TemperatureSetpoint_Cool_oC": 24.0},
@@ -761,10 +761,49 @@ def test_zone_temperature_at_min_and_max_is_accepted():
     assert device.state().zone_setpoints_c == {"Study": 20.0, "Lounge": 24.0}
 
 
+def test_zone_temperature_sets_every_named_zone():
+    device, api, _ = make(study_unit())
+    run(device.refresh())
+    run(device.apply("set_zone_temperature", {"zones": ["Study", "Lounge"], "temperature_c": 23.0}))
+    assert api.commands == [
+        {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 23.0},
+        {"type": "set-settings", "RemoteZoneInfo[1].TemperatureSetpoint_Cool_oC": 23.0},
+    ]
+    assert device.state().zone_setpoints_c == {"Study": 23.0, "Lounge": 23.0}
+
+
+def test_zone_temperature_sends_nothing_when_one_zone_is_unknown_or_out_of_range():
+    device, api, _ = make(study_unit())
+    run(device.refresh())
+    with pytest.raises(DeviceError, match="unknown zone: Garage"):
+        run(device.apply("set_zone_temperature", {"zones": ["Study", "Garage"], "temperature_c": 23.0}))
+    with pytest.raises(DeviceError, match="outside"):
+        run(device.apply("set_zone_temperature", {"zones": ["Study", "Lounge"], "temperature_c": 30.0}))
+    assert api.commands == []
+
+
+def test_zone_temperature_still_reads_a_single_zone_param_from_an_older_schedule():
+    device, api, _ = make(study_unit())
+    run(device.refresh())
+    run(device.apply("set_zone_temperature", {"zone": "Study", "temperature_c": 23.5}))
+    assert api.commands == [{"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 23.5}]
+
+
+def test_restore_of_a_multi_zone_setpoint_puts_each_zone_back_and_skips_one_the_owner_changed():
+    device, api, _ = make(study_unit())
+    run(device.refresh())
+    snapshot = _act(device, "set_zone_temperature", {"zones": ["Study", "Lounge"], "temperature_c": 23.0})
+    api.device["RemoteZoneInfo"][1]["TemperatureSetpoint_Cool_oC"] = 21.0  # the owner changes Lounge
+    current = run(device.refresh())
+    result = run(device.restore(snapshot, current))
+    assert result == RestoreResult(restored=["zone_temp:Study"], skipped=["zone_temp:Lounge"])
+    assert api.commands[-1] == {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 22.0}
+
+
 def test_zone_temperature_range_check_allows_float_error_at_the_edge():
     device, api, _ = make(study_unit(cool_c=22.9, variance_c=1.2))  # 22.9 + 1.2 is 24.099999999999998
     run(device.refresh())
-    run(device.apply("set_zone_temperature", {"zone": "Study", "temperature_c": 24.1}))
+    run(device.apply("set_zone_temperature", {"zones": ["Study"], "temperature_c": 24.1}))
     assert len(api.commands) == 1
 
 
@@ -780,7 +819,7 @@ def test_zone_temperature_just_outside_range_fails_and_sends_nothing(value, mess
     device, api, _ = make(study_unit())
     run(device.refresh())
     with pytest.raises(DeviceError) as excinfo:
-        run(device.apply("set_zone_temperature", {"zone": "Study", "temperature_c": value}))
+        run(device.apply("set_zone_temperature", {"zones": ["Study"], "temperature_c": value}))
     assert str(excinfo.value) == message
     assert api.commands == []
 
@@ -790,7 +829,7 @@ def test_zone_temperature_in_fan_and_off_mode_fails_with_library_text(mode):
     device, api, _ = make(study_unit(mode=mode))
     run(device.refresh())
     with pytest.raises(DeviceError) as excinfo:
-        run(device.apply("set_zone_temperature", {"zone": "Study", "temperature_c": 22.0}))
+        run(device.apply("set_zone_temperature", {"zones": ["Study"], "temperature_c": 22.0}))
     assert str(excinfo.value) == f"set_zone_temperature failed: Cannot set temperature in {mode} mode"
     assert api.commands == []
 
@@ -799,9 +838,9 @@ def test_unknown_zone_fails():
     device, api, _ = make(study_unit())
     run(device.refresh())
     with pytest.raises(DeviceError, match="unknown zone: Garage"):
-        run(device.apply("set_zone_temperature", {"zone": "Garage", "temperature_c": 22.0}))
+        run(device.apply("set_zone_temperature", {"zones": ["Garage"], "temperature_c": 22.0}))
     with pytest.raises(DeviceError, match="unknown zone: Garage"):
-        device.snapshot_for("set_zone_temperature", {"zone": "Garage", "temperature_c": 22.0})
+        device.snapshot_for("set_zone_temperature", {"zones": ["Garage"], "temperature_c": 22.0})
     assert api.commands == []
 
 
@@ -812,7 +851,7 @@ def test_capabilities_declare_set_zone_temperature():
     action = caps["actions"][ids.index("set_zone_temperature")]
     assert (action["label"], action["restorable"]) == ("Set zone temperature", True)
     zone, temp = action["params"]
-    assert (zone["name"], zone["type"]) == ("zone", "choice")
+    assert (zone["name"], zone["type"]) == ("zones", "multi_choice")
     assert [o["value"] for o in zone["options"]] == ["Study", "Lounge"]
     assert (temp["name"], temp["type"], temp["min"], temp["max"], temp["unit"]) == (
         "temperature_c",
@@ -826,14 +865,14 @@ def test_capabilities_declare_set_zone_temperature():
 def test_zone_temperature_matches_action_and_snapshot():
     device, _, _ = make(study_unit())
     state = run(device.refresh())
-    assert device.matches_action("set_zone_temperature", {"zone": "Study", "temperature_c": 22.04}, state)
-    assert not device.matches_action("set_zone_temperature", {"zone": "Study", "temperature_c": 22.1}, state)
-    assert not device.matches_action("set_zone_temperature", {"zone": "Garage", "temperature_c": 22.0}, state)
-    snapshot = device.snapshot_for("set_zone_temperature", {"zone": "Study", "temperature_c": 23})
+    assert device.matches_action("set_zone_temperature", {"zones": ["Study"], "temperature_c": 22.04}, state)
+    assert not device.matches_action("set_zone_temperature", {"zones": ["Study"], "temperature_c": 22.1}, state)
+    assert not device.matches_action("set_zone_temperature", {"zones": ["Garage"], "temperature_c": 22.0}, state)
+    snapshot = device.snapshot_for("set_zone_temperature", {"zones": ["Study"], "temperature_c": 23})
     assert snapshot == {
         "action": "set_zone_temperature",
-        "applied": {"zone": "Study", "setpoint_c": 23.0},
-        "saved": {"zone": "Study", "cool_setpoint_c": 22.0, "heat_setpoint_c": 0.0},
+        "applied": {"zones": {"Study": 23.0}},
+        "saved": {"zones": {"Study": {"cool_setpoint_c": 22.0, "heat_setpoint_c": 0.0}}},
     }
     json.dumps(snapshot)
 
@@ -841,7 +880,7 @@ def test_zone_temperature_matches_action_and_snapshot():
 def test_restore_zone_temperature_puts_the_saved_setpoint_back():
     device, api, _ = make(study_unit())
     run(device.refresh())
-    snapshot = _act(device, "set_zone_temperature", {"zone": "Study", "temperature_c": 23.5})
+    snapshot = _act(device, "set_zone_temperature", {"zones": ["Study"], "temperature_c": 23.5})
     result = run(device.restore(snapshot, device.state()))
     assert result == RestoreResult(restored=["zone_temp:Study"], skipped=[])
     assert api.commands[-1] == {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Cool_oC": 22.0}
@@ -853,8 +892,8 @@ def test_restore_zone_temperature_uses_the_heat_setpoint_in_heat_mode():
     api.device["RemoteZoneInfo"][0]["TemperatureSetpoint_Heat_oC"] = 21.0
     device, _, _ = make(api)
     run(device.refresh())
-    snapshot = _act(device, "set_zone_temperature", {"zone": "Study", "temperature_c": 23.0})
-    assert snapshot["saved"] == {"zone": "Study", "cool_setpoint_c": 22.0, "heat_setpoint_c": 21.0}
+    snapshot = _act(device, "set_zone_temperature", {"zones": ["Study"], "temperature_c": 23.0})
+    assert snapshot["saved"] == {"zones": {"Study": {"cool_setpoint_c": 22.0, "heat_setpoint_c": 21.0}}}
     run(device.restore(snapshot, device.state()))
     assert api.commands[-1] == {"type": "set-settings", "RemoteZoneInfo[0].TemperatureSetpoint_Heat_oC": 21.0}
 
@@ -862,7 +901,7 @@ def test_restore_zone_temperature_uses_the_heat_setpoint_in_heat_mode():
 def test_restore_zone_temperature_skips_a_zone_the_owner_changed():
     device, api, _ = make(study_unit())
     run(device.refresh())
-    snapshot = _act(device, "set_zone_temperature", {"zone": "Study", "temperature_c": 23.5})
+    snapshot = _act(device, "set_zone_temperature", {"zones": ["Study"], "temperature_c": 23.5})
     api.device["RemoteZoneInfo"][0]["TemperatureSetpoint_Cool_oC"] = 21.0  # the owner, at the wall controller
     current = run(device.refresh())
     sent = len(api.commands)
@@ -874,7 +913,7 @@ def test_restore_zone_temperature_skips_a_zone_the_owner_changed():
 def test_restore_zone_temperature_outside_the_range_fails_with_the_range_message():
     device, api, _ = make(study_unit())
     run(device.refresh())
-    snapshot = _act(device, "set_zone_temperature", {"zone": "Study", "temperature_c": 24.0})
+    snapshot = _act(device, "set_zone_temperature", {"zones": ["Study"], "temperature_c": 24.0})
     api.owner_sets("UserAirconSettings.TemperatureSetpoint_Cool_oC", 26.0)  # the range is now 24.0 to 28.0
     current = run(device.refresh())
     sent = len(api.commands)
@@ -918,7 +957,7 @@ def test_restore_puts_main_setpoint_back_before_zone_setpoints():
     device, _, _ = make(api)
     run(device.refresh())
     actions = [
-        ActionSpec("set_zone_temperature", {"zone": "Study", "temperature_c": 24.0}),
+        ActionSpec("set_zone_temperature", {"zones": ["Study"], "temperature_c": 24.0}),
         ActionSpec("set_temperature", {"temperature_c": 26}),
     ]
     snapshot = _act_all(device, actions)
@@ -1006,7 +1045,7 @@ def _study_zone(device: ActronDevice) -> tuple[str, bool, tuple[float, float]]:
     return state.mode, state.is_on, state.zone_cool_heat_c["Study"]
 
 
-STUDY_23 = ActionSpec("set_zone_temperature", {"zone": "Study", "temperature_c": 23.0})
+STUDY_23 = ActionSpec("set_zone_temperature", {"zones": ["Study"], "temperature_c": 23.0})
 
 
 def test_restore_puts_a_zone_setpoint_set_after_a_mode_change_back_before_the_mode():

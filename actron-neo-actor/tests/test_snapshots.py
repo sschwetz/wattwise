@@ -87,7 +87,7 @@ def test_owner_changed_keeps_the_single_action_rules_for_a_legacy_snapshot():
 
 def test_snapshot_matches_the_actions_it_was_taken_for():
     kids_on = ActionSpec("set_zones", {"zones": ["Kids", "Master"], "enabled": True})
-    study = ActionSpec("set_zone_temperature", {"zone": "Master", "temperature_c": 22.0})
+    study = ActionSpec("set_zone_temperature", {"zones": ["Master"], "temperature_c": 22.0})
     actions = [FAN_LOW, kids_on, study, ActionSpec("system_on", {"mode": "HEAT"})]
     snapshot = snapshot_for_all(actions, state_of())
     assert snapshot_matches(snapshot, actions)

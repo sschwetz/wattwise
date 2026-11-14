@@ -116,9 +116,9 @@ export interface StepLine {
   tone: "ok" | "failed";
 }
 
-/** The param values of a step ("Study, 24"), which tell two steps of one action apart. */
+/** The param values of a step ("Study, Lounge, 24"), which tell two steps of one action apart. A list contributes its items. */
 function paramsSummary(step: RunStep): string {
-  return Object.values(step.params).filter((v) => typeof v === "string" || typeof v === "number").join(", ");
+  return Object.values(step.params).flat().filter((v) => typeof v === "string" || typeof v === "number").join(", ");
 }
 
 function stepText(step: RunStep, labelFor: (id: string) => string, repeated: boolean): string {

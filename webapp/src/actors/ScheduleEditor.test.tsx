@@ -34,7 +34,7 @@ const caps: Capabilities = {
     {
       id: "set_zone_temperature", label: "Set zone temperature", restorable: true,
       params: [
-        { ...none, name: "zone", label: "Zone", type: "choice", options: zones },
+        { ...none, name: "zones", label: "Zones", type: "multi_choice", options: zones },
         { ...none, name: "temperature_c", label: "Zone target", type: "number", min: 10, max: 30, unit: "C" },
       ],
     },
@@ -609,11 +609,24 @@ describe("ScheduleEditor", () => {
       renderDetail(saved, true, { ...instance, latest_readings: readings });
       await ready();
       await user.selectOptions(screen.getByRole("combobox", { name: "Action" }), "set_zone_temperature");
+      expect(screen.queryByText(/Allowed now/)).not.toBeInTheDocument();
+      await user.click(screen.getByRole("checkbox", { name: "Lounge" }));
       expect(screen.getByText("Allowed now: 18–26.5°C")).toBeInTheDocument();
       expect(screen.getByText("Order matters: an earlier temperature change moves this range.")).toBeInTheDocument();
-      await user.selectOptions(screen.getByRole("combobox", { name: "Zone" }), "Study");
+      await user.click(screen.getByRole("checkbox", { name: "Study" }));
       expect(screen.queryByText(/Allowed now/)).not.toBeInTheDocument();
       expect(screen.getByText(/Order matters/)).toBeInTheDocument();
+    });
+
+    it("shows the range all ticked zones allow", async () => {
+      const user = userEvent.setup();
+      const readings = { zone_ranges_c: { Lounge: [18, 26.5], Study: [20, 25] } } as unknown as ActorInstance["latest_readings"];
+      renderDetail(saved, true, { ...instance, latest_readings: readings });
+      await ready();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Action" }), "set_zone_temperature");
+      await user.click(screen.getByRole("checkbox", { name: "Lounge" }));
+      await user.click(screen.getByRole("checkbox", { name: "Study" }));
+      expect(screen.getByText("Allowed now: 20–25°C")).toBeInTheDocument();
     });
 
     it("shows only the order line when there are no readings", async () => {
