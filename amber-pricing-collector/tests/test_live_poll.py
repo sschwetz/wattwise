@@ -404,7 +404,7 @@ def test_a_child_exits_with_the_polls_outcome_code():
 
 def test_amber_rejection_raises_a_key_alert_at_once_and_a_good_poll_clears_it(alert_calls):
     live_poll._report_outcome("http://core", "key", 1, live_poll.AMBER_REJECTED)
-    assert [c[:2] for c in alert_calls] == [("set", "amber_key")]
+    assert alert_calls == [("set", "amber_key", "Amber rejected the API key", "failure", False)]
     live_poll._report_outcome("http://core", "key", 1, live_poll.OK)
     assert ("clear", "amber_key") in alert_calls and ("clear", "amber") in alert_calls
 
@@ -414,7 +414,7 @@ def test_amber_failures_raise_an_alert_after_five_in_a_row_and_a_terminated_chil
         live_poll._report_outcome("http://core", "key", 1, live_poll.AMBER_FAILED)
     assert alert_calls == []
     live_poll._report_outcome("http://core", "key", 1, None)
-    assert [c[:2] for c in alert_calls] == [("set", "amber")]
+    assert alert_calls == [("set", "amber", "Cannot get prices from Amber", "failure", False)]
 
 
 def test_config_and_push_failures_change_no_alert(alert_calls):

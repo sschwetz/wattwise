@@ -17,7 +17,7 @@ logger = logging.getLogger("amber_pricing_collector")
 ALERT_AFTER_FAILURES = 5
 
 _Key = tuple[int, str]
-_raised: dict[_Key, str] = {}
+_raised: dict[_Key, tuple[str, str]] = {}
 _known_clear: set[_Key] = set()
 _failures: dict[_Key, int] = {}
 
@@ -28,18 +28,26 @@ def reset() -> None:
     _failures.clear()
 
 
-def raise_alert(core_api_url: str, collector_key: str, source_id: int, code: str, message: str) -> None:
-    """Shows `message` on the Dashboard. Core API is only told when the message differs from the last one sent."""
+def raise_alert(
+    core_api_url: str,
+    collector_key: str,
+    source_id: int,
+    code: str,
+    message: str,
+    severity: str = "failure",
+    sticky: bool = False,
+) -> None:
+    """Shows `message` on the Dashboard. Core API is only told when the message or severity differs from the last one sent."""
     key = (source_id, code)
     _known_clear.discard(key)
-    if _raised.get(key) == message:
+    if _raised.get(key) == (message, severity):
         return
     try:
-        set_source_alert(core_api_url, source_id, collector_key, code, message)
+        set_source_alert(core_api_url, source_id, collector_key, code, message, severity, sticky)
     except CoreApiError:
         logger.exception("Failed to report the %s alert to Core API for source %s", code, source_id)
         return
-    _raised[key] = message
+    _raised[key] = (message, severity)
 
 
 def clear_alert(core_api_url: str, collector_key: str, source_id: int, code: str) -> None:
@@ -57,9 +65,11 @@ def clear_alert(core_api_url: str, collector_key: str, source_id: int, code: str
     _known_clear.add(key)
 
 
-def report_failure(core_api_url: str, collector_key: str, source_id: int, code: str, message: str) -> None:
+def report_failure(
+    core_api_url: str, collector_key: str, source_id: int, code: str, message: str, severity: str = "failure"
+) -> None:
     """Counts one failure and raises the alert once ALERT_AFTER_FAILURES have come in a row."""
     key = (source_id, code)
     _failures[key] = _failures.get(key, 0) + 1
     if _failures[key] >= ALERT_AFTER_FAILURES:
-        raise_alert(core_api_url, collector_key, source_id, code, message)
+        raise_alert(core_api_url, collector_key, source_id, code, message, severity)

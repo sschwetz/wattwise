@@ -117,10 +117,10 @@ def _report_outcome(core_api_url: str, collector_key: str, source_id: int, exitc
         alerts.clear_alert(core_api_url, collector_key, source_id, AMBER_KEY_ALERT)
         alerts.clear_alert(core_api_url, collector_key, source_id, AMBER_ALERT)
     elif exitcode == AMBER_REJECTED:
-        message = "Amber rejected the API key. Enter a new key in your account settings."
+        message = "Amber rejected the API key"
         alerts.raise_alert(core_api_url, collector_key, source_id, AMBER_KEY_ALERT, message)
     elif exitcode in (AMBER_FAILED, None):
-        message = "Cannot get prices from Amber. Price data is not updating."
+        message = "Cannot get prices from Amber"
         alerts.report_failure(core_api_url, collector_key, source_id, AMBER_ALERT, message)
 
 

@@ -78,13 +78,23 @@ def push_live_sample(
         raise CoreApiError(f"Failed to push live sample: {response.status_code} {response.text}")
 
 
-def set_source_alert(base_url: str, source_id: int, collector_key: str, code: str, message: str) -> None:
-    """Shows `message` on the Dashboard until clear_source_alert is called with the same code."""
+def set_source_alert(
+    base_url: str,
+    source_id: int,
+    collector_key: str,
+    code: str,
+    message: str,
+    severity: str = "failure",
+    sticky: bool = False,
+) -> None:
+    """Shows `message` on the Dashboard until clear_source_alert is called with the same code.
+
+    `severity` is "failure", "partial" or "notice". A sticky alert is kept after the cause goes away until it is dismissed."""
     response = _request(
         "PUT",
         f"{base_url}/api/v1/sources/{source_id}/alerts/{code}",
         headers={"X-Collector-Key": collector_key},
-        json={"message": message},
+        json={"message": message, "severity": severity, "sticky": sticky},
         timeout=10,
     )
     if response.status_code != 204:

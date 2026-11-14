@@ -105,9 +105,14 @@ class CoreApiClient:
     def put_capabilities(self, instance_id: int, capabilities: dict) -> None:
         self._request("PUT", f"/instances/{instance_id}/capabilities", "put capabilities", 204, json=capabilities)
 
-    def set_alert(self, instance_id: int, code: str, message: str) -> None:
-        """Shows `message` on the Dashboard until clear_alert is called with the same code."""
-        self._request("PUT", f"/instances/{instance_id}/alerts/{code}", "set alert", 204, json={"message": message})
+    def set_alert(
+        self, instance_id: int, code: str, message: str, severity: str = "failure", sticky: bool = False
+    ) -> None:
+        """Shows `message` on the Dashboard until clear_alert is called with the same code.
+
+        `severity` is "failure", "partial" or "notice". A sticky alert is kept after the cause goes away until it is dismissed."""
+        body = {"message": message, "severity": severity, "sticky": sticky}
+        self._request("PUT", f"/instances/{instance_id}/alerts/{code}", "set alert", 204, json=body)
 
     def clear_alert(self, instance_id: int, code: str) -> None:
         self._request("DELETE", f"/instances/{instance_id}/alerts/{code}", "clear alert", 204)

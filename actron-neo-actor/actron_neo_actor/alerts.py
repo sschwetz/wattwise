@@ -21,16 +21,16 @@ ALERT_AFTER_FAILURES = 5
 class InstanceAlerts:
     def __init__(self, core: AsyncCore) -> None:
         self._core = core
-        self._raised: dict[tuple[int, str], str] = {}
+        self._raised: dict[tuple[int, str], tuple[str, str]] = {}
         self._known_clear: set[tuple[int, str]] = set()
         self._failures: dict[tuple[int, str], int] = {}
 
-    async def failure(self, instance_id: int, code: str, message: str) -> None:
+    async def failure(self, instance_id: int, code: str, message: str, severity: str = "failure") -> None:
         """Counts one failure and raises the alert once ALERT_AFTER_FAILURES have come in a row."""
         key = (instance_id, code)
         self._failures[key] = self._failures.get(key, 0) + 1
         if self._failures[key] >= ALERT_AFTER_FAILURES:
-            await self._raise(key, message)
+            await self._raise(key, message, severity)
 
     async def ok(self, instance_id: int, code: str) -> None:
         """Ends a failure streak and removes the alert."""
@@ -46,13 +46,13 @@ class InstanceAlerts:
         self._raised.pop(key, None)
         self._known_clear.add(key)
 
-    async def _raise(self, key: tuple[int, str], message: str) -> None:
+    async def _raise(self, key: tuple[int, str], message: str, severity: str, sticky: bool = False) -> None:
         self._known_clear.discard(key)
-        if self._raised.get(key) == message:
+        if self._raised.get(key) == (message, severity):
             return
         try:
-            await self._core.set_alert(key[0], key[1], message)
+            await self._core.set_alert(key[0], key[1], message, severity, sticky)
         except CoreApiError as err:
             _LOG.warning("Could not report the %s alert (instance %s): %s", key[1], key[0], type(err).__name__)
             return
-        self._raised[key] = message
+        self._raised[key] = (message, severity)

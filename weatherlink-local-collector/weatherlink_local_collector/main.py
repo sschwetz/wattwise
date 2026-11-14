@@ -47,8 +47,8 @@ def _map_iss_or_empty(
         readings = map_iss_readings(iss, ts, rain_state)
     except Exception:
         logger.exception("Failed to find/parse ISS (outdoor) data this cycle; continuing without it")
-        message = "The weather station is not reporting outdoor (ISS) data. Check the sensor and its battery."
-        alerts.report_failure(settings, source_id, ISS_ALERT, message)
+        message = "Not reporting outdoor (ISS) data"
+        alerts.report_failure(settings, source_id, ISS_ALERT, message, severity="partial")
         return []
     alerts.clear_alert(settings, source_id, ISS_ALERT)
     return readings
@@ -60,8 +60,8 @@ def _map_barometer_or_empty(settings: Settings, source_id: int, conditions: list
         readings = map_barometer_readings(barometer, ts)
     except Exception:
         logger.exception("Failed to find/parse barometer data this cycle; continuing without it")
-        message = "The weather station is not reporting barometer data."
-        alerts.report_failure(settings, source_id, BAROMETER_ALERT, message)
+        message = "Not reporting barometer data"
+        alerts.report_failure(settings, source_id, BAROMETER_ALERT, message, severity="partial")
         return []
     alerts.clear_alert(settings, source_id, BAROMETER_ALERT)
     return readings
@@ -75,8 +75,8 @@ def poll_once(settings: Settings, source_id: int, config: dict, rain_state: Rain
         data = fetch_current_conditions(config["host"])
         conditions = data["data"]["conditions"]
     except Exception:
-        logger.exception("Failed to poll WeatherLink this cycle for source %s", source_id)
-        message = f"Cannot read data from the weather station at {config.get('host')}. Check that it is on and reachable."
+        logger.exception("Failed to poll WeatherLink at %s this cycle for source %s", config.get("host"), source_id)
+        message = "Cannot connect to the weather station"
         alerts.report_failure(settings, source_id, UNREACHABLE_ALERT, message)
         return
     alerts.clear_alert(settings, source_id, UNREACHABLE_ALERT)

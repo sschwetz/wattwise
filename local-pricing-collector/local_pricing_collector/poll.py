@@ -146,7 +146,7 @@ class TickState:
 
 
 def _pricing_failed(settings: Settings, source_id: int) -> None:
-    message = "Local rates are not being priced; the last attempts failed. Check the rate windows and the logs."
+    message = "Rates are not being priced"
     alerts.report_failure(settings, source_id, PRICING_ALERT, message)
 
 
@@ -184,7 +184,7 @@ def _marker_or_none(settings: Settings, source: LocalSource) -> RepriceMarker | 
         marker = parse_reprice(source.config)
     except CONFIG_ERRORS:
         logger.exception("Ignoring a malformed reprice marker for pricing source %s", source.source_id)
-        message = "A request to reprice past rates is malformed and is being ignored."
+        message = "Reprice request is malformed"
         alerts.raise_alert(settings, source.source_id, MARKER_ALERT, message)
         return None
     alerts.clear_alert(settings, source.source_id, MARKER_ALERT)
@@ -204,7 +204,7 @@ def _start_if_due(
         tz = site_timezone(source.config)
     except CONFIG_ERRORS:
         logger.exception("Unusable time zone for pricing source %s; skipping it this tick", source.source_id)
-        message = "The site's time zone is not valid, so local rates are not being priced. Check the site settings."
+        message = "Site time zone is not valid"
         alerts.raise_alert(settings, source.source_id, TIMEZONE_ALERT, message)
         return
     alerts.clear_alert(settings, source.source_id, TIMEZONE_ALERT)

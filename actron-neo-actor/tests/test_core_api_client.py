@@ -240,8 +240,19 @@ def test_set_and_clear_alert_use_the_instance_alert_routes(client):
     delete = respx.delete(f"{BASE}/api/v1/actor/instances/4/alerts/tick").respond(204)
     client.set_alert(4, "tick", "Cannot reach the unit")
     client.clear_alert(4, "tick")
-    assert json.loads(put.calls.last.request.content) == {"message": "Cannot reach the unit"}
+    assert json.loads(put.calls.last.request.content) == {
+        "message": "Cannot reach the unit",
+        "severity": "failure",
+        "sticky": False,
+    }
     assert delete.called
+
+
+@respx.mock
+def test_set_alert_sends_severity_and_sticky(client):
+    put = respx.put(f"{BASE}/api/v1/actor/instances/4/alerts/tick").respond(204)
+    client.set_alert(4, "tick", "msg", severity="partial", sticky=True)
+    assert json.loads(put.calls.last.request.content) == {"message": "msg", "severity": "partial", "sticky": True}
 
 
 @respx.mock

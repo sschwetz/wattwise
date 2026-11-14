@@ -34,6 +34,7 @@ class FakeCore:
         self.errors: dict[str, Exception] = {}  # method name -> error to raise
         self.instance_errors: dict[int, Exception] = {}  # instance id -> error from every per-instance call
         self.alerts: dict[tuple[int, str], str] = {}  # (instance id, code) -> message of the alerts now showing
+        self.alert_options: dict[tuple[int, str], tuple[str, bool]] = {}  # (severity, sticky) of the last set per alert
         self.alert_calls: list[tuple[str, int, str]] = []  # ("set" or "clear", instance id, code) per call
         self.threads: set[int] = set()
         self.updates: list[tuple[int, str, dict | None]] = []  # (run id, outcome, snapshot) per update_run
@@ -72,9 +73,12 @@ class FakeCore:
         self._enter("patch_discovered", instance_id)
         self.discovered.append((instance_id, {"config": config, "auth_state": auth_state}))
 
-    def set_alert(self, instance_id: int, code: str, message: str) -> None:
+    def set_alert(
+        self, instance_id: int, code: str, message: str, severity: str = "failure", sticky: bool = False
+    ) -> None:
         self.alert_calls.append(("set", instance_id, code))
         self.alerts[(instance_id, code)] = message
+        self.alert_options[(instance_id, code)] = (severity, sticky)
 
     def clear_alert(self, instance_id: int, code: str) -> None:
         self.alert_calls.append(("clear", instance_id, code))

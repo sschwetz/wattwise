@@ -149,7 +149,9 @@ Each tick starts a short-lived child process per source, so one slow source cann
 
 ## Alerts
 
-Each collector reports problems the owner has to fix as alerts, which the Dashboard **Needs attention** tile shows. A collector calls `PUT /sources/{id}/alerts/{code}` with `{message}` and `DELETE` on the same path when the cause goes away. Each service has its own `alerts.py`, the same convention as `service_report.py`. The state is in memory. After a restart the first success sends one `DELETE` per code, which clears alerts left from before.
+Each collector reports problems the owner has to fix as alerts, which the Dashboard **Needs attention** tile shows. A collector calls `PUT /sources/{id}/alerts/{code}` with `{message, severity, sticky}` and `DELETE` on the same path when the cause goes away. Each service has its own `alerts.py`, the same convention as `service_report.py`. The state is in memory. After a restart the first success sends one `DELETE` per code, which clears alerts left from before.
+
+`severity` is `failure` (red, the default), `partial` (amber) or `notice`. `sticky` (default false) keeps the alert on the Dashboard after the cause clears, until the owner dismisses it. A raise with a different severity than the last one sent is sent again even when the message is the same. The WeatherLink `iss` and `barometer` alerts are `partial` because the station still reports other readings. Every other alert is a `failure`. Messages are one short line with no IP address and no advice, and the Dashboard row adds the source name. Detail goes in the collector log.
 
 A problem that might be a blip raises its alert after 5 failures in a row (`ALERT_AFTER_FAILURES`). A problem that needs the owner raises at once.
 
@@ -160,14 +162,15 @@ A problem that might be a blip raises its alert after 5 failures in a row (`ALER
 | envoy-collector | `unreachable` | 5 failed polls | A poll succeeds |
 | envoy-collector | `meters` | 5 failed meter reads | A meter read succeeds |
 | envoy-collector | `refused` | Core API answered 403: the source or site is disabled or expired | Core API accepts readings |
-| weatherlink-local-collector | `unreachable`, `iss`, `barometer` | 5 failures in a row each | The condition passes |
+| weatherlink-local-collector | `unreachable` (`Cannot connect to the weather station`) | 5 failures in a row | The condition passes |
+| weatherlink-local-collector | `iss` (`Not reporting outdoor (ISS) data`), `barometer` (`Not reporting barometer data`), both `partial` | 5 failures in a row each | The condition passes |
 | weatherlink-local-collector | `refused` | Core API answered 403 | Core API accepts readings |
-| amber-pricing-collector | `amber_key` | Amber answered 401 or 403 (at once) | A poll succeeds |
-| amber-pricing-collector | `amber` | 5 failed polls, or a child killed for running too long | A poll succeeds |
-| local-pricing-collector | `pricing` | 5 failed or too-long runs | A run succeeds |
-| local-pricing-collector | `timezone` | The site time zone is invalid | The time zone is valid |
-| local-pricing-collector | `reprice_marker` | A reprice request is malformed | The marker is valid or cleared |
-| actron-neo-actor | `tick` | 5 failed ticks for an instance, such as Actron being unreachable | A tick succeeds |
+| amber-pricing-collector | `amber_key` (`Amber rejected the API key`) | Amber answered 401 or 403 (at once) | A poll succeeds |
+| amber-pricing-collector | `amber` (`Cannot get prices from Amber`) | 5 failed polls, or a child killed for running too long | A poll succeeds |
+| local-pricing-collector | `pricing` (`Rates are not being priced`) | 5 failed or too-long runs | A run succeeds |
+| local-pricing-collector | `timezone` (`Site time zone is not valid`) | The site time zone is invalid | The time zone is valid |
+| local-pricing-collector | `reprice_marker` (`Reprice request is malformed`) | A reprice request is malformed | The marker is valid or cleared |
+| actron-neo-actor | `tick` (`Cannot connect to Actron`) | 5 failed ticks for an instance, such as Actron being unreachable | A tick succeeds |
 
 The Amber and local pricing polls run in child processes, so a child reports through its exit code and the parent loop raises or clears the alerts. An Amber child exits with `OK` 0, `CONFIG_FAILED` 10, `AMBER_REJECTED` 11, `AMBER_FAILED` 12 or `PUSH_FAILED` 13. A local pricing child exits 0 on success and 1 otherwise. Config and push failures change no Amber alert.
 

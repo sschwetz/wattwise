@@ -635,7 +635,7 @@ def test_unreachable_station_raises_an_alert_after_five_cycles_and_a_good_poll_c
     assert alert_calls == []
     main_module.poll_once(SETTINGS, 1, config, RainState())
     assert [c[:2] for c in alert_calls] == [("set", "unreachable")]
-    assert "weatherlink.local" in alert_calls[0][2]
+    assert alert_calls[0][2:] == ("Cannot connect to the weather station", "failure", False)
 
     monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: CURRENT_CONDITIONS)
     monkeypatch.setattr(main_module, "push_weather_readings", lambda *a: None)
@@ -650,6 +650,17 @@ def test_missing_iss_data_raises_an_iss_alert_after_five_cycles(monkeypatch, ale
     for _ in range(alerts.ALERT_AFTER_FAILURES):
         main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
     assert [c[:2] for c in alert_calls if c[0] == "set"] == [("set", "iss")]
+
+
+def test_iss_and_barometer_alerts_are_partial(monkeypatch, alert_calls):
+    monkeypatch.setattr(main_module, "fetch_current_conditions", lambda host: {"data": {"conditions": []}})
+    monkeypatch.setattr(main_module, "push_weather_readings", lambda *a: None)
+    for _ in range(alerts.ALERT_AFTER_FAILURES):
+        main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
+    assert sorted(c[1:] for c in alert_calls if c[0] == "set") == [
+        ("barometer", "Not reporting barometer data", "partial", False),
+        ("iss", "Not reporting outdoor (ISS) data", "partial", False),
+    ]
 
 
 def test_a_403_raises_a_refused_alert_that_clears_once_readings_are_accepted(monkeypatch, alert_calls):

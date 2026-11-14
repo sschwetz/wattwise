@@ -77,7 +77,7 @@ class Runner:
             await worker.tick(instance)
         except Exception as err:
             _LOG.error("Tick failed (instance %s): %s", instance.instance_id, type(err).__name__)
-            message = "WattWise cannot reach the air conditioner through Actron. Schedules may not run."
+            message = "Cannot connect to Actron"
             await self._alerts.failure(instance.instance_id, TICK_ALERT, message)
         else:
             await self._alerts.ok(instance.instance_id, TICK_ALERT)

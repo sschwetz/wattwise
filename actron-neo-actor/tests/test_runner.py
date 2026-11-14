@@ -85,7 +85,8 @@ def test_a_tick_that_keeps_failing_raises_an_alert_and_a_good_tick_clears_it():
         assert site.core.alerts == {}
         await site.round(START + datetime.timedelta(seconds=30 * ALERT_AFTER_FAILURES))
         assert list(site.core.alerts) == [(1, "tick")]
-        assert "Actron" in site.core.alerts[(1, "tick")]
+        assert site.core.alerts[(1, "tick")] == "Cannot connect to Actron"
+        assert site.core.alert_options[(1, "tick")] == ("failure", False)
         del site.core.instance_errors[1]
         await site.round(START + datetime.timedelta(seconds=30 * (ALERT_AFTER_FAILURES + 1)))
         assert site.core.alerts == {}
