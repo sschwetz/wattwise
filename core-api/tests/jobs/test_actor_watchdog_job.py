@@ -4,7 +4,7 @@ import datetime
 
 from core_api.actor_failures import held_off_failures
 from core_api.email_sender import FakeEmailSender
-from core_api.jobs.actor_watchdog_job import _notify_once, run_actor_watchdog_job
+from core_api.jobs.actor_watchdog_job import _held_off_text, _notify_once, run_actor_watchdog_job
 from core_api.models import ActorInstance, ActorSchedule, RunOutcome
 from tests.test_actor_failures import NOW, make_instance, make_run, make_schedule
 
@@ -59,7 +59,19 @@ def test_watchdog_silent_when_notify_off(db, site):
     assert run.watchdog_notified_at is None
 
 
-def test_watchdog_ignores_run_failed_and_runs_not_yet_due(db, site):
+def test_watchdog_emails_a_failed_run_once(db, site):
+    schedule = make_schedule(db, make_instance(db, site), notify=True)
+    run = make_run(db, schedule, NOW - datetime.timedelta(hours=3), RunOutcome.FAILED)
+    sender = FakeEmailSender()
+    run_actor_watchdog_job(db, NOW, sender)
+    run_actor_watchdog_job(db, NOW, sender)
+    [(_, subject, body)] = sender.sent
+    assert "Peak off" in subject and "unit did not answer" in body
+    db.refresh(run)
+    assert run.watchdog_notified_at is not None
+
+
+def test_watchdog_ignores_a_failed_run_a_later_run_cleared(db, site):
     schedule = make_schedule(db, make_instance(db, site), notify=True)
     make_run(db, schedule, NOW - datetime.timedelta(hours=3), RunOutcome.FAILED)
     make_run(db, schedule, NOW - datetime.timedelta(minutes=30), RunOutcome.OK)
@@ -96,5 +108,5 @@ def test_claim_lost_to_a_concurrent_job_sends_nothing(db, site):
     run.watchdog_notified_at = NOW
     db.commit()
     sender = FakeEmailSender()
-    _notify_once(db, site, held, NOW, sender)
+    _notify_once(db, site, held.run, _held_off_text(site, held), NOW, sender)
     assert sender.sent == []

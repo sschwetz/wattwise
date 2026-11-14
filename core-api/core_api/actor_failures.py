@@ -213,6 +213,10 @@ def _sign_in_failures(instance: ActorInstance, now: datetime.datetime) -> list[A
 
 
 def _failed_runs(db: Session, instance: ActorInstance) -> list[ActorFailure]:
+    return [_run_failed(instance, run, schedule) for run, schedule in uncleared_failed_runs(db, instance)]
+
+
+def uncleared_failed_runs(db: Session, instance: ActorInstance) -> list[tuple[ActorRun, ActorSchedule]]:
     """The latest failed action or restore run of each schedule that no later run of that
     schedule cleared. A skip clears a failed action but not a failed restore."""
     later = aliased(ActorRun)
@@ -236,15 +240,19 @@ def _failed_runs(db: Session, instance: ActorInstance) -> list[ActorFailure]:
         .order_by(ActorRun.trigger_at, ActorRun.id)
     )
     latest = {schedule.id: (run, schedule) for run, schedule in db.execute(stmt).all()}
-    return [_run_failed(instance, run, schedule) for run, schedule in latest.values()]
+    return list(latest.values())
 
 
-def _run_failed(instance: ActorInstance, run: ActorRun, schedule: ActorSchedule) -> ActorFailure:
+def run_failure_text(run: ActorRun) -> str:
     if run.kind == RunKind.RESTORE:
         what = "The restore failed"
     else:
         what = "The action partly failed" if run.outcome == RunOutcome.PARTIAL else "The action failed"
-    message = f"{what}: {run.message}" if run.message else what
+    return f"{what}: {run.message}" if run.message else what
+
+
+def _run_failed(instance: ActorInstance, run: ActorRun, schedule: ActorSchedule) -> ActorFailure:
+    message = run_failure_text(run)
     since = as_utc(run.finished_at or run.trigger_at)
     severity = SEVERITY_PARTIAL if run.outcome == RunOutcome.PARTIAL else SEVERITY_FAILURE
     return ActorFailure("run_failed", instance.id, schedule.id, schedule.name, message, since, severity=severity)

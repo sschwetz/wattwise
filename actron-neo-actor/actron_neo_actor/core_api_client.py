@@ -9,7 +9,7 @@ import httpx
 from actron_neo_actor.models import Context, Instance, Run, Schedule
 
 PROVIDER = "actron_neo"
-_TIMEOUT = 10
+_TIMEOUT = 29
 
 class _Unset:
     """Type of UNSET, the "argument not given" marker."""
