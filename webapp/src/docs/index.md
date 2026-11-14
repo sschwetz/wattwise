@@ -15,17 +15,19 @@ This guide covers every screen in the web app. Use the contents below, or the **
 | [5. Sources](05-sources.md) | Connecting your Envoy, Amber, a fixed tariff and WeatherLink |
 | [6. The dashboard](06-dashboard.md) | Live tiles, weather, the pricing, grid and battery charts, the Reporting page's totals by day, hour and minute, net and gross cost |
 | [7. Billing](07-billing.md) | Tariffs, billing cycles, demand windows, export adjustments, fee discounts |
-| [8. Account settings](08-account-settings.md) | Name, photo, password, email, authenticator, Amber API key |
-| [9. Troubleshooting](09-troubleshooting.md) | Fixes for missing tiles, wrong costs, sign-in problems and access from outside your home |
-| [10. Glossary](10-glossary.md) | Plain-language definitions of the terms used in the app |
+| [8. Schedules and the air conditioner](08-schedules.md) | Making the air conditioner switch off for a demand window, testing it, and the dashboard log |
+| [9. Account settings](09-account-settings.md) | Name, photo, password, email, authenticator, Amber API key |
+| [10. Troubleshooting](10-troubleshooting.md) | Fixes for missing tiles, wrong costs, sign-in problems and access from outside your home |
+| [11. Glossary](11-glossary.md) | Plain-language definitions of the terms used in the app |
 
 ## Where to start
 
 - **New to WattWise?** Read [Getting started](02-getting-started.md), then follow its [first-day checklist](02-getting-started.md#first-day-checklist).
-- **Dashboard shows nothing?** Go to [Troubleshooting](09-troubleshooting.md#the-dashboard-is-empty).
+- **Dashboard shows nothing?** Go to [Troubleshooting](10-troubleshooting.md#the-dashboard-is-empty).
 - **Costs look wrong?** Check [Billing](07-billing.md#how-the-cost-is-calculated) and [Net and gross cost](06-dashboard.md#net-and-gross-cost).
 - **Running the server yourself?** See [Installing with Docker Compose](01-installing-with-docker.md).
 - **Want to use WattWise away from home?** The API must be reachable from the internet over HTTPS. See [Using it outside your home network](01-installing-with-docker.md#using-it-outside-your-home-network).
+- **Air conditioner or the dashboard log?** See [Schedules and the air conditioner](08-schedules.md).
 - **Lost your phone?** See [Lost your authenticator device](03-signing-in.md#lost-your-authenticator-device).
 
 ## Conventions in this guide

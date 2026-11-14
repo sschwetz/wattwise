@@ -1,6 +1,6 @@
-# 8. Account settings
+# 9. Account settings
 
-[Contents](index.md) · Previous: [Billing](07-billing.md) · Next: [Troubleshooting](09-troubleshooting.md)
+[Contents](index.md) · Previous: [Schedules](08-schedules.md) · Next: [Troubleshooting](10-troubleshooting.md)
 
 Open your settings from the header: click your name in the top right corner, then **Account settings**. Use the back arrow at the top left of the page to return to your sites. Settings for a site, such as sources, tariffs and sharing, are under **Site settings** in the same menu. See [Site settings](04-sites.md#site-settings).
 
@@ -58,4 +58,4 @@ WattWise stores the key securely and never shows it again. To replace it, paste 
 
 - [Sources](05-sources.md)
 - [Signing in and account security](03-signing-in.md)
-- [Troubleshooting](09-troubleshooting.md#sign-in-problems)
+- [Troubleshooting](10-troubleshooting.md#sign-in-problems)

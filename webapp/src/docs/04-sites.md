@@ -42,8 +42,10 @@ Use the site switcher at the top of the sidebar. Pick a site name to open its da
 
 Click your name in the top right corner, then **Site settings**, to open the Settings page (`/settings`). It lists every site you own or have been given access to, including disabled ones.
 
+![Site settings with the General tab open and the Home site selected](images/settings-general.png)
+
 - **Site chips** run along the top, one per site, with **Add** at the end. A disabled site is dimmed with a dashed border.
-- **Tabs** run down the left: **General**, **Collectors**, **Tariffs**, **Billing** and **Sharing**. The selected site and tab are in the address, so you can bookmark a tab.
+- **Tabs** run down the left: **General**, **Collectors**, **Tariffs**, **Billing**, **Schedule** and **Sharing**. The selected site and tab are in the address, so you can bookmark a tab.
 
 | Tab | What it holds |
 |-----|---------------|
@@ -51,9 +53,10 @@ Click your name in the top right corner, then **Site settings**, to open the Set
 | **Collectors** | The [sources](05-sources.md) of the site |
 | **Tariffs** | The [tariff](07-billing.md#tariffs) cards |
 | **Billing** | The [billing cycle](07-billing.md#billing-cycles) and [demand charges](07-billing.md#demand-charges) |
+| **Schedule** | The [air conditioner and its schedules](08-schedules.md) |
 | **Sharing** | [Invitations](#sharing-a-site) to view the site |
 
-Only the owner can change a site's settings. Other people see the tabs read-only. The old `/sites/:id/sources` and `/sites/:id/billing` addresses redirect to the **Collectors** and **Billing** tabs.
+Only the owner can change a site's settings. Other people see the tabs read-only. The old `/sites/:id/sources`, `/sites/:id/billing` and `/sites/:id/schedule` addresses redirect to the **Collectors**, **Billing** and **Schedule** tabs.
 
 ## Disabling a site
 
@@ -73,6 +76,8 @@ Turn **Enabled** back on to resume collecting. Readings and prices for the time 
 ## Sharing a site
 
 Open the **Sharing** tab to give someone read-only access.
+
+![The Sharing tab with the invitation form and no invitations yet](images/settings-sharing.png)
 
 1. Type their email address under **Email** and click **Send invite**. WattWise emails them. The message and the result are the same whether or not the address already has an account.
 2. The invite shows **Invited** until they answer.

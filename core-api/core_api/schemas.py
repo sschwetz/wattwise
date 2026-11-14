@@ -679,9 +679,9 @@ class AlertIn(BaseModel):
 class DemandChargeOut(BaseModel):
     id: int
     site_id: int
-    billing_period_start: datetime.datetime
-    billing_period_end: datetime.datetime
-    peak_interval_start: datetime.datetime
+    billing_period_start: UtcDatetime
+    billing_period_end: UtcDatetime
+    peak_interval_start: UtcDatetime
     peak_avg_import_w: float
     rate_applied: decimal.Decimal
     charge_amount: decimal.Decimal

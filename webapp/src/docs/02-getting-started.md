@@ -14,7 +14,7 @@ It tracks:
 
 ## How the pieces fit together
 
-Your browser loads the web app, and the page then talks to Core API, which stores everything. Small programs called **collectors** run next to Core API. Each collector reads one kind of device or service and sends the readings to Core API.
+Your browser loads the web app, and the page then talks to Core API, which stores everything. Small programs called **collectors** run next to Core API. Each collector reads one kind of device or service and sends the readings to Core API. An **actor** works the other way: it reads your schedules and sends commands to a device.
 
 | Collector | Reads from | Gives you |
 |-----------|-----------|-----------|
@@ -22,6 +22,7 @@ Your browser loads the web app, and the page then talks to Core API, which store
 | Amber pricing collector | Amber Electric's online service | Buy and sell prices, forecasts |
 | Local pricing collector | The rate windows you type in | Prices for a fixed or time-of-use tariff |
 | Weather collector | Your WeatherLink Live unit, over your home network | Weather tiles |
+| Air conditioner actor | Your [schedules](08-schedules.md); it sends commands to your Actron account | An air conditioner that switches off for a demand window |
 
 Only your browser needs to reach the web app and Core API. If you want to use WattWise away from home, both must be reachable from the internet over HTTPS. See [Using it outside your home network](01-installing-with-docker.md#using-it-outside-your-home-network). The collectors do not need internet access to your home.
 
@@ -36,7 +37,7 @@ You never talk to a collector directly. You tell WattWise *what* to collect by a
 | **Tariff** | The fixed charges and special rates your electricity retailer applies. See [Billing](07-billing.md). |
 | **Billing cycle** | How often your bill closes, and on which day. See [Billing cycles](07-billing.md#billing-cycles). |
 
-The full list of terms is in the [Glossary](10-glossary.md).
+The full list of terms is in the [Glossary](11-glossary.md).
 
 ## The screens
 
@@ -45,6 +46,12 @@ After you sign in, every screen has the header. The dashboard and Reporting page
 ![The WattWise header at the top and the site sidebar down the left side](images/sidebar-and-header.png)
 
 - **Header** (top): the WattWise logo and your name and photo. Click your name to open the user menu with **Account settings**, **Site settings**, **Help**, **About** and **Log off**. **About** shows the version each WattWise container is running and the licences of the packages it uses.
+
+![The About dialog listing each container with its commit and when it last reported](images/about-containers.png)
+
+A container that has not reported for three minutes shows **not reporting**. The **Licences** tab lists the packages WattWise uses. Click one to read its licence text, or type in the box to filter the list.
+
+![The Licences tab with a package list and the selected package's licence text](images/about-licences.png)
 
 ![The user menu open, showing Account settings, Help, About and Log off](images/header-menu.png)
 
@@ -69,12 +76,12 @@ Do these in order. Each step links to the chapter that explains it.
 2. [Set up two-factor authentication](03-signing-in.md#setting-up-two-factor-authentication) and store your recovery codes somewhere safe.
 3. [Create your first site](04-sites.md#creating-a-site). Choose the correct time zone.
 4. [Add your Envoy as an energy source](05-sources.md#connecting-an-enphase-envoy). You need its address on your home network and an access token.
-5. If you use Amber: [save your Amber API key](08-account-settings.md#amber-api-key), then [add an Amber pricing source](05-sources.md#connecting-amber-electric).
+5. If you use Amber: [save your Amber API key](09-account-settings.md#amber-api-key), then [add an Amber pricing source](05-sources.md#connecting-amber-electric).
 6. If you have a weather station: [add a WeatherLink source](05-sources.md#connecting-a-weatherlink-live-station).
 7. [Enter your tariff](07-billing.md#tariffs) and [billing cycle](07-billing.md#billing-cycles) so costs are calculated.
 8. Open the [Dashboard](06-dashboard.md). Tiles appear within a few minutes of the first reading.
 
-> **Note:** Cost figures need three things at once: energy readings, prices, and (for the service charge and billing period) a tariff and billing cycle. If one is missing, the dashboard leaves that figure out rather than guessing. See [Troubleshooting](09-troubleshooting.md#costs-look-too-low-or-are-missing).
+> **Note:** Cost figures need three things at once: energy readings, prices, and (for the service charge and billing period) a tariff and billing cycle. If one is missing, the dashboard leaves that figure out rather than guessing. See [Troubleshooting](10-troubleshooting.md#costs-look-too-low-or-are-missing).
 
 ## Next
 

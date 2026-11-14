@@ -12,6 +12,17 @@ After completing any implementation, review the code for:
 
 Run /simplify before presenting code to the user.
 
+## Documentation
+
+Every change that alters behaviour, configuration, an endpoint, a table, a UI screen or a service updates the docs in the same change. Do not defer it.
+
+- Run the `documentation` agent after implementation, before presenting the work. It lists where each kind of fact lives.
+- A user-visible change needs both a `docs/` page (maintainers) and a `webapp/src/docs/` chapter (users). Check the guide's tab list, dashboard tile list, glossary and troubleshooting chapter.
+- Each fact has one home. Link to it instead of copying it.
+- Rewrite the stale sentence. Do not add a note beside it.
+- Do not write freshness claims such as "not yet built", a commit hash or a line count.
+- Run the link and anchor check before finishing. A change is not done while a doc contradicts the code.
+
 ## Storing Secrets
 
 Never store a secret in plaintext, in the database or in a file the app writes. Pick the storage by whether the app needs the value back:

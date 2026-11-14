@@ -7,13 +7,13 @@ A **source** connects a site to one device or service. WattWise supports three k
 | Kind | Provider name | What it collects | Needs |
 |------|---------------|------------------|-------|
 | `energy` | `envoy` | Production, consumption, grid and battery readings | The Envoy's address and an access token |
-| `pricing` | `amber` | Buy and sell prices, plus the day's forecast | An Amber site ID, and your [Amber API key](08-account-settings.md#amber-api-key) |
+| `pricing` | `amber` | Buy and sell prices, plus the day's forecast | An Amber site ID, and your [Amber API key](09-account-settings.md#amber-api-key) |
 | `pricing` | `local` | Buy, sell and controlled-load prices from rates you type in | A tariff name and its [rate windows](#setting-up-a-fixed-tariff) |
 | `weather` | `weatherlink_live` | Temperature, humidity, wind, rain, solar radiation, pressure | The WeatherLink Live unit's address |
 
 Open it from the header: click your name, choose **Site settings**, pick the site and open the **Collectors** tab. The older `/sites/:id/sources` address redirects there. A [disabled site](04-sites.md#disabling-a-site) keeps its sources, but its collectors stop reading them.
 
-![The Sources page listing an energy, a pricing and a weather source](images/sources-list.png)
+![The Collectors tab listing an energy, a pricing and a weather source](images/sources-list.png)
 
 ## Adding a source
 
@@ -57,7 +57,7 @@ Choose kind `energy` and provider `envoy`, then open **Edit config**.
 | **Enlighten email** | Optional. The email you use to sign in to Enlighten (enlighten.enphaseenergy.com). |
 | **Enlighten password** | Optional. Shown as dots while you type. |
 | **Serial number** | The Envoy's serial number. The collector fills it in when it can read it from the Envoy; type it yourself if it stays empty. Needed to renew the token. |
-| **My consumption numbers are flipped (importing shows as negative)** | Tick this only if the dashboard's consumption looks upside down. See [Troubleshooting](09-troubleshooting.md#consumption-or-grid-numbers-have-the-wrong-sign). |
+| **My consumption numbers are flipped (importing shows as negative)** | Tick this only if the dashboard's consumption looks upside down. See [Troubleshooting](10-troubleshooting.md#consumption-or-grid-numbers-have-the-wrong-sign). |
 
 ### Getting the token
 
@@ -78,9 +78,17 @@ Tokens last about a year. Without stored credentials, readings stop when one exp
 
 The Envoy uses a self-signed certificate. The first time the collector reaches your Envoy, it records the certificate's fingerprint and checks it on every later connection. It sends your token only after this check is in place. It also stores the certificate's expiry date (`cert_expires_at`) and its own serial number (`cert_serial`, not the Envoy's) in the source's configuration. **Edit config** shows both, with the days left until expiry.
 
-The Envoy replaces its certificate when the old one is within 100 days of expiring. If the collector sees a different certificate, it pins the new one only when the stored expiry is 100 days away or less (or already past), the source has a **Serial number** stored, and the Envoy reports that same number. The collector also pins the new certificate when the Envoy reports the same serial number and a firmware version different from the stored one (`firmware`), because a firmware upgrade can replace the certificate. Any other certificate change is refused, because it could be another device answering at the Envoy's address.
+The Envoy replaces its certificate when the old one is within 100 days of expiring. If the collector sees a different certificate, it pins the new one only when the stored expiry is 100 days away or less (or already past), the source has a **Serial number** stored, and the Envoy reports that same number. The collector also pins the new certificate when the Envoy reports the same serial number and a firmware version different from the stored one (`firmware`), because a firmware upgrade can replace the certificate. Any other certificate change is refused, because it could be another device answering at the Envoy's address. The dashboard then shows a red entry for the source.
 
-Changing **Host** clears the stored certificate, its expiry and the serial number, so the collector pins the device again. If you replace or reset the Envoy and the collector stops connecting, see [Troubleshooting](09-troubleshooting.md#the-envoy-stopped-reporting-after-a-reset).
+The dashboard also shows a notice with a **Dismiss** button, and keeps it until you dismiss it, when:
+
+- The collector re-pins after a firmware upgrade (red).
+- The collector re-pins because the old certificate was within 100 days of expiry (blue).
+- The Envoy reports a new firmware version and the certificate did not change (blue).
+
+If you did not upgrade the Envoy yourself, check that nothing replaced it. See [The log](08-schedules.md#the-log).
+
+Changing **Host** clears the stored certificate, its expiry and the serial number, so the collector pins the device again. If you replace or reset the Envoy and the collector stops connecting, see [Troubleshooting](10-troubleshooting.md#the-envoy-stopped-reporting-after-a-reset).
 
 ## Connecting Amber Electric
 
@@ -88,7 +96,7 @@ Changing **Host** clears the stored certificate, its expiry and the serial numbe
 
 Pricing needs two things:
 
-1. **Your Amber API key**, saved once under [Account settings](08-account-settings.md#amber-api-key). The key belongs to you, not to a site.
+1. **Your Amber API key**, saved once under [Account settings](09-account-settings.md#amber-api-key). The key belongs to you, not to a site.
 2. **An Amber pricing source** on the site, with the **Amber site ID** filled in.
 
 To add the source, choose kind `pricing` and provider **Amber**, open **Edit config**, enter your **Amber site ID** and click **Save config**. The site ID is the identifier Amber assigns to your property. Amber's API returns it when you list your sites with your API key.
@@ -103,7 +111,7 @@ Use this when your supplier charges fixed or time-of-use rates and has no price 
 2. Type a **Tariff name**, such as `Origin Fixed`. It must be 1 to 100 characters, and a rename follows the same rule. The [Tariffs tab](07-billing.md#tariffs) uses it as its heading, so this one reads "Origin Fixed Tariffs".
 3. Click **Create source**. A **Rate windows** panel appears under the source. A local source has no **Edit config** button.
 
-A site can have one active pricing source at a time, so remove the Amber source before you add a local one. **Delete** works only while the Amber source has no stored prices. **Disable** does not free the place: WattWise still counts a disabled source as the site's pricing source. To retire an Amber source that has prices, set its end date (`effective_to`) through the API with `PATCH /api/v1/sites/{site_id}/sources/{source_id}`. The Collectors tab has no control for this.
+A site can have one active pricing source at a time, so remove the Amber source before you add a local one. **Delete** works only while the Amber source has no stored prices. **Disable** does not free the place: WattWise still counts a disabled source as the site's pricing source. The Collectors tab has no control to end an Amber source that has prices. Ask whoever runs your WattWise server to set its end date (`effective_to`) with `PATCH /api/v1/sites/{site_id}/sources/{source_id}`, for example from the interactive API page at `/docs`.
 
 ### Rate windows
 
@@ -178,4 +186,4 @@ Choose kind `weather` and provider `weatherlink_live`, open **Edit config**, ent
 
 - [The dashboard](06-dashboard.md): see your data
 - [Billing](07-billing.md): prices alone do not include fixed charges
-- [Troubleshooting](09-troubleshooting.md#the-dashboard-is-empty) if tiles stay empty
+- [Troubleshooting](10-troubleshooting.md#the-dashboard-is-empty) if tiles stay empty

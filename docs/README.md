@@ -8,7 +8,7 @@ WattWise records a home's solar, battery, grid and weather data once a minute, c
 
 | You are... | Read this first | Then |
 |---|---|---|
-| **A homeowner using the app** | [User guide](../webapp/src/docs/index.md) (also available inside the app under Help) | [Troubleshooting](../webapp/src/docs/09-troubleshooting.md) |
+| **A homeowner using the app** | [User guide](../webapp/src/docs/index.md) (also available inside the app under Help) | [Troubleshooting](../webapp/src/docs/10-troubleshooting.md) |
 | **Setting up a new electricity provider or tariff** | [Adding a provider](adding-a-provider.md) | [Operations](operations.md) if a collector needs to run |
 | **The person who has to keep it running** | [Operations](operations.md) and its [handover checklist](operations.md#handover-checklist) | [Architecture](architecture.md) |
 | **A developer taking over the code** | [Architecture](architecture.md) | [Development](development.md), [Data model](data-model.md), [Core API](core-api.md) |
@@ -66,4 +66,4 @@ Design history lives in [`docs/superpowers/specs`](superpowers/specs) (why somet
 
 ## Accuracy
 
-These pages describe the code at commit `79651e9` (2026-10-14). Statements about behaviour were checked against the source at that commit. Screenshots are shared with the in-app help and live in [`webapp/src/docs/images`](../webapp/src/docs/images). They were retaken on 2026-10-26 from a demo site with generated data.
+Each page names the files and modules it describes, and `scripts/check_docs.py` (run by CI) checks links, anchors and table layout. Nothing checks the prose against the code, so when the two disagree, the code wins. Screenshots are shared with the in-app help and live in [`webapp/src/docs/images`](../webapp/src/docs/images). They were retaken together on 2026-11-14 from a demo site with generated data. `scripts/docs-screenshots/` rebuilds that site. Retake the whole set at once so the images stay consistent.

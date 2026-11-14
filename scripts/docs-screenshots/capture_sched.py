@@ -1,0 +1,18 @@
+import os
+exec(open(os.path.join(os.getcwd(), "scripts/docs-screenshots/shot.py")).read())
+setup()
+go("http://localhost:5173/settings/sites/1/schedule", 4); shot("schedule-list", 800)
+def scrolled(name, y, h):
+    cdp("Emulation.setDeviceMetricsOverride", width=1280, height=h, deviceScaleFactor=2, mobile=False); time.sleep(0.4)
+    js(f"window.scrollTo(0,{y})"); time.sleep(0.6)
+    capture_screenshot(OUT + name + ".png"); js("window.scrollTo(0,0)"); setup()
+scrolled("schedule-editor", 610, 1180)
+scrolled("schedule-run-history", 1975, 720)
+go("http://localhost:5173/sites/1", 4); shot("dashboard-needs-attention", 640)
+go("http://localhost:5173/settings/sites/1/general", 3); shot("settings-general", 560)
+go("http://localhost:5173/settings/sites/1/sharing", 3); shot("settings-sharing", 560)
+go("http://localhost:5173/account", 3)
+js("[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Alex Morgan')).click()"); time.sleep(0.8)
+clip("header-menu", 1000, 8, 262, 242)
+click_text("About"); time.sleep(2.5); shot("about-containers", 760)
+click_text("Licences"); time.sleep(1.5); shot("about-licences", 760)

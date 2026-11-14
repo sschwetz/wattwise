@@ -25,7 +25,7 @@ flowchart TD
 
     L --> X{"Does the plan have extras?<br/>demand charge, export bonus,<br/>evening-import credit, fee discount"}
     AM --> X
-    X -- yes --> BILL["Add them on the Billing page.<br/>No code."]
+    X -- yes --> BILL["Add them on the Tariffs tab.<br/>No code."]
     X -- no --> DONE["Done"]
     BILL --> DONE
 ```
@@ -45,13 +45,13 @@ You will type your rates in once. WattWise then prices every minute from them, t
 
 **Steps:**
 
-1. Open **Sources** from the sidebar.
+1. Open **Site settings** from your name in the header, pick the site and open the **Collectors** tab.
 2. Under **Kind** choose `pricing`, under **Provider** choose **Local tariff**, and type a **Tariff name** such as `Origin Fixed`.
 3. Click **Create source**. A **Rate windows** panel appears.
 4. Add one window per rate, using the form at the bottom of the panel.
-5. Open **Billing** and enter the daily supply charge and billing cycle (see [Path C](#path-c-the-extras-on-your-plan)).
+5. Open the **Tariffs** and **Billing** tabs and enter the daily supply charge and billing cycle (see [Path C](#path-c-the-extras-on-your-plan)).
 
-![The Sources page](../webapp/src/docs/images/sources-list.png)
+![The Collectors tab](../webapp/src/docs/images/sources-list.png)
 
 **Worked example.** A plan with 32 c/kWh from 07:00 to 23:00, 22 c/kWh overnight, and 6 c/kWh paid for exports:
 
@@ -80,7 +80,7 @@ These are already supported. The steps, with screenshots, are in the user guide'
 
 ### Path C: the extras on your plan
 
-Retail plans often add rules on top of the energy rates. All are on the **Billing** page and none need code.
+Retail plans often add rules on top of the energy rates. All are on the **Tariffs** and **Billing** tabs of Site settings and none need code.
 
 | If your plan has... | Add it as | Chapter |
 |---|---|---|
@@ -95,7 +95,7 @@ Retail plans often add rules on top of the energy rates. All are on the **Billin
 
 ### Path D: nothing above fits
 
-The provider has a live price feed (or a device) that WattWise does not know. Someone has to write a small program, a *collector*, for it. This is routine: the existing ones are between 280 and 820 lines of Python. Give the person or AI agent this page and the [AI agent guide](for-ai-agents.md). Part 2 below is the checklist they need.
+The provider has a live price feed (or a device) that WattWise does not know. Someone has to write a small program, a *collector*, for it. This is routine: the existing ones are between about 650 and 1,900 lines of Python. Give the person or AI agent this page and the [AI agent guide](for-ai-agents.md). Part 2 below is the checklist they need.
 
 ---
 

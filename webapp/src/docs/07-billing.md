@@ -1,6 +1,6 @@
 # 7. Billing
 
-[Contents](index.md) · Previous: [The dashboard](06-dashboard.md) · Next: [Account settings](08-account-settings.md)
+[Contents](index.md) · Previous: [The dashboard](06-dashboard.md) · Next: [Schedules](08-schedules.md)
 
 Two tabs in [Site settings](04-sites.md#site-settings), **Tariffs** and **Billing**, hold the parts of your electricity bill that are not a per-kWh price: fixed charges, time-of-day rules and the date your bill closes. [Amber prices](05-sources.md#connecting-amber-electric) or the rates of a [fixed tariff](05-sources.md#setting-up-a-fixed-tariff) cover the per-kWh part.
 
@@ -197,5 +197,5 @@ Notes:
 ## Next
 
 - [The dashboard](06-dashboard.md#cost-and-credit): where these numbers show up
-- [Troubleshooting costs](09-troubleshooting.md#costs-look-too-low-or-are-missing)
-- [Glossary](10-glossary.md)
+- [Troubleshooting costs](10-troubleshooting.md#costs-look-too-low-or-are-missing)
+- [Glossary](11-glossary.md)
