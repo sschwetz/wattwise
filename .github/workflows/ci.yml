@@ -35,6 +35,13 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest -q
 
+  docs:
+    # Relative links, anchors and table layout in the Markdown docs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check_docs.py
+
   core-api-prod-import:
     # The image installs with --no-dev, so a runtime import of a dev-only package crashes it on start.
     runs-on: ubuntu-latest
