@@ -45,8 +45,8 @@ The Envoy presents a self-signed certificate. The collector uses trust-on-first-
 
 1. On first sight of a source it fetches the certificate and stores its SHA-256 fingerprint, expiry and serial in the source config (through `discovered-config`).
 2. It sends the access token only to a host that has been pinned.
-3. If the Envoy later presents a different certificate, the collector fetches `/info.xml` from it without sending the token. It re-pins only when the source has a stored serial number, the device reports that same serial, and either the firmware (`<software>` in `/info.xml`) differs from the stored `firmware` or the pinned certificate is within 100 days of expiry. A re-pin logs a warning with the reason and clears the `cert` alert.
-4. Otherwise it refuses, logs an error and raises the `cert` alert through `PUT /sources/{id}/alerts/cert`. The message says whether the firmware is unchanged or no stored firmware existed to compare.
+3. If the Envoy later presents a different certificate, the collector fetches `/info.xml` from it without sending the token. It re-pins only when the source has a stored serial number, the device reports that same serial, and either the firmware (`<software>` in `/info.xml`) differs from the stored `firmware` or the pinned certificate is within 100 days of expiry. A re-pin logs a warning with the reason, clears the `cert` alert and raises a sticky `repinned` notice (see Alerts).
+4. Otherwise it refuses, logs an error and raises the `cert` alert through `PUT /sources/{id}/alerts/cert`. The alert is one short line. The log says whether the firmware is unchanged or no stored firmware existed to compare.
 
 The collector stores the firmware in the source config as `firmware` through `discovered-config`. A source whose firmware was never stored cannot be recognised as upgraded. Clear `cert_fingerprint` once; the next discovery stores the firmware.
 
@@ -151,7 +151,9 @@ Each tick starts a short-lived child process per source, so one slow source cann
 
 Each collector reports problems the owner has to fix as alerts, which the Dashboard **Needs attention** tile shows. A collector calls `PUT /sources/{id}/alerts/{code}` with `{message, severity, sticky}` and `DELETE` on the same path when the cause goes away. Each service has its own `alerts.py`, the same convention as `service_report.py`. The state is in memory. After a restart the first success sends one `DELETE` per code, which clears alerts left from before.
 
-`severity` is `failure` (red, the default), `partial` (amber) or `notice`. `sticky` (default false) keeps the alert on the Dashboard after the cause clears, until the owner dismisses it. A raise with a different severity than the last one sent is sent again even when the message is the same. The WeatherLink `iss` and `barometer` alerts are `partial` because the station still reports other readings. Every other alert is a `failure`. Messages are one short line with no IP address and no advice, and the Dashboard row adds the source name. Detail goes in the collector log.
+`severity` is `failure` (red, the default), `partial` (amber) or `notice`. `sticky` (default false) keeps the alert on the Dashboard after the cause clears, until the owner dismisses it. A raise with a different severity than the last one sent is sent again even when the message is the same. The WeatherLink `iss` and `barometer` alerts are `partial` because the station still reports other readings. The Envoy `meters` alert is `partial` because power readings still flow. The Envoy `repinned` and `firmware` alerts are sticky notices. Every other alert is a `failure`. Messages are one short line with no IP address and no advice, and the Dashboard row adds the source name. Detail goes in the collector log.
+
+A sticky notice is sent every time it is raised, skipping the duplicate check. If Core API is down, the collector keeps it and resends at the start of each poll until a PUT succeeds.
 
 A problem that might be a blip raises its alert after 5 failures in a row (`ALERT_AFTER_FAILURES`). A problem that needs the owner raises at once.
 
@@ -160,8 +162,10 @@ A problem that might be a blip raises its alert after 5 failures in a row (`ALER
 | envoy-collector | `cert` | The TLS certificate changed and was not re-pinned | The collector pins it |
 | envoy-collector | `token` | Enlighten rejected the renewal at once, or renewal keeps failing, or the token is still rejected | A poll succeeds |
 | envoy-collector | `unreachable` | 5 failed polls | A poll succeeds |
-| envoy-collector | `meters` | 5 failed meter reads | A meter read succeeds |
-| envoy-collector | `refused` | Core API answered 403: the source or site is disabled or expired | Core API accepts readings |
+| envoy-collector | `meters`, `partial` | 5 failed meter reads | A meter read succeeds |
+| envoy-collector | `refused` (`Core API is refusing readings`) | Core API answered 403: the source or site is disabled or expired | Core API accepts readings |
+| envoy-collector | `repinned`, sticky | A changed certificate was re-pinned. `failure` when the firmware changed (`Firmware updated X to Y, certificate re-pinned`), `notice` when the old certificate was near expiry (`Certificate re-pinned before it expired`). The firmware rule wins when both apply | The owner dismisses it |
+| envoy-collector | `firmware`, `notice`, sticky | Discovery reads a firmware version that differs from the stored one while the certificate is unchanged (`Firmware updated X to Y`). The first read raises nothing | The owner dismisses it |
 | weatherlink-local-collector | `unreachable` (`Cannot connect to the weather station`) | 5 failures in a row | The condition passes |
 | weatherlink-local-collector | `iss` (`Not reporting outdoor (ISS) data`), `barometer` (`Not reporting barometer data`), both `partial` | 5 failures in a row each | The condition passes |
 | weatherlink-local-collector | `refused` | Core API answered 403 | Core API accepts readings |

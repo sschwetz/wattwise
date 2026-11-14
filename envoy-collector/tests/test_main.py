@@ -32,10 +32,16 @@ def _no_commit_reporter(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _alert_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str | None]]:
+def _alert_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
     """Records the alerts sent to Core API instead of sending them."""
-    calls: list[tuple[str, str | None]] = []
-    monkeypatch.setattr(alerts_module, "set_source_alert", lambda url, sid, key, code, message: calls.append(("set", code, message)))
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        alerts_module,
+        "set_source_alert",
+        lambda url, sid, key, code, message, severity="failure", sticky=False: calls.append(
+            ("set", code, message, severity, sticky)
+        ),
+    )
     monkeypatch.setattr(alerts_module, "clear_source_alert", lambda url, sid, key, code: calls.append(("clear", code)))
     alerts_module.reset()
     return calls
@@ -902,7 +908,7 @@ def test_rejected_login_raises_a_token_alert_and_a_good_poll_clears_it(monkeypat
 
     monkeypatch.setattr(main_module, "fetch_token", reject)
     main_module.renew_token(SETTINGS, 1, {"token": "old", **CREDS})
-    assert _alert_calls == [("set", "token", "Could not renew the Envoy token: Enlighten rejected the username or password. Update the Enlighten credentials in the source.")]
+    assert _alert_calls == [("set", "token", "Could not renew the Envoy token: Enlighten rejected the username or password. Update the Enlighten credentials in the source.", "failure", False)]
     assert "pw-secret" not in str(_alert_calls)
 
     _stub_one_reading(monkeypatch)
@@ -964,6 +970,21 @@ def test_a_403_raises_a_refused_alert_that_clears_once_readings_are_accepted(mon
     assert [c[:2] for c in _alert_calls if c[0] == "set"] == [("set", "refused")]
     main_module.poll_once(SETTINGS, 1, config)
     assert ("clear", "refused") in _alert_calls
+
+
+def test_refusal_alert_stays_a_non_sticky_failure(monkeypatch, _alert_calls):
+    _stub_one_reading(monkeypatch)
+    main_module._pending_readings.clear()
+    main_module._dropping.clear()
+
+    def _push(base_url, source_id, key, readings):
+        raise CoreApiError("403 site_disabled", status_code=403)
+
+    monkeypatch.setattr(main_module, "push_energy_readings", _push)
+    main_module.poll_once(SETTINGS, 1, {"host": "envoy.local", "token": "abc", "cert_fingerprint": "pinned"})
+    assert [c[1:] for c in _alert_calls if c[0] == "set"] == [
+        ("refused", "Core API is refusing readings", "failure", False)
+    ]
 
 
 def test_failing_meters_raise_an_alert_after_five_cycles_and_a_good_read_clears_it(monkeypatch, _alert_calls):
@@ -1132,7 +1153,10 @@ def test_poll_once_repins_when_the_firmware_changed_even_with_far_expiry(monkeyp
     assert result["firmware"] == "D8.4.1"
     assert reported[0]["firmware"] == "D8.4.1"
     assert any("firmware changed from D8.3.5226 to D8.4.1" in m for m in caplog.messages)
-    assert _alert_calls == [("clear", "cert")]
+    assert _alert_calls == [
+        ("clear", "cert"),
+        ("set", "repinned", "Firmware updated D8.3.5226 to D8.4.1, certificate re-pinned", "failure", True),
+    ]
 
 
 def test_repin_without_a_stored_firmware_cannot_tell_an_upgrade_and_says_so(monkeypatch, caplog):
@@ -1727,3 +1751,96 @@ def test_main_gives_the_poll_result_to_the_sampler(monkeypatch):
         main_module.main()
 
     assert sampler.config is renewed
+
+
+# --- notices -----------------------------------------------------------------
+
+
+def _repin_setup(monkeypatch, firmware: str | None) -> None:
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", firmware))
+    _reports(monkeypatch)
+
+
+def _sets(calls: list[tuple]) -> list[tuple]:
+    return [c[1:] for c in calls if c[0] == "set"]
+
+
+def test_repin_after_firmware_change_raises_red_sticky_notice(monkeypatch, _alert_calls):
+    _repin_setup(monkeypatch, "D8.4.1")
+    main_module.repin_certificate(SETTINGS, 1, _expiring_config(days_left=300, firmware="D8.3.5226"))
+    assert _sets(_alert_calls) == [
+        ("repinned", "Firmware updated D8.3.5226 to D8.4.1, certificate re-pinned", "failure", True)
+    ]
+
+
+def test_repin_near_expiry_raises_blue_sticky_notice(monkeypatch, _alert_calls):
+    _repin_setup(monkeypatch, "D8.3.5226")
+    main_module.repin_certificate(SETTINGS, 1, _expiring_config(days_left=50, firmware="D8.3.5226"))
+    assert _sets(_alert_calls) == [("repinned", "Certificate re-pinned before it expired", "notice", True)]
+
+
+def test_firmware_rule_wins_when_both_apply(monkeypatch, _alert_calls):
+    _repin_setup(monkeypatch, "D8.4.1")
+    main_module.repin_certificate(SETTINGS, 1, _expiring_config(days_left=50, firmware="D8.3.5226"))
+    assert [c[2] for c in _sets(_alert_calls)] == ["failure"]
+
+
+def test_firmware_change_without_cert_change_raises_blue_notice(monkeypatch, _alert_calls):
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("pinned", 300))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.4.1"))
+    _reports(monkeypatch)
+    config = _expiring_config(days_left=300, firmware="D8.3.5226", cert_fingerprint="pinned")
+    main_module.discover_and_sync_serial(SETTINGS, 1, config)
+    assert _sets(_alert_calls) == [("firmware", "Firmware updated D8.3.5226 to D8.4.1", "notice", True)]
+
+
+def test_first_firmware_read_raises_no_notice(monkeypatch, _alert_calls):
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("pinned", 300))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.4.1"))
+    _reports(monkeypatch)
+    config = _expiring_config(days_left=300, cert_fingerprint="pinned")
+    main_module.discover_and_sync_serial(SETTINGS, 1, config)
+    assert _sets(_alert_calls) == []
+
+
+def test_firmware_notice_not_repeated_on_later_discovery(monkeypatch, _alert_calls):
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("pinned", 300))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.4.1"))
+    _reports(monkeypatch)
+    config = _expiring_config(days_left=300, firmware="D8.3.5226", cert_fingerprint="pinned")
+    main_module.discover_and_sync_serial(SETTINGS, 1, config)
+    main_module.discover_and_sync_serial(SETTINGS, 1, config)
+    assert len(_sets(_alert_calls)) == 1
+
+
+def test_cert_messages_are_short(monkeypatch, _alert_calls):
+    config = _expiring_config(days_left=300, firmware="D8.3.5226")
+    del config["serial_num"]
+    main_module.repin_certificate(SETTINGS, 1, config)
+
+    monkeypatch.setattr(main_module, "fetch_certificate_info", lambda host: _cert("new", 365))
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("999", "D8.3.5226"))
+    main_module.repin_certificate(SETTINGS, 1, _expiring_config(days_left=300, firmware="D8.3.5226"))
+
+    monkeypatch.setattr(main_module, "fetch_device_info", lambda host, fp: DeviceInfo("123456789012", "D8.3.5226"))
+    main_module.repin_certificate(SETTINGS, 1, _expiring_config(days_left=300, firmware="D8.3.5226"))
+
+    assert [c[1] for c in _sets(_alert_calls)] == [
+        "No serial number stored to check the certificate against",
+        "Envoy serial is 999, expected 123456789012; not re-pinning",
+        "Certificate changed without a firmware upgrade; not re-pinning",
+    ]
+
+
+def test_poll_once_retries_pending_notices(monkeypatch):
+    seen = []
+    monkeypatch.setattr(main_module.alerts, "retry_pending", lambda settings: seen.append(settings))
+    main_module.poll_once(SETTINGS, 1, {"host": "envoy.local", "token": "abc"})
+    assert seen == [SETTINGS]
+
+
+def test_meters_alert_is_partial(monkeypatch, _alert_calls):
+    for _ in range(alerts_module.ALERT_AFTER_FAILURES):
+        main_module._meters_failed(SETTINGS, 1, "Reading the Envoy's meters is failing")
+    assert {c[3] for c in _alert_calls if c[0] == "set"} == {"partial"}

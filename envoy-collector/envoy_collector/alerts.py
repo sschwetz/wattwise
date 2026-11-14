@@ -18,29 +18,44 @@ logger = logging.getLogger("envoy_collector")
 ALERT_AFTER_FAILURES = 5
 
 _Key = tuple[int, str]
-_raised: dict[_Key, str] = {}
+_raised: dict[_Key, tuple[str, str]] = {}
+_pending: dict[_Key, tuple[str, str]] = {}
 _known_clear: set[_Key] = set()
 _failures: dict[_Key, int] = {}
 
 
 def reset() -> None:
     _raised.clear()
+    _pending.clear()
     _known_clear.clear()
     _failures.clear()
 
 
-def raise_alert(settings: Settings, source_id: int, code: str, message: str) -> None:
-    """Shows `message` on the Dashboard. Core API is only told when the message differs from the last one sent."""
+def raise_alert(
+    settings: Settings, source_id: int, code: str, message: str, severity: str = "failure", sticky: bool = False
+) -> None:
+    """Shows `message` on the Dashboard. Core API is only told when the message or severity differs from the last one sent.
+
+    A sticky notice is always sent, and kept for retry_pending if Core API is down, because it describes a one-off event."""
     key = (source_id, code)
     _known_clear.discard(key)
-    if _raised.get(key) == message:
+    if not sticky and _raised.get(key) == (message, severity):
         return
     try:
-        set_source_alert(settings.core_api_url, source_id, settings.collector_key, code, message)
+        set_source_alert(settings.core_api_url, source_id, settings.collector_key, code, message, severity, sticky)
     except CoreApiError:
         logger.exception("Failed to report the %s alert to Core API for source %s", code, source_id)
+        if sticky:
+            _pending[key] = (message, severity)
         return
-    _raised[key] = message
+    _pending.pop(key, None)
+    _raised[key] = (message, severity)
+
+
+def retry_pending(settings: Settings) -> None:
+    """Sends again the sticky notices that could not be delivered."""
+    for (source_id, code), (message, severity) in list(_pending.items()):
+        raise_alert(settings, source_id, code, message, severity, sticky=True)
 
 
 def clear_alert(settings: Settings, source_id: int, code: str) -> None:
@@ -58,9 +73,9 @@ def clear_alert(settings: Settings, source_id: int, code: str) -> None:
     _known_clear.add(key)
 
 
-def report_failure(settings: Settings, source_id: int, code: str, message: str) -> None:
+def report_failure(settings: Settings, source_id: int, code: str, message: str, severity: str = "failure") -> None:
     """Counts one failure and raises the alert once ALERT_AFTER_FAILURES have come in a row."""
     key = (source_id, code)
     _failures[key] = _failures.get(key, 0) + 1
     if _failures[key] >= ALERT_AFTER_FAILURES:
-        raise_alert(settings, source_id, code, message)
+        raise_alert(settings, source_id, code, message, severity)

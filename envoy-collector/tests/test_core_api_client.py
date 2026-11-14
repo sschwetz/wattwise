@@ -14,6 +14,7 @@ from envoy_collector.core_api_client import (
     push_energy_readings,
     push_live_sample,
     report_discovered_config,
+    set_source_alert,
 )
 
 BASE_URL = "http://localhost:8000"
@@ -228,3 +229,10 @@ def test_push_live_sample_raises_on_non_202():
     respx.post(f"{BASE_URL}/api/v1/sources/1/live/energy").mock(return_value=httpx.Response(500))
     with pytest.raises(CoreApiError):
         push_live_sample(BASE_URL, 1, "my-key", datetime.datetime.now(datetime.UTC), {})
+
+
+@respx.mock
+def test_set_source_alert_sends_severity_and_sticky():
+    route = respx.put(f"{BASE_URL}/api/v1/sources/1/alerts/repinned").mock(return_value=httpx.Response(204))
+    set_source_alert(BASE_URL, 1, "key", "repinned", "msg", severity="notice", sticky=True)
+    assert route.calls[0].request.read() == b'{"message":"msg","severity":"notice","sticky":true}'

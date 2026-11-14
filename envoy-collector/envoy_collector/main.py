@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import logging
 import time
@@ -63,6 +64,8 @@ TOKEN_ALERT = "token"
 UNREACHABLE_ALERT = "unreachable"
 METERS_ALERT = "meters"
 REFUSED_ALERT = "refused"
+REPINNED_ALERT = "repinned"
+FIRMWARE_ALERT = "firmware"
 # Readings whose push failed, per source, sent again with the next cycle's.
 # Core API upserts on (source, ts, metric), so a batch that was in fact
 # stored after the timeout is harmless to send twice. Held in memory only: a
@@ -127,9 +130,9 @@ def _store_pin(
     alerts.clear_alert(settings, source_id, CERT_ALERT)
 
 
-def _cert_problem(settings: Settings, source_id: int, message: str) -> None:
-    """Logs `message` as an error and shows it on the Dashboard."""
-    logger.error("%s", message)
+def _cert_problem(settings: Settings, source_id: int, message: str, advice: str = "") -> None:
+    """Shows the short `message` on the Dashboard and logs it with the longer `advice` as an error."""
+    logger.error("%s", f"{message}. {advice}" if advice else message)
     alerts.raise_alert(settings, source_id, CERT_ALERT, message)
 
 
@@ -166,17 +169,23 @@ def _repin_allowed(config: dict, now: datetime.datetime) -> bool:
     return expires_at - now <= CERT_REPIN_WINDOW
 
 
-def _repin_reason(config: dict, device: DeviceInfo, now: datetime.datetime) -> str | None:
+@dataclasses.dataclass(frozen=True)
+class Repin:
+    reason: str
+    firmware_changed: bool
+
+
+def _repin_reason(config: dict, device: DeviceInfo, now: datetime.datetime) -> Repin | None:
     """Why a changed certificate may be trusted, or None if it may not."""
     known_firmware = config.get("firmware")
     if known_firmware and device.firmware and device.firmware != known_firmware:
-        return f"firmware changed from {known_firmware} to {device.firmware}"
+        return Repin(f"firmware changed from {known_firmware} to {device.firmware}", firmware_changed=True)
     if _repin_allowed(config, now):
-        return f"the pinned certificate is within {CERT_REPIN_WINDOW.days} days of expiry"
+        return Repin(f"the pinned certificate is within {CERT_REPIN_WINDOW.days} days of expiry", firmware_changed=False)
     return None
 
 
-def _not_an_upgrade_message(config: dict, device: DeviceInfo) -> str:
+def _not_an_upgrade_advice(config: dict, device: DeviceInfo) -> str:
     if config.get("firmware"):
         firmware = f"firmware is still {device.firmware or 'unknown'}"
     else:
@@ -187,6 +196,16 @@ def _not_an_upgrade_message(config: dict, device: DeviceInfo) -> str:
         f"{CERT_REPIN_WINDOW.days} days of expiry; not re-pinning. "
         "If the device was replaced, clear the source's cert_fingerprint."
     )
+
+
+def _raise_repinned_notice(settings: Settings, source_id: int, config: dict, device: DeviceInfo, repin: Repin) -> None:
+    if repin.firmware_changed:
+        message = f"Firmware updated {config.get('firmware')} to {device.firmware}, certificate re-pinned"
+        severity = "failure"
+    else:
+        message = "Certificate re-pinned before it expired"
+        severity = "notice"
+    alerts.raise_alert(settings, source_id, REPINNED_ALERT, message, severity=severity, sticky=True)
 
 
 def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
@@ -202,6 +221,7 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
         _cert_problem(
             settings,
             source_id,
+            "No serial number stored to check the certificate against",
             "The Envoy presented a different TLS certificate than pinned, and no serial number is stored "
             "to check the device against; not re-pinning. Enter the serial number in the source.",
         )
@@ -216,16 +236,22 @@ def repin_certificate(settings: Settings, source_id: int, config: dict) -> dict:
         _cert_problem(
             settings,
             source_id,
-            f"The Envoy now reports serial {device.serial}, not {known_serial}; not re-pinning its certificate.",
+            f"Envoy serial is {device.serial}, expected {known_serial}; not re-pinning",
         )
         return config
-    reason = _repin_reason(config, device, datetime.datetime.now(datetime.UTC))
-    if reason is None:
-        _cert_problem(settings, source_id, _not_an_upgrade_message(config, device))
+    repin = _repin_reason(config, device, datetime.datetime.now(datetime.UTC))
+    if repin is None:
+        _cert_problem(
+            settings,
+            source_id,
+            "Certificate changed without a firmware upgrade; not re-pinning",
+            _not_an_upgrade_advice(config, device),
+        )
         return config
     new_config = dict(config)
     _store_pin(settings, source_id, new_config, info, device.firmware)
-    logger.warning("Re-pinned the Envoy TLS certificate for source %s: %s", source_id, reason)
+    logger.warning("Re-pinned the Envoy TLS certificate for source %s: %s", source_id, repin.reason)
+    _raise_repinned_notice(settings, source_id, config, device, repin)
     return new_config
 
 
@@ -239,6 +265,10 @@ def discover_and_sync_serial(settings: Settings, source_id: int, config: dict) -
         return
     _sync_discovered(settings, source_id, config, "serial_num", device.serial)
     if device.firmware:
+        known_firmware = config.get("firmware")
+        if known_firmware and known_firmware != device.firmware:
+            message = f"Firmware updated {known_firmware} to {device.firmware}"
+            alerts.raise_alert(settings, source_id, FIRMWARE_ALERT, message, severity="notice", sticky=True)
         _sync_discovered(settings, source_id, config, "firmware", device.firmware)
 
 
@@ -434,7 +464,11 @@ def _meter_readings_or_empty(settings: Settings, source_id: int, config: dict, t
 
 def _meters_failed(settings: Settings, source_id: int, reason: str) -> None:
     alerts.report_failure(
-        settings, source_id, METERS_ALERT, f"{reason}, so energy counters and voltages are missing from the charts."
+        settings,
+        source_id,
+        METERS_ALERT,
+        f"{reason}, so energy counters and voltages are missing from the charts.",
+        severity="partial",
     )
 
 
@@ -506,6 +540,7 @@ def poll_once(settings: Settings, source_id: int, config: dict, sampler: LiveSam
     """Runs one poll cycle for one source. Returns the config to use next
     cycle for this source (unchanged, unless an Envoy 401 triggered a
     successful refetch)."""
+    alerts.retry_pending(settings)
     if "cert_fingerprint" not in config:
         # Discovery hasn't pinned a certificate for this source yet (new
         # source, or the host was unreachable on a previous refresh) — the
@@ -540,8 +575,7 @@ def _push_or_keep(settings: Settings, source_id: int, batch: list[dict]) -> None
             if source_id not in _dropping:
                 logger.warning("Core API refused readings for source %s (%s); dropping them", source_id, exc)
             _dropping.add(source_id)
-            message = "WattWise is refusing this source's readings (the source or site is disabled or has expired), so they are being dropped."
-            alerts.raise_alert(settings, source_id, REFUSED_ALERT, message)
+            alerts.raise_alert(settings, source_id, REFUSED_ALERT, "Core API is refusing readings")
             return
         logger.exception(
             "Failed to push %s readings to Core API this cycle for source %s; will resend next cycle",
