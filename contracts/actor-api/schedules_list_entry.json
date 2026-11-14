@@ -4,7 +4,8 @@
   "enabled": true,
   "trigger": {"type": "time", "time": "16:00", "days_of_week": [0, 1, 2, 3, 4]},
   "conditions": [
-    {"reading": "outdoor_temp_c", "op": "gt", "value": 30.0, "target": null, "enabled": true}
+    {"reading": "outdoor_temp_c", "op": "gt", "value": 30.0, "target": null, "enabled": true},
+    {"kind": "months", "op": "in", "values": [12, 1, 2], "enabled": true}
   ],
   "actions": [
     {"id": "set_zones", "params": {"zones": ["Family", "Kids"], "enabled": false}}
@@ -15,9 +16,13 @@
     "when": "after_minutes",
     "minutes": 120,
     "time": null,
-    "only_if": [],
+    "only_if": [
+      {"kind": "week", "parity": "odd", "enabled": true},
+      {"kind": "demand_window", "op": "not_active", "window_id": null, "enabled": true}
+    ],
     "early_if": [
-      {"reading": "zone_temp_c", "op": "gt", "value": 27.0, "target": "Family", "enabled": true}
+      {"reading": "zone_temp_c", "op": "gt", "value": 27.0, "target": "Family", "enabled": true},
+      {"kind": "days", "op": "not_in", "values": [5, 6], "enabled": true}
     ]
   },
   "retry": {"max_attempts": 3, "interval_seconds": 30, "give_up_minutes": 15},

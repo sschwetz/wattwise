@@ -292,6 +292,17 @@ Core API validates these on write with the models in [`actor_schemas.py`](../cor
 
 `op` is `gt` or `lt`. `target` names one of a reading's declared targets, such as a zone. `enabled` defaults to true; a row saved before the field existed counts as enabled. A row with `enabled: false` is kept and ignored.
 
+That is a reading row. Four more kinds of row carry a `kind`, and all of them use the site's time zone:
+
+```json
+{ "kind": "months", "op": "in", "values": [12, 1, 2], "enabled": true }
+{ "kind": "days", "op": "not_in", "values": [5, 6], "enabled": true }
+{ "kind": "week", "parity": "odd", "enabled": true }
+{ "kind": "demand_window", "op": "not_active", "window_id": null, "enabled": true }
+```
+
+`months` takes 1 to 12 and `days` takes 0 (Monday) to 6; both need at least one value unless the row is switched off. `op` is `in` or `not_in`. `week` is `odd` or `even`: weeks run Monday to Sunday and the week holding 1970-01-01 is week 0, which is even, so the pattern needs no start date and does not slip at the year end. `demand_window` is `active` or `not_active` for the window named by `window_id` (a demand window of the site), or for any window when `window_id` is null.
+
 `actions` is a list of 1 to 8 entries. Each entry names a declared action and gives every one of its params. The actor runs them in list order:
 
 ```json

@@ -25,6 +25,8 @@ export interface EditorSetup {
   instance: ActorInstance;
   capabilities: Capabilities;
   windows: DemandWindow[];
+  /** The site's time zone. */
+  timezone: string;
   canEdit: boolean;
 }
 
@@ -71,6 +73,7 @@ function OnlyIfStep({ model }: { model: EditorModel }) {
           legend: "Only if", legendHidden: true, rows: form.conditions, errors, canEdit, errorPrefix: "conditions",
           hint: "Every ticked condition must be true, or the run is skipped.",
           readings: conditionReadings(model.capabilities),
+          calendar: { windows: model.windows, timezone: model.timezone },
           onChange: (conditions) => setForm({ ...form, conditions }),
         }}
       />
@@ -97,13 +100,13 @@ function useEditorForm(setup: EditorSetup, actions: EditorActions) {
   const [submitted, setSubmitted] = useState(false);
   const { canEdit, capabilities } = setup;
   const reportDirty = useReportDirty(canEdit && isDirty(form, baseline));
-  const errors = submitted ? validateForm(form, capabilities) : {};
-  const model: EditorModel = { form, setForm, errors, capabilities, canEdit, readings: setup.instance.latest_readings };
+  const errors = submitted ? validateForm(form, capabilities, setup.windows) : {};
+  const model: EditorModel = { form, setForm, errors, capabilities, canEdit, windows: setup.windows, timezone: setup.timezone, readings: setup.instance.latest_readings };
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (Object.keys(validateForm(form, capabilities)).length > 0) return;
+    if (Object.keys(validateForm(form, capabilities, setup.windows)).length > 0) return;
     actions.save(toPayload(form, capabilities), () => {
       setBaseline(form);
       reportDirty(false);

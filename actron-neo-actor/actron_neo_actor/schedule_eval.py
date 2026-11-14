@@ -269,11 +269,69 @@ def _switched_on(conditions: list[Condition]) -> list[Condition]:
     return [c for c in conditions if c.enabled]
 
 
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+EPOCH = date(1970, 1, 1)
+
+
+def week_number(day: date) -> int:
+    """Weeks run Monday to Sunday; week 0 holds 1970-01-01 (a Thursday). Even weeks are 'even', odd are 'odd'."""
+    return ((day - EPOCH).days + 3) // 7
+
+
+def _membership(noun: str, current: int, cond: Condition, names: tuple[str, ...], first: int) -> ConditionResult:
+    listed = ", ".join(names[v - first] for v in cond.values if 0 <= v - first < len(names))
+    here = names[current - first]
+    inside = current in cond.values
+    if inside == (cond.op == "in"):
+        return ConditionResult(True)
+    return ConditionResult(False, f"{noun} {here} is {'in' if inside else 'not in'} {listed}")
+
+
+def _week_result(cond: Condition, local: datetime) -> ConditionResult:
+    actual = "odd" if week_number(local.date()) % 2 else "even"
+    if actual == cond.parity:
+        return ConditionResult(True)
+    return ConditionResult(False, f"week is {actual}, not {cond.parity}")
+
+
+def _window_result(cond: Condition, context: Context) -> ConditionResult:
+    now = context.now
+    active = [
+        w for w in context.windows
+        if (cond.window_id is None or w.window_id == cond.window_id) and w.start <= now < w.end
+    ]
+    if cond.op == "active":
+        return ConditionResult(True) if active else ConditionResult(False, "no demand window is active")
+    if cond.op == "not_active":
+        return ConditionResult(False, f"demand window {active[0].label} is active") if active else ConditionResult(True)
+    return ConditionResult(False, f"unsupported comparison: {cond.op}")
+
+
+def _calendar_result(cond: Condition, context: Context) -> ConditionResult:
+    """The result of a month, day, week or demand window row."""
+    local = context.now.astimezone(ZoneInfo(context.timezone))
+    if cond.kind == "months" and cond.op in ("in", "not_in"):
+        return _membership("month", local.month, cond, MONTHS, 1)
+    if cond.kind == "days" and cond.op in ("in", "not_in"):
+        return _membership("day", local.weekday(), cond, DAYS, 0)
+    if cond.kind == "week":
+        return _week_result(cond, local)
+    if cond.kind == "demand_window":
+        return _window_result(cond, context)
+    return ConditionResult(False, f"unsupported condition: {cond.kind}")
+
+
 def evaluate_conditions(
     conditions: list[Condition], readings: Mapping[str, float], stale: set[str], context: Context
 ) -> ConditionResult:
     """All switched-on conditions must pass. A missing or stale reading fails."""
     for cond in _switched_on(conditions):
+        if cond.kind != "reading":
+            result = _calendar_result(cond, context)
+            if not result.passed:
+                return result
+            continue
         key = _key(cond)
         value = _lookup(key, readings, stale, context)
         if value is None:
@@ -291,6 +349,10 @@ def restore_gate_passes(
 ) -> bool:
     """Like evaluate_conditions, but a missing or stale reading passes so it never keeps the unit off."""
     for cond in _switched_on(conditions):
+        if cond.kind != "reading":
+            if not _calendar_result(cond, context).passed:
+                return False
+            continue
         value = _lookup(_key(cond), readings, stale, context)
         if value is not None and _holds(cond, value) is False:
             return False

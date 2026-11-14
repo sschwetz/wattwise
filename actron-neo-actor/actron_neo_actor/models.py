@@ -72,20 +72,38 @@ class Trigger:
 
 @dataclass(frozen=True)
 class Condition:
-    reading: str
-    op: str
-    value: float
+    """A reading row (`kind` "reading") or a calendar row: "months", "days", "week" or "demand_window".
+    Calendar rows leave `reading`, `op` and `value` at their defaults unless the kind uses `op`."""
+
+    reading: str = ""
+    op: str = "gt"
+    value: float = 0.0
     target: str | None = None
     enabled: bool = True
+    kind: str = "reading"
+    values: tuple[int, ...] = ()
+    parity: str | None = None
+    window_id: int | None = None
 
     @classmethod
     def from_json(cls, data: dict) -> Condition:
-        """A condition stored before the enabled flag existed has no key and counts as enabled."""
+        """A condition stored before the enabled flag or `kind` existed has no key: it counts as enabled
+        and as a reading row."""
         enabled = data.get("enabled", True)
         if not isinstance(enabled, bool):
             raise TypeError("condition enabled must be a bool")
+        kind = data.get("kind", "reading")
+        if kind == "reading":
+            return cls(
+                reading=data["reading"], op=data["op"], value=data["value"], target=data.get("target"), enabled=enabled
+            )
         return cls(
-            reading=data["reading"], op=data["op"], value=data["value"], target=data.get("target"), enabled=enabled
+            op=data.get("op", ""),
+            enabled=enabled,
+            kind=kind,
+            values=tuple(data.get("values") or ()),
+            parity=data.get("parity"),
+            window_id=data.get("window_id"),
         )
 
 

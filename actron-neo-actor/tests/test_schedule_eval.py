@@ -1,4 +1,5 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -22,6 +23,7 @@ from actron_neo_actor.schedule_eval import (
     missed_triggers,
     restore_gate_passes,
     restore_time,
+    week_number,
 )
 
 SYDNEY = "Australia/Sydney"
@@ -368,3 +370,96 @@ def test_legacy_condition_without_flag_is_enabled():
     legacy = Condition.from_json({"reading": "outdoor_temp_c", "op": "gt", "value": 35.0})
     assert legacy.enabled is True
     assert not evaluate_conditions([legacy], {}, set(), make_context(NOW, outdoor=22.0)).passed
+
+
+# --- calendar and demand window conditions ---------------------------------
+
+
+def at_sydney(year: int, month: int, day: int, hour: int = 12) -> datetime:
+    return datetime(year, month, day, hour, tzinfo=ZoneInfo(SYDNEY)).astimezone(UTC)
+
+
+def calendar_result(cond: Condition, now: datetime, windows=()):
+    return evaluate_conditions([cond], {}, set(), make_context(now, windows=windows))
+
+
+def test_week_number_epoch_anchor():
+    assert week_number(date(1970, 1, 1)) == 0
+    assert week_number(date(1970, 1, 4)) == 0
+    assert week_number(date(1970, 1, 5)) == 1
+    assert week_number(date(2026, 11, 9)) == week_number(date(2026, 11, 15)) == 2967
+    assert week_number(date(2026, 11, 16)) == 2968
+
+
+def test_week_row_parity_and_reason():
+    saturday = at_sydney(2026, 11, 14)
+    assert calendar_result(Condition(kind="week", parity="odd"), saturday).passed
+    res = calendar_result(Condition(kind="week", parity="even"), saturday)
+    assert (res.passed, res.reason) == (False, "week is odd, not even")
+
+
+def test_week_row_uses_site_timezone():
+    sunday_utc_monday_sydney = utc(2026, 11, 15, 14)
+    assert not calendar_result(Condition(kind="week", parity="odd"), sunday_utc_monday_sydney).passed
+    assert calendar_result(Condition(kind="week", parity="even"), sunday_utc_monday_sydney).passed
+
+
+def test_week_alternates_across_year_end():
+    assert calendar_result(Condition(kind="week", parity="even"), at_sydney(2027, 1, 3)).passed
+    assert calendar_result(Condition(kind="week", parity="odd"), at_sydney(2027, 1, 4)).passed
+
+
+def test_months_row():
+    summer = Condition(kind="months", op="in", values=(12, 1, 2))
+    res = calendar_result(summer, at_sydney(2026, 7, 10))
+    assert (res.passed, res.reason) == (False, "month Jul is not in Dec, Jan, Feb")
+    assert calendar_result(summer, at_sydney(2027, 1, 10)).passed
+    res = calendar_result(Condition(kind="months", op="not_in", values=(7, 8)), at_sydney(2026, 7, 10))
+    assert res.reason == "month Jul is in Jul, Aug"
+
+
+def test_days_row():
+    weekdays = Condition(kind="days", op="in", values=(0, 1, 2, 3, 4))
+    res = calendar_result(weekdays, at_sydney(2026, 11, 14))
+    assert (res.passed, res.reason) == (False, "day Sat is not in Mon, Tue, Wed, Thu, Fri")
+    res = calendar_result(Condition(kind="days", op="not_in", values=(5, 6)), at_sydney(2026, 11, 14))
+    assert res.reason == "day Sat is in Sat, Sun"
+    assert calendar_result(weekdays, at_sydney(2026, 11, 13)).passed
+
+
+def test_demand_window_row():
+    peak = WindowOccurrence(7, "Peak", utc(2026, 11, 5, 1), utc(2026, 11, 5, 3))
+    inside = utc(2026, 11, 5, 2)
+    idle = Condition(kind="demand_window", op="not_active")
+    res = calendar_result(idle, inside, [peak])
+    assert (res.passed, res.reason) == (False, "demand window Peak is active")
+    assert calendar_result(Condition(kind="demand_window", op="active"), inside, [peak]).passed
+    other = Condition(kind="demand_window", op="active", window_id=8)
+    assert calendar_result(other, inside, [peak]).reason == "no demand window is active"
+    assert calendar_result(Condition(kind="demand_window", op="not_active", window_id=8), inside, [peak]).passed
+    assert calendar_result(idle, inside).passed
+    assert not calendar_result(idle, utc(2026, 11, 5, 1), [peak]).passed
+    assert calendar_result(idle, utc(2026, 11, 5, 3), [peak]).passed
+
+
+def test_calendar_rows_ignore_stale_and_missing_readings():
+    ctx = make_context(at_sydney(2026, 11, 14))
+    assert evaluate_conditions([Condition(kind="week", parity="odd")], {}, {"outdoor_temp_c"}, ctx).passed
+
+
+def test_restore_gate_evaluates_calendar_rows():
+    ctx = make_context(at_sydney(2026, 11, 14))
+    assert not restore_gate_passes([Condition(kind="week", parity="even")], {}, set(), ctx)
+    assert restore_gate_passes([Condition(kind="week", parity="odd")], {}, set(), ctx)
+
+
+def test_switched_off_calendar_row_is_ignored():
+    off = Condition(kind="week", parity="even", enabled=False)
+    assert calendar_result(off, at_sydney(2026, 11, 14)).passed
+
+
+def test_condition_from_json_old_and_new():
+    old = Condition.from_json({"reading": "outdoor_temp_c", "op": "gt", "value": 30.0})
+    assert old.kind == "reading"
+    new = Condition.from_json({"kind": "months", "op": "in", "values": [12, 1], "enabled": True})
+    assert (new.kind, new.values) == ("months", (12, 1))

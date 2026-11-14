@@ -55,7 +55,12 @@ function WhenFields({ model }: { model: EditorModel }) {
 function RestoreConditions({ model }: { model: EditorModel }) {
   const change = restoreSetter(model);
   const { restore } = model.form;
-  const common = { readings: conditionReadings(model.capabilities), errors: model.errors, canEdit: model.canEdit };
+  const common = {
+    readings: conditionReadings(model.capabilities),
+    calendar: { windows: model.windows, timezone: model.timezone },
+    errors: model.errors,
+    canEdit: model.canEdit,
+  };
   return (
     <>
       <ConditionsEditor

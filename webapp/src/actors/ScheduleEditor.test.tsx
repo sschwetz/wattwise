@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import { ScheduleDetail } from "./ScheduleDetail";
 import { serverProblems } from "./serverRules.testHelper";
@@ -73,6 +73,8 @@ const saved: ActorSchedule = {
 
 interface Api {
   windows?: unknown[];
+  /** The sites list; left out, the editor does not know the site's time zone. */
+  sites?: unknown[];
   failWith?: Error;
   /** Answer a PATCH with the schedule as the body leaves it, as the server does. */
   echo?: boolean;
@@ -83,11 +85,12 @@ let api: Api = {};
 function mockApi(next: Api = {}) {
   api = next;
   vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
-    const { windows = [window11], failWith, echo } = api;
+    const { windows = [window11], failWith, echo, sites } = api;
     if (init?.method && failWith) return Promise.reject(failWith);
     if (init?.method === "POST") return Promise.resolve({ ...saved, id: 99 });
     if (init?.method === "PATCH") return Promise.resolve(echo ? { ...saved, ...JSON.parse(String(init.body)) } : saved);
     if (init?.method === "DELETE") return Promise.resolve(undefined);
+    if (path === "/api/v1/sites" && sites) return Promise.resolve(sites);
     if (path.endsWith("/tariffs")) return Promise.resolve([tariff]);
     if (path.endsWith("/demand-windows")) return Promise.resolve(windows);
     return Promise.resolve([]);
@@ -656,5 +659,121 @@ describe("ScheduleEditor", () => {
       expect(await screen.findByText(/Saved/)).toBeInTheDocument();
       expect(body("PATCH").restore.enabled).toBe(false);
     });
+  });
+});
+
+describe("calendar and demand window conditions", () => {
+  const sydney = { id: 7, name: "Home", timezone: "Australia/Sydney" };
+
+  async function openNew(on = "2026-11-14T02:00:00Z") {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(on) });
+    mockApi({ sites: [sydney] });
+    const user = userEvent.setup();
+    renderDetail(null);
+    await ready();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Summer cool");
+    return { user, onlyIf: screen.getByRole("group", { name: "Only if" }) };
+  }
+
+  async function addRow(user: ReturnType<typeof userEvent.setup>, group: HTMLElement, kind: string, n = 1) {
+    await user.click(within(group).getByRole("button", { name: "Add condition" }));
+    await user.selectOptions(within(group).getByRole("combobox", { name: `Reading ${n}` }), kind);
+  }
+
+  const submit = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: "Save schedule" }));
+
+  afterEach(() => vi.useRealTimers());
+
+  it("a month row sends the months picked", async () => {
+    const { user, onlyIf } = await openNew();
+    await addRow(user, onlyIf, "months");
+    for (const name of ["Dec", "Jan", "Feb"]) await user.click(within(onlyIf).getByRole("button", { name }));
+    expect(within(onlyIf).getByRole("button", { name: "Jan" })).toHaveAttribute("aria-pressed", "true");
+    await submit(user);
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").conditions).toEqual([{ kind: "months", op: "in", values: [1, 2, 12], enabled: true }]);
+  });
+
+  it("a ticked month row with nothing picked blocks the save", async () => {
+    const { user, onlyIf } = await openNew();
+    await addRow(user, onlyIf, "months");
+    await submit(user);
+    expect(await within(onlyIf).findByText("Pick at least one month.")).toBeInTheDocument();
+    expect(writes("POST")).toHaveLength(0);
+  });
+
+  it("a day row sends 'is not' with the days picked", async () => {
+    const { user, onlyIf } = await openNew();
+    await addRow(user, onlyIf, "days");
+    await user.selectOptions(within(onlyIf).getByRole("combobox", { name: "Day comparison 1" }), "not_in");
+    for (const name of ["Sat", "Sun"]) await user.click(within(onlyIf).getByRole("button", { name }));
+    await submit(user);
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").conditions).toEqual([{ kind: "days", op: "not_in", values: [5, 6], enabled: true }]);
+  });
+
+  it("a week row starts on the parity of the current week at the site", async () => {
+    const odd = await openNew("2026-11-14T02:00:00Z");
+    await addRow(odd.user, odd.onlyIf, "week");
+    expect(within(odd.onlyIf).getByRole("combobox", { name: "Week parity 1" })).toHaveValue("odd");
+    await submit(odd.user);
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").conditions).toEqual([{ kind: "week", parity: "odd", enabled: true }]);
+  });
+
+  it("a week row is even in an even week, by the site's calendar day", async () => {
+    const even = await openNew("2026-11-15T14:00:00Z");
+    await addRow(even.user, even.onlyIf, "week");
+    expect(within(even.onlyIf).getByRole("combobox", { name: "Week parity 1" })).toHaveValue("even");
+  });
+
+  it("a demand window row sends any window as null and a chosen window as its id", async () => {
+    const { user, onlyIf } = await openNew();
+    await addRow(user, onlyIf, "demand_window");
+    expect(within(onlyIf).getByRole("combobox", { name: "Window state 1" })).toHaveValue("not_active");
+    await submit(user);
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").conditions).toEqual([{ kind: "demand_window", op: "not_active", window_id: null, enabled: true }]);
+    await user.selectOptions(within(onlyIf).getByRole("combobox", { name: "Window 1" }), "11");
+    await user.selectOptions(within(onlyIf).getByRole("combobox", { name: "Window state 1" }), "active");
+    await submit(user);
+    await waitFor(() => expect(writes("POST").length + writes("PATCH").length).toBe(2));
+    const sent = [...writes("POST"), ...writes("PATCH")].map(([, init]) => JSON.parse(String(init?.body)));
+    expect(sent.map((b) => b.conditions[0])).toContainEqual({ kind: "demand_window", op: "active", window_id: 11, enabled: true });
+  });
+
+  it("saves the summer example in order", async () => {
+    const { user, onlyIf } = await openNew();
+    await addRow(user, onlyIf, "months");
+    for (const name of ["Dec", "Jan", "Feb"]) await user.click(within(onlyIf).getByRole("button", { name }));
+    await addRow(user, onlyIf, "outdoor_temp_c", 2);
+    await user.type(within(onlyIf).getByRole("spinbutton", { name: "Value 2" }), "30");
+    await addRow(user, onlyIf, "demand_window", 3);
+    await submit(user);
+    expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+    expect(body("POST").conditions).toEqual([
+      { kind: "months", op: "in", values: [1, 2, 12], enabled: true },
+      { reading: "outdoor_temp_c", op: "gt", value: 30, enabled: true },
+      { kind: "demand_window", op: "not_active", window_id: null, enabled: true },
+    ]);
+  });
+
+  it("opens a saved days row with its buttons pressed", async () => {
+    mockApi({ sites: [sydney] });
+    renderDetail({ ...saved, conditions: [{ kind: "days", op: "in", values: [0, 2], enabled: true }] });
+    await ready();
+    const onlyIf = screen.getByRole("group", { name: "Only if" });
+    expect(within(onlyIf).getByRole("button", { name: "Mon" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(onlyIf).getByRole("button", { name: "Tue" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(onlyIf).getByRole("button", { name: "Wed" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("the restore conditions offer the calendar rows too", async () => {
+    mockApi({ sites: [sydney] });
+    renderDetail(saved);
+    await ready();
+    const restoreIf = screen.getByRole("group", { name: "Only restore if" });
+    await addRow(userEvent.setup(), restoreIf, "week");
+    expect(within(restoreIf).getByRole("combobox", { name: "Week parity 1" })).toBeInTheDocument();
   });
 });
