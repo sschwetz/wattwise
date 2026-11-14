@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,7 +11,7 @@ from core_api.actor_capabilities import (
     validate_action_against,
     validate_conditions_against,
 )
-from core_api.actor_schemas import Capabilities, ScheduleCreate
+from core_api.actor_schemas import Capabilities, ConditionSpec, DemandWindowCondition, ScheduleCreate
 from core_api.errors import AppError
 from core_api.models.actors import ActorInstance
 from core_api.models.billing import DemandWindow, SiteTariff
@@ -25,8 +27,7 @@ def parse_schedule(data: dict) -> ScheduleCreate:
         raise AppError(422, "invalid_schedule", f"{where}: {first['msg']}") from exc
 
 
-def _check_window_belongs_to_site(db: Session, site_id: int, schedule: ScheduleCreate) -> None:
-    window_id = getattr(schedule.trigger, "window_id", None)
+def _check_window_id(db: Session, site_id: int, window_id: int | None) -> None:
     if window_id is None:
         return
     found = db.scalar(
@@ -36,6 +37,17 @@ def _check_window_belongs_to_site(db: Session, site_id: int, schedule: ScheduleC
     )
     if found is None:
         raise AppError(422, "invalid_schedule", f"Window {window_id} is not a demand window of this site")
+
+
+def _check_window_belongs_to_site(db: Session, site_id: int, schedule: ScheduleCreate) -> None:
+    _check_window_id(db, site_id, getattr(schedule.trigger, "window_id", None))
+
+
+def check_condition_windows(db: Session, site_id: int, conditions: Iterable[ConditionSpec]) -> None:
+    """A switched-on demand window row may only name a window of this site."""
+    for cond in conditions:
+        if isinstance(cond, DemandWindowCondition) and cond.enabled:
+            _check_window_id(db, site_id, cond.window_id)
 
 
 def _check_window_end_restore(schedule: ScheduleCreate) -> None:
@@ -66,5 +78,6 @@ def validate_schedule(db: Session, site_id: int, instance: ActorInstance, schedu
     _check_actions(capabilities, schedule)
     conditions = [*schedule.conditions, *schedule.restore.only_if, *schedule.restore.early_if]
     validate_conditions_against(capabilities, set(SITE_READING_IDS), conditions)
+    check_condition_windows(db, site_id, conditions)
     _check_window_belongs_to_site(db, site_id, schedule)
     _check_window_end_restore(schedule)

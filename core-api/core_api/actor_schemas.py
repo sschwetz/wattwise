@@ -10,8 +10,10 @@ from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
+    Discriminator,
     Field,
     PlainSerializer,
+    Tag,
     computed_field,
     field_validator,
     model_validator,
@@ -73,12 +75,77 @@ TriggerSpec = Annotated[
 ]
 
 
-class ConditionSpec(_Strict):
+class ReadingCondition(_Strict):
+    """A reading is above or below a value. It carries no `kind`, so rows saved before the calendar rows existed still match."""
+
     reading: str
     op: Literal["gt", "lt"]
     value: float = Field(allow_inf_nan=False)
     target: str | None = None
     enabled: bool = True
+
+
+class _MembershipCondition(_Strict):
+    op: Literal["in", "not_in"]
+    enabled: bool = True
+
+
+class MonthsCondition(_MembershipCondition):
+    """The site's month, 1-12, is or is not one of `values`."""
+
+    kind: Literal["months"]
+    values: list[Annotated[int, Field(ge=1, le=12)]]
+
+    @model_validator(mode="after")
+    def _needs_a_month(self) -> MonthsCondition:
+        if self.enabled and not self.values:
+            raise ValueError("pick at least one month")
+        return self
+
+
+class DaysCondition(_MembershipCondition):
+    """The site's day of the week, 0 for Monday to 6 for Sunday, is or is not one of `values`."""
+
+    kind: Literal["days"]
+    values: list[Annotated[int, Field(ge=0, le=6)]]
+
+    @model_validator(mode="after")
+    def _needs_a_day(self) -> DaysCondition:
+        if self.enabled and not self.values:
+            raise ValueError("pick at least one day")
+        return self
+
+
+class WeekCondition(_Strict):
+    """The week is odd or even, counted from the week holding 1970-01-01 (even)."""
+
+    kind: Literal["week"]
+    parity: Literal["odd", "even"]
+    enabled: bool = True
+
+
+class DemandWindowCondition(_Strict):
+    """A demand window, or the one named by `window_id`, is or is not running now."""
+
+    kind: Literal["demand_window"]
+    op: Literal["active", "not_active"]
+    window_id: int | None = None
+    enabled: bool = True
+
+
+def _condition_kind(value: object) -> str | None:
+    kind = value.get("kind", "reading") if isinstance(value, dict) else getattr(value, "kind", "reading")
+    return kind if isinstance(kind, str) else None
+
+
+ConditionSpec = Annotated[
+    Annotated[ReadingCondition, Tag("reading")]
+    | Annotated[MonthsCondition, Tag("months")]
+    | Annotated[DaysCondition, Tag("days")]
+    | Annotated[WeekCondition, Tag("week")]
+    | Annotated[DemandWindowCondition, Tag("demand_window")],
+    Discriminator(_condition_kind),
+]
 
 
 def _conditions_with_flag(conditions: list) -> list:
