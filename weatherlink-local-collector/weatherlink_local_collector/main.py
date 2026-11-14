@@ -109,8 +109,7 @@ def _push_or_keep(settings: Settings, source_id: int, batch: list[dict]) -> bool
             if source_id not in _dropping:
                 logger.warning("Core API refused readings for source %s (%s); dropping them", source_id, exc)
             _dropping.add(source_id)
-            message = "WattWise is refusing this source's readings (the source or site is disabled or has expired), so they are being dropped."
-            alerts.raise_alert(settings, source_id, REFUSED_ALERT, message)
+            alerts.raise_alert(settings, source_id, REFUSED_ALERT, "Core API is refusing readings")
             return True
         logger.exception(
             "Failed to push %s readings to Core API this cycle for source %s; will resend next cycle",

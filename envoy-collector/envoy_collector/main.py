@@ -61,6 +61,7 @@ CERT_REPIN_WINDOW = datetime.timedelta(days=100)
 # Alert codes, one per problem the owner can fix. Each is cleared when its cause goes away.
 CERT_ALERT = "cert"
 TOKEN_ALERT = "token"
+RENEWAL_FAILED_MESSAGE = "Cannot renew the Envoy token"
 UNREACHABLE_ALERT = "unreachable"
 METERS_ALERT = "meters"
 REFUSED_ALERT = "refused"
@@ -308,12 +309,11 @@ def renew_token(settings: Settings, source_id: int, config: dict) -> dict:
         token = fetch_token(username, password, serial_num)
     except EnlightenAuthError as exc:
         logger.error("Could not renew the Envoy token for source %s: %s. Update the Enlighten credentials.", source_id, exc)
-        message = f"Could not renew the Envoy token: {exc}. Update the Enlighten credentials in the source."
-        alerts.raise_alert(settings, source_id, TOKEN_ALERT, message)
+        alerts.raise_alert(settings, source_id, TOKEN_ALERT, RENEWAL_FAILED_MESSAGE)
         return config
     except EnlightenError as exc:
         logger.error("Could not renew the Envoy token for source %s: %s. Will retry in an hour.", source_id, exc)
-        alerts.report_failure(settings, source_id, TOKEN_ALERT, f"Could not renew the Envoy token: {exc}")
+        alerts.report_failure(settings, source_id, TOKEN_ALERT, RENEWAL_FAILED_MESSAGE)
         return config
     try:
         report_discovered_config(settings.core_api_url, source_id, settings.collector_key, token=token)
@@ -395,16 +395,14 @@ def _fetch_and_map(source_id: int, config: dict, ts: datetime.datetime) -> list[
 
 
 def _token_rejected(settings: Settings, source_id: int, config: dict) -> None:
-    message = _renewal_message(config)
-    logger.error("%s", message)
-    alerts.raise_alert(settings, source_id, TOKEN_ALERT, message)
+    logger.error("%s", _renewal_message(config))
+    alerts.raise_alert(settings, source_id, TOKEN_ALERT, "Envoy token rejected")
 
 
 def _poll_failed(settings: Settings, source_id: int, config: dict, context: str = "") -> None:
     """Logs the exception being handled and counts it towards the unreachable alert."""
     logger.exception("Failed to poll Envoy this cycle%s for source %s", context, source_id)
-    message = f"Cannot read data from the Envoy at {config.get('host')}. Check that it is on and reachable."
-    alerts.report_failure(settings, source_id, UNREACHABLE_ALERT, message)
+    alerts.report_failure(settings, source_id, UNREACHABLE_ALERT, "Cannot connect to the Envoy")
 
 
 def _recover_from_auth_failure(
@@ -451,25 +449,19 @@ def _meter_readings_or_empty(settings: Settings, source_id: int, config: dict, t
     except EnvoyAuthError:
         _meters_cache.pop(source_id, None)
         logger.warning("Envoy rejected our token reading meters for source %s", source_id)
-        _meters_failed(settings, source_id, "The Envoy rejected the access token reading meters")
+        _meters_failed(settings, source_id)
         return []
     except Exception:
         _meter_failure_log(source_id).failure()
-        _meters_failed(settings, source_id, "Reading the Envoy's meters is failing")
+        _meters_failed(settings, source_id)
         return []
     _meter_failure_log(source_id).success()
     alerts.clear_alert(settings, source_id, METERS_ALERT)
     return rows
 
 
-def _meters_failed(settings: Settings, source_id: int, reason: str) -> None:
-    alerts.report_failure(
-        settings,
-        source_id,
-        METERS_ALERT,
-        f"{reason}, so energy counters and voltages are missing from the charts.",
-        severity="partial",
-    )
+def _meters_failed(settings: Settings, source_id: int) -> None:
+    alerts.report_failure(settings, source_id, METERS_ALERT, "Meter readings unavailable", severity="partial")
 
 
 def _meter_failure_log(source_id: int) -> FailureLog:

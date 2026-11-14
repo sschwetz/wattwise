@@ -15,6 +15,10 @@ Both ports are plain HTTP. Keep them on the home network. To use WattWise from o
 
 The dashboard's live tiles use a WebSocket to `core-api` (`/api/v1/sites/{site_id}/live`). A reverse proxy in front of `core-api` must pass WebSocket upgrades (the `Upgrade` and `Connection` headers), or the tiles fall back to the 60 second poll. The webapp container sets its Content-Security-Policy `connect-src` to `API_BASE_URL` and the same address with the `ws://` or `wss://` scheme, so no extra setting is needed.
 
+## Update order
+
+Update `core-api` before the collectors. A collector from the alert bulbs release sends `severity` and `sticky` with each alert, and an older `core-api` rejects those fields with 422.
+
 ## Putting WattWise on the internet
 
 The browser calls `core-api` directly, so the API must be reachable from the internet at the address in `API_BASE_URL` whenever anyone uses WattWise away from home. Publishing only the web app is not enough: the page loads, then sign-in fails. The collectors do not need this. They reach `core-api` over the Docker network.

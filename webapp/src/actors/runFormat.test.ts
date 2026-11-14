@@ -121,4 +121,8 @@ describe("formatAlertTime", () => {
   it("formats in the site zone", () => {
     expect(formatAlertTime("2026-11-13T09:12:00Z", SYDNEY)).toBe("2026-11-13 20:12");
   });
+
+  it("rolls the date over and pads the hour after midnight", () => {
+    expect(formatAlertTime("2026-11-12T13:05:00Z", SYDNEY)).toBe("2026-11-13 00:05");
+  });
 });

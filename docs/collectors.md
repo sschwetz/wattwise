@@ -151,7 +151,7 @@ Each tick starts a short-lived child process per source, so one slow source cann
 
 Each collector reports problems the owner has to fix as alerts, which the Dashboard **Needs attention** tile shows. A collector calls `PUT /sources/{id}/alerts/{code}` with `{message, severity, sticky}` and `DELETE` on the same path when the cause goes away. Each service has its own `alerts.py`, the same convention as `service_report.py`. The state is in memory. After a restart the first success sends one `DELETE` per code, which clears alerts left from before.
 
-`severity` is `failure` (red, the default), `partial` (amber) or `notice`. `sticky` (default false) keeps the alert on the Dashboard after the cause clears, until the owner dismisses it. A raise with a different severity than the last one sent is sent again even when the message is the same. The WeatherLink `iss` and `barometer` alerts are `partial` because the station still reports other readings. The Envoy `meters` alert is `partial` because power readings still flow. The Envoy `repinned` and `firmware` alerts are sticky notices. Every other alert is a `failure`. Messages are one short line with no IP address and no advice, and the Dashboard row adds the source name. Detail goes in the collector log.
+`severity` is `failure` (red, the default), `partial` (amber) or `notice`. `sticky` (default false) keeps the alert on the Dashboard after the cause clears, until the owner dismisses it. A raise with a different severity than the last one sent is sent again even when the message is the same. The WeatherLink `iss` and `barometer` alerts are `partial` because the station still reports other readings. The Envoy `meters` alert is `partial` because power readings still flow. The Envoy `repinned` and `firmware` alerts are sticky notices. Every other alert is a `failure`. Messages are one short line with no IP address and no advice, and the Dashboard row adds the source name. Detail goes in the collector log, including the Enlighten renewal URL when the Envoy token is rejected.
 
 A sticky notice is sent every time it is raised, skipping the duplicate check. If Core API is down, the collector keeps it and resends at the start of each poll until a PUT succeeds.
 
@@ -160,15 +160,15 @@ A problem that might be a blip raises its alert after 5 failures in a row (`ALER
 | Service | Code | Raised when | Cleared when |
 |---|---|---|---|
 | envoy-collector | `cert` | The TLS certificate changed and was not re-pinned | The collector pins it |
-| envoy-collector | `token` | Enlighten rejected the renewal at once, or renewal keeps failing, or the token is still rejected | A poll succeeds |
-| envoy-collector | `unreachable` | 5 failed polls | A poll succeeds |
-| envoy-collector | `meters`, `partial` | 5 failed meter reads | A meter read succeeds |
+| envoy-collector | `token` (`Envoy token rejected` when the token is still rejected, `Cannot renew the Envoy token` when renewal fails) | Enlighten rejected the renewal at once, or renewal keeps failing, or the token is still rejected | A poll succeeds |
+| envoy-collector | `unreachable` (`Cannot connect to the Envoy`) | 5 failed polls | A poll succeeds |
+| envoy-collector | `meters` (`Meter readings unavailable`), `partial` | 5 failed meter reads | A meter read succeeds |
 | envoy-collector | `refused` (`Core API is refusing readings`) | Core API answered 403: the source or site is disabled or expired | Core API accepts readings |
 | envoy-collector | `repinned`, sticky | A changed certificate was re-pinned. `failure` when the firmware changed (`Firmware updated X to Y, certificate re-pinned`), `notice` when the old certificate was near expiry (`Certificate re-pinned before it expired`). The firmware rule wins when both apply | The owner dismisses it |
 | envoy-collector | `firmware`, `notice`, sticky | Discovery reads a firmware version that differs from the stored one while the certificate is unchanged (`Firmware updated X to Y`). The first read raises nothing | The owner dismisses it |
 | weatherlink-local-collector | `unreachable` (`Cannot connect to the weather station`) | 5 failures in a row | The condition passes |
 | weatherlink-local-collector | `iss` (`Not reporting outdoor (ISS) data`), `barometer` (`Not reporting barometer data`), both `partial` | 5 failures in a row each | The condition passes |
-| weatherlink-local-collector | `refused` | Core API answered 403 | Core API accepts readings |
+| weatherlink-local-collector | `refused` (`Core API is refusing readings`) | Core API answered 403 | Core API accepts readings |
 | amber-pricing-collector | `amber_key` (`Amber rejected the API key`) | Amber answered 401 or 403 (at once) | A poll succeeds |
 | amber-pricing-collector | `amber` (`Cannot get prices from Amber`) | 5 failed polls, or a child killed for running too long | A poll succeeds |
 | local-pricing-collector | `pricing` (`Rates are not being priced`) | 5 failed or too-long runs | A run succeeds |

@@ -90,7 +90,8 @@ describe("FailuresTile", () => {
   it("failures tile includes a partial run", async () => {
     mockData({ failures: [failure(1, { message: "The action partly failed" })] });
     renderTile();
-    expect(await screen.findByText("Schedule 1 - The action partly failed")).toBeInTheDocument();
+    const row = await screen.findByText("Schedule 1 - Run failed");
+    expect(row).toHaveAttribute("title", "Schedule 1 - The action partly failed");
     expect(screen.getByText("Needs attention (1)")).toBeInTheDocument();
   });
 
@@ -161,7 +162,7 @@ describe("FailuresTile", () => {
     await queryClient.refetchQueries();
     await vi.waitFor(() => expect(queryClient.getQueryCache().getAll().some((q) => q.state.status === "error")).toBe(true));
     await new Promise((r) => setTimeout(r, 20));
-    expect(screen.getByRole("region", { name: "Needs attention" })).toHaveTextContent("Message 1");
+    expect(screen.getByRole("region", { name: "Needs attention" })).toHaveTextContent("Schedule 1 - Run failed");
     expect(screen.queryByText("Schedule status unavailable")).not.toBeInTheDocument();
   });
 
@@ -217,7 +218,7 @@ describe("FailuresTile", () => {
     mockData({ failures: [failure(1)] });
     renderTile();
     const tile = await screen.findByRole("region", { name: "Needs attention" });
-    expect(within(tile).getByText("Schedule 1 - Message 1")).toBeInTheDocument();
+    expect(within(tile).getByText("Schedule 1 - Run failed")).toBeInTheDocument();
     expect(within(tile).queryByRole("button")).not.toBeInTheDocument();
     expect(within(tile).getByRole("link", { name: "Open Schedule" })).toBeInTheDocument();
   });

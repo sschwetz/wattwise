@@ -675,6 +675,6 @@ def test_a_403_raises_a_refused_alert_that_clears_once_readings_are_accepted(mon
 
     monkeypatch.setattr(main_module, "push_weather_readings", _push)
     main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
-    assert [c[:2] for c in alert_calls if c[0] == "set"] == [("set", "refused")]
+    assert [c[1:3] for c in alert_calls if c[0] == "set"] == [("refused", "Core API is refusing readings")]
     main_module.poll_once(SETTINGS, 1, {"host": "weatherlink.local"}, RainState())
     assert ("clear", "refused") in alert_calls

@@ -20,6 +20,7 @@ const SHORT_MESSAGE: Partial<Record<ActorFailure["kind"], string>> = {
   still_off: "Still off",
   actor_silent: "Not reporting",
   needs_sign_in: "Needs sign-in",
+  run_failed: "Run failed",
 };
 
 const linkClass = "text-sm font-medium text-ink underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
@@ -29,10 +30,13 @@ const tileClass = "rounded-xl border border-line bg-surface p-4";
 const scheduleHref = (siteId: number) => `/settings/sites/${siteId}/schedule`;
 const collectorsHref = (siteId: number) => `/settings/sites/${siteId}/collectors`;
 
-function rowText(failure: ActorFailure): string {
+function labelled(failure: ActorFailure, message: string): string {
   const label = failure.kind === "alert" ? failure.subject : failure.schedule_name;
-  const message = SHORT_MESSAGE[failure.kind] ?? failure.message;
   return label ? `${label} - ${message}` : message;
+}
+
+function rowText(failure: ActorFailure): string {
+  return labelled(failure, SHORT_MESSAGE[failure.kind] ?? failure.message);
 }
 
 function DismissButton({ siteId, alertId, text }: { siteId: number; alertId: number | null; text: string }) {
@@ -57,7 +61,7 @@ function FailureRow({ failure, siteId, timezone }: { failure: ActorFailure; site
     <li className="flex items-center gap-2 border-t border-line pt-2 text-sm first:border-t-0 first:pt-0">
       <Bulb severity={failure.severity} cleared={failure.cleared_at !== null} />
       {showTime && <time dateTime={failure.since} className="shrink-0 text-ink-muted">{formatAlertTime(failure.since, timezone)}</time>}
-      <span className="min-w-0 flex-1 truncate text-ink" title={rowText(failure)}>{rowText(failure)}</span>
+      <span className="min-w-0 flex-1 truncate text-ink" title={labelled(failure, failure.message)}>{rowText(failure)}</span>
       <RowAction failure={failure} siteId={siteId} />
     </li>
   );

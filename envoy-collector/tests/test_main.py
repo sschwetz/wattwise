@@ -908,7 +908,7 @@ def test_rejected_login_raises_a_token_alert_and_a_good_poll_clears_it(monkeypat
 
     monkeypatch.setattr(main_module, "fetch_token", reject)
     main_module.renew_token(SETTINGS, 1, {"token": "old", **CREDS})
-    assert _alert_calls == [("set", "token", "Could not renew the Envoy token: Enlighten rejected the username or password. Update the Enlighten credentials in the source.", "failure", False)]
+    assert _alert_calls == [("set", "token", "Cannot renew the Envoy token", "failure", False)]
     assert "pw-secret" not in str(_alert_calls)
 
     _stub_one_reading(monkeypatch)
@@ -929,7 +929,7 @@ def test_token_still_rejected_after_renewal_raises_a_token_alert_with_the_renewa
     main_module.poll_once(SETTINGS, 1, dict(stored))
 
     token_alerts = [c for c in _alert_calls if c[0] == "set" and c[1] == "token"]
-    assert any("entrez-auth-token?serial_num=1234" in c[2] for c in token_alerts)
+    assert token_alerts[-1][2] == "Envoy token rejected"
 
 
 def test_unreachable_alert_needs_five_failed_cycles_and_clears_on_success(monkeypatch, _alert_calls):
@@ -946,7 +946,7 @@ def test_unreachable_alert_needs_five_failed_cycles_and_clears_on_success(monkey
     main_module.poll_once(SETTINGS, 1, config)
     sets = [c for c in _alert_calls if c[0] == "set"]
     assert [(c[1]) for c in sets] == ["unreachable"]
-    assert "envoy.local" in sets[0][2]
+    assert sets[0][2] == "Cannot connect to the Envoy"
 
     _stub_one_reading(monkeypatch)
     monkeypatch.setattr(main_module, "push_energy_readings", lambda *a: None)
@@ -997,7 +997,7 @@ def test_failing_meters_raise_an_alert_after_five_cycles_and_a_good_read_clears_
     monkeypatch.setattr(main_module, "fetch_meter_readings", boom)
     for _ in range(alerts_module.ALERT_AFTER_FAILURES):
         main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
-    assert [c[:2] for c in _alert_calls if c[0] == "set"] == [("set", "meters")]
+    assert [c[1:4] for c in _alert_calls if c[0] == "set"] == [("meters", "Meter readings unavailable", "partial")]
     _stub_meters(monkeypatch)
     main_module._meter_readings_or_empty(SETTINGS, 1, dict(PINNED), ts)
     assert ("clear", "meters") in _alert_calls
@@ -1842,5 +1842,5 @@ def test_poll_once_retries_pending_notices(monkeypatch):
 
 def test_meters_alert_is_partial(monkeypatch, _alert_calls):
     for _ in range(alerts_module.ALERT_AFTER_FAILURES):
-        main_module._meters_failed(SETTINGS, 1, "Reading the Envoy's meters is failing")
+        main_module._meters_failed(SETTINGS, 1)
     assert {c[3] for c in _alert_calls if c[0] == "set"} == {"partial"}

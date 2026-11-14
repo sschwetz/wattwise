@@ -57,6 +57,8 @@ def test_amber_api_key_column_exists_and_defaults_null(db):
 
 SPIKE_STATUS_REVISION = "b4d7e1a9c3f2"
 BEFORE_SPIKE_STATUS_REVISION = "f1a8c3d5e7b2"
+ALERT_SEVERITY_REVISION = "b7d1f4a2c6e9"
+BEFORE_ALERT_SEVERITY_REVISION = "a3c5e7d9b1f2"
 
 
 def _price_interval_columns(db_path) -> list[str]:
@@ -102,6 +104,40 @@ def test_spike_status_migration_upgrades_existing_rows_and_downgrades(tmp_path, 
     command.downgrade(config, BEFORE_SPIKE_STATUS_REVISION)
     assert "spike_status" not in _price_interval_columns(db_path)
     assert "price_low" in _price_interval_columns(db_path)
+
+
+def test_alert_severity_migration_defaults_existing_rows_and_downgrade_drops_cleared(tmp_path, monkeypatch):
+    db_path = tmp_path / "alert_severity.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("script_location", str(CORE_API_ROOT / "alembic"))
+    command.upgrade(config, BEFORE_ALERT_SEVERITY_REVISION)
+
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute("insert into alerts (site_id, subject_kind, subject_id, code, message, since) values (1, 'source', 1, 'old', 'Old', '2026-01-01 00:00:00')")
+        con.commit()
+    finally:
+        con.close()
+
+    command.upgrade(config, ALERT_SEVERITY_REVISION)
+    con = sqlite3.connect(db_path)
+    try:
+        assert con.execute("select severity, cleared_at, sticky from alerts").fetchall() == [("failure", None, 0)]
+        con.execute("insert into alerts (site_id, subject_kind, subject_id, code, message, since, severity, cleared_at, sticky) values (1, 'source', 1, 'gone', 'Gone', '2026-01-01 00:00:00', 'failure', '2026-01-02 00:00:00', 0)")
+        con.execute("insert into alerts (site_id, subject_kind, subject_id, code, message, since, severity, cleared_at, sticky) values (1, 'source', 1, 'note', 'Note', '2026-01-01 00:00:00', 'notice', '2026-01-02 00:00:00', 1)")
+        con.execute("update alerts set cleared_at = null where code = 'note'")
+        con.commit()
+    finally:
+        con.close()
+
+    command.downgrade(config, BEFORE_ALERT_SEVERITY_REVISION)
+    con = sqlite3.connect(db_path)
+    try:
+        assert [r[0] for r in con.execute("select code from alerts order by code")] == ["note", "old"]
+        assert "severity" not in [r[1] for r in con.execute("pragma table_info(alerts)")]
+    finally:
+        con.close()
 
 
 def test_migration_allows_new_energy_metrics(tmp_path):
