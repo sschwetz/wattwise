@@ -130,7 +130,7 @@ The editor counts as changed while its form differs from the schedule as last sa
 
 | File | Does |
 |---|---|
-| `LocationFields.tsx` | The **Latitude** and **Longitude** boxes, the **Use my location** button and the map. The button calls `navigator.geolocation.getCurrentPosition` on click only, and is not drawn when the browser has no geolocation or the viewer is read-only. |
+| `LocationFields.tsx` | The **Latitude** and **Longitude** boxes, the **Use my location** button and the map. The button sits on its own line under the text "Select your location on the map or:". The button calls `navigator.geolocation.getCurrentPosition` on click only. The button and the text are not drawn when the browser has no geolocation or the viewer is read-only. |
 | `SiteMap.tsx` | A Leaflet map with one pin. A click reports the point. It is loaded with `React.lazy`, so Leaflet and its CSS stay out of the main bundle. Tiles come from `https://tile.openstreetmap.org`. |
 | `location.ts` | Converts between the saved site and the form text, rounds a picked point to 5 decimal places, and builds the patch. It checks the ranges the API checks. |
 | `SunToday.tsx` | Today's sunrise and sunset from `GET /sites/{id}/sun` (`useSiteSun` in `sites/useSites.ts`), in the site's time zone, with a note when `estimated` is true. The query key includes the point and time zone, so a save fetches new times. |

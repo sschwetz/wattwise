@@ -63,7 +63,7 @@ Only the owner can change a site's settings. Other people see the tabs read-only
 A schedule can start or stop at sunrise or sunset, so WattWise needs to know where the site is. Set it on the **General** tab under **Location**:
 
 - Type a **Latitude** (-90 to 90) and a **Longitude** (-180 to 180), for example `-33.87` and `151.21`. South and west are negative.
-- Click **Use my location** to fill both boxes from your device. Your browser asks permission only when you click. The button is missing when the browser has no location support, and for people who can only view the site.
+- Under the text "Select your location on the map or:", click **Use my location** to fill both boxes from your device. Your browser asks permission only when you click. The button is missing when the browser has no location support, and for people who can only view the site.
 - Click the map to set the point. The map starts zoomed out over Australia and moves to the point you set.
 
 Click **Save** to keep the change. To remove the location, clear both boxes and save. You cannot set one box without the other. Under the map, a line shows today's sunrise and sunset in the site's time zone, so you can check the point. It reads *The sun does not rise or set at this location today* in polar summer and winter.

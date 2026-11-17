@@ -37,7 +37,8 @@ function UseMyLocation({ onFound }: { onFound: (value: LocationText) => void }) 
     );
   }
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
+      <p className="text-sm text-ink">Select your location on the map or:</p>
       <button type="button" onClick={ask} disabled={busy} className={secondaryButtonClass}>
         {busy ? "Finding your location..." : "Use my location"}
       </button>
