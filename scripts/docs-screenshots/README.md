@@ -8,7 +8,9 @@ Retake all the images in one pass. Mixing images from different demo runs shows 
 
 1. Start core-api on port 8000 with a fresh database and these keys: `ENVOY_COLLECTOR_KEY=dev-envoy`, `WEATHER_COLLECTOR_KEY=dev-weather`, `PRICING_COLLECTOR_KEY=dev-pricing`, `ACTOR_KEY=dev-actor`. Set `GIT_COMMIT` to the current commit so the header and About dialog show it. Start the webapp with `npm run dev` on port 5173.
 2. From `core-api/`, run each script with `PYTHONPATH=. uv run python ../scripts/docs-screenshots/<script>.py` (the seed scripts import `lib.py` from their own folder, so add that folder to `PYTHONPATH` too): `seed2.py`, `jobs.py` (computes demand charges), then `stage.py signin`.
+   `seed2.py` writes `ids.json` in the folder you ran it from. Copy it into `scripts/docs-screenshots/`, because `stage.py` reads it from there.
 3. Start a separate Chrome with `--remote-debugging-port=9333` and an empty `--user-data-dir`. Run the `capture_*.py` scripts through `browser-use` with `BU_CDP_URL=http://localhost:9333`. Take `capture_si.py` (the sign-in code) before `stage.py ready`, `runs` and `alerts`.
+   `shot.py` finds the images folder from `__file__`, which is the harness's own path when `browser-use` runs a script from stdin. Put `__file__ = '<repo>/scripts/docs-screenshots/shot.py'` on the first line before each script, for example `{ echo "__file__ = '$PWD/scripts/docs-screenshots/shot.py'"; cat scripts/docs-screenshots/capture_si.py; } | browser-use`. Run it from the repo root.
 4. Run `tick.py` just before the dashboard captures. The live tiles only show readings from the last few minutes.
 5. Post a commit report for each service to `/api/v1/services/report` and set the `webapp` row in `service_status`, or the About dialog shows "not reporting".
 
