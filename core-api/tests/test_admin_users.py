@@ -174,7 +174,7 @@ def test_every_route_needs_a_token_and_an_admin(client, app_and_db_url):
     plain = _user(db_url, "plain@example.com")
     site = _site(db_url, plain, "Home")
     routes = _admin_routes(app)
-    assert {"GET", "PATCH", "PUT", "DELETE"} <= {method for method, _ in routes}
+    assert {"GET", "PATCH", "PUT", "DELETE", "POST"} <= {method for method, _ in routes}
 
     for method, path in routes:
         url = _fill(path, plain, site)

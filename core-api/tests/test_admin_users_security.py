@@ -168,7 +168,7 @@ def test_totp_reset_for_unknown_user_is_404(client, app_and_db_url, admin):
     assert got.json()["code"] == "not_found"
 
 
-def test_both_routes_log_one_line_without_values(client, app_and_db_url, admin, caplog):
+def test_both_routes_log_one_line_without_values(client, app_and_db_url, admin, caplog, fake_email_sender):
     _, db_url = app_and_db_url
     target = _enrolled(db_url)
     for path, action, status in (("password-reset", "password_reset", 204), ("totp/reset", "reset_totp", 200)):
@@ -180,3 +180,7 @@ def test_both_routes_log_one_line_without_values(client, app_and_db_url, admin, 
         assert len(records) == 1
         assert records[0].getMessage() == f"admin action: admin_user_id={admin} target_user_id={target} action={action}"
         assert TOTP_SECRET not in caplog.text
+        for _to, _subject, body in fake_email_sender.sent:
+            match = re.search(r"/reset-password\?token=([^\s]+)", body)
+            assert match is not None
+            assert match.group(1) not in caplog.text

@@ -321,6 +321,7 @@ def _write_calls(target: int, site: int) -> list[tuple[str, str, dict | None, st
         ("DELETE", f"{base}/sites/{site}", None, "remove_site_access"),
     ]
 
+
 def test_each_write_logs_one_line_with_ids_and_action_only(client, app_and_db_url, admin, caplog):
     _, db_url = app_and_db_url
     owner = _user(db_url, "owner@example.com")

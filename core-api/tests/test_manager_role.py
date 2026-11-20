@@ -127,6 +127,7 @@ def test_manager_can_add_a_local_rate_window(client, roles):
 
     denied = client.post(url, json={**FLAT_WINDOW, "label": "Other"}, headers=auth(roles["viewer"]))
     assert denied.status_code == 403
+    assert denied.json()["code"] == "forbidden"
 
 
 def test_manager_can_create_an_actor_instance(client, roles):
@@ -143,6 +144,7 @@ def test_manager_can_create_an_actor_instance(client, roles):
         headers=auth(roles["viewer"]),
     )
     assert denied.status_code == 403
+    assert denied.json()["code"] == "forbidden"
 
 
 def test_manager_sees_the_actor_sign_in_code_and_a_viewer_does_not(client, roles):
@@ -177,9 +179,7 @@ def test_manager_can_create_list_and_revoke_viewer_invites(client, roles):
     listed = client.get(_site_url(roles, "/invites"), headers=auth(roles["manager"]))
     assert {i["email"] for i in listed.json()} == {"from-owner@example.com", "from-manager@example.com"}
 
-    revoked = client.post(
-        _site_url(roles, f"/invites/{by_owner.json()['id']}/revoke"), headers=auth(roles["manager"])
-    )
+    revoked = client.post(_site_url(roles, f"/invites/{by_owner.json()['id']}/revoke"), headers=auth(roles["manager"]))
     assert revoked.status_code == 200, revoked.text
     assert revoked.json()["status"] == "revoked"
 
@@ -241,8 +241,12 @@ def test_migration_accepts_manager_and_rejects_other_roles(tmp_path, monkeypatch
     run_migrations(db_url)
     engine = make_engine(db_url)
     with engine.begin() as conn:
-        conn.execute(text("INSERT INTO users (email, password_hash, totp_enabled, email_confirmed, is_admin) "
-                          "VALUES ('o@example.com', 'x', 0, 1, 0), ('m@example.com', 'x', 0, 1, 0)"))
+        conn.execute(
+            text(
+                "INSERT INTO users (email, password_hash, totp_enabled, email_confirmed, is_admin) "
+                "VALUES ('o@example.com', 'x', 0, 1, 0), ('m@example.com', 'x', 0, 1, 0)"
+            )
+        )
         conn.execute(text("INSERT INTO sites (owner_user_id, name, timezone, enabled) VALUES (1, 'Home', 'UTC', 1)"))
     _grant(db_url, 1, 2, "manager")
     with pytest.raises(sa.exc.IntegrityError):
