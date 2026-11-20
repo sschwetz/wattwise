@@ -34,12 +34,13 @@ function renderAt(path: string) {
 
 const SOURCE = { id: 1, site_id: 3, kind: "energy", provider: "envoy", name: null, enabled: true, config: {} };
 
-const site = (id: number, name: string, enabled = true) => ({
+const site = (id: number, name: string, enabled = true, role: "owner" | "manager" | "viewer" = "owner") => ({
   id,
   owner_user_id: 1,
   name,
   timezone: "Australia/Sydney",
   enabled,
+  my_role: role,
 });
 
 describe("SettingsPage", () => {
@@ -162,10 +163,9 @@ describe("SettingsPage", () => {
       expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     }
 
-    function mockAs(meId: number) {
+    function mockAs(role: "owner" | "manager" | "viewer") {
       vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-        if (path === "/api/v1/users/me") return { id: meId, email: "me@example.com" } as never;
-        if (path.endsWith("/api/v1/sites")) return [site(3, "Farm")] as never;
+        if (path.endsWith("/api/v1/sites")) return [site(3, "Farm", true, role)] as never;
         return (path.includes("/sources") ? [SOURCE] : []) as never;
       });
     }
@@ -175,18 +175,25 @@ describe("SettingsPage", () => {
     }
 
     it.each(["collectors", "tariffs", "billing"])("makes the %s tab read-only for a viewer", async (tab) => {
-      mockAs(2);
+      mockAs("viewer");
       renderAt(`/settings/sites/3/${tab}`);
-      expect(await screen.findByText("Only the owner can change this site's settings.")).toBeInTheDocument();
+      expect(await screen.findByText("Only the owner or a manager can change this site's settings.")).toBeInTheDocument();
       await waitFor(() => expect(writeControls().length).toBeGreaterThan(0));
       for (const control of writeControls()) expect(control).toBeDisabled();
     });
 
     it.each(["collectors", "tariffs", "billing"])("leaves the %s tab editable for the owner", async (tab) => {
-      mockAs(1);
+      mockAs("owner");
       renderAt(`/settings/sites/3/${tab}`);
       await waitFor(() => expect(writeControls().some((control) => !control.matches(":disabled"))).toBe(true));
-      expect(screen.queryByText("Only the owner can change this site's settings.")).not.toBeInTheDocument();
+      expect(screen.queryByText("Only the owner or a manager can change this site's settings.")).not.toBeInTheDocument();
+    });
+
+    it.each(["collectors", "tariffs", "billing"])("leaves the %s tab editable for a manager", async (tab) => {
+      mockAs("manager");
+      renderAt(`/settings/sites/3/${tab}`);
+      await waitFor(() => expect(writeControls().some((control) => !control.matches(":disabled"))).toBe(true));
+      expect(screen.queryByText("Only the owner or a manager can change this site's settings.")).not.toBeInTheDocument();
     });
 
     it("renders the sources list for the site on the collectors tab", async () => {

@@ -23,7 +23,7 @@ vi.mock("../api/client", async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
-const site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true };
+const site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, my_role: "owner" };
 const caps: Capabilities = { version: 1, actions: [], readings: [] };
 
 function instance(overrides: Partial<ActorInstance> = {}): ActorInstance {
@@ -48,7 +48,8 @@ function schedule(id: number, name: string): ActorSchedule {
 interface Data {
   instances?: ActorInstance[];
   schedules?: ActorSchedule[];
-  userId?: number;
+  /** The caller's role on the site; defaults to the owner. */
+  role?: "owner" | "manager" | "viewer";
   createError?: Error;
   /** A POST waits for this before it answers. */
   createGate?: Promise<unknown>;
@@ -61,9 +62,8 @@ let current: Data = {};
 function mockApi(data: Data) {
   current = data;
   vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
-    const { instances = [], schedules = [], userId = 1, createError, createGate, schedules8 = [] } = current;
-    if (path.endsWith("/api/v1/sites")) return Promise.resolve([site, { ...site, id: 8 }]);
-    if (path.endsWith("/users/me")) return Promise.resolve({ id: userId });
+    const { instances = [], schedules = [], role = "owner", createError, createGate, schedules8 = [] } = current;
+    if (path.endsWith("/api/v1/sites")) return Promise.resolve([{ ...site, my_role: role }, { ...site, id: 8, my_role: role }]);
     if (init?.method === "POST" && createGate) return createGate.then(() => Promise.reject(createError));
     if (init?.method === "POST" && createError) return Promise.reject(createError);
     if (init?.method) return Promise.resolve(instance());
@@ -140,7 +140,7 @@ describe("SchedulePage", () => {
     await waitFor(() => expect(calls("POST")).toHaveLength(1));
     expect(calls("POST")[0][0]).toBe("/api/v1/sites/7/actors/instances/3/sign-in/reset");
     unmount();
-    mockApi({ instances: [instance({ auth_state: { needs_sign_in: true } })], userId: 2 });
+    mockApi({ instances: [instance({ auth_state: { needs_sign_in: true } })], role: "viewer" });
     renderPage();
     expect(await screen.findByText(/needs to sign in again/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/Only the owner/)).toBeInTheDocument());
@@ -172,7 +172,7 @@ describe("SchedulePage", () => {
   });
 
   it("viewer sees schedules without edit buttons", async () => {
-    mockApi({ instances: [instance()], schedules: [schedule(1, "Evening peak")], userId: 2 });
+    mockApi({ instances: [instance()], schedules: [schedule(1, "Evening peak")], role: "viewer" });
     renderPage();
     expect(await screen.findByRole("button", { name: /Evening peak/ })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/Only the owner/)).toBeInTheDocument());
@@ -251,7 +251,7 @@ describe("SchedulePage", () => {
   });
 
   it("shows a viewer the signing-in line alone while there are no schedules", async () => {
-    mockApi({ instances: [instance({ auth_state: { signing_in: true }, capabilities: null })], userId: 2 });
+    mockApi({ instances: [instance({ auth_state: { signing_in: true }, capabilities: null })], role: "viewer" });
     renderPage();
     expect(await screen.findByText("The owner is signing the air conditioner in to Actron.")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open the Actron sign-in page" })).not.toBeInTheDocument();
@@ -259,7 +259,7 @@ describe("SchedulePage", () => {
   });
 
   it("shows a viewer the signing-in line above existing schedules", async () => {
-    mockApi({ instances: [instance({ auth_state: { signing_in: true } })], schedules: [schedule(1, "Evening peak")], userId: 2 });
+    mockApi({ instances: [instance({ auth_state: { signing_in: true } })], schedules: [schedule(1, "Evening peak")], role: "viewer" });
     renderPage();
     expect(await screen.findByText("The owner is signing the air conditioner in to Actron.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Schedules" })).toBeInTheDocument();
@@ -397,11 +397,11 @@ describe("SchedulePage unsaved edits", () => {
   });
 
   it("never asks a viewer", async () => {
-    mockApi({ ...twoSchedules, userId: 2 });
+    mockApi({ ...twoSchedules, role: "viewer" });
     renderPage();
     await waitFor(() => expect(screen.getByText(/Only the owner/)).toBeInTheDocument());
     expect(leaveIsQuestioned()).toBe(false);
-    await userEvent.click(screen.getByRole("button", { name: /Morning/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Morning/ }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 

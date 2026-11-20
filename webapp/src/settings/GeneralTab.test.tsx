@@ -136,7 +136,7 @@ describe("GeneralTab", () => {
   });
 
   it("disables the fields and toggle for a viewer", async () => {
-    renderTab({ ...site, owner_user_id: 2 });
+    renderTab({ ...site, my_role: "viewer" });
     await waitFor(() => expect(screen.getByLabelText("Name")).toBeDisabled());
     expect(screen.getByLabelText("Time zone")).toBeDisabled();
     expect(screen.getByRole("switch", { name: "Enabled" })).toBeDisabled();
@@ -170,22 +170,23 @@ describe("GeneralTab", () => {
   });
 
   it("explains read-only mode to a viewer", async () => {
-    renderTab({ ...site, owner_user_id: 2 });
-    expect(await screen.findByText("Only the owner can change this site's settings.")).toBeInTheDocument();
+    renderTab({ ...site, my_role: "viewer" });
+    expect(await screen.findByText("Only the owner or a manager can change this site's settings.")).toBeInTheDocument();
   });
 
-  it("explains read-only mode when the account lookup fails", async () => {
-    vi.mocked(apiFetch).mockRejectedValue(new Error("down"));
-    renderTab();
-    expect(await screen.findByText(/account details could not be loaded/i)).toBeInTheDocument();
-    expect(screen.getByLabelText("Name")).toBeDisabled();
+  it("lets a manager edit the fields and toggle", async () => {
+    renderTab({ ...site, my_role: "manager" });
+    expect(screen.getByLabelText("Name")).toBeEnabled();
+    expect(screen.getByLabelText("Time zone")).toBeEnabled();
+    expect(screen.getByRole("switch", { name: "Enabled" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(screen.queryByText(/only the owner/i)).not.toBeInTheDocument();
   });
 
   it("shows no note for the owner", async () => {
     renderTab();
     await waitFor(() => expect(screen.getByLabelText("Name")).toBeEnabled());
     expect(screen.queryByText(/only the owner/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/could not be loaded/i)).not.toBeInTheDocument();
   });
 
   it("returns focus to the toggle on Cancel and on Escape", async () => {
@@ -282,11 +283,7 @@ describe("GeneralTab", () => {
     });
 
     it("is read-only for a viewer", async () => {
-      vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-        if (path === "/api/v1/users/me") return { id: 99, email: "v@b.c" } as never;
-        return [] as never;
-      });
-      renderTab();
+      renderTab({ ...site, my_role: "viewer" });
       await waitFor(() => expect(screen.getByLabelText("Latitude")).toBeDisabled());
       expect(screen.queryByRole("button", { name: "Use my location" })).not.toBeInTheDocument();
     });

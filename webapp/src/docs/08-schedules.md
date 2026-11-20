@@ -4,7 +4,7 @@
 
 A **schedule** tells WattWise to do something to a device at a set moment. Today the device is an Actron Neo air conditioner. The usual use is to turn it off while a [demand window](07-billing.md#demand-windows) runs, so its draw stays out of your peak-demand charge, and to turn it back on afterwards.
 
-This chapter is for the site owner. Other people with access to the site see the **Schedule** tab read-only.
+This chapter is for the site owner and managers. Viewers see the **Schedule** tab read-only.
 
 A small program called an **actor** carries out the schedules. It runs next to the collectors, signs in to your Actron account and checks the schedules every 30 seconds. See [Getting started](02-getting-started.md#how-the-pieces-fit-together).
 

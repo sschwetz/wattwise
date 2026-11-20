@@ -1,5 +1,4 @@
 import { type FormEvent, useState } from "react";
-import { useMe } from "../account/useAccount";
 import { errorMessage } from "../api/client";
 import { type Invite, type InviteStatus, useCreateInvite, useRevokeInvite, useSiteInvites } from "../sites/useInvites";
 import { inputClass } from "../components/formStyles";
@@ -109,11 +108,11 @@ function RevokeControl({ invite }: { invite: Invite }) {
   );
 }
 
-function canRevoke(status: InviteStatus, isOwner: boolean): boolean {
-  return status === "accepted" || (status === "invited" && isOwner);
+function canRevoke(status: InviteStatus, canInvite: boolean): boolean {
+  return status === "accepted" || (status === "invited" && canInvite);
 }
 
-function InviteRow({ invite, isOwner }: { invite: Invite; isOwner: boolean }) {
+function InviteRow({ invite, canInvite }: { invite: Invite; canInvite: boolean }) {
   return (
     <li className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-line p-3">
       <div className="min-w-0">
@@ -125,12 +124,12 @@ function InviteRow({ invite, isOwner }: { invite: Invite; isOwner: boolean }) {
         </p>
         <p className="break-all text-sm text-ink-muted">Invited by {invite.inviter_email}</p>
       </div>
-      {canRevoke(invite.status, isOwner) && <RevokeControl invite={invite} />}
+      {canRevoke(invite.status, canInvite) && <RevokeControl invite={invite} />}
     </li>
   );
 }
 
-function InviteList({ siteId, isOwner }: { siteId: number; isOwner: boolean }) {
+function InviteList({ siteId, canInvite }: { siteId: number; canInvite: boolean }) {
   const invites = useSiteInvites(siteId);
   if (invites.isPending) return <p className="text-sm text-ink-muted">Loading invitations...</p>;
   if (invites.isError) {
@@ -147,24 +146,20 @@ function InviteList({ siteId, isOwner }: { siteId: number; isOwner: boolean }) {
   return (
     <ul className="space-y-2">
       {invites.data.map((invite) => (
-        <InviteRow key={invite.id} invite={invite} isOwner={isOwner} />
+        <InviteRow key={invite.id} invite={invite} canInvite={canInvite} />
       ))}
     </ul>
   );
 }
 
 export function SharingTab({ site }: { site: Site }) {
-  const me = useMe();
-  const isOwner = me.isSuccess && me.data.id === site.owner_user_id;
+  const canInvite = site.my_role !== "viewer";
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-medium text-ink">Invitations</h2>
-      {me.isError && (
-        <p className="text-sm text-ink-muted">Your account details could not be loaded, so sharing is read-only.</p>
-      )}
-      {isOwner && <InviteForm siteId={site.id} />}
-      <InviteList siteId={site.id} isOwner={isOwner} />
+      {canInvite && <InviteForm siteId={site.id} />}
+      <InviteList siteId={site.id} canInvite={canInvite} />
     </div>
   );
 }

@@ -56,7 +56,7 @@ Click your name in the top right corner, then **Site settings**, to open the Set
 | **Schedule** | The [air conditioner and its schedules](08-schedules.md) |
 | **Sharing** | [Invitations](#sharing-a-site) to view the site |
 
-Only the owner can change a site's settings. Other people see the tabs read-only. The old `/sites/:id/sources`, `/sites/:id/billing` and `/sites/:id/schedule` addresses redirect to the **Collectors**, **Billing** and **Schedule** tabs.
+Only the owner or a manager can change a site's settings. Viewers see the tabs read-only. The old `/sites/:id/sources`, `/sites/:id/billing` and `/sites/:id/schedule` addresses redirect to the **Collectors**, **Billing** and **Schedule** tabs.
 
 ## Location and sun times
 

@@ -38,7 +38,6 @@ const INVITES: Invite[] = [
 ];
 
 let invites: Invite[];
-let meId: number;
 
 function renderTab(s: Site = site) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -60,10 +59,8 @@ function row(email: string) {
 describe("SharingTab", () => {
   beforeEach(() => {
     invites = INVITES;
-    meId = 1;
     vi.mocked(apiFetch).mockReset();
-    vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
-      if (path === "/api/v1/users/me") return { id: meId, email: "o@example.com" } as never;
+    vi.mocked(apiFetch).mockImplementation(async (_path: string, init?: RequestInit) => {
       if (init?.method === "POST") return invite(9, "invited") as never;
       return invites as never;
     });
@@ -157,8 +154,7 @@ describe("SharingTab", () => {
   });
 
   it("shows a revoke error near the row", async () => {
-    vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
-      if (path === "/api/v1/users/me") return { id: 1 } as never;
+    vi.mocked(apiFetch).mockImplementation(async (_path: string, init?: RequestInit) => {
       if (init?.method === "POST") throw new ApiError(409, "conflict", "Cannot revoke", null);
       return invites as never;
     });
@@ -170,8 +166,7 @@ describe("SharingTab", () => {
   });
 
   it("shows an already_invited error under the field", async () => {
-    vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
-      if (path === "/api/v1/users/me") return { id: 1 } as never;
+    vi.mocked(apiFetch).mockImplementation(async (_path: string, init?: RequestInit) => {
       if (init?.method === "POST") throw new ApiError(409, "already_invited", "That address is already invited", null);
       return invites as never;
     });
@@ -183,30 +178,32 @@ describe("SharingTab", () => {
   });
 
   it("gives a viewer no form and a revoke button on their accepted row", async () => {
-    meId = 2;
     invites = [invite(2, "accepted", { accepted_at: "2026-03-10T00:00:00Z" })];
-    renderTab();
+    renderTab({ ...site, my_role: "viewer" });
     await screen.findByText("p2@example.com");
     expect(screen.queryByLabelText("Email")).toBeNull();
     expect(screen.queryByRole("button", { name: "Send invite" })).toBeNull();
     expect(within(row("p2@example.com")).getByRole("button", { name: /revoke/i })).toBeInTheDocument();
   });
 
-  it("shows no form while the account loads or after it fails", async () => {
-    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-      if (path === "/api/v1/users/me") throw new Error("boom");
-      return invites as never;
-    });
-    renderTab();
+  it("shows the invite form and revoke on invited rows to a manager", async () => {
+    renderTab({ ...site, my_role: "manager" });
+    expect(await screen.findByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send invite" })).toBeInTheDocument();
+    await screen.findByText("p1@example.com");
+    expect(within(row("p1@example.com")).getByRole("button", { name: /revoke/i })).toBeInTheDocument();
+  });
+
+  it("hides the form and the revoke button on invited rows from a viewer", async () => {
+    renderTab({ ...site, my_role: "viewer" });
+    await screen.findByText("p1@example.com");
     expect(screen.queryByLabelText("Email")).toBeNull();
-    expect(await screen.findByText(/account details could not be loaded/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(within(row("p1@example.com")).queryByRole("button")).toBeNull();
   });
 
   it("shows an error with Retry when the list fails to load", async () => {
     let fail = true;
-    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-      if (path === "/api/v1/users/me") return { id: 1 } as never;
+    vi.mocked(apiFetch).mockImplementation(async (_path: string) => {
       if (fail) throw new Error("List down");
       return invites as never;
     });

@@ -1,17 +1,13 @@
-import { useMe } from "../account/useAccount";
 import type { Site } from "../sites/useSites";
 
 export interface SiteAccess {
-  /** True unless the signed-in user is known to own the site, so it is also true while the account loads or after it fails. */
+  /** True when the signed-in user is a viewer on the site. Owners and managers can edit. */
   readOnly: boolean;
-  /** Why the settings are read-only, or null while loading or for the owner. */
+  /** Why the settings are read-only, or null for an owner or a manager. */
   note: string | null;
 }
 
 export function useSiteAccess(site: Site): SiteAccess {
-  const me = useMe();
-  const readOnly = me.data?.id !== site.owner_user_id;
-  if (me.isError) return { readOnly, note: "Your account details could not be loaded, so settings are read-only." };
-  if (me.isSuccess && readOnly) return { readOnly, note: "Only the owner can change this site's settings." };
-  return { readOnly, note: null };
+  const readOnly = site.my_role === "viewer";
+  return { readOnly, note: readOnly ? "Only the owner or a manager can change this site's settings." : null };
 }
