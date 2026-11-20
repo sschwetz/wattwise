@@ -43,7 +43,7 @@ function DeactivateButton({ provider }: { provider: MailProvider }) {
       <ConfirmAction
         label="Deactivate"
         title={`Deactivate ${provider.label}?`}
-        body="Email goes back through the built-in mail relay."
+        body="Email goes back through the built-in mail relay. Queued email is sent through the relay now."
         confirmLabel="Deactivate"
         disabled={deactivate.isPending || saving}
         onConfirm={() => deactivate.mutate()}

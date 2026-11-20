@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from core_api.actor_runs import has_unfinished_action_run
 from core_api.config import get_settings
 from core_api.db import get_db
-from core_api.email_sender import EmailSender
+from core_api.email_sender import EmailSender, OutboxEmailSender
 from core_api.errors import AppError
 from core_api.mfa_attempts import is_locked
 from core_api.models.actors import ActorInstance
@@ -26,6 +26,12 @@ def get_db_session(request: Request) -> Iterator[Session]:
 
 def get_email_sender(request: Request) -> EmailSender:
     return request.app.state.email_sender
+
+
+def get_relay_sender(request: Request) -> EmailSender:
+    """The built-in relay sender, bypassing the outbox."""
+    sender = request.app.state.email_sender
+    return sender.fallback if isinstance(sender, OutboxEmailSender) else sender
 
 
 _bearer_scheme = HTTPBearer(auto_error=False)

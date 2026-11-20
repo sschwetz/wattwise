@@ -24,7 +24,7 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `local_rates.py`, `local_reprice.py` | Validation of rate windows and creation of reprice markers. |
 | `pricing_gaps.py`, `readings_query.py`, `time_utils.py`, `timing.py` | Gap detection, raw-or-rollup reading queries, UTC and time zone helpers. |
 | `email_sender.py` | `SmtpEmailSender` for production, `FakeEmailSender` for tests, and `OutboxEmailSender`, which wraps the SMTP sender and queues mail in the outbox while a mail provider is active. See [Mail](mail.md). |
-| `outbox.py` | The `email_outbox` rules: enqueue, claim, finish and purge. Nothing in it commits. |
+| `outbox.py` | The `email_outbox` rules: enqueue, claim, finish, purge, and `relay_queued`, which sends queued rows through the relay on deactivation. Only `relay_queued` commits. |
 | `admin_mail.py`, `admin_mail_schemas.py`, `routers/admin_mail.py`, `routers/actor_mail.py` | The administrator's mail settings (providers, activation, test email, outbox summary) and the routes the mail actor calls. See [Mail](mail.md#admin-routes) and [Actor routes](mail.md#actor-routes). |
 | `live.py` | `LiveHub`: the in-memory latest live sample per source and the per-site subscriber queues. Never touches the database. |
 | `scheduler.py` | Builds the APScheduler instance. |
@@ -277,7 +277,7 @@ Validation failures use code `validation_error` and HTTP 422. The `detail` list 
 | `retention_rollup` | Daily 00:20 | Moves readings older than 365 days into 5-minute rollups and deletes the raw rows | Upsert into rollups, delete after. Cutoff is floored to a bucket boundary. |
 | `actor_watchdog` | Every minute | Finds action runs that hold a unit off past the restore time plus the give-up allowance, or whose actor has been silent for 5 minutes, and finds failed or partial runs that no later run has cleared. It emails the site owner once per run if the schedule has email on | A conditional update sets `watchdog_notified_at` first, and only the job run that wins the update sends |
 | `service_status` | Every 60 seconds, and once at startup | Writes the `core-api` row, then fetches `<WEBAPP_VERSION_URL>/version` (5 second timeout) and writes the `webapp` row | Upsert on the service name. A failed fetch leaves the webapp row unchanged. |
-| `mail_outbox_cleanup` | Daily 00:30 | Deletes `sent` and `failed` outbox rows that finished more than 30 days ago | Deleting the same rows twice changes nothing |
+| `mail_outbox_cleanup` | Daily 00:30 | Deletes old outbox rows; the ages are under Retention in [Mail](mail.md#delivery) | Deleting the same rows twice changes nothing |
 | `expire_admin_password_file` | Daily 03:17, and once at startup | Deletes `initial-admin-password.txt` if it is 5 days old or older | Does nothing when the file is missing. Not a database job: it takes the file path, not a session. |
 
 Times use the container's clock (UTC in the image).

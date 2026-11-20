@@ -25,7 +25,7 @@ flowchart LR
 
 Two rules follow from the design:
 
-- **Queued mail waits for the actor.** It never diverts to the relay. With the actor stopped, mail piles up as `pending` and goes out when the actor returns.
+- **Queued mail waits for the actor while a provider is active.** With the actor stopped, mail piles up as `pending` and goes out when the actor returns. Queued mail goes to the relay only when an administrator deactivates the last active provider (see [Deactivate](#deactivate)).
 - **A failed queue write loses that email.** The log message has fixed text, followed by the exception traceback. A database error's traceback can include the statement's parameters, such as the address and subject. The request carries on, as an SMTP failure did before. The schedule-failure email raises its `notify_email` alert (see [Alerts](collectors.md#alerts)) in that case.
 
 ## Tables
@@ -49,7 +49,7 @@ Constants are in [`outbox.py`](../core-api/core_api/outbox.py).
 | Body | `sent` and the final `failed` set `body` to an empty string. |
 | Unreadable body | A body that cannot be decrypted ends that row `failed` with "undecryptable body". The rest of the claim is unaffected. |
 | Error text | `last_error` keeps the first 500 characters of what the actor reported. |
-| Retention | The daily job `mail_outbox_cleanup` (00:30) deletes `sent` and `failed` rows whose `finished_at` is more than 30 days old. See [Background jobs](core-api.md#background-jobs). |
+| Retention | The daily job `mail_outbox_cleanup` (00:30) deletes `sent` and `failed` rows whose `finished_at` is more than 30 days old, and `pending` and `sending` rows whose `created_at` is more than 7 days old. The second rule covers an active provider that the actor does not implement, whose mail no one claims. See [Background jobs](core-api.md#background-jobs). |
 
 Delivery is at-least-once. The actor tries the `sent` report three times. If all three fail, Core API still sees the row as `sending` and the message goes out again after the claim expires. A person can then receive the same email twice.
 
@@ -73,11 +73,23 @@ Every route under `/admin/mail` needs an administrator (403 `admin_required` oth
 | `GET /admin/mail/providers` | Lists the declared providers. Each has `provider`, `label`, `available`, `is_active` and `fields`. A field has `name`, `label`, `secret`, `required`, `value` and `is_set`. `value` is null for a secret field, so a stored secret never leaves the server. `available` is true when the provider was in the actor's latest declaration. |
 | `PUT /admin/mail/providers/{provider}` | Body `{"settings": {name: text}}`, each value at most 500 characters. A blank secret keeps the stored one. A blank plain value removes it. 422 `unknown_field` for a name the provider did not declare, 422 `field_required` when a required field would be empty, 404 `not_found` for an unknown provider. Returns the provider. |
 | `POST /admin/mail/providers/{provider}/activate` | Makes the provider the active one and turns off the other. 409 `provider_unavailable` when it was not in the actor's latest declaration. 409 `settings_incomplete` when a required setting is missing. Activating the active provider changes nothing. |
-| `POST /admin/mail/providers/{provider}/deactivate` | Turns the provider off, so email returns to the relay. |
+| `POST /admin/mail/providers/{provider}/deactivate` | Turns the provider off, so new email goes through the relay. Returns the provider. When no provider is left active, queued mail goes to the relay too; see [Deactivate](#deactivate). |
 | `POST /admin/mail/test` | Queues a test email to the administrator's own address. 202 `{"queued": true}`. 409 `no_active_provider` when none is active. 429 `too_many_tests` after 5 test emails to that address in 10 minutes. |
 | `GET /admin/mail/outbox/summary` | `pending` (pending and sending), `sent_24h`, `failed_24h` and `last_error`. `last_error` is the error of the newest message that has one, or null. |
 
 A 202 from `/test` means the message is queued. It does not show delivery.
+
+### Deactivate
+
+When a deactivation leaves no provider active, Core API commits it and then sends the oldest 200 `pending` and `sending` rows through the relay, one at a time, before it answers (`relay_queued` in [`outbox.py`](../core-api/core_api/outbox.py)). Each row ends at once, with its body cleared:
+
+| Result | Row |
+|---|---|
+| The relay accepts it | `sent` |
+| The relay send raises | `failed`, `last_error` "relay send failed". The log line names only the row id. |
+| The body cannot be decrypted | `failed`, `last_error` "undecryptable body" |
+
+Rows past the first 200 stay queued, and the cleanup job deletes them after 7 days (see Retention under [Delivery](#delivery)). A `sending` row may be mid-send in the actor, so its recipient can get the email twice. The actor's later report on such a row gets 409 `not_sending`.
 
 ## The mail actor
 
@@ -89,7 +101,7 @@ A 202 from `/test` means the message is queued. It does not show delivery.
 | Poll | Every 5 seconds it claims up to 10 messages and sends each one in turn. |
 | Active provider | Cached for 30 seconds. A 401 or 403 from the provider drops the cache and the next message refetches the settings. If they are unchanged, the rest of that batch fails without a send. |
 | No usable provider | When the provider went away mid-batch, or the settings fetch fails, the message is reported `failed` with "no usable mail provider", so Core API puts it back to `pending` with the normal retry delay (30, 60, 120 or 240 seconds, by attempt). The report counts as an attempt. |
-| Active provider it does not implement | Logs one warning a minute and claims nothing. Queued mail waits. |
+| Active provider it does not implement | Logs one warning a minute and claims nothing. Queued mail waits until an administrator deactivates the provider (see [Deactivate](#deactivate)) or the cleanup job deletes it after 7 days. |
 | Send fails | Reported `failed` once. Core API schedules the retry. |
 | Stop | Handles SIGTERM and SIGINT, and stops between messages. Messages it had claimed but not started are reclaimed when their claim expires. |
 | Commit report | Posts its commit to `/services/report` as `mail-actor`, like the other services. See [Service status](core-api.md#service-status). |

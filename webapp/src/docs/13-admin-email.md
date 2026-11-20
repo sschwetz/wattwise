@@ -39,7 +39,7 @@ The form lists whatever settings the chosen provider asks for, so another provid
 - Only one provider is active. When another is active, WattWise asks you to confirm, because activating turns the other one off.
 - **Activate** fails with *Save every required setting before activating* when a required field is empty.
 - **Activate** is greyed out, with a note, when the `mail-actor` container no longer lists the provider. The provider list also marks it **(not available)**.
-- **Deactivate** asks for confirmation. Afterwards email goes back through the built-in mail relay.
+- **Deactivate** asks for confirmation. Afterwards email goes back through the built-in mail relay. When no provider is left active, WattWise also sends the email still in the queue through the relay straight away, up to 200 messages. A message the relay refuses is marked failed.
 
 While a provider is active, email waits in a queue until the mail actor sends it. If the actor stops, email waits and nothing falls back to the relay. When the actor starts again, the queued email goes out.
 
@@ -60,14 +60,14 @@ Wait a few seconds, then check your inbox and spam folder. You can send 5 test e
 
 The numbers refresh every 30 seconds. **Sent** means the provider accepted the message. It does not show that the recipient received it.
 
-When a send fails, WattWise tries again after 30, 60, 120 and 240 seconds. After the fifth failure the message is marked failed and is not tried again. WattWise keeps finished messages for 30 days, without their text.
+When a send fails, WattWise tries again after 30, 60, 120 and 240 seconds. After the fifth failure the message is marked failed and is not tried again. WattWise keeps finished messages for 30 days, without their text, and deletes unsent ones after 7 days.
 
 ## When email does not arrive
 
 | Symptom | What to check |
 |---------|---------------|
 | The tab says *No email provider has been declared yet* | The `mail-actor` container is not running. Ask whoever runs the server to start it. |
-| **Pending** grows and nothing is **Sent** | The `mail-actor` container has stopped, or the active provider is one it does not know. Ask whoever runs the server to read its log. |
+| **Pending** grows and nothing is **Sent** | The `mail-actor` container has stopped, or the active provider is one it does not know. Ask whoever runs the server to read its log. To send the queue through the built-in relay meanwhile, **Deactivate** the provider. |
 | **Failed** grows and **Last error** ends in `HTTP 401` or `HTTP 403` | The provider refused the API key. Click **Change**, enter a current key and **Save**. The actor picks up the new key within about 30 seconds. |
 | **Last error** says `not accepted` | The provider answered but did not accept the message. Check the sender and the account in smtp2go. |
 | **Last error** says `settings incomplete` | A required field is empty. Fill it in and **Save**. |

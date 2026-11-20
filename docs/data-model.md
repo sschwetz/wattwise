@@ -271,7 +271,7 @@ Migration `f1a3c5e7b9d2` adds both tables. How they are used is in [Mail](mail.m
 | `last_error` | text, nullable | The actor's error text, at most 500 characters. Cleared when the message is sent. |
 | `created_at`, `claimed_at`, `next_attempt_at`, `finished_at` | timestamp with time zone | `next_attempt_at` is when a `pending` row becomes due. `finished_at` is set on `sent` and `failed`. |
 
-An index on (`status`, `next_attempt_at`) serves the claim query. The daily job `mail_outbox_cleanup` deletes finished rows after 30 days.
+An index on (`status`, `next_attempt_at`) serves the claim query. The daily job `mail_outbox_cleanup` deletes old rows (see Retention in [Mail](mail.md#delivery)).
 
 ## Alerts
 

@@ -208,6 +208,11 @@ describe("EmailTab", () => {
     expect(calls("POST")).toHaveLength(0);
     await userEvent.click(screen.getByRole("button", { name: "Deactivate" }));
     const dialog = screen.getByRole("alertdialog");
+    expect(
+      within(dialog).getByText(
+        "Email goes back through the built-in mail relay. Queued email is sent through the relay now.",
+      ),
+    ).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Deactivate" }));
     expect(calls("POST").map(([path]) => path)).toEqual(["/api/v1/admin/mail/providers/smtp2go/deactivate"]);
   });

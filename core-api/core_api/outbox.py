@@ -6,7 +6,8 @@ None of these functions commit; the caller owns the transaction.
 from __future__ import annotations
 
 import datetime
-from typing import Literal
+import logging
+from typing import TYPE_CHECKING, Literal
 
 from cryptography.fernet import InvalidToken
 from sqlalchemy import ColumnElement, and_, delete, or_, select, update
@@ -16,6 +17,11 @@ from core_api.db import rows_affected
 from core_api.errors import AppError
 from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
 
+if TYPE_CHECKING:
+    from core_api.email_sender import EmailSender
+
+logger = logging.getLogger(__name__)
+
 # A sending row whose claim is older than this is claimable again: the actor
 # that took it is assumed dead.
 CLAIM_TIMEOUT = datetime.timedelta(minutes=2)
@@ -23,6 +29,11 @@ MAX_ATTEMPTS = 5
 RETRY_BASE = datetime.timedelta(seconds=30)
 ERROR_LIMIT = 500
 RETENTION = datetime.timedelta(days=30)
+# Unfinished rows older than this are deleted: no actor is sending them.
+UNFINISHED_RETENTION = datetime.timedelta(days=7)
+RELAY_LIMIT = 200
+UNFINISHED = (OutboxStatus.PENDING, OutboxStatus.SENDING)
+FINISHED = (OutboxStatus.SENT, OutboxStatus.FAILED)
 
 
 def has_active_provider(db: Session) -> bool:
@@ -160,13 +171,62 @@ def finish_outbox(
     db.expire(row)
 
 
+def _end_unfinished(db: Session, row_id: int, values: dict[str, object]) -> None:
+    db.execute(
+        update(EmailOutbox)
+        .where(EmailOutbox.id == row_id, EmailOutbox.status.in_(UNFINISHED))
+        .values(body="", **values)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def _relay_one(db: Session, row: EmailOutbox, sender: EmailSender, now: datetime.datetime) -> None:
+    """Send one queued row through `sender` and end it. Logs only the row id:
+    a relay error text can hold the address."""
+    try:
+        body = row.body
+    except InvalidToken:
+        _end_unfinished(
+            db, row.id, {"status": OutboxStatus.FAILED, "finished_at": now, "last_error": "undecryptable body"}
+        )
+        return
+    try:
+        sender.send(to=row.to_address, subject=row.subject, body=body)
+    except Exception:
+        logger.warning("Relay send failed for outbox message %s", row.id)
+        _end_unfinished(
+            db, row.id, {"status": OutboxStatus.FAILED, "finished_at": now, "last_error": "relay send failed"}
+        )
+        return
+    _end_unfinished(db, row.id, {"status": OutboxStatus.SENT, "finished_at": now, "last_error": None})
+
+
+def relay_queued(db: Session, sender: EmailSender, now: datetime.datetime) -> None:
+    """Send the oldest RELAY_LIMIT pending and sending rows through `sender`,
+    for when no provider is left to send them. Unlike the rest of this module
+    it commits, once per row, so a row sent before a crash is not sent again."""
+    query = (
+        select(EmailOutbox)
+        .options(defer(EmailOutbox.body))
+        .where(EmailOutbox.status.in_(UNFINISHED))
+        .order_by(EmailOutbox.id)
+        .limit(RELAY_LIMIT)
+    )
+    for row in db.scalars(query).all():
+        _relay_one(db, row, sender, now)
+        db.commit()
+
+
 def purge_outbox(db: Session, now: datetime.datetime) -> int:
-    """Delete sent and failed rows that finished more than 30 days ago."""
+    """Delete sent and failed rows that finished more than 30 days ago, and
+    unfinished rows created more than 7 days ago (no actor is sending them)."""
     result = db.execute(
         delete(EmailOutbox)
         .where(
-            EmailOutbox.status.in_((OutboxStatus.SENT, OutboxStatus.FAILED)),
-            EmailOutbox.finished_at < now - RETENTION,
+            or_(
+                and_(EmailOutbox.status.in_(FINISHED), EmailOutbox.finished_at < now - RETENTION),
+                and_(EmailOutbox.status.in_(UNFINISHED), EmailOutbox.created_at < now - UNFINISHED_RETENTION),
+            )
         )
         .execution_options(synchronize_session=False)
     )

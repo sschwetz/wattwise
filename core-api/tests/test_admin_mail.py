@@ -333,3 +333,95 @@ def test_every_route_needs_a_token_and_an_admin(client, app_and_db_url, session)
         got = client.request(method, url, headers=auth(plain.id))
         assert got.status_code == 403, (method, path)
         assert got.json()["code"] == "admin_required"
+
+
+def _queue(session, status: OutboxStatus = OutboxStatus.PENDING, to: str = "a@example.com") -> int:
+    row = EmailOutbox(to_address=to, subject="Reset", body=f"link for {to}", status=status)
+    session.add(row)
+    session.commit()
+    return row.id
+
+
+def _deactivate(client, admin, provider="alpha"):
+    return client.post(f"{MAIL_URL}/providers/{provider}/deactivate", headers=auth(admin))
+
+
+def _reloaded(session, row_id: int) -> EmailOutbox:
+    session.expire_all()
+    return session.get(EmailOutbox, row_id)
+
+
+def test_deactivate_sends_queued_mail_through_the_relay(client, admin, session, fake_email_sender):
+    _activate_alpha(client, admin)
+    first = _queue(session, OutboxStatus.PENDING, "a@example.com")
+    second = _queue(session, OutboxStatus.SENDING, "b@example.com")
+    got = _deactivate(client, admin)
+    assert got.status_code == 200
+    assert got.json()["provider"] == "alpha" and got.json()["is_active"] is False
+    assert sorted(fake_email_sender.sent) == [
+        ("a@example.com", "Reset", "link for a@example.com"),
+        ("b@example.com", "Reset", "link for b@example.com"),
+    ]
+    for row_id in (first, second):
+        row = _reloaded(session, row_id)
+        assert row.status is OutboxStatus.SENT
+        assert row.finished_at is not None and row.body == ""
+
+
+def test_a_relay_failure_on_deactivate_marks_the_row_failed(client, admin, session, fake_email_sender, monkeypatch):
+    _activate_alpha(client, admin)
+    row_id = _queue(session)
+
+    def refuse(to: str, subject: str, body: str) -> None:
+        raise OSError("relay down")
+
+    monkeypatch.setattr(fake_email_sender, "send", refuse)
+    assert _deactivate(client, admin).status_code == 200
+    row = _reloaded(session, row_id)
+    assert row.status is OutboxStatus.FAILED
+    assert row.last_error == "relay send failed"
+    assert row.body == "" and row.finished_at is not None
+
+
+def test_an_undecryptable_body_fails_only_its_row_on_deactivate(client, admin, session, fake_email_sender):
+    _activate_alpha(client, admin)
+    bad = _queue(session, to="bad@example.com")
+    good = _queue(session, to="good@example.com")
+    session.execute(sa.text("UPDATE email_outbox SET body = 'not-a-fernet-token' WHERE id = :id"), {"id": bad})
+    session.commit()
+    assert _deactivate(client, admin).status_code == 200
+    assert [to for to, _, _ in fake_email_sender.sent] == ["good@example.com"]
+    row = _reloaded(session, bad)
+    assert (row.status, row.last_error, row.body) == (OutboxStatus.FAILED, "undecryptable body", "")
+    assert _reloaded(session, good).status is OutboxStatus.SENT
+
+
+def test_deactivate_never_logs_queued_addresses_or_bodies(client, admin, session, fake_email_sender, caplog):
+    _activate_alpha(client, admin)
+    _queue(session, to="private@example.com")
+    caplog.set_level(logging.DEBUG)
+    fake_email_sender.send = lambda to, subject, body: (_ for _ in ()).throw(OSError(f"refused {to}"))
+    assert _deactivate(client, admin).status_code == 200
+    assert "private@example.com" not in caplog.text
+
+
+def test_deactivate_relays_at_most_the_limit_oldest_first(client, admin, session, fake_email_sender, monkeypatch):
+    monkeypatch.setattr("core_api.outbox.RELAY_LIMIT", 1)
+    _activate_alpha(client, admin)
+    first = _queue(session, to="first@example.com")
+    second = _queue(session, to="second@example.com")
+    assert _deactivate(client, admin).status_code == 200
+    assert [to for to, _, _ in fake_email_sender.sent] == ["first@example.com"]
+    assert _reloaded(session, first).status is OutboxStatus.SENT
+    assert _reloaded(session, second).status is OutboxStatus.PENDING
+
+
+def test_deactivating_while_another_provider_stays_active_keeps_the_queue(client, admin, session, fake_email_sender):
+    _declare(client, "alpha", "beta")
+    _save(client, admin, "alpha")
+    _save(client, admin, "beta")
+    assert client.post(f"{MAIL_URL}/providers/beta/activate", headers=auth(admin)).status_code == 200
+    row_id = _queue(session)
+    assert _deactivate(client, admin, "alpha").status_code == 200
+    assert fake_email_sender.sent == []
+    assert _reloaded(session, row_id).status is OutboxStatus.PENDING

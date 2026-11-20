@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import datetime
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from core_api import admin_mail, admin_users
 from core_api.admin_mail_schemas import OutboxSummaryOut, ProviderOut, ProviderSettingsIn, TestQueuedOut
-from core_api.deps import get_db_session, require_admin
+from core_api.deps import get_db_session, get_relay_sender, require_admin
+from core_api.email_sender import EmailSender
 from core_api.models.identity import User
 from core_api.models.mail import MailProvider
+from core_api.outbox import has_active_provider, relay_queued
 
 router = APIRouter(prefix="/admin/mail", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -53,10 +57,16 @@ def deactivate_provider(
     provider: str,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db_session),
+    relay_sender: EmailSender = Depends(get_relay_sender),
 ) -> ProviderOut:
+    """With no provider left active, queued mail goes out through the relay
+    now, after the deactivation is committed."""
     row = admin_mail.get_provider_or_404(db, provider)
     admin_mail.deactivate(row)
-    return _commit_and_report(db, admin, row, "deactivate_mail_provider")
+    out = _commit_and_report(db, admin, row, "deactivate_mail_provider")
+    if not has_active_provider(db):
+        relay_queued(db, relay_sender, datetime.datetime.now(datetime.UTC))
+    return out
 
 
 @router.post("/test", response_model=TestQueuedOut, status_code=status.HTTP_202_ACCEPTED)

@@ -230,16 +230,29 @@ def test_finishing_an_unknown_row_is_404(db):
     assert (info.value.status_code, info.value.code) == (404, "not_found")
 
 
-def test_purge_removes_only_finished_rows_older_than_30_days(db):
+def test_purge_removes_finished_rows_that_finished_more_than_30_days_ago(db):
     old = NOW - datetime.timedelta(days=31)
     recent = NOW - datetime.timedelta(days=29)
-    _row(db, status=OutboxStatus.SENT, body="", finished_at=old)
-    _row(db, status=OutboxStatus.FAILED, body="", finished_at=old)
+    _row(db, status=OutboxStatus.SENT, body="", created_at=old, finished_at=old)
+    _row(db, status=OutboxStatus.FAILED, body="", created_at=old, finished_at=old)
     keep = {
-        _row(db, status=OutboxStatus.SENT, body="", finished_at=recent),
-        _row(db, status=OutboxStatus.FAILED, body="", finished_at=recent),
-        _row(db, created_at=old, next_attempt_at=old),
-        _row(db, status=OutboxStatus.SENDING, created_at=old, claimed_at=old),
+        _row(db, status=OutboxStatus.SENT, body="", created_at=old, finished_at=recent),
+        _row(db, status=OutboxStatus.FAILED, body="", created_at=old, finished_at=recent),
+    }
+
+    assert outbox.purge_outbox(db, NOW) == 2
+    db.commit()
+    assert {r.id for r in db.query(EmailOutbox)} == keep
+
+
+def test_purge_removes_unfinished_rows_created_more_than_7_days_ago(db):
+    eight_days = NOW - datetime.timedelta(days=8)
+    six_days = NOW - datetime.timedelta(days=6)
+    _row(db, created_at=eight_days, next_attempt_at=eight_days)
+    _row(db, status=OutboxStatus.SENDING, created_at=eight_days, claimed_at=eight_days)
+    keep = {
+        _row(db, created_at=six_days, next_attempt_at=six_days),
+        _row(db, status=OutboxStatus.SENDING, created_at=six_days, claimed_at=six_days),
     }
 
     assert outbox.purge_outbox(db, NOW) == 2
