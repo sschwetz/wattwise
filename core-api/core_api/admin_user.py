@@ -38,7 +38,7 @@ def ensure_admin_user(session_factory: sessionmaker[Session], settings: Settings
         if user_count > 0:
             return
         password = secrets.token_urlsafe(16)
-        db.add(User(email=settings.admin_email, password_hash=hash_password(password)))
+        db.add(User(email=settings.admin_email, password_hash=hash_password(password), is_admin=True))
         db.commit()
 
         # The ONLY record of the plaintext password -- only the bcrypt hash is

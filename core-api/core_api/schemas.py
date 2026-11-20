@@ -129,6 +129,7 @@ class UserMeOut(BaseModel):
     # Never the stored content-type -- the UI only ever needs true/false to decide
     # whether to fetch the image at all.
     has_avatar: bool
+    is_admin: bool
 
 
 class UpdateAmberApiKeyIn(BaseModel):

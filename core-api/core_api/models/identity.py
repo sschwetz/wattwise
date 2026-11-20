@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import enum
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, String, func, true
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, String, false, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core_api.encrypted_types import EncryptedString
@@ -50,6 +50,7 @@ class User(Base):
     # unaffected -- only /auth/register explicitly passes False, since it's
     # the only path where "prove you own this email" actually matters.
     email_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

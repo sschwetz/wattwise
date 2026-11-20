@@ -56,6 +56,7 @@ def _to_user_me_out(user: User) -> UserMeOut:
         display_name=user.display_name,
         has_amber_api_key=user.amber_api_key is not None,
         has_avatar=user.avatar_content_type is not None,
+        is_admin=user.is_admin,
     )
 
 
