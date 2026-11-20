@@ -51,3 +51,8 @@ services:
     image: ghcr.io/sschwetz/wattwise-actron-neo-actor:${WATTWISE_VERSION:-latest}
     build: !reset null
     restart: unless-stopped
+
+  mail-actor:
+    image: ghcr.io/sschwetz/wattwise-mail-actor:${WATTWISE_VERSION:-latest}
+    build: !reset null
+    restart: unless-stopped

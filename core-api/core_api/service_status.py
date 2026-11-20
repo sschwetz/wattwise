@@ -21,6 +21,7 @@ SERVICES: tuple[str, ...] = (
     "amber-pricing-collector",
     "local-pricing-collector",
     "actron-neo-actor",
+    "mail-actor",
 )
 REPORT_INTERVAL_SECONDS = 60
 # A service counts as reporting while its last report is at most three intervals old.
@@ -41,7 +42,7 @@ def _key_services() -> list[tuple[str, frozenset[str]]]:
         (settings.envoy_collector_key, frozenset({"envoy-collector"})),
         (settings.weather_collector_key, frozenset({"weatherlink-local-collector"})),
         (settings.pricing_collector_key, frozenset({"amber-pricing-collector", "local-pricing-collector"})),
-        (settings.actor_key, frozenset({"actron-neo-actor"})),
+        (settings.actor_key, frozenset({"actron-neo-actor", "mail-actor"})),
     ]
 
 

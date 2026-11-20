@@ -29,6 +29,7 @@ PYTHON_SERVICES = [
     "amber-pricing-collector",
     "local-pricing-collector",
     "actron-neo-actor",
+    "mail-actor",
 ]
 OUTPUT = ROOT / "webapp" / "public" / "licences.json"
 PYPI_URL = "https://pypi.org/pypi/{name}/{version}/json"

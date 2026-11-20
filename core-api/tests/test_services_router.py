@@ -39,6 +39,12 @@ def test_report_accepts_actor_key(client):
     assert r.status_code == 204
 
 
+def test_report_accepts_actor_key_for_mail_actor(client, db):
+    r = client.post(REPORT, json=_body("mail-actor"), headers={"X-Actor-Key": "test-actor-key"})
+    assert r.status_code == 204
+    assert db.get(ServiceStatus, "mail-actor") is not None
+
+
 def test_report_other_service_forbidden(client):
     r = client.post(REPORT, json=_body("actron-neo-actor"), headers={"X-Collector-Key": ENVOY_COLLECTOR_KEY})
     assert r.status_code == 403
@@ -67,10 +73,10 @@ def test_list_requires_user(client):
     assert client.get("/api/v1/services").status_code == 401
 
 
-def test_list_returns_seven_rows(client, user):
+def test_list_returns_eight_rows(client, user):
     token = create_access_token(user.id)
     r = client.get("/api/v1/services", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     rows = r.json()
-    assert len(rows) == 7
+    assert len(rows) == 8
     assert set(rows[0]) == {"service", "commit", "last_reported_at", "reporting"}

@@ -21,6 +21,7 @@ jobs:
           - amber-pricing-collector
           - local-pricing-collector
           - actron-neo-actor
+          - mail-actor
     defaults:
       run:
         working-directory: ${{ matrix.package }}

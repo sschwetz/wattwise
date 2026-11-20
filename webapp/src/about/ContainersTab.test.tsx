@@ -14,6 +14,7 @@ const NAMES = [
   "amber-pricing-collector",
   "local-pricing-collector",
   "actron-neo-actor",
+  "mail-actor",
 ];
 
 function services(overrides: Partial<ServiceStatus> = {}, name = "core-api"): ServiceStatus[] {

@@ -24,7 +24,7 @@ NOW = datetime.datetime(2026, 11, 9, 12, 0, tzinfo=datetime.UTC)
         (ENVOY_COLLECTOR_KEY, {"envoy-collector"}),
         (WEATHER_COLLECTOR_KEY, {"weatherlink-local-collector"}),
         (PRICING_COLLECTOR_KEY, {"amber-pricing-collector", "local-pricing-collector"}),
-        (ACTOR_KEY, {"actron-neo-actor"}),
+        (ACTOR_KEY, {"actron-neo-actor", "mail-actor"}),
         ("wrong-key", set()),
         ("kéy-ünicode", set()),
     ],
@@ -34,7 +34,7 @@ def test_allowed_services_for_key(key, expected):
 
 
 def test_constants():
-    assert len(SERVICES) == 7
+    assert len(SERVICES) == 8
     assert REPORT_INTERVAL_SECONDS == 60
     assert COMMIT_PATTERN.match("abc1234")
     assert COMMIT_PATTERN.match("unknown")

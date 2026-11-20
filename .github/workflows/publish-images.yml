@@ -24,6 +24,7 @@ jobs:
           - amber-pricing-collector
           - local-pricing-collector
           - actron-neo-actor
+          - mail-actor
     steps:
       - uses: actions/checkout@v4
 
