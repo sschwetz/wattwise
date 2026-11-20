@@ -110,8 +110,8 @@ flowchart LR
 
 | Caller | Credential | Sees | Cannot |
 |---|---|---|---|
-| Site owner | JWT after password and TOTP | Everything on their sites, including device credentials | Touch other users' sites |
-| Manager (a `manager` grant on the site) | JWT | Everything the owner sees on that site | Add, change or remove a manager. Change who owns the site. |
+| Site owner | JWT after password and TOTP | Everything on their sites, including device credentials, and everyone with access to them. Removes anyone's access to their sites. | Touch other users' sites |
+| Manager (a `manager` grant on the site) | JWT | Everything the owner sees on that site, including the list of people with access | Add, change or remove a manager. Remove anyone's access through `/sites/{id}/access` (owner only). Change who owns the site. |
 | Administrator (`users.is_admin`) | JWT | Every user's profile, site membership and security state through `/admin/users`. Not site readings or device credentials. | Set a password. See [Admin endpoints](core-api.md#admin-endpoints) for what an admin can still do to an account. |
 | Viewer (accepted an owner's or manager's emailed invitation) | JWT | Site data, with device credentials and the Actron sign-in code and link hidden | Change anything |
 | Collector | One shared key per kind (`energy`, `weather`, `pricing`) | Sources of its own kind; pushes readings or prices | Read user data. Push readings to a source of another kind. |

@@ -54,7 +54,7 @@ Click your name in the top right corner, then **Site settings**, to open the Set
 | **Tariffs** | The [tariff](07-billing.md#tariffs) cards |
 | **Billing** | The [billing cycle](07-billing.md#billing-cycles) and [demand charges](07-billing.md#demand-charges) |
 | **Schedule** | The [air conditioner and its schedules](08-schedules.md) |
-| **Sharing** | [Invitations](#sharing-a-site) to view the site |
+| **Sharing** | [Who has access, and invitations](#sharing-a-site) to view the site |
 
 Only the owner or a manager can change a site's settings. Viewers see the tabs read-only. The old `/sites/:id/sources`, `/sites/:id/billing` and `/sites/:id/schedule` addresses redirect to the **Collectors**, **Billing** and **Schedule** tabs.
 
@@ -93,11 +93,19 @@ Open the **Sharing** tab to give someone read-only access. The site's owner and 
 
 | Role on a site | What they can do |
 |----------------|------------------|
-| **Owner** | Everything on the site. Owns the site and cannot be removed from it. |
-| **Manager** | The same as the owner for the site's collectors, tariffs, billing, schedule, settings and invitations. A manager cannot remove another manager. Only an administrator gives someone the manager role, in [Admin Settings](12-admin-users.md#site-access). |
-| **Viewer** | Sees the site, read-only. Sees only their own invitation on the **Sharing** tab. |
+| **Owner** | Everything on the site, including removing anyone's access. Owns the site and cannot be removed from it. |
+| **Manager** | The same as the owner for the site's collectors, tariffs, billing, schedule, settings and invitations. Sees **People with access** but cannot remove anyone from it. A manager cannot remove another manager. Only an administrator gives someone the manager role, in [Admin Settings](12-admin-users.md#site-access). |
+| **Viewer** | Sees the site, read-only. Sees only their own invitation on the **Sharing** tab, and not **People with access**. |
 
 ![The Sharing tab with the invitation form and no invitations yet](images/settings-sharing.png)
+
+### People with access
+
+The owner and managers see **People with access** at the top of the tab: everyone who can open the site, each with an **Owner**, **Manager** or **Viewer** badge. It includes people an administrator gave access to, who have no invitation in the list below.
+
+The owner sees **Remove** on every row except their own. WattWise asks first (*<email> will lose access to this site.*). Removing someone ends their access at once and marks their accepted invitation **Revoked**. Managers see the list without **Remove**.
+
+### Invitations
 
 1. Type their email address under **Email** and click **Send invite**. WattWise emails them. The message and the result are the same whether or not the address already has an account.
 2. The invite shows **Invited** until they answer.

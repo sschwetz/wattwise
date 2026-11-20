@@ -527,11 +527,11 @@ def test_no_endpoint_deletes_an_invite(client, app_and_db_url):
     assert load_invite(db_url, created["id"]) is not None
 
 
-def test_old_access_routes_are_gone(client, app_and_db_url):
+def test_the_old_direct_grant_route_is_gone(client, app_and_db_url):
+    """Access is granted by invitation only. GET and DELETE on /access list
+    and remove people (tests/test_site_access.py); nothing creates a grant."""
     _, db_url = app_and_db_url
     owner_id = make_user(db_url, "owner@example.com")
     site_id = make_site(client, owner_id)
     headers = auth(owner_id)
     assert client.post(f"/api/v1/sites/{site_id}/access", json={"user_id": owner_id}, headers=headers).status_code in (404, 405)
-    assert client.get(f"/api/v1/sites/{site_id}/access", headers=headers).status_code in (404, 405)
-    assert client.delete(f"/api/v1/sites/{site_id}/access/{owner_id}", headers=headers).status_code in (404, 405)

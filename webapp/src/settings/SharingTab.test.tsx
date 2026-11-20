@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import type { Invite } from "../sites/useInvites";
+import type { SitePerson } from "../sites/useSitePeople";
 import type { Site } from "../sites/useSites";
 import { SharingTab } from "./SharingTab";
 
@@ -37,7 +38,17 @@ const INVITES: Invite[] = [
   invite(4, "revoked", { revoked_at: "2026-03-12T12:00:00Z" }),
 ];
 
+const OWNER: SitePerson = { user_id: 1, email: "owner@example.com", display_name: null, role: "owner" };
+const PEOPLE: SitePerson[] = [
+  OWNER,
+  { user_id: 2, email: "boss@example.com", display_name: "Boss", role: "manager" },
+  { user_id: 3, email: "watcher@example.com", display_name: null, role: "viewer" },
+];
+
 let invites: Invite[];
+let people: SitePerson[];
+
+const isPeoplePath = (path: string) => path === "/api/v1/sites/7/access";
 
 function renderTab(s: Site = site) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -59,9 +70,12 @@ function row(email: string) {
 describe("SharingTab", () => {
   beforeEach(() => {
     invites = INVITES;
+    people = [OWNER];
     vi.mocked(apiFetch).mockReset();
-    vi.mocked(apiFetch).mockImplementation(async (_path: string, init?: RequestInit) => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
       if (init?.method === "POST") return invite(9, "invited") as never;
+      if (init?.method === "DELETE") return undefined as never;
+      if (isPeoplePath(path)) return people as never;
       return invites as never;
     });
   });
@@ -154,8 +168,9 @@ describe("SharingTab", () => {
   });
 
   it("shows a revoke error near the row", async () => {
-    vi.mocked(apiFetch).mockImplementation(async (_path: string, init?: RequestInit) => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
       if (init?.method === "POST") throw new ApiError(409, "conflict", "Cannot revoke", null);
+      if (isPeoplePath(path)) return people as never;
       return invites as never;
     });
     renderTab();
@@ -166,8 +181,9 @@ describe("SharingTab", () => {
   });
 
   it("shows an already_invited error under the field", async () => {
-    vi.mocked(apiFetch).mockImplementation(async (_path: string, init?: RequestInit) => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
       if (init?.method === "POST") throw new ApiError(409, "already_invited", "That address is already invited", null);
+      if (isPeoplePath(path)) return people as never;
       return invites as never;
     });
     renderTab();
@@ -210,7 +226,8 @@ describe("SharingTab", () => {
 
   it("shows an error with Retry when the list fails to load", async () => {
     let fail = true;
-    vi.mocked(apiFetch).mockImplementation(async (_path: string) => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (isPeoplePath(path)) return people as never;
       if (fail) throw new Error("List down");
       return invites as never;
     });
@@ -219,5 +236,72 @@ describe("SharingTab", () => {
     fail = false;
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("p1@example.com")).toBeInTheDocument();
+  });
+
+  describe("people with access", () => {
+    beforeEach(() => {
+      people = PEOPLE;
+    });
+
+    function personRow(email: string) {
+      return screen.getByText(email).closest("li") as HTMLElement;
+    }
+
+    it("lists everyone with a role badge, for the owner", async () => {
+      renderTab();
+      expect(await screen.findByRole("heading", { name: "People with access" })).toBeInTheDocument();
+      await screen.findByText("owner@example.com");
+      expect(within(personRow("owner@example.com")).getByText("Owner")).toBeInTheDocument();
+      expect(within(personRow("boss@example.com")).getByText("Manager")).toBeInTheDocument();
+      expect(within(personRow("boss@example.com")).getByText("Boss")).toBeInTheDocument();
+      expect(within(personRow("watcher@example.com")).getByText("Viewer")).toBeInTheDocument();
+    });
+
+    it("gives the owner Remove on manager and viewer rows only", async () => {
+      renderTab();
+      await screen.findByText("boss@example.com");
+      expect(screen.getByRole("button", { name: "Remove boss@example.com" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Remove watcher@example.com" })).toBeInTheDocument();
+      expect(within(personRow("owner@example.com")).queryByRole("button")).toBeNull();
+    });
+
+    it("removes only after confirmation, and Cancel does nothing", async () => {
+      renderTab();
+      await userEvent.click(await screen.findByRole("button", { name: "Remove watcher@example.com" }));
+      const dialog = screen.getByRole("alertdialog");
+      expect(within(dialog).getByText("watcher@example.com will lose access to this site.")).toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(calls("DELETE")).toHaveLength(0);
+      await userEvent.click(screen.getByRole("button", { name: "Remove watcher@example.com" }));
+      await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }));
+      await waitFor(() => expect(calls("DELETE")).toHaveLength(1));
+      expect(calls("DELETE")[0][0]).toBe("/api/v1/sites/7/access/3");
+    });
+
+    it("shows the list read-only to a manager", async () => {
+      renderTab({ ...site, my_role: "manager" });
+      await screen.findByText("boss@example.com");
+      expect(screen.getByText("watcher@example.com")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
+    });
+
+    it("does not show or fetch the list for a viewer", async () => {
+      renderTab({ ...site, my_role: "viewer" });
+      await screen.findByText("p1@example.com");
+      expect(screen.queryByRole("heading", { name: "People with access" })).toBeNull();
+      expect(vi.mocked(apiFetch).mock.calls.some(([path]) => isPeoplePath(path))).toBe(false);
+    });
+
+    it("shows a remove error", async () => {
+      vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
+        if (init?.method === "DELETE") throw new ApiError(404, "not_found", "This person has no access to the site", null);
+        if (isPeoplePath(path)) return people as never;
+        return invites as never;
+      });
+      renderTab();
+      await userEvent.click(await screen.findByRole("button", { name: "Remove watcher@example.com" }));
+      await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }));
+      expect(await screen.findByText("This person has no access to the site")).toBeInTheDocument();
+    });
   });
 });

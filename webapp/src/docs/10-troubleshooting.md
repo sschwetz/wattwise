@@ -130,7 +130,8 @@ Check the [site's time zone](04-sites.md#creating-a-site). The Reporting page an
 | *An account with this email already exists* | Another user has that address. Pick a different one, or change the other account first. |
 | A user says the password reset email did not arrive | **Send password reset email** only requests the email, and WattWise cannot see whether it was delivered. Ask them to check spam, then ask the server's administrator whether [outgoing email](01-installing-with-docker.md) is set up. Reset links last 1 hour. |
 | The **Email** tab says *No email provider has been declared yet*, **Pending** keeps growing, or **Failed** grows | See [When email does not arrive](13-admin-email.md#when-email-does-not-arrive). |
-| A site's manager cannot remove another manager | Only the site's owner can remove a manager. A manager can remove their own access. |
+| A site's manager cannot remove another manager | Only the site's owner can remove a manager, under [People with access](04-sites.md#people-with-access) on the **Sharing** tab. A manager can remove their own access. |
+| Someone you never invited can open your site | An administrator gave them access. They are listed under [People with access](04-sites.md#people-with-access) on the **Sharing** tab, where the owner can **Remove** them. |
 
 ## Still stuck
 

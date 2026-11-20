@@ -3,6 +3,7 @@ import { errorMessage } from "../api/client";
 import { type Invite, type InviteStatus, useCreateInvite, useRevokeInvite, useSiteInvites } from "../sites/useInvites";
 import { inputClass } from "../components/formStyles";
 import type { Site } from "../sites/useSites";
+import { SitePeople } from "./SitePeople";
 
 const buttonClass =
   "rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
@@ -157,6 +158,12 @@ export function SharingTab({ site }: { site: Site }) {
 
   return (
     <div className="space-y-6">
+      {canInvite && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium text-ink">People with access</h2>
+          <SitePeople site={site} />
+        </section>
+      )}
       <h2 className="text-lg font-medium text-ink">Invitations</h2>
       {canInvite && <InviteForm siteId={site.id} />}
       <InviteList siteId={site.id} canInvite={canInvite} />

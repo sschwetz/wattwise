@@ -274,7 +274,7 @@ Migrations run automatically when `core-api` starts. Take a backup first. Rollin
 2. Back up the key as described under [Backups](#backups).
 3. After the upgrade, every user with two-factor enabled has lost their recovery codes. The migration deletes them because the old hashes cannot be converted. Tell users to open Account settings and use **Replace authenticator** to get new ones. Signing in with the authenticator app is unaffected.
 
-**Upgrading to the site settings release:** the migrations `d4f6a8b1c3e5` and `e5a7b9c2d4f6` run at startup. Every existing site stays enabled. Every existing viewer grant becomes an accepted invitation from the site owner. The direct-grant routes under `/sites/{id}/access` are gone, so owners now share through invitations on the **Sharing** tab.
+**Upgrading to the site settings release:** the migrations `d4f6a8b1c3e5` and `e5a7b9c2d4f6` run at startup. Every existing site stays enabled. Every existing viewer grant becomes an accepted invitation from the site owner. The direct-grant routes of that release are gone, so owners share through invitations on the **Sharing** tab.
 
 **Upgrading to the release with a separate mail actor key:** add `MAIL_ACTOR_KEY` to `.env` before running `docker compose up`, a new `openssl rand -hex 32` that differs from `ACTOR_KEY`. Compose refuses to start `core-api` and `mail-actor` without it, and Core API will not start without it either. `mail-actor` no longer reads `ACTOR_KEY`.
 

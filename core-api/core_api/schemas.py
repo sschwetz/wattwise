@@ -236,6 +236,15 @@ class InviteOut(BaseModel):
     inviter_email: str
 
 
+class SitePersonOut(BaseModel):
+    """Someone with access to a site: its owner or a grant holder."""
+
+    user_id: int
+    email: str
+    display_name: str | None
+    role: SiteRole
+
+
 class PendingInviteOut(BaseModel):
     id: int
     site_id: int
