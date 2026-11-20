@@ -40,6 +40,7 @@ export ENVOY_COLLECTOR_KEY=dev-envoy-key
 export WEATHER_COLLECTOR_KEY=dev-weather-key
 export PRICING_COLLECTOR_KEY=dev-pricing-key
 export ACTOR_KEY=dev-actor-key
+export MAIL_ACTOR_KEY=dev-mail-actor-key
 
 uv run python -m core_api.bootstrap
 uv run uvicorn core_api.main:create_app --factory --reload --port 8000
@@ -47,7 +48,7 @@ uv run uvicorn core_api.main:create_app --factory --reload --port 8000
 
 `core_api.bootstrap` creates or upgrades the SQLite database (`core_api.db` in the current directory). Run it again after pulling new migrations.
 
-Core-api refuses to start without `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY`, the three collector keys and `ACTOR_KEY`. `SECRETS_ENCRYPTION_KEY` encrypts source configs (device tokens, the Enlighten password) and Amber API keys in the database. Keep a copy of it: without it those values cannot be read. Other settings and their defaults are in `core-api/.env.example` and `core-api/core_api/config.py`. The defaults work for development: CORS allows `http://localhost:5173`, which is where Vite serves the webapp.
+Core-api refuses to start without `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY`, the three collector keys, `ACTOR_KEY` and `MAIL_ACTOR_KEY`. `SECRETS_ENCRYPTION_KEY` encrypts source configs (device tokens, the Enlighten password) and Amber API keys in the database. Keep a copy of it: without it those values cannot be read. Other settings and their defaults are in `core-api/.env.example` and `core-api/core_api/config.py`. The defaults work for development: CORS allows `http://localhost:5173`, which is where Vite serves the webapp.
 
 Check that it is up:
 
@@ -94,7 +95,7 @@ The other collectors work the same way. The Amber and local pricing collectors b
 
 The air conditioner actor runs the same way with `ACTOR_KEY`: `cd actron-neo-actor && uv sync && CORE_API_URL=http://localhost:8000 ACTOR_KEY=dev-actor-key uv run python -m actron_neo_actor.main`. Add the air conditioner on the webapp's **Schedule** page, then approve the Actron sign-in code it shows. See [`docs/actors.md`](docs/actors.md).
 
-The mail actor runs the same way: `cd mail-actor && uv sync && CORE_API_URL=http://localhost:8000 ACTOR_KEY=dev-actor-key uv run python -m mail_actor.main`. It declares its providers at start. Pick one on the **Email** tab of Admin Settings. See [`docs/mail.md`](docs/mail.md).
+The mail actor runs the same way with its own key, `MAIL_ACTOR_KEY`: `cd mail-actor && uv sync && CORE_API_URL=http://localhost:8000 MAIL_ACTOR_KEY=dev-mail-actor-key uv run python -m mail_actor.main`. It declares its providers at start. Pick one on the **Email** tab of Admin Settings. See [`docs/mail.md`](docs/mail.md).
 
 ## Run the full stack in Docker
 
@@ -104,7 +105,7 @@ This builds every service and starts it behind the ports Compose publishes: the 
 cp .env.example .env
 ```
 
-Edit `.env`: set `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (generate it as described in `.env.example`; keep a copy), the three `*_COLLECTOR_KEY` values and `ACTOR_KEY` (`openssl rand -hex 32` works for each). The defaults for `FRONTEND_BASE_URL` and `API_BASE_URL` suit a single machine. `RELAY_DOMAIN` and `RELAY_SMARTHOST` are required by Compose even if you don't plan to send mail. Then:
+Edit `.env`: set `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (generate it as described in `.env.example`; keep a copy), the three `*_COLLECTOR_KEY` values, `ACTOR_KEY` and `MAIL_ACTOR_KEY` (`openssl rand -hex 32` works for each). The defaults for `FRONTEND_BASE_URL` and `API_BASE_URL` suit a single machine. `RELAY_DOMAIN` and `RELAY_SMARTHOST` are required by Compose even if you don't plan to send mail. Then:
 
 ```sh
 docker compose up --build
@@ -146,7 +147,7 @@ Fill in `.env`:
 |---|---|
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `SECRETS_ENCRYPTION_KEY` | `openssl rand -base64 32 \| tr '+/' '-_'`. Back it up off the host: without it the encrypted columns in a database backup cannot be read. |
-| `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY`, `ACTOR_KEY` | A separate `openssl rand -hex 32` for each |
+| `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY`, `ACTOR_KEY`, `MAIL_ACTOR_KEY` | A separate `openssl rand -hex 32` for each |
 | `FRONTEND_BASE_URL` | The public origin of the webapp. Also the CORS origin and the base of email links. |
 | `API_BASE_URL` | The origin the browser uses to reach core-api |
 | `WEBAPP_VERSION_URL` | Optional. Where core-api fetches the webapp's `/version` for the About dialog. Defaults to `FRONTEND_BASE_URL`. |

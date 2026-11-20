@@ -9,10 +9,10 @@ from fastapi.routing import iter_route_contexts
 
 from core_api.db import make_engine, make_session_factory
 from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
-from tests.conftest import ACTOR_KEY
+from tests.conftest import ACTOR_KEY, MAIL_ACTOR_KEY
 
 MAIL_URL = "/api/v1/actor/mail"
-HEADERS = {"X-Actor-Key": ACTOR_KEY, "X-Actor-Provider": "mail"}
+HEADERS = {"X-Actor-Key": MAIL_ACTOR_KEY, "X-Actor-Provider": "mail"}
 SETTINGS = {"api_key": "dummy-api-key-value"}
 BODY = "Reset your password: https://example.test/reset?token=dummy-token-value"
 FIELDS = [{"name": "api_key", "label": "API key", "secret": True, "required": True}]
@@ -246,12 +246,13 @@ def _mail_routes(app) -> list[tuple[str, str]]:
     "headers",
     [
         {"X-Actor-Key": "wrong-key", "X-Actor-Provider": "mail"},
-        {"X-Actor-Key": ACTOR_KEY, "X-Actor-Provider": "smtp2go"},
-        {"X-Actor-Key": ACTOR_KEY},
+        {"X-Actor-Key": ACTOR_KEY, "X-Actor-Provider": "mail"},
+        {"X-Actor-Key": MAIL_ACTOR_KEY, "X-Actor-Provider": "smtp2go"},
+        {"X-Actor-Key": MAIL_ACTOR_KEY},
         {"X-Actor-Provider": "mail"},
         {},
     ],
-    ids=["wrong-key", "wrong-provider", "missing-provider", "missing-key", "no-headers"],
+    ids=["wrong-key", "device-actor-key", "wrong-provider", "missing-provider", "missing-key", "no-headers"],
 )
 def test_every_route_refuses_a_bad_actor(client, app_and_db_url, headers):
     app, _ = app_and_db_url
@@ -265,3 +266,11 @@ def test_every_route_refuses_a_bad_actor(client, app_and_db_url, headers):
         body = got.json()
         assert body["code"] == "invalid_actor_key"
         assert "provider" not in body["message"].lower() and "header" not in body["message"].lower()
+
+
+def test_the_mail_key_cannot_list_device_actor_instances(client):
+    url = "/api/v1/actor/instances?provider=actron_neo"
+    device = client.get(url, headers={"X-Actor-Key": ACTOR_KEY, "X-Actor-Provider": "actron_neo"})
+    assert device.status_code == 200
+    got = client.get(url, headers={"X-Actor-Key": MAIL_ACTOR_KEY, "X-Actor-Provider": "actron_neo"})
+    assert (got.status_code, got.json()["code"]) == (401, "invalid_actor_key")

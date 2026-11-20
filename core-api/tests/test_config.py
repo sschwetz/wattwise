@@ -10,6 +10,7 @@ REQUIRED_ENV = {
     "WEATHER_COLLECTOR_KEY": "weather-key",
     "PRICING_COLLECTOR_KEY": "pricing-key",
     "ACTOR_KEY": "actor-key",
+    "MAIL_ACTOR_KEY": "mail-actor-key",
 }
 
 
@@ -81,3 +82,14 @@ def test_get_settings_normalises_git_commit(monkeypatch, raw, expected):
 def test_get_settings_git_commit_defaults_to_unknown(monkeypatch):
     _set_required_env(monkeypatch, GIT_COMMIT=None)
     assert get_settings().git_commit == "unknown"
+
+
+def test_get_settings_reads_mail_actor_key(monkeypatch):
+    _set_required_env(monkeypatch)
+    assert get_settings().mail_actor_key == "mail-actor-key"
+
+
+def test_get_settings_raises_if_mail_actor_key_missing(monkeypatch):
+    _set_required_env(monkeypatch, MAIL_ACTOR_KEY=None)
+    with pytest.raises(RuntimeError, match="MAIL_ACTOR_KEY"):
+        get_settings()

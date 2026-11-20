@@ -18,6 +18,7 @@ services:
       WEATHER_COLLECTOR_KEY: ${WEATHER_COLLECTOR_KEY:?set a long random secret, shared with the weatherlink-local-collector service below}
       PRICING_COLLECTOR_KEY: ${PRICING_COLLECTOR_KEY:?set a long random secret, shared with the amber-pricing-collector service below}
       ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with the actor}
+      MAIL_ACTOR_KEY: ${MAIL_ACTOR_KEY:?set a long random secret, shared with the mail actor}
       DATABASE_URL: sqlite:////data/core_api.db
       AVATAR_STORAGE_DIR: /data/avatars
       SMTP_HOST: mail-relay
@@ -163,7 +164,7 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
     environment:
       CORE_API_URL: http://core-api:8000
-      ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with core-api's own ACTOR_KEY}
+      MAIL_ACTOR_KEY: ${MAIL_ACTOR_KEY:?set a long random secret, shared with the mail actor}
     depends_on:
       core-api:
         condition: service_healthy

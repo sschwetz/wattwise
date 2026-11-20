@@ -10,7 +10,7 @@ from mail_actor import main as main_module
 
 def test_main_starts_the_commit_reporter_before_the_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CORE_API_URL", "http://core-api:8000")
-    monkeypatch.setenv("ACTOR_KEY", "actor-secret")
+    monkeypatch.setenv("MAIL_ACTOR_KEY", "actor-secret")
     calls: list[tuple[object, ...]] = []
     monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args: calls.append(args))
     monkeypatch.setattr(main_module, "install_stop_handlers", lambda stop: None)
@@ -27,7 +27,7 @@ def test_main_starts_the_commit_reporter_before_the_worker(monkeypatch: pytest.M
 
 def test_main_closes_both_http_clients_and_runs_the_worker_with_a_stop_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CORE_API_URL", "http://core-api:8000")
-    monkeypatch.setenv("ACTOR_KEY", "actor-secret")
+    monkeypatch.setenv("MAIL_ACTOR_KEY", "actor-secret")
     monkeypatch.setattr(main_module, "start_commit_reporter", lambda *args: None)
     installed: list[object] = []
     monkeypatch.setattr(main_module, "install_stop_handlers", installed.append)

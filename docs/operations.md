@@ -76,7 +76,8 @@ Edit `.env`:
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `SECRETS_ENCRYPTION_KEY` | `openssl rand -base64 32 \| tr '+/' '-_'`. Encrypts stored device credentials and Amber keys. **Copy it somewhere off this machine.** Without it the encrypted data in a backup cannot be read. |
 | `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` | A different `openssl rand -hex 32` for each |
-| `ACTOR_KEY` | `openssl rand -hex 32`. Shared by `core-api`, `actron-neo-actor` and `mail-actor`. Compose refuses to start without it. |
+| `ACTOR_KEY` | `openssl rand -hex 32`. Shared by `core-api` and `actron-neo-actor`. Compose refuses to start without it. |
+| `MAIL_ACTOR_KEY` | A different `openssl rand -hex 32`. Shared by `core-api` and `mail-actor`. It opens the queued mail, so never reuse `ACTOR_KEY` (see [Mail](mail.md#actor-routes)). Compose refuses to start without it. |
 | `FRONTEND_BASE_URL` | Where users open the web app. Default `http://localhost`. Also the CORS origin and the base of email links. |
 | `API_BASE_URL` | Where the **browser** reaches Core API. Default `http://localhost:8000`. |
 | `SMTP_FROM` | Sender address for system mail |
@@ -275,6 +276,8 @@ Migrations run automatically when `core-api` starts. Take a backup first. Rollin
 
 **Upgrading to the site settings release:** the migrations `d4f6a8b1c3e5` and `e5a7b9c2d4f6` run at startup. Every existing site stays enabled. Every existing viewer grant becomes an accepted invitation from the site owner. The direct-grant routes under `/sites/{id}/access` are gone, so owners now share through invitations on the **Sharing** tab.
 
+**Upgrading to the release with a separate mail actor key:** add `MAIL_ACTOR_KEY` to `.env` before running `docker compose up`, a new `openssl rand -hex 32` that differs from `ACTOR_KEY`. Compose refuses to start `core-api` and `mail-actor` without it, and Core API will not start without it either. `mail-actor` no longer reads `ACTOR_KEY`.
+
 `--remove-orphans` matters after a service rename. The `pricing-collector` service became `amber-pricing-collector`, and without the flag the old container keeps running and polls Amber alongside the new one.
 
 ### Build commit
@@ -300,7 +303,8 @@ Every service keeps the first 7 characters. A service shows "not reporting" in t
 | `JWT_SECRET` | `.env` | Every user is logged out | Edit `.env`, `docker compose up -d` |
 | `SECRETS_ENCRYPTION_KEY` | `.env` | Stored device credentials, Amber keys and authenticator secrets become unreadable, and all recovery codes stop working | **Do not rotate.** No tool re-encrypts existing rows under a new key. |
 | `*_COLLECTOR_KEY` (3) | `.env`, used by `core-api` and that kind's collectors | Collectors get 401 until both sides match | Edit `.env`, then `docker compose up -d` so both sides restart together |
-| `ACTOR_KEY` | `.env`, used by `core-api`, `actron-neo-actor` and `mail-actor` | An actor gets 401 `invalid_actor_key` until both sides match | Edit `.env`, then `docker compose up -d` |
+| `ACTOR_KEY` | `.env`, used by `core-api` and `actron-neo-actor` | The actor gets 401 `invalid_actor_key` until both sides match | Edit `.env`, then `docker compose up -d` |
+| `MAIL_ACTOR_KEY` | `.env`, used by `core-api` and `mail-actor` | The mail actor gets 401 `invalid_actor_key` until both sides match, and queued mail waits | Edit `.env`, then `docker compose up -d` |
 | Admin password | Database (bcrypt) | n/a | Change it in Account settings |
 | Envoy token, Enlighten login | `sources.config` in the database | Readings stop if wrong | Edit the source in the web app |
 | Actron refresh token | `actor_instances.config` in the database (encrypted) | Schedules stop and the page shows **needs sign-in** | **Sign in again** on the Schedule tab |

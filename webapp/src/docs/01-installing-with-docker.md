@@ -25,6 +25,7 @@ WattWise runs as a set of containers managed by Docker Compose. One machine runs
 | `WEATHER_COLLECTOR_KEY` | `openssl rand -hex 32` |
 | `PRICING_COLLECTOR_KEY` | `openssl rand -hex 32` |
 | `ACTOR_KEY` | `openssl rand -hex 32` |
+| `MAIL_ACTOR_KEY` | `openssl rand -hex 32`, a different value from `ACTOR_KEY` |
 
 3. Set `RELAY_DOMAIN` and `RELAY_SMARTHOST` to your outgoing mail provider, for example `[smtp.example.com]:587`, and add `RELAY_USERNAME` and `RELAY_PASSWORD` if it needs a login. Compose refuses to start without the first two, even if you never send mail. An administrator can later send email through a provider such as smtp2go instead, from the **Email** tab of Admin Settings. See [Admin email](13-admin-email.md).
 4. If you will open WattWise from other devices, set `FRONTEND_BASE_URL` and `API_BASE_URL` to the addresses your browser uses, such as `http://192.168.1.20` and `http://192.168.1.20:8000`.
@@ -98,6 +99,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-o
 ```
 
 Database changes apply automatically when Core API starts.
+
+If `up` stops with *required variable ... is missing a value*, the new version needs a setting your `.env` does not have yet, such as `MAIL_ACTOR_KEY`. Generate it as shown in the settings table above, add it to `.env` and run `up` again.
 
 ## Backing up
 
@@ -239,7 +242,7 @@ After you change `FRONTEND_BASE_URL` or `API_BASE_URL`, run `docker compose up -
 - Every account needs a password and an authenticator code, and repeated wrong guesses lock the account for a while. Set up [two-factor authentication](03-signing-in.md#setting-up-two-factor-authentication) on the admin account first, and delete `initial-admin-password.txt`.
 - The Caddy setup does not forward Core API's `/docs` pages, so its interactive documentation is not public.
 - Update the images regularly, as described under [Updating](#updating).
-- Keep `.env` private. Collector keys and `ACTOR_KEY` protect the endpoints that collectors and the air conditioner actor use, and `SECRETS_ENCRYPTION_KEY` protects stored credentials.
+- Keep `.env` private. Collector keys and `ACTOR_KEY` protect the endpoints that collectors and the air conditioner actor use, `MAIL_ACTOR_KEY` protects queued email and the mail provider's settings, and `SECRETS_ENCRYPTION_KEY` protects stored credentials.
 
 Restores, key handling and log-reading are covered in more detail in the repository's `docs/operations.md`.
 

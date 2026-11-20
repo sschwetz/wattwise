@@ -55,7 +55,9 @@ Delivery is at-least-once. The actor tries the `sent` report three times. If all
 
 ## Actor routes
 
-The mail actor uses the shared `ACTOR_KEY` with the header `X-Actor-Provider: mail`. A missing or wrong key or header gets 401 `invalid_actor_key`, the same answer for each. The routes have no instance id. They are in [`routers/actor_mail.py`](../core-api/core_api/routers/actor_mail.py), and they are not covered by the fixtures in [`contracts/actor-api/`](../contracts/actor-api/README.md).
+The mail actor sends its own key, `MAIL_ACTOR_KEY`, in `X-Actor-Key`, with the header `X-Actor-Provider: mail`. A missing or wrong key or header gets 401 `invalid_actor_key`, the same answer for each. The device actors' `ACTOR_KEY` gets that 401 too, and `MAIL_ACTOR_KEY` opens no device actor route.
+
+Whoever holds `MAIL_ACTOR_KEY` can read the active provider's settings, such as the smtp2go API key, and every queued message, including password-reset links. They can also claim a message and report it sent so it is never delivered. Make it a long random secret (`openssl rand -hex 32`), different from `ACTOR_KEY`, and give it only to `core-api` and `mail-actor`. The routes have no instance id. They are in [`routers/actor_mail.py`](../core-api/core_api/routers/actor_mail.py), and they are not covered by the fixtures in [`contracts/actor-api/`](../contracts/actor-api/README.md).
 
 | Route | Purpose |
 |---|---|
@@ -93,7 +95,7 @@ Rows past the first 200 stay queued, and the cleanup job deletes them after 7 da
 
 ## The mail actor
 
-[`mail-actor/`](../mail-actor) is a Python container on the `app` network only. Its settings are `CORE_API_URL` and `ACTOR_KEY`, and it fails at start without them. It never talks to `mail-relay`: the `mail` network trusts every host in it to relay unauthenticated, so the actor reaches the provider over the internet instead. It is not a device actor: it has no instances, schedules or runs, so [Actors](actors.md) does not describe it.
+[`mail-actor/`](../mail-actor) is a Python container on the `app` network only. Its settings are `CORE_API_URL` and `MAIL_ACTOR_KEY`, and it fails at start without them. It never talks to `mail-relay`: the `mail` network trusts every host in it to relay unauthenticated, so the actor reaches the provider over the internet instead. It is not a device actor: it has no instances, schedules or runs, so [Actors](actors.md) does not describe it.
 
 | Behaviour | Value |
 |---|---|

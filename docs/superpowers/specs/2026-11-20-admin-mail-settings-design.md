@@ -118,7 +118,7 @@ A provider module exposes `KEY`, `LABEL`, `FIELDS` and `send(settings, message)`
 
 ### Mail actor
 
-New directory `mail-actor/`, built like `actron-neo-actor`: `config.py` (`CORE_API_URL`, `ACTOR_KEY`), `core_api_client.py`, a worker loop, `Dockerfile`, tests with a fake core. On start it declares providers, then every 5 seconds claims messages and sends them through the active provider. It re-fetches `/active` at most every 30 seconds and when a send fails with an auth error. It reports its commit through the existing service status path, and `service_status.py` lists `mail-actor` under `actor_key`.
+New directory `mail-actor/`, built like `actron-neo-actor`: `config.py` (`CORE_API_URL`, `MAIL_ACTOR_KEY`), `core_api_client.py`, a worker loop, `Dockerfile`, tests with a fake core. On start it declares providers, then every 5 seconds claims messages and sends them through the active provider. It re-fetches `/active` at most every 30 seconds and when a send fails with an auth error. It reports its commit through the existing service status path, and `service_status.py` lists `mail-actor` under `mail_actor_key`.
 
 ### Webapp
 
@@ -135,7 +135,7 @@ New directory `mail-actor/`, built like `actron-neo-actor`: `config.py` (`CORE_A
 
 ### Deploy
 
-`docker-compose.yml` and `docker-compose.prod.yml` gain `mail-actor`, on the `app` network only, with `ACTOR_KEY`. `mail-relay` is unchanged.
+`docker-compose.yml` and `docker-compose.prod.yml` gain `mail-actor`, on the `app` network only, with `MAIL_ACTOR_KEY` (core-api gets it too). `mail-relay` is unchanged.
 
 ## Left to the builder
 
@@ -149,5 +149,5 @@ New directory `mail-actor/`, built like `actron-neo-actor`: `config.py` (`CORE_A
 - Mail falls back to the Postfix relay when no provider is active.
 - Queued mail waits for the actor and never diverts to the relay.
 - Message bodies are encrypted and cleared after the last attempt, because they hold reset and confirmation links.
-- The mail actor uses the shared `ACTOR_KEY` and the provider header value `mail`.
+- The mail actor has its own key, `MAIL_ACTOR_KEY`, and the provider header value `mail`. The first version shared `ACTOR_KEY`; the final review showed that a holder of the device key could then read reset links and take over an account, so the keys were split.
 - Retention of 30 days for finished outbox rows.

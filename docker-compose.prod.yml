@@ -16,6 +16,7 @@ services:
     restart: unless-stopped
     environment:
       ACTOR_KEY: ${ACTOR_KEY:?set a long random secret, shared with the actor}
+      MAIL_ACTOR_KEY: ${MAIL_ACTOR_KEY:?set a long random secret, shared with the mail actor}
 
   webapp:
     image: ghcr.io/sschwetz/wattwise-webapp:${WATTWISE_VERSION:-latest}

@@ -109,8 +109,8 @@ def main() -> None:
     stop = StopFlag()
     install_stop_handlers(stop)
     with httpx.Client() as http, httpx.Client(timeout=TIMEOUT) as core_http:
-        client = CoreApiClient(settings.core_api_url, settings.actor_key, core_http)
-        start_commit_reporter(settings.core_api_url, "X-Actor-Key", settings.actor_key, "mail-actor")
+        client = CoreApiClient(settings.core_api_url, settings.mail_actor_key, core_http)
+        start_commit_reporter(settings.core_api_url, "X-Actor-Key", settings.mail_actor_key, "mail-actor")
         if declare_until_ready(client, PROVIDERS, stop):
             run_forever(client, PROVIDERS, http, stop, WorkerState())
     _LOG.info("Stopped")

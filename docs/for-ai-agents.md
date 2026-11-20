@@ -19,7 +19,7 @@ Home-energy monitor. Collectors poll devices and push time series to one API. Th
 | `mail-actor/` | `mail_actor.main` | `uv run python -m mail_actor.main` | `uv run pytest -q`, `uv run ruff check .`, `uv run mypy` |
 | `webapp/` | `src/main.tsx`, routes in `src/App.tsx` | `npm run dev` | `npm test`, `npm run lint`, `npm run build` |
 
-Run Python commands from the project directory. Collectors need `CORE_API_URL` and `COLLECTOR_KEY`. Both actors need `CORE_API_URL` and `ACTOR_KEY`. Core API needs `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (a Fernet key), `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` and `ACTOR_KEY`.
+Run Python commands from the project directory. Collectors need `CORE_API_URL` and `COLLECTOR_KEY`. The Actron actor needs `CORE_API_URL` and `ACTOR_KEY`. The mail actor needs `CORE_API_URL` and `MAIL_ACTOR_KEY`. Core API needs `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (a Fernet key), `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY`, `ACTOR_KEY` and `MAIL_ACTOR_KEY`.
 
 ## Invariants (do not break)
 
@@ -31,7 +31,7 @@ Run Python commands from the project directory. Collectors need `CORE_API_URL` a
 6. **Price lookups join on exact minute.** `POST /prices` floors derived minutes. Do not store price readings with seconds.
 7. **`grid_import_w` and `grid_export_w` are written one at a time, as positive watts.**
 8. **Authorization lives in FastAPI dependencies** (`deps.py`). Choose `require_site_access`, `require_site_manager`, `require_site_owner`, `get_current_user` or the collector dependencies before writing the function body.
-9. **Collectors authenticate with one shared key per kind**, and optionally name their provider in `X-Collector-Provider`. Provider filtering is not a security boundary. Actors use one shared `ACTOR_KEY` and a required `X-Actor-Provider`, on the same terms.
+9. **Collectors authenticate with one shared key per kind**, and optionally name their provider in `X-Collector-Provider`. Provider filtering is not a security boundary. Device actors use one shared `ACTOR_KEY` and a required `X-Actor-Provider`, on the same terms. The mail actor has its own `MAIL_ACTOR_KEY`, and neither key opens the other's routes.
 10. **One Uvicorn worker.** Jobs and lockouts are in-process.
 11. **Specs and plans in `docs/superpowers/` are history.** Do not rewrite them to match code.
 12. **Never put real credentials in files.** `.env` is ignored; use `.env.example` placeholders.
@@ -83,7 +83,7 @@ The generated reference is at `/docs` on a running instance.
 Actors use a separate credential and path prefix:
 
 ```text
-Actors:      X-Actor-Key: <ACTOR_KEY>
+Actors:      X-Actor-Key: <ACTOR_KEY>           (MAIL_ACTOR_KEY for /actor/mail)
              X-Actor-Provider: <provider>          (required on per-instance routes)
 
 GET   /actor/instances?provider=...

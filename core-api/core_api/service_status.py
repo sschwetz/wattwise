@@ -42,7 +42,8 @@ def _key_services() -> list[tuple[str, frozenset[str]]]:
         (settings.envoy_collector_key, frozenset({"envoy-collector"})),
         (settings.weather_collector_key, frozenset({"weatherlink-local-collector"})),
         (settings.pricing_collector_key, frozenset({"amber-pricing-collector", "local-pricing-collector"})),
-        (settings.actor_key, frozenset({"actron-neo-actor", "mail-actor"})),
+        (settings.actor_key, frozenset({"actron-neo-actor"})),
+        (settings.mail_actor_key, frozenset({"mail-actor"})),
     ]
 
 

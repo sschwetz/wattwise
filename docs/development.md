@@ -58,7 +58,7 @@ Test files mirror modules: `core_api/cost.py` is covered by `tests/test_cost.py`
 
    ```bash
    cd core-api
-   export JWT_SECRET=x ENVOY_COLLECTOR_KEY=x WEATHER_COLLECTOR_KEY=x PRICING_COLLECTOR_KEY=x ACTOR_KEY=x
+   export JWT_SECRET=x ENVOY_COLLECTOR_KEY=x WEATHER_COLLECTOR_KEY=x PRICING_COLLECTOR_KEY=x ACTOR_KEY=x MAIL_ACTOR_KEY=x
    export SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')
    uv run alembic revision --autogenerate -m "describe the change"
    ```

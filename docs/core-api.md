@@ -58,8 +58,8 @@ Authorization is in the dependencies, not in the function bodies. A router funct
 | `require_site_manager` | Owner or a `manager` grant | 404 `not_found` if the caller has no access, 403 `forbidden` for a viewer |
 | `require_site_owner` | Owner only. Use it for routes that add, change or remove a manager, or change `owner_user_id`. | 404 `not_found` if the caller has no access, 403 `forbidden` for a manager or viewer |
 | `require_actor_key` | `X-Actor-Key` equals `ACTOR_KEY` (constant-time compare) | 401 `invalid_actor_key` |
-| `require_mail_actor` | The key, and `X-Actor-Provider` equals `mail`. For the `/actor/mail` routes, which have no instance. | 401 `invalid_actor_key` for a missing, wrong or mismatched header |
-| `get_actor_instance` | The key, and the instance's `provider` equals `X-Actor-Provider`; the instance and its site are enabled unless an action run still needs its restore | 401 `invalid_actor_key` (also for an unknown id), 403 `instance_disabled` / `site_disabled` |
+| `require_mail_actor` | `X-Actor-Key` equals `MAIL_ACTOR_KEY` (constant-time compare; `ACTOR_KEY` is refused), and `X-Actor-Provider` equals `mail`. For the `/actor/mail` routes, which have no instance. | 401 `invalid_actor_key` for a missing, wrong or mismatched header |
+| `get_actor_instance` | `ACTOR_KEY`, and the instance's `provider` equals `X-Actor-Provider`; the instance and its site are enabled unless an action run still needs its restore | 401 `invalid_actor_key` (also for an unknown id), 403 `instance_disabled` / `site_disabled` |
 | `get_source_by_collector_key` | Correct key for the source's kind, matching provider header if sent, source enabled, site enabled, and within its effective dates | 401 `invalid_collector_key`, 403 `source_disabled` / `site_disabled` / `source_expired` |
 | `require_source_kind(kind)` | The above, and the source is that kind | 403 `wrong_source_kind` |
 
@@ -189,14 +189,15 @@ Each service tells Core API which commit it was built from, and the About dialog
 | `POST /services/report` | `X-Collector-Key` or `X-Actor-Key` | Body `{"service": "...", "commit": "..."}`. Returns 204 and stores the commit with the current UTC time. |
 | `GET /services` | User token | Returns 8 rows in a fixed order: `core-api`, `webapp`, `envoy-collector`, `weatherlink-local-collector`, `amber-pricing-collector`, `local-pricing-collector`, `actron-neo-actor`, `mail-actor`. Each row has `service`, `commit`, `last_reported_at` and `reporting`. A service with no row yet has null `commit` and `last_reported_at`. |
 
-`POST /services/report` answers 401 `invalid_service_key` when the key matches none of `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` or `ACTOR_KEY`. It answers 403 `service_not_allowed` when the key is valid but not for the named service, and 422 when the body has extra fields or `commit` is not 7 to 40 lowercase hex characters, `unknown` or `dev`. Each key may report for these services:
+`POST /services/report` answers 401 `invalid_service_key` when the key matches none of `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY`, `ACTOR_KEY` or `MAIL_ACTOR_KEY`. It answers 403 `service_not_allowed` when the key is valid but not for the named service, and 422 when the body has extra fields or `commit` is not 7 to 40 lowercase hex characters, `unknown` or `dev`. Each key may report for these services:
 
 | Key | Allowed services |
 |---|---|
 | `ENVOY_COLLECTOR_KEY` | `envoy-collector` |
 | `WEATHER_COLLECTOR_KEY` | `weatherlink-local-collector` |
 | `PRICING_COLLECTOR_KEY` | `amber-pricing-collector`, `local-pricing-collector` |
-| `ACTOR_KEY` | `actron-neo-actor`, `mail-actor` |
+| `ACTOR_KEY` | `actron-neo-actor` |
+| `MAIL_ACTOR_KEY` | `mail-actor` |
 
 The two pricing collectors share a key, so either can report as the other. Core API accepts that.
 
@@ -291,7 +292,8 @@ Times use the container's clock (UTC in the image).
 | `ENVOY_COLLECTOR_KEY` | yes | none | Shared secret for `energy` collectors |
 | `WEATHER_COLLECTOR_KEY` | yes | none | Shared secret for `weather` collectors |
 | `PRICING_COLLECTOR_KEY` | yes | none | Shared secret for `pricing` collectors (Amber and local) |
-| `ACTOR_KEY` | yes | none | Shared secret for all actors |
+| `ACTOR_KEY` | yes | none | Shared secret for the device actors |
+| `MAIL_ACTOR_KEY` | yes | none | Shared secret for the mail actor. Must differ from `ACTOR_KEY`; see [Mail](mail.md#actor-routes). |
 | `DATABASE_URL` | no | `sqlite:///./core_api.db` | Compose sets `sqlite:////data/core_api.db` |
 | `AVATAR_STORAGE_DIR` | no | `./data/avatars` | Compose sets `/data/avatars` |
 | `JWT_EXPIRY_HOURS` | no | `24` | Access token lifetime |

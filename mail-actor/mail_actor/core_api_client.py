@@ -63,9 +63,9 @@ def _parsed[T](what: str, body: object, build: Callable[[object], T]) -> T:
 
 
 class CoreApiClient:
-    def __init__(self, base_url: str, actor_key: str, http: httpx.Client | None = None) -> None:
+    def __init__(self, base_url: str, mail_actor_key: str, http: httpx.Client | None = None) -> None:
         self._base = f"{base_url.rstrip('/')}/api/v1/actor/mail"
-        self._headers = {"X-Actor-Key": actor_key, "X-Actor-Provider": PROVIDER}
+        self._headers = {"X-Actor-Key": mail_actor_key, "X-Actor-Provider": PROVIDER}
         self._http = http or httpx.Client(timeout=TIMEOUT)
 
     def _request(

@@ -225,7 +225,7 @@ def require_source_kind(expected_kind: SourceKind):
 
 
 def require_actor_key(presented: str) -> None:
-    """Raise 401 unless `presented` is the shared actor key."""
+    """Raise 401 unless `presented` is the device actor key (ACTOR_KEY)."""
     expected = get_settings().actor_key
     if not keys_match(presented, expected):
         raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
@@ -238,16 +238,15 @@ def require_mail_actor(
     x_actor_key: str | None = Header(None),
     x_actor_provider: str | None = Header(None),
 ) -> None:
-    """Gate for the mail actor routes, which have no instance. A missing,
+    """Gate for the mail actor routes, which have no instance. Only
+    MAIL_ACTOR_KEY opens them: the device actor key does not. A missing,
     wrong or mismatched header all give the same 401, so the response does
     not say which one failed."""
     refused = AppError(401, "invalid_actor_key", "Invalid actor key")
     if x_actor_key is None or x_actor_provider is None:
         raise refused
-    try:
-        require_actor_key(x_actor_key)
-    except AppError:
-        raise refused from None
+    if not keys_match(x_actor_key, get_settings().mail_actor_key):
+        raise refused
     if x_actor_provider != MAIL_ACTOR_PROVIDER:
         raise refused
 

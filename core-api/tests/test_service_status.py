@@ -13,7 +13,13 @@ from core_api.service_status import (
     list_statuses,
     record_report,
 )
-from tests.conftest import ACTOR_KEY, ENVOY_COLLECTOR_KEY, PRICING_COLLECTOR_KEY, WEATHER_COLLECTOR_KEY
+from tests.conftest import (
+    ACTOR_KEY,
+    ENVOY_COLLECTOR_KEY,
+    MAIL_ACTOR_KEY,
+    PRICING_COLLECTOR_KEY,
+    WEATHER_COLLECTOR_KEY,
+)
 
 NOW = datetime.datetime(2026, 11, 9, 12, 0, tzinfo=datetime.UTC)
 
@@ -24,7 +30,8 @@ NOW = datetime.datetime(2026, 11, 9, 12, 0, tzinfo=datetime.UTC)
         (ENVOY_COLLECTOR_KEY, {"envoy-collector"}),
         (WEATHER_COLLECTOR_KEY, {"weatherlink-local-collector"}),
         (PRICING_COLLECTOR_KEY, {"amber-pricing-collector", "local-pricing-collector"}),
-        (ACTOR_KEY, {"actron-neo-actor", "mail-actor"}),
+        (ACTOR_KEY, {"actron-neo-actor"}),
+        (MAIL_ACTOR_KEY, {"mail-actor"}),
         ("wrong-key", set()),
         ("kéy-ünicode", set()),
     ],

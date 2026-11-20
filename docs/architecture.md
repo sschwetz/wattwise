@@ -101,7 +101,7 @@ flowchart LR
         M1["Shared secret per kind:<br/>ENVOY / WEATHER / PRICING"] --> M2["X-Collector-Key header<br/>+ optional X-Collector-Provider"]
     end
     subgraph Actors["Actors"]
-        A1["One shared secret:<br/>ACTOR_KEY"] --> A2["X-Actor-Key header<br/>+ X-Actor-Provider"]
+        A1["ACTOR_KEY (device actors)<br/>MAIL_ACTOR_KEY (mail actor)"] --> A2["X-Actor-Key header<br/>+ X-Actor-Provider"]
     end
     P3 --> U["/sites/..., /users/me, /auth/..."]
     M2 --> C["/collector/sources<br/>/sources/{id}/config<br/>/sources/{id}/readings, /prices"]
@@ -115,12 +115,12 @@ flowchart LR
 | Administrator (`users.is_admin`) | JWT | Every user's profile, site membership and security state through `/admin/users`. Not site readings or device credentials. | Set a password. See [Admin endpoints](core-api.md#admin-endpoints) for what an admin can still do to an account. |
 | Viewer (accepted an owner's or manager's emailed invitation) | JWT | Site data, with device credentials and the Actron sign-in code and link hidden | Change anything |
 | Collector | One shared key per kind (`energy`, `weather`, `pricing`) | Sources of its own kind; pushes readings or prices | Read user data. Push readings to a source of another kind. |
-| Device actor | One shared key for all actors (`ACTOR_KEY`) plus the provider header | Instances, schedules and site context for its own provider; creates and updates runs; reports readings | Read user data. Touch an instance of another provider. |
-| Mail actor | `ACTOR_KEY` plus `X-Actor-Provider: mail` | The active mail provider's decrypted settings, and every queued message with its address, subject and body | Anything outside `/actor/mail`. |
+| Device actor | One shared key for all device actors (`ACTOR_KEY`) plus the provider header | Instances, schedules and site context for its own provider; creates and updates runs; reports readings | Read user data or queued mail: `ACTOR_KEY` gets 401 on every `/actor/mail` route. Touch an instance of another provider. |
+| Mail actor | Its own key (`MAIL_ACTOR_KEY`) plus `X-Actor-Provider: mail` | The active mail provider's decrypted settings, and every queued message with its address, subject and body | Anything outside `/actor/mail`: `MAIL_ACTOR_KEY` gets 401 on the device actor routes. |
 
 The `X-Collector-Provider` header narrows a collector further, so the Amber collector cannot reach a `local` source. The README is explicit that this is a guard against mistakes, not a security boundary: any process holding the pricing key can claim to be either provider.
 
-The actor key works differently. `X-Actor-Provider` is required on every route. Core API refuses an instance whose provider differs, and a discovery call whose header does not match its `?provider=` (401 `invalid_actor_key`, the same answer as an unknown id). The key is still one secret for every actor, so the header protects against mistakes, not against a process that holds the key. A device actor never sees user data, but it can set `latest_readings`, write runs and read the stored refresh token for its provider's instances. The mail actor reads queued mail, which includes password-reset and confirmation links, so a process that holds `ACTOR_KEY` can read them by sending `X-Actor-Provider: mail`.
+The actor key works differently. `X-Actor-Provider` is required on every route. Core API refuses an instance whose provider differs, and a discovery call whose header does not match its `?provider=` (401 `invalid_actor_key`, the same answer as an unknown id). `ACTOR_KEY` is one secret for every device actor, so the header protects against mistakes, not against a process that holds the key. A device actor never sees user data, but it can set `latest_readings`, write runs and read the stored refresh token for its provider's instances. The mail actor has a separate key, `MAIL_ACTOR_KEY`, because queued mail includes password-reset and confirmation links: with the device key, a compromised device actor could read a reset link and take over an account. See [Mail](mail.md#actor-routes) for what the mail key opens.
 
 ## Design decisions and the reasons
 

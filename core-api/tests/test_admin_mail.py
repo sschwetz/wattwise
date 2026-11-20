@@ -11,12 +11,12 @@ from fastapi.routing import iter_route_contexts
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import User
 from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
-from tests.conftest import ACTOR_KEY
+from tests.conftest import MAIL_ACTOR_KEY
 from tests.test_billing import auth
 
 MAIL_URL = "/api/v1/admin/mail"
 ACTOR_URL = "/api/v1/actor/mail/providers"
-ACTOR_HEADERS = {"X-Actor-Key": ACTOR_KEY, "X-Actor-Provider": "mail"}
+ACTOR_HEADERS = {"X-Actor-Key": MAIL_ACTOR_KEY, "X-Actor-Provider": "mail"}
 SECRET = "dummy-secret-value-zq81"
 FIELDS = [
     {"name": "host", "label": "Host", "secret": False, "required": True},

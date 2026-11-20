@@ -9,7 +9,7 @@ from core_api.errors import install_error_handlers
 from core_api.models.service_status import ServiceStatus
 from core_api.routers.services import router
 from core_api.security import create_access_token
-from tests.conftest import ENVOY_COLLECTOR_KEY, PRICING_COLLECTOR_KEY
+from tests.conftest import ENVOY_COLLECTOR_KEY, MAIL_ACTOR_KEY, PRICING_COLLECTOR_KEY
 
 REPORT = "/api/v1/services/report"
 
@@ -39,10 +39,20 @@ def test_report_accepts_actor_key(client):
     assert r.status_code == 204
 
 
-def test_report_accepts_actor_key_for_mail_actor(client, db):
-    r = client.post(REPORT, json=_body("mail-actor"), headers={"X-Actor-Key": "test-actor-key"})
+def test_report_accepts_mail_actor_key_for_mail_actor(client, db):
+    r = client.post(REPORT, json=_body("mail-actor"), headers={"X-Actor-Key": MAIL_ACTOR_KEY})
     assert r.status_code == 204
     assert db.get(ServiceStatus, "mail-actor") is not None
+
+
+def test_report_refuses_device_actor_key_for_mail_actor(client):
+    r = client.post(REPORT, json=_body("mail-actor"), headers={"X-Actor-Key": "test-actor-key"})
+    assert (r.status_code, r.json()["code"]) == (403, "service_not_allowed")
+
+
+def test_report_refuses_mail_actor_key_for_device_actor(client):
+    r = client.post(REPORT, json=_body("actron-neo-actor"), headers={"X-Actor-Key": MAIL_ACTOR_KEY})
+    assert (r.status_code, r.json()["code"]) == (403, "service_not_allowed")
 
 
 def test_report_other_service_forbidden(client):

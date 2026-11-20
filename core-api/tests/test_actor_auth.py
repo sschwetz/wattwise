@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from core_api.deps import get_actor_instance, get_db_session
 from core_api.errors import install_error_handlers
 from core_api.models import ActorInstance, ActorRun, ActorSchedule, RunKind, RunOutcome
-from tests.conftest import ACTOR_KEY
+from tests.conftest import ACTOR_KEY, MAIL_ACTOR_KEY
 
 PROVIDER = "actron_neo"
 
@@ -46,6 +46,11 @@ def test_valid_credentials_pass(http, instance):
 
 def test_wrong_key_401(http, instance):
     r = _get(http, instance.id, key="nope")
+    assert (r.status_code, r.json()["code"]) == (401, "invalid_actor_key")
+
+
+def test_mail_actor_key_401(http, instance):
+    r = _get(http, instance.id, key=MAIL_ACTOR_KEY)
     assert (r.status_code, r.json()["code"]) == (401, "invalid_actor_key")
 
 

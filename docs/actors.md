@@ -2,7 +2,7 @@
 
 An actor sends commands to a device. A [collector](collectors.md) brings data in; an actor reads site data from Core API and acts on it. The first actor, [`actron-neo-actor`](../actron-neo-actor), turns a ducted Actron Neo air conditioner off at the start of a tariff demand window and puts it back afterwards.
 
-The mail actor, [`mail-actor`](../mail-actor), shares the `ACTOR_KEY` and the `X-Actor-Provider` header but is not a device actor. It has no instances, schedules or runs, and it sends queued email, not device commands. [Mail](mail.md) describes it. The rest of this page is about device actors.
+The mail actor, [`mail-actor`](../mail-actor), uses the `X-Actor-Key` and `X-Actor-Provider` headers but is not a device actor, and it has its own key, `MAIL_ACTOR_KEY`. It has no instances, schedules or runs, and it sends queued email, not device commands. [Mail](mail.md) describes it. The rest of this page is about device actors.
 
 Actors follow the collector design: one small Python container per kind of device, one shared key, instances discovered from Core API, and no state that a restart cannot recover. They differ as follows.
 
@@ -10,7 +10,7 @@ Actors follow the collector design: one small Python container per kind of devic
 |---|---|---|
 | Direction | Device to Core API | Core API to device |
 | Configured by | A source in Settings | A schedule on the **Schedule** tab of Site settings |
-| Key | One per kind (`ENVOY_COLLECTOR_KEY`, and so on) | `ACTOR_KEY`, shared by all actors |
+| Key | One per kind (`ENVOY_COLLECTOR_KEY`, and so on) | `ACTOR_KEY`, shared by all device actors |
 | Provider header | `X-Collector-Provider` (optional on most routes) | `X-Actor-Provider` (required on every route) |
 | Endpoints | `/collector/...` and `/sources/{id}/...` | `/actor/...` |
 | Records its work | No | Every run is a row in `actor_runs` |
@@ -19,7 +19,7 @@ The owner builds a schedule in the web app from dropdowns and tick boxes. The ac
 
 ## The contract
 
-An actor is a container with `CORE_API_URL` and `ACTOR_KEY` in its environment. It sends `X-Actor-Key` and `X-Actor-Provider` (for example `actron_neo`) on its calls. Core API returns and accepts only instances of that provider. One `ACTOR_KEY` covers every actor and every site. As with the pricing collectors' provider header, this stops mistakes, not an attacker who holds the key.
+An actor is a container with `CORE_API_URL` and `ACTOR_KEY` in its environment. It sends `X-Actor-Key` and `X-Actor-Provider` (for example `actron_neo`) on its calls. Core API returns and accepts only instances of that provider. One `ACTOR_KEY` covers every device actor and every site. It does not open the mail actor's routes. As with the pricing collectors' provider header, this stops mistakes, not an attacker who holds the key.
 
 All paths are under `/api/v1/actor`.
 
