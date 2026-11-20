@@ -118,9 +118,9 @@ def test_get_latest_energy_reading_time_requires_site_access(client, app_and_db_
     assert response.status_code in (401, 403)
 
 
-def seed_weather_site(db_url: str, with_source: bool = True) -> tuple[int, int, int | None]:
+def seed_weather_site(db_url: str, with_source: bool = True, email: str = "w-owner@example.com") -> tuple[int, int, int | None]:
     session = make_session_factory(make_engine(db_url))()
-    owner = User(email="w-owner@example.com", password_hash="x")
+    owner = User(email=email, password_hash="x")
     session.add(owner)
     session.commit()
     site = Site(owner_user_id=owner.id, name="Home", timezone="UTC")
@@ -143,6 +143,13 @@ def seed_weather_site(db_url: str, with_source: bool = True) -> tuple[int, int, 
     return ids
 
 
+def _get_latest_weather(client, owner_id, site_id):
+    return client.get(
+        f"/api/v1/sites/{site_id}/readings/weather/latest",
+        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
+    )
+
+
 def test_get_latest_weather_reading_time_returns_newest_across_metrics(client, app_and_db_url):
     _, db_url = app_and_db_url
     owner_id, site_id, source_id = seed_weather_site(db_url)
@@ -154,10 +161,7 @@ def test_get_latest_weather_reading_time_returns_newest_across_metrics(client, a
     session.commit()
     session.close()
 
-    response = client.get(
-        f"/api/v1/sites/{site_id}/readings/weather/latest",
-        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
-    )
+    response = _get_latest_weather(client, owner_id, site_id)
 
     assert response.status_code == 200, response.text
     # Serialised with a UTC offset so a browser does not parse it as local time.
@@ -168,10 +172,7 @@ def test_get_latest_weather_reading_time_is_null_without_readings(client, app_an
     _, db_url = app_and_db_url
     owner_id, site_id, _ = seed_weather_site(db_url)
 
-    response = client.get(
-        f"/api/v1/sites/{site_id}/readings/weather/latest",
-        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
-    )
+    response = _get_latest_weather(client, owner_id, site_id)
 
     assert response.status_code == 200, response.text
     assert response.json() == {"ts": None}
@@ -181,10 +182,7 @@ def test_get_latest_weather_reading_time_is_null_without_a_weather_source(client
     _, db_url = app_and_db_url
     owner_id, site_id, _ = seed_weather_site(db_url, with_source=False)
 
-    response = client.get(
-        f"/api/v1/sites/{site_id}/readings/weather/latest",
-        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
-    )
+    response = _get_latest_weather(client, owner_id, site_id)
 
     assert response.status_code == 200, response.text
     assert response.json() == {"ts": None}
@@ -193,30 +191,13 @@ def test_get_latest_weather_reading_time_is_null_without_a_weather_source(client
 def test_get_latest_weather_reading_time_ignores_another_sites_readings(client, app_and_db_url):
     _, db_url = app_and_db_url
     owner_id, site_id, _ = seed_weather_site(db_url, with_source=False)
+    _, _, other_source_id = seed_weather_site(db_url, email="other@example.com")
     session = make_session_factory(make_engine(db_url))()
-    other_owner = User(email="other@example.com", password_hash="x")
-    session.add(other_owner)
-    session.commit()
-    other_site = Site(owner_user_id=other_owner.id, name="Away", timezone="UTC")
-    session.add(other_site)
-    session.commit()
-    other_source = Source(
-        site_id=other_site.id,
-        kind=SourceKind.WEATHER,
-        provider="weatherlink_live",
-        config={},
-        effective_from=datetime.datetime(2020, 1, 1, tzinfo=UTC),
-    )
-    session.add(other_source)
-    session.commit()
-    session.add(WeatherReading(source_id=other_source.id, ts=datetime.datetime.now(UTC), metric=WeatherMetric.TEMP_C, value=9.0))
+    session.add(WeatherReading(source_id=other_source_id, ts=datetime.datetime.now(UTC), metric=WeatherMetric.TEMP_C, value=9.0))
     session.commit()
     session.close()
 
-    response = client.get(
-        f"/api/v1/sites/{site_id}/readings/weather/latest",
-        headers={"Authorization": f"Bearer {create_access_token(owner_id)}"},
-    )
+    response = _get_latest_weather(client, owner_id, site_id)
 
     assert response.json() == {"ts": None}
 

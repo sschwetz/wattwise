@@ -98,6 +98,13 @@ def get_energy_readings(
     return sorted(rows, key=lambda r: r.ts)
 
 
+def _latest_reading_time(db: Session, model: type[EnergyReading] | type[WeatherReading], source_ids: list[int]) -> LatestReadingOut:
+    """The newest raw reading time across the sources, or no time when there are none."""
+    if not source_ids:
+        return LatestReadingOut(ts=None)
+    return LatestReadingOut(ts=db.execute(select(func.max(model.ts)).where(model.source_id.in_(source_ids))).scalar())
+
+
 @router.get("/readings/energy/latest", response_model=LatestReadingOut)
 def get_latest_energy_reading_time(
     site: Site = Depends(require_site_access),
@@ -106,11 +113,7 @@ def get_latest_energy_reading_time(
     """When the site's energy collectors last wrote a reading, so the dashboard
     can show how stale its data is. Read from raw readings only: a recent
     reading is never rollup-only."""
-    source_ids = _energy_source_ids(db, site.id)
-    if not source_ids:
-        return LatestReadingOut(ts=None)
-    latest = db.execute(select(func.max(EnergyReading.ts)).where(EnergyReading.source_id.in_(source_ids))).scalar()
-    return LatestReadingOut(ts=latest)
+    return _latest_reading_time(db, EnergyReading, _energy_source_ids(db, site.id))
 
 
 @router.get("/readings/weather", response_model=list[ReadingOut])
@@ -144,11 +147,7 @@ def get_latest_weather_reading_time(
 ) -> LatestReadingOut:
     """When the site's weather collector last wrote a reading, for the dashboard's
     freshness line. Read from raw readings only, like the energy one."""
-    source_ids = weather_source_ids_for_site(db, site.id)
-    if not source_ids:
-        return LatestReadingOut(ts=None)
-    latest = db.execute(select(func.max(WeatherReading.ts)).where(WeatherReading.source_id.in_(source_ids))).scalar()
-    return LatestReadingOut(ts=latest)
+    return _latest_reading_time(db, WeatherReading, weather_source_ids_for_site(db, site.id))
 
 
 def _price_rows(db: Session, source_ids: list[int], channel: PriceChannel, start: datetime.datetime, end: datetime.datetime) -> list:
