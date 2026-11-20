@@ -286,3 +286,22 @@ def test_two_sessions_claiming_at_once_never_take_the_same_row(factory, monkeypa
     combined = results[0] + results[1]
     assert len(combined) == len(set(combined))
     assert set(combined) == ids
+
+
+def test_claim_fails_a_row_with_an_undecryptable_body_and_returns_the_others(db):
+    bad = _row(db)
+    good = _row(db)
+    db.execute(sa.text("UPDATE email_outbox SET body = 'not-a-fernet-token' WHERE id = :id"), {"id": bad})
+    db.commit()
+
+    claimed = outbox.claim_outbox(db, 10, NOW)
+    db.commit()
+
+    assert [r.id for r in claimed] == [good]
+    assert claimed[0].body == BODY
+    row = _reload(db, bad)
+    assert row.status is OutboxStatus.FAILED
+    assert as_utc(row.finished_at) == NOW
+    assert row.body == ""
+    assert row.last_error == "undecryptable body"
+    assert outbox.claim_outbox(db, 10, NOW) == []

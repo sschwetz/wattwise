@@ -59,9 +59,12 @@ def test_outbox_sender_failure_reaches_try_send_email(session_factory, monkeypat
         raise RuntimeError("disk full")
 
     monkeypatch.setattr(email_sender, "enqueue_email", broken_enqueue)
-    sender = OutboxEmailSender(session_factory, FakeEmailSender())
+    fallback = FakeEmailSender()
+    sender = OutboxEmailSender(session_factory, fallback)
     assert try_send_email(sender, "a@example.com", "Subject", "Body", "password-reset") is False
     assert logged == [("Failed to send %s email", "password-reset")]
+    assert fallback.sent == []
+    assert _outbox(session_factory) == []
 
 
 def test_create_app_wraps_the_given_sender(tmp_path, fake_email_sender):

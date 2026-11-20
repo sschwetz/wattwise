@@ -67,6 +67,8 @@ def test_mail_outbox_cleanup_runs_daily_and_purges_old_finished_rows(app_and_db_
     with TestClient(app) as client:
         job = client.app.state.scheduler.get_job("mail_outbox_cleanup")
         assert isinstance(job.trigger, CronTrigger)
+        fields = {f.name: str(f) for f in job.trigger.fields}
+        assert (fields["hour"], fields["minute"]) == ("0", "30")
         job.func(*job.args)
     with session_factory() as db:
         assert list(db.scalars(select(EmailOutbox.subject))) == ["recent"]

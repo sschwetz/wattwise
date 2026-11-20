@@ -8,6 +8,7 @@ single write lock. These tests would then see no outbox row."""
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 
 import pyotp
@@ -29,8 +30,14 @@ from tests.test_sites import auth, make_user
 ACTOR_HEADERS = {"X-Actor-Key": ACTOR_KEY, "X-Actor-Provider": "actron_neo"}
 
 
+@contextlib.contextmanager
 def _session(db_url: str):
-    return make_session_factory(make_engine(db_url))()
+    engine = make_engine(db_url)
+    try:
+        with make_session_factory(engine)() as db:
+            yield db
+    finally:
+        engine.dispose()
 
 
 def _set_provider(db_url: str, active: bool) -> None:

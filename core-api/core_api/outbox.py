@@ -8,8 +8,9 @@ from __future__ import annotations
 import datetime
 from typing import Literal
 
+from cryptography.fernet import InvalidToken
 from sqlalchemy import ColumnElement, and_, delete, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from core_api.db import rows_affected
 from core_api.errors import AppError
@@ -94,16 +95,36 @@ def claim_outbox(db: Session, limit: int, now: datetime.datetime) -> list[EmailO
             claimed.append(row_id)
     if not claimed:
         return []
+    # The body loads lazily, so one undecryptable body fails only its own row.
     query = (
         select(EmailOutbox)
+        .options(defer(EmailOutbox.body))
         .where(EmailOutbox.id.in_(claimed))
         .order_by(EmailOutbox.next_attempt_at, EmailOutbox.id)
         .execution_options(populate_existing=True)
     )
-    return list(db.scalars(query))
+    return [row for row in db.scalars(query) if _body_readable(db, row, now)]
 
 
-def _finish_values(row: EmailOutbox, outcome: str, error: str | None, now: datetime.datetime) -> dict:
+def _body_readable(db: Session, row: EmailOutbox, now: datetime.datetime) -> bool:
+    """Load the row's body. When it cannot be decrypted, end the row `failed`."""
+    try:
+        row.body  # noqa: B018 - loads and decrypts the deferred column
+    except InvalidToken:
+        db.execute(
+            update(EmailOutbox)
+            .where(EmailOutbox.id == row.id)
+            .values(status=OutboxStatus.FAILED, finished_at=now, body="", last_error="undecryptable body")
+            .execution_options(synchronize_session=False)
+        )
+        db.expire(row)
+        return False
+    return True
+
+
+def _finish_values(
+    row: EmailOutbox, outcome: Literal["sent", "failed"], error: str | None, now: datetime.datetime
+) -> dict[str, object]:
     if outcome == "sent":
         return {"status": OutboxStatus.SENT, "finished_at": now, "body": "", "last_error": None}
     stored_error = None if error is None else error[:ERROR_LIMIT]

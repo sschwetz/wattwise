@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from core_api.bootstrap import run_migrations
 from core_api.db import make_engine, make_session_factory
 from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
+from core_api.time_utils import as_utc
 
 FIELDS = [{"name": "api_key", "label": "API key", "secret": True, "required": True}]
 SETTINGS = {"api_key": "dummy-api-key-value"}
@@ -48,6 +49,7 @@ def test_provider_settings_are_ciphertext_and_round_trip(migrated):
     migrated.expire_all()
 
     raw = migrated.execute(sa.text("SELECT settings FROM mail_providers")).scalar()
+    assert raw
     assert "dummy-api-key-value" not in raw
     row = migrated.get(MailProvider, "smtp2go")
     assert row.settings == SETTINGS
@@ -67,6 +69,7 @@ def test_outbox_body_is_ciphertext_and_round_trips(migrated):
     migrated.expire_all()
 
     raw = migrated.execute(sa.text("SELECT body FROM email_outbox")).scalar()
+    assert raw
     assert "dummy-token-value" not in raw
     row = migrated.query(EmailOutbox).one()
     assert row.body == BODY
@@ -91,7 +94,11 @@ def test_outbox_timestamps_round_trip(migrated):
         )
     )
     migrated.commit()
-    assert migrated.query(EmailOutbox).one().status is OutboxStatus.SENT
+    row = migrated.query(EmailOutbox).one()
+    assert row.status is OutboxStatus.SENT
+    assert as_utc(row.claimed_at) == now
+    assert as_utc(row.next_attempt_at) == now
+    assert as_utc(row.finished_at) == now
 
 
 def test_invalid_outbox_status_violates_the_check_constraint(migrated):

@@ -178,6 +178,10 @@ def test_claim_limit_outside_1_to_50_is_422(client, limit):
     assert _claim(client, limit).status_code == 422
 
 
+def test_claim_without_a_limit_is_422(client):
+    assert client.post(f"{MAIL_URL}/outbox/claim", headers=HEADERS).status_code == 422
+
+
 def test_claim_honours_the_limit(client, session):
     for _ in range(3):
         _outbox_row(session)
