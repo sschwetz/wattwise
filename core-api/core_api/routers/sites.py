@@ -10,7 +10,7 @@ from core_api.deps import (
     get_current_user,
     get_db_session,
     require_site_access,
-    require_site_owner,
+    require_site_manager,
     site_role_for,
 )
 from core_api.errors import AppError
@@ -82,7 +82,7 @@ def get_site_sun(site: Site = Depends(require_site_access)) -> SiteSunOut:
 @router.patch("/{site_id}", response_model=SiteOut)
 def update_site(
     payload: SiteUpdate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> SiteOut:

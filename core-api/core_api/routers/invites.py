@@ -7,10 +7,18 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core_api.config import get_settings
-from core_api.deps import get_current_user, get_db_session, get_email_sender, require_site_access, require_site_owner
+from core_api.deps import (
+    can_manage_site,
+    get_current_user,
+    get_db_session,
+    get_email_sender,
+    require_site_access,
+    require_site_manager,
+    site_role_for,
+)
 from core_api.email_sender import EmailSender, try_send_email
 from core_api.errors import AppError
-from core_api.models.identity import InviteStatus, Site, SiteAccess, SiteInvite, User
+from core_api.models.identity import InviteStatus, Site, SiteAccess, SiteAccessRole, SiteInvite, SiteRole, User
 from core_api.schemas import InviteCreate, InviteOut, PendingInviteOut
 
 router = APIRouter(prefix="/sites/{site_id}/invites", tags=["invites"])
@@ -40,9 +48,12 @@ def _invite_email(inviter: User, site: Site) -> tuple[str, str]:
     return subject, body
 
 
-def _check_can_invite(db: Session, site: Site, owner: User, email: str) -> None:
-    if email == owner.email.lower():
+def _check_can_invite(db: Session, site: Site, inviter: User, email: str) -> None:
+    if email == inviter.email.lower():
         raise AppError(400, "cannot_invite_self", "You cannot invite yourself")
+    owner_email = db.execute(select(User.email).where(User.id == site.owner_user_id)).scalar_one()
+    if email == owner_email.lower():
+        raise AppError(400, "cannot_invite_owner", "The site owner already has access")
     rows = db.execute(
         select(SiteInvite.email, SiteInvite.status).where(
             SiteInvite.site_id == site.id,
@@ -98,20 +109,20 @@ def _out(db: Session, invite: SiteInvite) -> InviteOut:
 def create_invite(
     payload: InviteCreate,
     background_tasks: BackgroundTasks,
-    site: Site = Depends(require_site_owner),
-    owner: User = Depends(get_current_user),
+    site: Site = Depends(require_site_manager),
+    inviter: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     email_sender: EmailSender = Depends(get_email_sender),
 ) -> InviteOut:
     email = payload.email.lower()
-    _check_can_invite(db, site, owner, email)
-    invite = SiteInvite(site_id=site.id, inviter_user_id=owner.id, email=email)
+    _check_can_invite(db, site, inviter, email)
+    invite = SiteInvite(site_id=site.id, inviter_user_id=inviter.id, email=email)
     db.add(invite)
     db.commit()
     db.refresh(invite)
-    subject, body = _invite_email(owner, site)
+    subject, body = _invite_email(inviter, site)
     background_tasks.add_task(try_send_email, email_sender, email, subject, body, "site-invite")
-    return _to_out(invite, owner.email)
+    return _to_out(invite, inviter.email)
 
 
 @router.get("", response_model=list[InviteOut])
@@ -125,18 +136,18 @@ def list_invites(
         .join(User, User.id == SiteInvite.inviter_user_id)
         .where(SiteInvite.site_id == site.id)
     )
-    if site.owner_user_id != user.id:
+    if not can_manage_site(db, site, user.id):
         query = query.where(SiteInvite.invitee_user_id == user.id)
     query = query.order_by(SiteInvite.created_at.desc(), SiteInvite.id.desc())
     return [_to_out(invite, inviter_email) for invite, inviter_email in db.execute(query).all()]
 
 
 def _get_visible_invite(db: Session, site: Site, user: User, invite_id: int) -> SiteInvite:
-    """404 unless the invite belongs to this site and the user is its owner or its invitee."""
+    """404 unless the invite belongs to this site and the user is its owner, a manager or its invitee."""
     invite = db.get(SiteInvite, invite_id)
     if invite is None or invite.site_id != site.id:
         raise AppError(404, "invite_not_found", "Invitation not found")
-    if site.owner_user_id != user.id and invite.invitee_user_id != user.id:
+    if invite.invitee_user_id != user.id and not can_manage_site(db, site, user.id):
         raise AppError(404, "invite_not_found", "Invitation not found")
     return invite
 
@@ -158,13 +169,15 @@ def revoke_invite(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> InviteOut:
-    """The owner may revoke any open invite. An invitee may revoke only their own accepted one."""
+    """The owner or a manager may revoke any open invite. An invitee may revoke only their own
+    accepted one. Revoking an accepted invite removes the invitee's grant."""
     invite = _get_visible_invite(db, site, user, invite_id)
     if invite.status not in (InviteStatus.INVITED, InviteStatus.ACCEPTED):
         raise AppError(409, "invite_final", "This invitation was already declined or revoked")
     if invite.status == InviteStatus.ACCEPTED and invite.invitee_user_id is not None:
         grant = db.get(SiteAccess, (site.id, invite.invitee_user_id))
         if grant is not None:
+            _check_can_remove_grant(db, site, user, grant)
             db.delete(grant)
     invite.status = InviteStatus.REVOKED
     invite.revoked_at = datetime.datetime.now(datetime.UTC)
@@ -172,6 +185,14 @@ def revoke_invite(
     db.commit()
     db.refresh(invite)
     return _out(db, invite)
+
+
+def _check_can_remove_grant(db: Session, site: Site, user: User, grant: SiteAccess) -> None:
+    """A manager grant can be removed only by the owner or by the manager leaving."""
+    if grant.role != SiteAccessRole.MANAGER or grant.user_id == user.id:
+        return
+    if site_role_for(db, site, user.id) != SiteRole.OWNER:
+        raise AppError(403, "forbidden", "Only the site owner can remove a manager")
 
 
 def _is_for(invite: SiteInvite, user: User) -> bool:

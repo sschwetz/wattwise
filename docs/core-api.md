@@ -43,7 +43,7 @@ flowchart LR
     LOGIC -. "AppError" .-> ERR
 ```
 
-Authorization is in the dependencies, not in the function bodies. A router function that asks for `require_site_owner` can assume the caller owns the site. This is the main thing to preserve when adding endpoints: pick the dependency first.
+Authorization is in the dependencies, not in the function bodies. A router function that asks for `require_site_manager` can assume the caller owns or manages the site. This is the main thing to preserve when adding endpoints: pick the dependency first.
 
 | Dependency | Passes when | Failure |
 |---|---|---|
@@ -51,7 +51,8 @@ Authorization is in the dependencies, not in the function bodies. A router funct
 | `require_setup_token` | A valid `totp_setup` scoped token | 401 |
 | `require_mfa_token` | A valid `mfa` scoped token and the user is not locked out | 401 `too_many_attempts` |
 | `require_site_access` | Owner or `site_access` row | 404 `not_found` (also for sites the caller cannot access) |
-| `require_site_owner` | Owner only | 404 `not_found` if the caller has no access, 403 `forbidden` for a viewer |
+| `require_site_manager` | Owner or a `manager` grant | 404 `not_found` if the caller has no access, 403 `forbidden` for a viewer |
+| `require_site_owner` | Owner only. Use it for routes that add, change or remove a manager, or change `owner_user_id`. | 404 `not_found` if the caller has no access, 403 `forbidden` for a manager or viewer |
 | `require_actor_key` | `X-Actor-Key` equals `ACTOR_KEY` (constant-time compare) | 401 `invalid_actor_key` |
 | `get_actor_instance` | The key, and the instance's `provider` equals `X-Actor-Provider`; the instance and its site are enabled unless an action run still needs its restore | 401 `invalid_actor_key` (also for an unknown id), 403 `instance_disabled` / `site_disabled` |
 | `get_source_by_collector_key` | Correct key for the source's kind, matching provider header if sent, source enabled, site enabled, and within its effective dates | 401 `invalid_collector_key`, 403 `source_disabled` / `site_disabled` / `source_expired` |
@@ -59,7 +60,7 @@ Authorization is in the dependencies, not in the function bodies. A router funct
 
 ## Endpoints
 
-All paths are under `/api/v1`. "Owner" means `require_site_owner`, "Viewer" means `require_site_access` (owner or viewer).
+All paths are under `/api/v1`. "Manager" means `require_site_manager` (the owner or a manager), "Viewer" means `require_site_access` (anyone with access).
 
 ### People
 
@@ -69,9 +70,9 @@ All paths are under `/api/v1`. "Owner" means `require_site_owner`, "Viewer" mean
 | Two-factor | `POST /auth/totp/setup/start`, `/setup/confirm`, `/verify` | Scoped tokens |
 | Password reset | `POST /auth/password-reset/request`, `/confirm` | Anyone |
 | Account | `GET/PATCH /users/me`, `PATCH /users/me/profile`, `POST/GET/DELETE /users/me/avatar`, `POST /users/me/password`, `POST /users/me/email/change/request` and `/confirm`, `POST /users/me/totp/reenroll/start` and `/confirm` | Logged-in user. Password, email and TOTP changes require a current password or code. |
-| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}` | Owner for writes. `PATCH` takes `name`, `timezone`, `enabled`, `latitude` and `longitude`. A `timezone` that is not an IANA zone name returns 422. `latitude` (-90 to 90) and `longitude` (-180 to 180) must both be set or both be null, otherwise 422. Null clears the location. `SiteOut` returns both, null when unset. `GET /sites` returns disabled sites too, with `enabled: false`. |
+| Sites | `POST/GET /sites`, `GET/PATCH /sites/{id}` | Manager for writes. `PATCH` takes `name`, `timezone`, `enabled`, `latitude` and `longitude`. A `timezone` that is not an IANA zone name returns 422. `latitude` (-90 to 90) and `longitude` (-180 to 180) must both be set or both be null, otherwise 422. Null clears the location. `SiteOut` returns both, null when unset. `GET /sites` returns disabled sites too, with `enabled: false`. |
 | Site sun times | `GET /sites/{id}/sun` | Site access. Returns `{estimated, sunrise, sunset}` for today in the site's time zone, as UTC instants. `estimated` is true when the point comes from the time zone's reference city. `sunrise` and `sunset` are null when the sun does not rise or set that day, and both are null with `estimated` false when there is no usable location. |
-| Invitations (site side) | `POST/GET /sites/{id}/invites`, `GET /sites/{id}/invites/{iid}`, `POST /sites/{id}/invites/{iid}/revoke` | Owner creates. `GET` list: owner sees all invites, a viewer sees only their own. Revoke: the owner can revoke an `invited` or `accepted` invite. The invitee can revoke only an `accepted` one. |
+| Invitations (site side) | `POST/GET /sites/{id}/invites`, `GET /sites/{id}/invites/{iid}`, `POST /sites/{id}/invites/{iid}/revoke` | Manager creates. Inviting the site owner's address is 400 `cannot_invite_owner`. `GET` list: the owner and managers see all invites, a viewer sees only their own. Revoke: the owner or a manager can revoke an `invited` or `accepted` invite. The invitee can revoke only an `accepted` one. Revoking an accepted invite deletes the invitee's grant, and when that grant is a manager grant only the owner or that manager may do it; anyone else gets 403 `forbidden`. |
 | Invitations (recipient side) | `GET /invites/pending`, `POST /invites/{iid}/accept`, `POST /invites/{iid}/decline` | Logged-in user whose confirmed email matches the invite, ignoring case |
 
 Invitation rules ([`routers/invites.py`](../core-api/core_api/routers/invites.py)):
@@ -80,7 +81,7 @@ Invitation rules ([`routers/invites.py`](../core-api/core_api/routers/invites.py
 - Accepting inserts the `site_access` row. Revoking an accepted invite deletes that row. The invite row stays. Nothing deletes invite rows.
 - Addresses are lowercased on create and matched case-insensitively. The recipient needs `email_confirmed`. `GET /invites/pending` returns an empty list for an unconfirmed account.
 - Errors: 400 `cannot_invite_self`, 409 `already_invited` (an `invited` or `accepted` invite for that address exists), 409 `invite_limit` (20 `invited` invites on the site, or 20 invites of any status created for the site in the last 24 hours, so revoking and re-inviting cannot send unlimited email), 409 `invite_final` (revoking a declined or revoked invite), 409 `invite_not_pending` (accepting or declining an answered invite), 404 `invite_not_found`.
-- Every site-side and accept/decline response is an `InviteOut`: `id`, `site_id`, `email`, `status`, `created_at`, `accepted_at`, `declined_at`, `revoked_at`, `inviter_user_id` and `inviter_email` (the address of the owner who sent it).
+- Every site-side and accept/decline response is an `InviteOut`: `id`, `site_id`, `email`, `status`, `created_at`, `accepted_at`, `declined_at`, `revoked_at`, `inviter_user_id` and `inviter_email` (the address of the owner or manager who sent it).
 - The create response is the invite row and the email text is the same for every address, so neither shows whether an account exists.
 - CR and LF in the inviter's name and the site name become spaces in the email subject and body, so a site name with a line break cannot stop the email.
 - A disabled site (`sites.enabled = false`) keeps its reads and its invite routes. Only collector routes change: `GET /collector/sources` leaves its sources out, and every collector write returns 403 `site_disabled`.
@@ -89,11 +90,11 @@ Invitation rules ([`routers/invites.py`](../core-api/core_api/routers/invites.py
 
 | Area | Endpoints | Who |
 |---|---|---|
-| Sources | `POST/GET /sites/{id}/sources`, `GET/PATCH/DELETE /sites/{id}/sources/{sid}` | Owner for writes. Viewers get a copy with device credentials removed. |
-| Rate windows | `POST/GET /sites/{id}/sources/{sid}/rate-windows`, `PATCH/DELETE .../{window_id}` | Owner for writes |
-| Tariffs | `POST/GET /sites/{id}/tariffs`, `PATCH .../tariffs/{tid}` | Owner for writes |
-| Tariff windows | `POST/GET /sites/{id}/tariffs/{tid}/demand-windows`, `/export-adjustments`, `/conditional-credits`, `/monthly-fee-discounts`. The first three also take `PATCH .../{window_id}` with `effective_to` to end a window. | Owner for writes |
-| Billing cycle | `POST/GET /sites/{id}/billing-cycle`, `PATCH .../billing-cycle/{cid}` | Owner for writes |
+| Sources | `POST/GET /sites/{id}/sources`, `GET/PATCH/DELETE /sites/{id}/sources/{sid}` | Manager for writes. Viewers get a copy with device credentials removed. |
+| Rate windows | `POST/GET /sites/{id}/sources/{sid}/rate-windows`, `PATCH/DELETE .../{window_id}` | Manager for writes |
+| Tariffs | `POST/GET /sites/{id}/tariffs`, `PATCH .../tariffs/{tid}` | Manager for writes |
+| Tariff windows | `POST/GET /sites/{id}/tariffs/{tid}/demand-windows`, `/export-adjustments`, `/conditional-credits`, `/monthly-fee-discounts`. The first three also take `PATCH .../{window_id}` with `effective_to` to end a window. | Manager for writes |
+| Billing cycle | `POST/GET /sites/{id}/billing-cycle`, `PATCH .../billing-cycle/{cid}` | Manager for writes |
 
 Tariffs, billing cycles and the three dated window types take `effective_from` and an optional `effective_to` (a half-open span, in UTC). A window created without `effective_from` takes its tariff's start. Dates where the end is not after the start, a tariff or billing cycle overlapping another, and a window outside its tariff all return 422.
 
@@ -139,7 +140,7 @@ The contract an actor follows is in [Actors](actors.md#the-contract). There are 
 | Surface | Prefix | Credential | Used by |
 |---|---|---|---|
 | Actor | `/actor` | `X-Actor-Key`, and `X-Actor-Provider` on per-instance routes | The actor container |
-| Owner | `/sites/{id}/actors` | JWT. Reads need site access, writes need the owner. | The web app |
+| Owner | `/sites/{id}/actors` | JWT. Reads need site access, writes need the owner or a manager. | The web app |
 
 Actor routes (`routers/actor.py`): `GET /actor/instances?provider=`, then under `/actor/instances/{id}`: `PATCH /discovered-config`, `PUT /capabilities`, `PUT|DELETE /alerts/{code}` (same body and rules as the source alert endpoints, keyed to the instance), `GET /schedules`, `PATCH /schedules/{schedule_id}` (body `{"armed": bool}`, 204), `GET /context`, `PUT /readings`, `GET /runs`, `POST /runs`, `PATCH /runs/{run_id}`.
 
@@ -147,7 +148,7 @@ Owner routes (`routers/actors.py`), all under `/sites/{id}/actors`:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET/POST /instances`, `PATCH/DELETE /instances/{iid}` | Manage the device accounts. `DELETE` is refused with 409 `unit_held_off` while an action run owes a restore and returns 204 otherwise. The `GET`, `POST` and `PATCH` responses are built by `instance_view`, which returns the sign-in code and link in `auth_state` to the site owner only; a viewer gets `{"signing_in": true}`. |
+| `GET/POST /instances`, `PATCH/DELETE /instances/{iid}` | Manage the device accounts. `DELETE` is refused with 409 `unit_held_off` while an action run owes a restore and returns 204 otherwise. The `GET`, `POST` and `PATCH` responses are built by `instance_view`, which returns the sign-in code and link in `auth_state` to the site owner and managers only; a viewer gets `{"signing_in": true}`. |
 | `POST /instances/{iid}/sign-in/reset` | Drop the stored refresh token. Same 409 rule. The response is built by `instance_view` too. |
 | `GET/POST /schedules`, `PATCH/DELETE /schedules/{sid}` | Manage schedules. Writes are validated against the instance's capabilities (422 `invalid_schedule` or `no_capabilities`). |
 | `POST /schedules/{sid}/test` | Queue a test run. 409 `instance_disabled` or `no_capabilities`. |

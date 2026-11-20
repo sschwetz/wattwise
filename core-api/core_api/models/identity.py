@@ -12,9 +12,11 @@ from core_api.models.base import Base, enum_check, str_enum
 
 class SiteAccessRole(str, enum.Enum):
     """Non-owner grants only. Ownership lives solely in Site.owner_user_id —
-    see docs/superpowers/specs/2026-09-25-core-api-design.md."""
+    see docs/superpowers/specs/2026-09-25-core-api-design.md. A manager has
+    the owner's rights on the site except over managers and ownership."""
 
     VIEWER = "viewer"
+    MANAGER = "manager"
 
 
 class SiteRole(str, enum.Enum):

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core_api.deps import get_db_session, require_site_access, require_site_owner
+from core_api.deps import get_db_session, require_site_access, require_site_manager
 from core_api.errors import AppError
 from core_api.jobs.demand_charge_job import invalidate_demand_data
 from core_api.models.billing import (
@@ -140,7 +140,7 @@ def _list_tariff_children(db: Session, site: Site, tariff_id: int, model_cls: ty
 @router.post("/tariffs", response_model=SiteTariffOut, status_code=status.HTTP_201_CREATED)
 def create_tariff(
     payload: SiteTariffCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> SiteTariff:
     existing = db.execute(select(SiteTariff).where(SiteTariff.site_id == site.id)).scalars().all()
@@ -164,7 +164,7 @@ def list_tariffs(
 def update_tariff(
     tariff_id: int,
     payload: SiteTariffUpdate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> SiteTariff:
     """Closing effective_to is the delete-equivalent for this effective-dated
@@ -188,7 +188,7 @@ def update_tariff(
 def create_demand_window(
     tariff_id: int,
     payload: DemandWindowCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> DemandWindow:
     return _create_dated_window(db, site, tariff_id, DemandWindow, payload)
@@ -211,7 +211,7 @@ def list_demand_windows(
 def create_export_adjustment_window(
     tariff_id: int,
     payload: ExportAdjustmentWindowCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> ExportAdjustmentWindow:
     return _create_dated_window(db, site, tariff_id, ExportAdjustmentWindow, payload)
@@ -234,7 +234,7 @@ def list_export_adjustment_windows(
 def create_conditional_credit_window(
     tariff_id: int,
     payload: ConditionalCreditWindowCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> ConditionalCreditWindow:
     return _create_dated_window(db, site, tariff_id, ConditionalCreditWindow, payload)
@@ -254,7 +254,7 @@ def end_demand_windows(
     tariff_id: int,
     window_id: int,
     payload: WindowUpdate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> DemandWindow:
     return _end_dated_window(db, site, tariff_id, window_id, DemandWindow, payload)
@@ -265,7 +265,7 @@ def end_export_adjustments(
     tariff_id: int,
     window_id: int,
     payload: WindowUpdate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> ExportAdjustmentWindow:
     return _end_dated_window(db, site, tariff_id, window_id, ExportAdjustmentWindow, payload)
@@ -276,7 +276,7 @@ def end_conditional_credits(
     tariff_id: int,
     window_id: int,
     payload: WindowUpdate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> ConditionalCreditWindow:
     return _end_dated_window(db, site, tariff_id, window_id, ConditionalCreditWindow, payload)
@@ -290,7 +290,7 @@ def end_conditional_credits(
 def create_monthly_fee_discount_window(
     tariff_id: int,
     payload: MonthlyFeeDiscountWindowCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> MonthlyFeeDiscountWindow:
     return _create_tariff_child(db, site, tariff_id, MonthlyFeeDiscountWindow, payload)
@@ -308,7 +308,7 @@ def list_monthly_fee_discount_windows(
 @router.post("/billing-cycle", response_model=BillingCycleOut, status_code=status.HTTP_201_CREATED)
 def create_billing_cycle(
     payload: BillingCycleCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> BillingCycle:
     existing = db.execute(select(BillingCycle).where(BillingCycle.site_id == site.id)).scalars().all()
@@ -332,7 +332,7 @@ def list_billing_cycles(
 def update_billing_cycle(
     cycle_id: int,
     payload: BillingCycleUpdate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> BillingCycle:
     """Closing effective_to is the delete-equivalent for this effective-dated

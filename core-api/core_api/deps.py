@@ -111,6 +111,11 @@ def site_role_for(db: Session, site: Site, user_id: int) -> SiteRole | None:
     return SiteRole(access.role.value)
 
 
+def can_manage_site(db: Session, site: Site, user_id: int) -> bool:
+    """True for the owner and for a manager grant."""
+    return site_role_for(db, site, user_id) in (SiteRole.OWNER, SiteRole.MANAGER)
+
+
 def site_visible_to(db: Session, site_id: int, user_id: int) -> Site | None:
     """The site if `user_id` owns it or holds a SiteAccess grant, else None.
     A missing site and a hidden one look the same to the caller."""
@@ -143,6 +148,20 @@ def require_site_owner(
         raise AppError(404, "not_found", f"Site {site_id} not found")
     if site.owner_user_id != current_user.id:
         raise AppError(403, "forbidden", "Only the site owner can perform this action")
+    return site
+
+
+def require_site_manager(
+    site_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> Site:
+    """The site, for its owner or a manager. No access is a 404, a viewer a 403."""
+    site = site_visible_to(db, site_id, current_user.id)
+    if site is None:
+        raise AppError(404, "not_found", f"Site {site_id} not found")
+    if not can_manage_site(db, site, current_user.id):
+        raise AppError(403, "forbidden", "Only the site owner or a manager can perform this action")
     return site
 
 

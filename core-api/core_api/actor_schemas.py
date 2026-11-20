@@ -20,7 +20,6 @@ from pydantic import (
 )
 
 from core_api.models.actors import ActorInstance, RunKind, RunOutcome
-from core_api.models.identity import Site, User
 from core_api.time_utils import as_utc
 
 _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -376,10 +375,10 @@ class ActorInstancePatch(_Strict):
 
 
 class ActorInstanceView(BaseModel):
-    """An instance as the Schedule page shows it, to the site owner and to viewers. Never
+    """An instance as the Schedule page shows it, to the site owner, managers and viewers. Never
     carries `config`, which holds the provider refresh token.
 
-    Build it with `instance_view`, which hides the sign-in code from anyone but the site owner.
+    Build it with `instance_view`, which hides the sign-in code from anyone but the site owner or a manager.
     It has no `from_attributes`, so a route cannot return the database row in its place."""
 
     id: int
@@ -394,10 +393,10 @@ class ActorInstanceView(BaseModel):
     auth_state: dict | None
 
 
-def shown_auth_state(auth_state: dict | None, is_owner: bool) -> dict | None:
-    """The owner gets the stored value. Anyone else gets `needs_sign_in` as is, and a pending
+def shown_auth_state(auth_state: dict | None, can_manage: bool) -> dict | None:
+    """The owner or a manager gets the stored value. Anyone else gets `needs_sign_in` as is, and a pending
     sign-in code and link become `{"signing_in": true}`, as does any value that is not a dict."""
-    if is_owner or auth_state is None:
+    if can_manage or auth_state is None:
         return auth_state
     if not isinstance(auth_state, dict):
         return {"signing_in": True}
@@ -406,8 +405,8 @@ def shown_auth_state(auth_state: dict | None, is_owner: bool) -> dict | None:
     return {"signing_in": True}
 
 
-def instance_view(instance: ActorInstance, site: Site, user: User) -> ActorInstanceView:
-    """The instance as `user` may see it at `site`."""
+def instance_view(instance: ActorInstance, can_manage: bool) -> ActorInstanceView:
+    """The instance as a user sees it. `can_manage` is true for the site's owner or a manager."""
     return ActorInstanceView(
         id=instance.id,
         site_id=instance.site_id,
@@ -418,7 +417,7 @@ def instance_view(instance: ActorInstance, site: Site, user: User) -> ActorInsta
         capabilities_updated_at=instance.capabilities_updated_at,
         latest_readings=instance.latest_readings,
         last_seen_at=instance.last_seen_at,
-        auth_state=shown_auth_state(instance.auth_state, site.owner_user_id == user.id),
+        auth_state=shown_auth_state(instance.auth_state, can_manage),
     )
 
 

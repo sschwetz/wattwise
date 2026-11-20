@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core_api.deps import get_db_session, require_site_access, require_site_owner
+from core_api.deps import get_db_session, require_site_access, require_site_manager
 from core_api.errors import AppError
 from core_api.local_rates import find_overlap
 from core_api.local_reprice import mark_reprice, reprice_start, window_snapshot
@@ -53,7 +53,7 @@ def _reject_overlap(
 def create_rate_window(
     source_id: int,
     payload: LocalRateWindowCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> LocalRateWindow:
     source = _get_local_source(db, site, source_id)
@@ -86,7 +86,7 @@ def replace_rate_window(
     source_id: int,
     window_id: int,
     payload: LocalRateWindowCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> LocalRateWindow:
     """Replaces every field. Sending the full window keeps the overlap check
@@ -109,7 +109,7 @@ def replace_rate_window(
 def delete_rate_window(
     source_id: int,
     window_id: int,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> None:
     source = _get_local_source(db, site, source_id)

@@ -646,21 +646,18 @@ def test_viewer_sees_needs_sign_in(http, db, site, viewer):
     assert http.get(f"{_base(site)}/instances").json()[0]["auth_state"] == {"needs_sign_in": True}
 
 
-def test_instance_view_redacts_for_anyone_but_the_owner(db, site, user):
-    viewer = User(email="other@example.com", password_hash="x")
-    db.add(viewer)
-    db.commit()
+def test_instance_view_redacts_for_anyone_who_cannot_manage(db, site):
     inst = _instance(db, site, auth_state=PENDING)
-    assert instance_view(inst, site, user).auth_state == PENDING
-    shown = instance_view(inst, site, viewer).model_dump_json()
+    assert instance_view(inst, can_manage=True).auth_state == PENDING
+    shown = instance_view(inst, can_manage=False).model_dump_json()
     assert CODE not in shown and LINK not in shown and '"signing_in":true' in shown
     inst.auth_state = None
-    assert instance_view(inst, site, viewer).auth_state is None
+    assert instance_view(inst, can_manage=False).auth_state is None
 
 
 @pytest.mark.parametrize("stored", ["QZXW-7731", ["QZXW-7731"], 7])
 def test_shown_auth_state_hides_a_malformed_value_from_a_viewer(stored):
-    assert shown_auth_state(stored, is_owner=False) == {"signing_in": True}
+    assert shown_auth_state(stored, can_manage=False) == {"signing_in": True}
 
 
 def test_instance_view_cannot_be_built_from_the_row_directly(db, site):

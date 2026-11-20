@@ -7,7 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from core_api.deps import get_current_user, get_db_session, require_site_access, require_site_owner
+from core_api.deps import can_manage_site, get_current_user, get_db_session, require_site_access, require_site_manager
 from core_api.errors import AppError
 from core_api.models.identity import Site, User
 from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
@@ -45,7 +45,7 @@ def _pricing_source_overlaps(
 @router.post("", response_model=SourceOut, status_code=status.HTTP_201_CREATED)
 def create_source(
     payload: SourceCreate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> SourceOut:
     now = datetime.datetime.now(datetime.UTC)
@@ -71,7 +71,7 @@ def create_source(
 
 # Device/provider credentials living in a source's config (an envoy source's
 # local-API token and the Enlighten username/password the collector uses to
-# renew it) must only reach the site owner: a read-only collaborator's
+# renew it) must only reach the site owner or a manager: a viewer's
 # SiteAccess grant is meant to expose energy data, not a credential that can
 # reach the owner's device or Enphase account.
 _SENSITIVE_CONFIG_KEYS = {"token", "api_key", "password", "secret", "username"}
@@ -100,10 +100,6 @@ def _to_source_out(source: Source, *, include_secrets: bool) -> SourceOut:
     )
 
 
-def _is_owner(site: Site, user: User) -> bool:
-    return site.owner_user_id == user.id
-
-
 @router.get("", response_model=list[SourceOut])
 def list_sources(
     site: Site = Depends(require_site_access),
@@ -111,7 +107,7 @@ def list_sources(
     db: Session = Depends(get_db_session),
 ) -> list[SourceOut]:
     sources = db.execute(select(Source).where(Source.site_id == site.id)).scalars().all()
-    include_secrets = _is_owner(site, current_user)
+    include_secrets = can_manage_site(db, site, current_user.id)
     return [_to_source_out(s, include_secrets=include_secrets) for s in sources]
 
 
@@ -125,7 +121,7 @@ def get_source(
     source = db.get(Source, source_id)
     if source is None or source.site_id != site.id:
         raise AppError(404, "not_found", f"Source {source_id} not found")
-    include_secrets = _is_owner(site, current_user)
+    include_secrets = can_manage_site(db, site, current_user.id)
     return _to_source_out(source, include_secrets=include_secrets)
 
 
@@ -143,7 +139,7 @@ def _checked_name(source: Source, name: str) -> str:
 def update_source(
     source_id: int,
     payload: SourceUpdate,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> SourceOut:
     source = db.get(Source, source_id)
@@ -185,7 +181,7 @@ def update_source(
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_source(
     source_id: int,
-    site: Site = Depends(require_site_owner),
+    site: Site = Depends(require_site_manager),
     db: Session = Depends(get_db_session),
 ) -> None:
     source = db.get(Source, source_id)

@@ -96,7 +96,7 @@ erDiagram
 |---|---|
 | `users` | Email, bcrypt password hash, TOTP secret, optional Amber API key. The Amber key belongs to the user, not a site. The TOTP secrets and the Amber key are encrypted at rest. |
 | `sites` | A property. Has one owner and an IANA time zone that all local-time rules use. `enabled` (default true) switches collection off; see [Disabled sites](#disabled-sites). `latitude` and `longitude` (nullable floats, migration `a9c3e5f7b1d4`) are the point used for sunrise and sunset. Both are set or both are null. Core API checks -90 to 90 and -180 to 180 on write. With no point, [`sun.py`](../core-api/core_api/sun.py) estimates from the time zone's reference city. |
-| `site_access` | Extra read-only grants. The only role today is `viewer`. Ownership is `sites.owner_user_id` and nowhere else. Permission checks read this table. It is written by accepting an invite and deleted by revoking one. |
+| `site_access` | Grants to users other than the owner. `role` is `viewer` (read-only) or `manager` (the owner's rights on the site, except over managers and ownership); a check constraint limits it to these two, widened to add `manager` in migration `e7a9c1d3f5b8`. Ownership is `sites.owner_user_id` and nowhere else. Permission checks read this table. Accepting an invite writes a `viewer` row and revoking the invite deletes the row. |
 | `site_invites` | Emailed invitations to view a site. Append-only record, see [Invitations](#invitations). |
 | `recovery_codes` | One-time TOTP recovery codes, stored as a keyed HMAC (not reversible, and useless without `SECRETS_ENCRYPTION_KEY`). Ten 16-character codes are issued at enrolment. |
 | `password_reset_tokens`, `email_confirmation_tokens`, `email_change_tokens` | Single-use, expiring tokens. Only the SHA-256 hash is stored. The raw token exists in the email and nowhere else. |
@@ -105,7 +105,7 @@ Columns holding credentials are stored as Fernet tokens (`gAAAA...` text) and de
 
 ### Invitations
 
-`site_invites` holds one row per invitation: the site, the inviting owner, the lowercased `email`, a `status` and one timestamp per transition (`accepted_at`, `declined_at`, `revoked_at`). `invitee_user_id` is set when the recipient accepts or declines. `revoked_by_user_id` is set on revoke. A check constraint limits `status` to `invited`, `accepted`, `declined` and `revoked`.
+`site_invites` holds one row per invitation: the site, the inviting owner or manager, the lowercased `email`, a `status` and one timestamp per transition (`accepted_at`, `declined_at`, `revoked_at`). `invitee_user_id` is set when the recipient accepts or declines. `revoked_by_user_id` is set on revoke. A check constraint limits `status` to `invited`, `accepted`, `declined` and `revoked`.
 
 Rows are append-only. No code path deletes one, and the only update is a forward status change with its timestamp. Inviting an address again after a decline or revoke adds a new row. No token is stored: the recipient matches by confirmed email address, so the table holds no secret.
 
@@ -272,7 +272,7 @@ Three tables hold the [actors](actors.md) feature. The migrations are `895863e43
 
 `kind` is `action`, `restore` or `test`. `outcome` is `pending`, `running`, `ok`, `skipped`, `partial`, `failed` or `overridden`. Both are text with a `CHECK` constraint. A unique constraint on (`schedule_id`, `kind`, `trigger_at`) stops a restart or a second actor process from running the same trigger twice. `parent_run_id` is set on restore rows only, is indexed, and points at the action run that holds the snapshot. Deleting a schedule or instance deletes its runs; the API does this because the foreign keys have no cascade.
 
-`config` and `auth_state` are encrypted. Anyone holding the sign-in code could approve it for their own Actron account, so it is treated as a secret. `capabilities` and `latest_readings` are plain JSON and hold no secret: `latest_readings` is the unit's state without the raw status. The owner API never returns `config`, and returns the sign-in code and link to the site owner only.
+`config` and `auth_state` are encrypted. Anyone holding the sign-in code could approve it for their own Actron account, so it is treated as a secret. `capabilities` and `latest_readings` are plain JSON and hold no secret: `latest_readings` is the unit's state without the raw status. The owner API never returns `config`, and returns the sign-in code and link to the site owner and managers only.
 
 ### JSON shapes
 

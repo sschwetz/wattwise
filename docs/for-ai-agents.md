@@ -29,7 +29,7 @@ Run Python commands from the project directory. Collectors need `CORE_API_URL` a
 5. **Readings are keyed `(source_id, ts, metric)`, prices `(pricing_source_id, channel, interval_start)`.** Writes are upserts and must stay idempotent.
 6. **Price lookups join on exact minute.** `POST /prices` floors derived minutes. Do not store price readings with seconds.
 7. **`grid_import_w` and `grid_export_w` are written one at a time, as positive watts.**
-8. **Authorization lives in FastAPI dependencies** (`deps.py`). Choose `require_site_access`, `require_site_owner`, `get_current_user` or the collector dependencies before writing the function body.
+8. **Authorization lives in FastAPI dependencies** (`deps.py`). Choose `require_site_access`, `require_site_manager`, `require_site_owner`, `get_current_user` or the collector dependencies before writing the function body.
 9. **Collectors authenticate with one shared key per kind**, and optionally name their provider in `X-Collector-Provider`. Provider filtering is not a security boundary. Actors use one shared `ACTOR_KEY` and a required `X-Actor-Provider`, on the same terms.
 10. **One Uvicorn worker.** Jobs and lockouts are in-process.
 11. **Specs and plans in `docs/superpowers/` are history.** Do not rewrite them to match code.
