@@ -698,7 +698,7 @@ def enroll_through_the_real_flow(
     the recovery codes under test are exactly the ones a user would be
     holding. Returns (user_id, totp_secret, recovery_codes)."""
     client.post("/api/v1/auth/register", json={"email": email})
-    confirm_token = _extract_confirm_token(client.app.state.email_sender.sent[-1][2])
+    confirm_token = _extract_confirm_token(client.app.state.email_sender.fallback.sent[-1][2])
     confirm_registration = client.post(
         "/api/v1/auth/register/confirm", json={"token": confirm_token, "password": password}
     )

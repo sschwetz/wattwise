@@ -22,12 +22,12 @@ def _register_and_confirm(client, email: str, password: str) -> None:
     account can log in (core-api finding 3: closes /register's email_taken
     enumeration oracle). The password itself is chosen at /register/confirm,
     not at /register -- see auth.confirm_registration -- so it's supplied
-    here, not in the initial /register call. `client.app.state.email_sender`
+    here, not in the initial /register call. `client.app.state.email_sender.fallback`
     is the same FakeEmailSender instance the `fake_email_sender` fixture
     provides, so tests that don't otherwise need that fixture can still get
     at it here."""
     client.post("/api/v1/auth/register", json={"email": email})
-    sent = client.app.state.email_sender.sent
+    sent = client.app.state.email_sender.fallback.sent
     token = _extract_confirmation_token(sent[-1][2])
     confirm = client.post("/api/v1/auth/register/confirm", json={"token": token, "password": password})
     assert confirm.status_code == 204

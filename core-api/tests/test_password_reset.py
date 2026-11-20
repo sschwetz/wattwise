@@ -19,7 +19,7 @@ def _register_and_confirm(client, email: str, password: str) -> None:
     fake_email_sender.sent[0] as THE password-reset email, not
     registration's own confirmation email."""
     client.post("/api/v1/auth/register", json={"email": email})
-    sent = client.app.state.email_sender.sent
+    sent = client.app.state.email_sender.fallback.sent
     token = _extract_token(sent[-1][2])
     confirm = client.post("/api/v1/auth/register/confirm", json={"token": token, "password": password})
     assert confirm.status_code == 204

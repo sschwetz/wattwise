@@ -5,7 +5,10 @@ import smtplib
 from email.message import EmailMessage
 from typing import Protocol
 
+from sqlalchemy.orm import Session, sessionmaker
+
 from core_api.config import get_settings
+from core_api.outbox import enqueue_email, has_active_provider
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,28 @@ class FakeEmailSender:
 
     def send(self, to: str, subject: str, body: str) -> None:
         self.sent.append((to, subject, body))
+
+
+class OutboxEmailSender:
+    """Queues mail in the outbox for the mail actor while a mail provider is
+    active, and sends through `fallback` otherwise.
+
+    It writes through its own short session, so a request handler and a
+    scheduler job use it the same way. SQLite allows one writer at a time:
+    a caller must commit its own writes before it sends, or this commit
+    waits on the caller's write lock."""
+
+    def __init__(self, session_factory: sessionmaker[Session], fallback: EmailSender) -> None:
+        self._session_factory = session_factory
+        self.fallback = fallback
+
+    def send(self, to: str, subject: str, body: str) -> None:
+        with self._session_factory() as db:
+            if has_active_provider(db):
+                enqueue_email(db, to, subject, body)
+                db.commit()
+                return
+        self.fallback.send(to=to, subject=subject, body=body)
 
 
 def try_send_email(email_sender: EmailSender, to: str, subject: str, body: str, description: str) -> bool:

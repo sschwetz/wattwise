@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from core_api.db import rows_affected
 from core_api.errors import AppError
-from core_api.models.mail import EmailOutbox, OutboxStatus
+from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
 
 # A sending row whose claim is older than this is claimable again: the actor
 # that took it is assumed dead.
@@ -22,6 +22,10 @@ MAX_ATTEMPTS = 5
 RETRY_BASE = datetime.timedelta(seconds=30)
 ERROR_LIMIT = 500
 RETENTION = datetime.timedelta(days=30)
+
+
+def has_active_provider(db: Session) -> bool:
+    return db.scalar(select(MailProvider.provider).where(MailProvider.is_active)) is not None
 
 
 def enqueue_email(db: Session, to: str, subject: str, body: str) -> EmailOutbox:

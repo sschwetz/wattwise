@@ -12,7 +12,7 @@ from core_api.admin_mail_schemas import OutboxSummaryOut, ProviderFieldOut, Prov
 from core_api.errors import AppError
 from core_api.models.identity import User
 from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
-from core_api.outbox import enqueue_email
+from core_api.outbox import enqueue_email, has_active_provider
 
 TEST_SUBJECT = "WattWise test email"
 TEST_BODY = "This is a test email from WattWise.\nIf you can read it, mail delivery works."
@@ -132,7 +132,7 @@ def _recent_test_count(db: Session, address: str) -> int:
 
 
 def queue_test_email(db: Session, admin: User) -> None:
-    if db.scalar(select(MailProvider.provider).where(MailProvider.is_active)) is None:
+    if not has_active_provider(db):
         raise AppError(409, "no_active_provider", "Activate a mail provider first")
     if _recent_test_count(db, admin.email) >= TEST_LIMIT:
         raise AppError(429, "too_many_tests", "Too many test emails; try again in a few minutes")

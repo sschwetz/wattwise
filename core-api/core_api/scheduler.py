@@ -14,6 +14,7 @@ from core_api.email_sender import EmailSender
 from core_api.jobs.actor_watchdog_job import run_actor_watchdog_job
 from core_api.jobs.demand_charge_job import run_demand_charge_job
 from core_api.jobs.demand_interval_job import run_demand_interval_job
+from core_api.jobs.mail_outbox_cleanup_job import run_mail_outbox_cleanup_job
 from core_api.jobs.retention_rollup_job import run_retention_rollup_job
 from core_api.jobs.service_status_job import run_service_status_job
 from core_api.service_status import REPORT_INTERVAL_SECONDS
@@ -43,6 +44,7 @@ def build_scheduler(
         ("demand_charge", run_demand_charge_job, CronTrigger(hour=0, minute=10)),
         ("retention_rollup", run_retention_rollup_job, CronTrigger(hour=0, minute=20)),
         ("actor_watchdog", _watchdog(email_sender), IntervalTrigger(minutes=1)),
+        ("mail_outbox_cleanup", run_mail_outbox_cleanup_job, CronTrigger(hour=0, minute=30)),
     ]
     for job_id, job_fn, trigger in session_jobs:
         scheduler.add_job(

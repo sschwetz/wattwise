@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core_api.admin_user import ensure_admin_user, expire_password_file, password_file_path
 from core_api.config import get_settings
 from core_api.db import make_engine, make_session_factory
-from core_api.email_sender import EmailSender, SmtpEmailSender
+from core_api.email_sender import EmailSender, OutboxEmailSender, SmtpEmailSender
 from core_api.errors import install_error_handlers
 from core_api.live import LiveHub
 from core_api.routers.account import router as account_router
@@ -94,7 +94,9 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
         allow_headers=["*"],
     )
     app.state.session_factory = session_factory
-    app.state.email_sender = email_sender or SmtpEmailSender()
+    # Every caller, request or scheduler job, sends through this wrapper, which
+    # queues in the outbox while a mail provider is active.
+    app.state.email_sender = OutboxEmailSender(session_factory, email_sender or SmtpEmailSender())
     app.state.live_hub = LiveHub()
 
     @app.get("/health", include_in_schema=False)
