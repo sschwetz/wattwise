@@ -14,6 +14,7 @@ from core_api.models.identity import (
     User,
 )
 from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
+from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
 from core_api.models.pricing import (
     PRICE_CHANNEL_AGGREGATION,
     PriceChannel,
@@ -78,4 +79,7 @@ __all__ = [
     "ActorRun",
     "RunKind",
     "RunOutcome",
+    "MailProvider",
+    "EmailOutbox",
+    "OutboxStatus",
 ]
