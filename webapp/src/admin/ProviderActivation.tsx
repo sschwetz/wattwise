@@ -11,17 +11,23 @@ interface Props {
 function ActivateButton({ provider, active }: Props) {
   const activate = useActivateProvider(provider.provider);
   const replaces = active && active.provider !== provider.provider ? active : undefined;
+  const disabled = !provider.available || activate.isPending;
   return (
     <div className="space-y-2">
-      {replaces && <p className={mutedClass}>Activating {provider.label} replaces {replaces.label}.</p>}
-      <button
-        type="button"
-        disabled={!provider.available || activate.isPending}
-        onClick={() => activate.mutate()}
-        className={primaryButtonClass}
-      >
-        Activate
-      </button>
+      {replaces ? (
+        <ConfirmAction
+          label="Activate"
+          title={`Activate ${provider.label}?`}
+          body={`Activating ${provider.label} turns off ${replaces.label}. Email will go through ${provider.label} from now on.`}
+          confirmLabel={`Activate ${provider.label}`}
+          disabled={disabled}
+          onConfirm={() => activate.mutate()}
+        />
+      ) : (
+        <button type="button" disabled={disabled} onClick={() => activate.mutate()} className={primaryButtonClass}>
+          Activate
+        </button>
+      )}
       {!provider.available && <p className={mutedClass}>The mail actor reports this provider as not available.</p>}
       <MutationError error={activate.error} fallback="Could not activate the provider. Please try again." />
     </div>

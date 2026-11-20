@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
@@ -145,13 +145,32 @@ describe("EmailTab", () => {
     expect(await screen.findByText("Sender address is required")).toBeInTheDocument();
   });
 
-  it("activates a provider and names the one it replaces", async () => {
+  it("activates a provider at once when none is active", async () => {
+    setup();
+    renderTab();
+    await userEvent.click(await screen.findByRole("button", { name: "Activate" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(calls("POST").map(([path]) => path)).toEqual(["/api/v1/admin/mail/providers/smtp2go/activate"]);
+  });
+
+  async function openReplaceConfirm() {
     setup({ providers: [{ ...SMTP }, { ...OTHER, available: true, is_active: true }] });
     renderTab();
-    await screen.findByLabelText("Provider");
-    await userEvent.selectOptions(screen.getByLabelText("Provider"), "smtp2go");
-    expect(screen.getByText(/replaces Other Mail/)).toBeInTheDocument();
+    await userEvent.selectOptions(await screen.findByLabelText("Provider"), "smtp2go");
     await userEvent.click(screen.getByRole("button", { name: "Activate" }));
+    return screen.getByRole("alertdialog");
+  }
+
+  it("asks before activating replaces the active provider, and cancel sends nothing", async () => {
+    const dialog = await openReplaceConfirm();
+    expect(dialog).toHaveTextContent("Activating SMTP2GO turns off Other Mail.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(calls("POST")).toHaveLength(0);
+  });
+
+  it("activates after the replace confirmation", async () => {
+    const dialog = await openReplaceConfirm();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Activate SMTP2GO" }));
     expect(calls("POST").map(([path]) => path)).toEqual(["/api/v1/admin/mail/providers/smtp2go/activate"]);
   });
 
@@ -170,7 +189,7 @@ describe("EmailTab", () => {
     expect(calls("POST")).toHaveLength(0);
     await userEvent.click(screen.getByRole("button", { name: "Deactivate" }));
     const dialog = screen.getByRole("alertdialog");
-    await userEvent.click(dialog.querySelector("button.bg-danger") as HTMLElement);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Deactivate" }));
     expect(calls("POST").map(([path]) => path)).toEqual(["/api/v1/admin/mail/providers/smtp2go/deactivate"]);
   });
 
