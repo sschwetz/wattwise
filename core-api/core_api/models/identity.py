@@ -126,6 +126,12 @@ class SiteInvite(Base):
     revoked_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     invitee_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
+    def revoke(self, by_user_id: int) -> None:
+        """Move the invite to revoked, stamped now and attributed to `by_user_id`."""
+        self.status = InviteStatus.REVOKED
+        self.revoked_at = datetime.datetime.now(datetime.UTC)
+        self.revoked_by_user_id = by_user_id
+
 
 class RecoveryCode(Base):
     """One-time TOTP-recovery codes, generated 10-at-a-time when a user

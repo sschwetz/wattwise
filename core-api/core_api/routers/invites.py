@@ -179,9 +179,7 @@ def revoke_invite(
         if grant is not None:
             _check_can_remove_grant(db, site, user, grant)
             db.delete(grant)
-    invite.status = InviteStatus.REVOKED
-    invite.revoked_at = datetime.datetime.now(datetime.UTC)
-    invite.revoked_by_user_id = user.id
+    invite.revoke(user.id)
     db.commit()
     db.refresh(invite)
     return _out(db, invite)

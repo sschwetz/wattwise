@@ -69,6 +69,13 @@ def _try_send_reset_email(email_sender: EmailSender, to: str, raw_token: str) ->
     )
 
 
+def issue_password_reset(db: Session, user: User, email_sender: EmailSender) -> None:
+    """Store a reset token for `user` and email the link to their address now.
+    The public route does not call this: it sends from a background task so the
+    send cannot change its response time (see _MIN_RESPONSE_SECONDS)."""
+    _try_send_reset_email(email_sender, user.email, _issue_reset_token(db, user))
+
+
 @router.post("/request", response_model=PasswordResetRequestOut)
 def request_reset(
     payload: PasswordResetRequestIn,

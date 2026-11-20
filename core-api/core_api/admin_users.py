@@ -3,13 +3,24 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from core_api.admin_schemas import AdminUserOut, AdminUserPatch, AdminUserSite
 from core_api.db import rows_affected
 from core_api.errors import AppError
-from core_api.models.identity import Site, SiteAccess, SiteAccessRole, SiteRole, User
+from core_api.models.identity import (
+    EmailChangeToken,
+    InviteStatus,
+    PasswordResetToken,
+    RecoveryCode,
+    Site,
+    SiteAccess,
+    SiteAccessRole,
+    SiteInvite,
+    SiteRole,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,12 +94,21 @@ def _set_email(db: Session, user: User, email: str) -> None:
     taken = db.scalar(select(User.id).where(func.lower(User.email) == email, User.id != user.id))
     if taken is not None:
         raise AppError(409, "email_taken", "An account with this email already exists")
+    changed = user.email.lower() != email
     user.email = email
+    if not changed:
+        return
+    # A staged address change or a reset link mailed to the old address must not
+    # override or bypass the admin's change.
+    db.execute(delete(EmailChangeToken).where(EmailChangeToken.user_id == user.id))
+    db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
 
 
 def _clear_admin(db: Session, user: User) -> None:
     """Clears is_admin unless the user is the last admin. The count and the
-    write are one statement, so two concurrent demotions cannot both pass."""
+    write are one conditional UPDATE. On SQLite, which has a single writer,
+    two concurrent demotions cannot both pass. On a database with concurrent
+    writers, two transactions can each see the other admin and both pass."""
     if not user.is_admin:
         return
     admin_count = select(func.count()).select_from(User).where(User.is_admin.is_(True)).scalar_subquery()
@@ -104,9 +124,7 @@ def _clear_admin(db: Session, user: User) -> None:
 
 
 def update_user(db: Session, user: User, patch: AdminUserPatch) -> None:
-    """Applies the fields present in the body. Does not commit. The admin flag
-    goes first because _clear_admin refreshes the row, which would drop any
-    attribute already set on it."""
+    """Applies the fields present in the body. Does not commit."""
     if patch.is_admin is False:
         _clear_admin(db, user)
     elif patch.is_admin:
@@ -137,10 +155,32 @@ def grant_site_access(db: Session, user: User, site_id: int, role: SiteAccessRol
         grant.role = role
 
 
-def remove_site_access(db: Session, user: User, site_id: int) -> None:
-    """Deletes the user's grant on the site, or 404 if there is none. Does not commit."""
+def remove_site_access(db: Session, admin: User, user: User, site_id: int) -> None:
+    """Deletes the user's grant on the site, or 404 if there is none, and marks
+    their accepted invites for the site revoked, as the owner's revoke does.
+    Does not commit."""
     _grantable_site_or_404(db, user, site_id)
     grant = db.get(SiteAccess, (site_id, user.id))
     if grant is None:
         raise AppError(404, "not_found", "This user has no access to that site")
     db.delete(grant)
+    accepted = db.scalars(
+        select(SiteInvite).where(
+            SiteInvite.site_id == site_id,
+            SiteInvite.invitee_user_id == user.id,
+            SiteInvite.status == InviteStatus.ACCEPTED,
+        )
+    )
+    for invite in accepted:
+        invite.revoke(admin.id)
+
+
+def reset_totp(db: Session, user: User) -> None:
+    """Returns the user to the enrolment step at next login. Old recovery codes
+    go too: they bypass the code check and belong to the secret being cleared.
+    Does not commit."""
+    user.totp_secret = None
+    user.pending_totp_secret = None
+    user.last_totp_step = None
+    user.totp_enabled = False
+    db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))

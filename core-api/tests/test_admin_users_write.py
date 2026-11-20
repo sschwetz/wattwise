@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import datetime
 import logging
 
 import pytest
 
 from core_api.db import make_engine, make_session_factory
-from core_api.models.identity import SiteAccess, SiteAccessRole, User
-from tests.test_admin_users import USERS_URL, _grant, _site, _user
+from core_api.models.identity import (
+    EmailChangeToken,
+    InviteStatus,
+    PasswordResetToken,
+    SiteAccess,
+    SiteAccessRole,
+    SiteInvite,
+    User,
+)
+from core_api.security import hash_token
+from tests.test_admin_users import USERS_URL, _add, _grant, _site, _user
 from tests.test_billing import auth
 
 AMBER_KEY = "psk_admin_set_amber_value_987"
@@ -311,7 +321,6 @@ def _write_calls(target: int, site: int) -> list[tuple[str, str, dict | None, st
         ("DELETE", f"{base}/sites/{site}", None, "remove_site_access"),
     ]
 
-
 def test_each_write_logs_one_line_with_ids_and_action_only(client, app_and_db_url, admin, caplog):
     _, db_url = app_and_db_url
     owner = _user(db_url, "owner@example.com")
@@ -329,3 +338,106 @@ def test_each_write_logs_one_line_with_ids_and_action_only(client, app_and_db_ur
         assert message == f"admin action: admin_user_id={admin} target_user_id={target} action={action}"
         for value in ("Secret Name", "secret.new@example.com", "target@example.com", AMBER_KEY):
             assert value not in caplog.text
+
+
+# --- email change tokens, invite revoke, self-demotion ----------------------
+
+
+def _stage_tokens(db_url: str, user_id: int) -> tuple[str, str]:
+    """A pending email-change token and a pending reset token; returns the raw values."""
+    expires = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+    change_raw, reset_raw = "change-token-raw-value", "reset-token-raw-value"
+    session = make_session_factory(make_engine(db_url))()
+    session.add(
+        EmailChangeToken(
+            user_id=user_id, new_email="staged@example.com", token_hash=hash_token(change_raw), expires_at=expires
+        )
+    )
+    session.add(PasswordResetToken(user_id=user_id, token_hash=hash_token(reset_raw), expires_at=expires))
+    session.commit()
+    session.close()
+    return change_raw, reset_raw
+
+
+def test_changing_the_email_kills_pending_email_change_and_reset_tokens(client, app_and_db_url, admin):
+    _, db_url = app_and_db_url
+    target = _user(db_url, "old@example.com")
+    change_raw, reset_raw = _stage_tokens(db_url, target)
+
+    got = client.patch(f"{USERS_URL}/{target}", json={"email": "admin.set@example.com"}, headers=auth(admin))
+    assert got.status_code == 200, got.text
+
+    confirm = client.post("/api/v1/users/me/email/change/confirm", json={"token": change_raw})
+    assert confirm.status_code == 400
+    reset = client.post(
+        "/api/v1/auth/password-reset/confirm", json={"token": reset_raw, "new_password": "another-password-1"}
+    )
+    assert reset.status_code == 400
+    assert _load_user(db_url, target).email == "admin.set@example.com"
+
+
+def test_a_patch_that_keeps_the_email_leaves_tokens_alone(client, app_and_db_url, admin):
+    _, db_url = app_and_db_url
+    target = _user(db_url, "old@example.com")
+    change_raw, reset_raw = _stage_tokens(db_url, target)
+
+    named = client.patch(f"{USERS_URL}/{target}", json={"display_name": "New Name"}, headers=auth(admin))
+    assert named.status_code == 200
+    same = client.patch(f"{USERS_URL}/{target}", json={"email": "OLD@example.com"}, headers=auth(admin))
+    assert same.status_code == 200
+
+    reset = client.post(
+        "/api/v1/auth/password-reset/confirm", json={"token": reset_raw, "new_password": "another-password-1"}
+    )
+    assert reset.status_code == 204
+    confirm = client.post("/api/v1/users/me/email/change/confirm", json={"token": change_raw})
+    assert confirm.status_code == 204
+
+
+def test_removing_access_revokes_the_accepted_invite(client, app_and_db_url, admin):
+    _, db_url = app_and_db_url
+    owner = _user(db_url, "owner@example.com")
+    target = _user(db_url, "target@example.com")
+    site = _site(db_url, owner, "Home")
+    _grant(db_url, site, target, SiteAccessRole.VIEWER)
+    invite_id = _add(
+        db_url,
+        SiteInvite(
+            site_id=site,
+            inviter_user_id=owner,
+            email="target@example.com",
+            status=InviteStatus.ACCEPTED,
+            invitee_user_id=target,
+        ),
+    )
+    pending_id = _add(
+        db_url,
+        SiteInvite(site_id=site, inviter_user_id=owner, email="other@example.com", status=InviteStatus.INVITED),
+    )
+
+    got = client.delete(f"{USERS_URL}/{target}/sites/{site}", headers=auth(admin))
+    assert got.status_code == 200, got.text
+    assert _grants(db_url, target) == []
+
+    session = make_session_factory(make_engine(db_url))()
+    try:
+        invite = session.get(SiteInvite, invite_id)
+        assert invite.status == InviteStatus.REVOKED
+        assert invite.revoked_at is not None
+        assert invite.revoked_by_user_id == admin
+        assert session.get(SiteInvite, pending_id).status == InviteStatus.INVITED
+    finally:
+        session.close()
+
+
+def test_an_admin_can_demote_themselves_when_another_admin_remains(client, app_and_db_url, admin):
+    _, db_url = app_and_db_url
+    second = _user(db_url, "second@example.com", is_admin=True)
+
+    got = client.patch(f"{USERS_URL}/{admin}", json={"is_admin": False}, headers=auth(admin))
+    assert got.status_code == 200, got.text
+    assert got.json()["is_admin"] is False
+
+    last = client.patch(f"{USERS_URL}/{second}", json={"is_admin": False}, headers=auth(second))
+    assert last.status_code == 409
+    assert last.json()["code"] == "last_admin"

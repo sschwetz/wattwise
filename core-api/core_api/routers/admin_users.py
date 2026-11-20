@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core_api import admin_users, user_profile
 from core_api.admin_schemas import AdminSiteGrantIn, AdminUserOut, AdminUserPatch
-from core_api.deps import get_db_session, require_admin
+from core_api.deps import get_db_session, get_email_sender, require_admin
+from core_api.email_sender import EmailSender
 from core_api.errors import AppError
 from core_api.models.identity import User
+from core_api.routers.password_reset import issue_password_reset
 from core_api.schemas import UpdateAmberApiKeyIn
 
 router = APIRouter(prefix="/admin/users", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -104,5 +106,28 @@ def remove_site_access(
     db: Session = Depends(get_db_session),
 ) -> AdminUserOut:
     user = admin_users.get_user_or_404(db, user_id)
-    admin_users.remove_site_access(db, user, site_id)
+    admin_users.remove_site_access(db, admin, user, site_id)
     return _commit_and_report(db, admin, user, "remove_site_access")
+
+
+@router.post("/{user_id}/password-reset", status_code=status.HTTP_204_NO_CONTENT)
+def send_password_reset(
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+    email_sender: EmailSender = Depends(get_email_sender),
+) -> None:
+    user = admin_users.get_user_or_404(db, user_id)
+    issue_password_reset(db, user, email_sender)
+    admin_users.log_admin_action(admin, user.id, "password_reset")
+
+
+@router.post("/{user_id}/totp/reset", response_model=AdminUserOut)
+def reset_totp(
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+) -> AdminUserOut:
+    user = admin_users.get_user_or_404(db, user_id)
+    admin_users.reset_totp(db, user)
+    return _commit_and_report(db, admin, user, "reset_totp")

@@ -14,8 +14,8 @@ from core_api.errors import install_error_handlers
 from core_api.live import LiveHub
 from core_api.routers.account import router as account_router
 from core_api.routers.actor import router as actor_router
-from core_api.routers.admin_users import router as admin_users_router
 from core_api.routers.actors import router as actors_router
+from core_api.routers.admin_users import router as admin_users_router
 from core_api.routers.auth import router as auth_router
 from core_api.routers.billing import router as billing_router
 from core_api.routers.collector import router as collector_router
