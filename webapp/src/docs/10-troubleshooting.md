@@ -114,7 +114,7 @@ The web app and Core API are separate addresses, and your browser calls both. Se
 | Phone lost | Use a [recovery code](03-signing-in.md#lost-your-authenticator-device). With none left, an administrator can [reset your two-factor sign-in](12-admin-users.md#reset-two-factor-sign-in). |
 | **Session expired** on the setup or code page | Go back to the login page and sign in again. |
 | Signed out unexpectedly | Sessions last 24 hours by default. |
-| No email arrives | Check spam. Then ask your administrator whether outgoing email is configured. |
+| No email arrives | Check spam. Then ask your administrator whether outgoing email is configured. An administrator can check the **Email** tab of Admin Settings: see [When email does not arrive](13-admin-email.md#when-email-does-not-arrive). |
 
 ## Times or days look wrong
 
@@ -129,6 +129,7 @@ Check the [site's time zone](04-sites.md#creating-a-site). The Reporting page an
 | **Remove administrator** is greyed out | The user is the only administrator. The same fix applies. |
 | *An account with this email already exists* | Another user has that address. Pick a different one, or change the other account first. |
 | A user says the password reset email did not arrive | **Send password reset email** only requests the email, and WattWise cannot see whether it was delivered. Ask them to check spam, then ask the server's administrator whether [outgoing email](01-installing-with-docker.md) is set up. Reset links last 1 hour. |
+| The **Email** tab says *No email provider has been declared yet*, **Pending** keeps growing, or **Failed** grows | See [When email does not arrive](13-admin-email.md#when-email-does-not-arrive). |
 | A site's manager cannot remove another manager | Only the site's owner can remove a manager. A manager can remove their own access. |
 
 ## Still stuck

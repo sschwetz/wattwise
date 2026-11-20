@@ -2,6 +2,8 @@
 
 An actor sends commands to a device. A [collector](collectors.md) brings data in; an actor reads site data from Core API and acts on it. The first actor, [`actron-neo-actor`](../actron-neo-actor), turns a ducted Actron Neo air conditioner off at the start of a tariff demand window and puts it back afterwards.
 
+The mail actor, [`mail-actor`](../mail-actor), shares the `ACTOR_KEY` and the `X-Actor-Provider` header but is not a device actor. It has no instances, schedules or runs, and it sends queued email, not device commands. [Mail](mail.md) describes it. The rest of this page is about device actors.
+
 Actors follow the collector design: one small Python container per kind of device, one shared key, instances discovered from Core API, and no state that a restart cannot recover. They differ as follows.
 
 | | Collector | Actor |
@@ -196,7 +198,7 @@ Rules Core API enforces:
 - Claiming (`pending` to `running`) succeeds only while the row is still `pending`, otherwise 409 `run_not_pending`. Finishing succeeds only from `pending` or `running`, otherwise 409 `run_finished`. A run cannot go back to `pending` (422 `invalid_outcome`).
 - The one change allowed on a finished run is an `action` run going from `ok` to `overridden`; a `partial` run cannot be overridden. That change keeps the run's `snapshot` and `attempts`; only `message` can be set with it.
 - A restore run needs a `parent_run_id` that is an action run of the same schedule, otherwise 422 `invalid_parent`. Any other kind of run with a `parent_run_id` gets the same 422.
-- When an actor marks a run `failed` or `partial` and the schedule has **Email me if it still fails** on, Core API emails the site owner at once through the mail relay. The actor cannot reach the relay.
+- When an actor marks a run `failed` or `partial` and the schedule has **Email me if it still fails** on, Core API emails the site owner at once, through the active mail provider or the mail relay (see [Mail](mail.md)). The device actor itself sends no email.
 
 An action run is **unfinished** while its outcome is `pending`, `running`, `ok` or `partial` and it has no restore row that ended `ok`, `skipped` or `failed`. A failed restore closes the action run. The actor does not retry it later, and the unit stays as it was. The failure shows on the Dashboard until a later run of the schedule ends `ok` or `overridden`.
 

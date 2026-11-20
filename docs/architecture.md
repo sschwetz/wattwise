@@ -2,7 +2,7 @@
 
 ## Services
 
-WattWise is eight containers started by one [`docker-compose.yml`](../docker-compose.yml). Compose project name: `wattwise`.
+WattWise is nine containers started by one [`docker-compose.yml`](../docker-compose.yml). Compose project name: `wattwise`.
 
 | Service | Directory | Language | Role | Talks to |
 |---|---|---|---|---|
@@ -13,7 +13,8 @@ WattWise is eight containers started by one [`docker-compose.yml`](../docker-com
 | `amber-pricing-collector` | [`amber-pricing-collector/`](../amber-pricing-collector) | Python | Fetches Amber prices: live, recent revisions, history. | Amber API (internet), `core-api` |
 | `local-pricing-collector` | [`local-pricing-collector/`](../local-pricing-collector) | Python | Turns typed-in rate windows into price intervals. | `core-api` |
 | `actron-neo-actor` | [`actron-neo-actor/`](../actron-neo-actor) | Python | Turns an Actron Neo air conditioner off and on from schedules. See [Actors](actors.md). | Actron cloud (internet), `core-api` |
-| `mail-relay` | [`mail-relay/`](../mail-relay) | Postfix | Sends password-reset, confirmation and schedule-failure email. | Your SMTP provider |
+| `mail-actor` | [`mail-actor/`](../mail-actor) | Python | Sends queued email through the mail provider an administrator has activated. Not a device actor. See [Mail](mail.md). | Mail provider API (internet), `core-api` |
+| `mail-relay` | [`mail-relay/`](../mail-relay) | Postfix | Sends password-reset, confirmation and schedule-failure email when no mail provider is active. | Your SMTP provider |
 
 ## How the services connect
 
@@ -29,6 +30,7 @@ flowchart TB
         AMB["Amber API"]
         ACL["Actron cloud"]
         SMTP["SMTP provider"]
+        MPROV["Mail provider API<br/>(smtp2go)"]
         BROWSER["Your browser"]
     end
 
@@ -39,6 +41,7 @@ flowchart TB
             AC["amber-pricing-collector"]
             LC["local-pricing-collector"]
             AA["actron-neo-actor"]
+            MA["mail-actor"]
             WEB["webapp (nginx :80)"]
             API["core-api (:8000)"]
         end
@@ -55,16 +58,18 @@ flowchart TB
     AA -- "sign-in, status, commands" --> ACL
     EC & WC & AC & LC -- "X-Collector-Key" --> API
     AA -- "X-Actor-Key, X-Actor-Provider" --> API
+    MA -- "X-Actor-Key, X-Actor-Provider: mail" --> API
+    MA -- "send" --> MPROV
     BROWSER -- "static files" --> WEB
     BROWSER -- "JWT bearer" --> API
     API --- DB
-    API -- "SMTP :25 (core-api joins both networks)" --> MR
+    API -- "SMTP :25 when no provider is active (core-api joins both networks)" --> MR
     MR -- "relay" --> SMTP
 ```
 
 Two details here are deliberate:
 
-- **`mail-relay` is on its own network.** Postfix trusts its whole subnet to relay mail without authentication. Putting it on `app` would let any collector send mail. Only `core-api` joins both networks.
+- **`mail-relay` is on its own network.** Postfix trusts its whole subnet to relay mail without authentication. Putting it on `app` would let any collector send mail. Only `core-api` joins both networks. `mail-actor` stays on `app` for the same reason and reaches its provider over the internet.
 - **The browser calls `core-api` directly.** The web app is static files. Its `API_BASE_URL` is written into `config.js` when the container starts (see [Web app](webapp.md#runtime-configuration)), so the address must be reachable from the user's browser, not only from inside Docker.
 
 ### Reaching the stack from the internet
@@ -81,7 +86,7 @@ flowchart LR
 
 ## Build commit and service status
 
-Each collector and the actor reports the commit it was built from to Core API when it starts and every 60 seconds. Core API does not call itself over HTTP: its scheduler job writes its own row. A collector sends `X-Collector-Key` and the actor sends `X-Actor-Key`, the credentials they already use. The webapp does not report: it serves `GET /version`, and the same scheduler job fetches `<WEBAPP_VERSION_URL>/version` (default `FRONTEND_BASE_URL`) once a minute. `mail-relay` does not report. The webapp's About dialog reads the result from `GET /api/v1/services`. See [Service status](core-api.md#service-status).
+Each collector and each actor, including `mail-actor`, reports the commit it was built from to Core API when it starts and every 60 seconds. Core API does not call itself over HTTP: its scheduler job writes its own row. A collector sends `X-Collector-Key` and an actor sends `X-Actor-Key`, the credentials they already use. The webapp does not report: it serves `GET /version`, and the same scheduler job fetches `<WEBAPP_VERSION_URL>/version` (default `FRONTEND_BASE_URL`) once a minute. `mail-relay` does not report. The webapp's About dialog reads the result from `GET /api/v1/services`. See [Service status](core-api.md#service-status).
 
 ## Who is allowed to do what
 
@@ -100,7 +105,7 @@ flowchart LR
     end
     P3 --> U["/sites/..., /users/me, /auth/..."]
     M2 --> C["/collector/sources<br/>/sources/{id}/config<br/>/sources/{id}/readings, /prices"]
-    A2 --> D["/actor/instances<br/>/actor/instances/{id}/..."]
+    A2 --> D["/actor/instances<br/>/actor/instances/{id}/...<br/>/actor/mail/... (mail actor)"]
 ```
 
 | Caller | Credential | Sees | Cannot |
@@ -110,11 +115,12 @@ flowchart LR
 | Administrator (`users.is_admin`) | JWT | Every user's profile, site membership and security state through `/admin/users`. Not site readings or device credentials. | Set a password. See [Admin endpoints](core-api.md#admin-endpoints) for what an admin can still do to an account. |
 | Viewer (accepted an owner's or manager's emailed invitation) | JWT | Site data, with device credentials and the Actron sign-in code and link hidden | Change anything |
 | Collector | One shared key per kind (`energy`, `weather`, `pricing`) | Sources of its own kind; pushes readings or prices | Read user data. Push readings to a source of another kind. |
-| Actor | One shared key for all actors (`ACTOR_KEY`) plus the provider header | Instances, schedules and site context for its own provider; creates and updates runs; reports readings | Read user data. Touch an instance of another provider. |
+| Device actor | One shared key for all actors (`ACTOR_KEY`) plus the provider header | Instances, schedules and site context for its own provider; creates and updates runs; reports readings | Read user data. Touch an instance of another provider. |
+| Mail actor | `ACTOR_KEY` plus `X-Actor-Provider: mail` | The active mail provider's decrypted settings, and every queued message with its address, subject and body | Anything outside `/actor/mail`. |
 
 The `X-Collector-Provider` header narrows a collector further, so the Amber collector cannot reach a `local` source. The README is explicit that this is a guard against mistakes, not a security boundary: any process holding the pricing key can claim to be either provider.
 
-The actor key works differently. `X-Actor-Provider` is required on every route. Core API refuses an instance whose provider differs, and a discovery call whose header does not match its `?provider=` (401 `invalid_actor_key`, the same answer as an unknown id). The key is still one secret for every actor, so the header protects against mistakes, not against a process that holds the key. An actor never sees user data, but it can set `latest_readings`, write runs and read the stored refresh token for its provider's instances.
+The actor key works differently. `X-Actor-Provider` is required on every route. Core API refuses an instance whose provider differs, and a discovery call whose header does not match its `?provider=` (401 `invalid_actor_key`, the same answer as an unknown id). The key is still one secret for every actor, so the header protects against mistakes, not against a process that holds the key. A device actor never sees user data, but it can set `latest_readings`, write runs and read the stored refresh token for its provider's instances. The mail actor reads queued mail, which includes password-reset and confirmation links, so a process that holds `ACTOR_KEY` can read them by sending `X-Actor-Provider: mail`.
 
 ## Design decisions and the reasons
 
@@ -129,7 +135,8 @@ The actor key works differently. `X-Actor-Provider` is required on every route. 
 | `provider` is free text on a source, not a database enum. | A new provider needs new collector code anyway. It should not also need a schema migration. | A typo in a provider name is not caught by the database. |
 | Background jobs run inside Core API (APScheduler). | A few light jobs do not justify another service. The actor watchdog runs here so it still works when an actor has stopped. | Core API must run as a single worker, or each job runs once per worker. |
 | SQLite. | One home, one writer, one file to back up. | No concurrent writers. The upsert code uses SQLite's `ON CONFLICT` syntax, so moving to Postgres needs those statements ported. |
-| Actors are separate containers that read from Core API, and Core API sends the failure email. | The actor needs a network path to the device's cloud, not to the mail relay. It cannot email when it is the thing that has stopped. | A schedule failure needs Core API to be up to be reported. |
+| Device actors are separate containers that read from Core API, and Core API sends the failure email. | A device actor needs a network path to the device's cloud, not to the mail relay. It cannot email when it is the thing that has stopped. | A schedule failure needs Core API to be up to be reported. |
+| With a mail provider active, Core API queues email in an outbox and the mail actor sends it. | Provider settings live in the database and an administrator changes them in the web app, with no environment edit or restart. A provider is one module in the actor, so Core API stays unchanged. The actor is the one actor that sends email, and it talks only to Core API and the provider. | Queued mail waits while the actor is down. Delivery is at-least-once, so a rare message arrives twice. See [Mail](mail.md#delivery). |
 | Login lockouts are held in process memory. | No extra store for a single-instance service. | A restart clears lockouts. Does not work across several workers. |
 
 ## Constraints that shape the code

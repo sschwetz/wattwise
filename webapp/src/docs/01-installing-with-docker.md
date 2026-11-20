@@ -26,7 +26,7 @@ WattWise runs as a set of containers managed by Docker Compose. One machine runs
 | `PRICING_COLLECTOR_KEY` | `openssl rand -hex 32` |
 | `ACTOR_KEY` | `openssl rand -hex 32` |
 
-3. Set `RELAY_DOMAIN` and `RELAY_SMARTHOST` to your outgoing mail provider, for example `[smtp.example.com]:587`, and add `RELAY_USERNAME` and `RELAY_PASSWORD` if it needs a login. Compose refuses to start without the first two, even if you never send mail.
+3. Set `RELAY_DOMAIN` and `RELAY_SMARTHOST` to your outgoing mail provider, for example `[smtp.example.com]:587`, and add `RELAY_USERNAME` and `RELAY_PASSWORD` if it needs a login. Compose refuses to start without the first two, even if you never send mail. An administrator can later send email through a provider such as smtp2go instead, from the **Email** tab of Admin Settings. See [Admin email](13-admin-email.md).
 4. If you will open WattWise from other devices, set `FRONTEND_BASE_URL` and `API_BASE_URL` to the addresses your browser uses, such as `http://192.168.1.20` and `http://192.168.1.20:8000`.
 
 > **Warning:** `SECRETS_ENCRYPTION_KEY` protects the Envoy tokens, passwords and Amber keys you enter in the app. Copy it somewhere off this machine. If you lose it, those saved values cannot be read and you must enter them again.

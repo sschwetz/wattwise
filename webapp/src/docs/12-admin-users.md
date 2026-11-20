@@ -1,6 +1,6 @@
 # 12. Admin users
 
-[Contents](index.md) · Previous: [Glossary](11-glossary.md)
+[Contents](index.md) · Previous: [Glossary](11-glossary.md) · Next: [Admin email](13-admin-email.md)
 
 This chapter is for administrators. An administrator can open **Admin Settings** to find any user, change their name and email, give them access to sites, send a password reset email, reset their two-factor sign-in and decide who else is an administrator. Other users never see these pages.
 
@@ -12,7 +12,7 @@ The account WattWise creates on first start is an administrator. On a server tha
 
 Click your name in the top right corner, then **Admin Settings**. The item appears only for administrators. If you do not see it, read [the Admin Settings fixes](10-troubleshooting.md#admin-settings-problems).
 
-The page has a **Users** tab on the left.
+Admin Settings has two tabs on the left: **Email** and **Users**. **Email** opens first and is covered in [Admin email](13-admin-email.md). This chapter is about **Users**. Click **Users** to open it.
 
 ## Finding a user
 
@@ -68,5 +68,6 @@ WattWise keeps at least one administrator. When the user is the only one, **Remo
 - [Troubleshooting Admin Settings](10-troubleshooting.md#admin-settings-problems)
 - [Sharing a site](04-sites.md#sharing-a-site): roles on a site, as owners and managers see them
 - [Account settings](09-account-settings.md): your own password, email and authenticator
+- [Admin email](13-admin-email.md): the **Email** tab, where you choose how WattWise sends email
 
 [Back to the contents](index.md)

@@ -12,7 +12,7 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `bootstrap.py` | `python -m core_api.bootstrap` runs Alembic to `head`. Safe to repeat. |
 | `admin_user.py` | Creates the first user on an empty database, as an administrator, and writes the one-time password file. |
 | `admin_users.py`, `admin_schemas.py`, `user_profile.py`, `routers/admin_users.py` | The administrator's user endpoints: the queries and rules, the response models, the avatar and Amber key changes shared with the account routes, and the router. See [Admin endpoints](#admin-endpoints). |
-| `deps.py` | FastAPI dependencies: current user, setup and MFA tokens, site access, collector-key checks, and `require_actor_key` and `get_actor_instance` for actors. |
+| `deps.py` | FastAPI dependencies: current user, setup and MFA tokens, site access, collector-key checks, and `require_actor_key`, `get_actor_instance` and `require_mail_actor` for actors. |
 | `security.py` | bcrypt, JWT creation and decoding, TOTP, token hashing, keyed recovery-code hashing. |
 | `encrypted_types.py` | `EncryptedString` and `EncryptedJSON` column types. Fernet encryption on write, decryption on read. |
 | `attempt_tracker.py`, `login_attempts.py`, `mfa_attempts.py` | In-memory sliding-window lockouts (5 failures in 15 minutes). |
@@ -23,7 +23,9 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `cost.py` | The cost calculation. The largest module. See [How it works](how-it-works.md#4-how-cost-is-calculated). |
 | `local_rates.py`, `local_reprice.py` | Validation of rate windows and creation of reprice markers. |
 | `pricing_gaps.py`, `readings_query.py`, `time_utils.py`, `timing.py` | Gap detection, raw-or-rollup reading queries, UTC and time zone helpers. |
-| `email_sender.py` | `SmtpEmailSender` for production, `FakeEmailSender` for tests. |
+| `email_sender.py` | `SmtpEmailSender` for production, `FakeEmailSender` for tests, and `OutboxEmailSender`, which wraps the SMTP sender and queues mail in the outbox while a mail provider is active. See [Mail](mail.md). |
+| `outbox.py` | The `email_outbox` rules: enqueue, claim, finish and purge. Nothing in it commits. |
+| `admin_mail.py`, `admin_mail_schemas.py`, `routers/admin_mail.py`, `routers/actor_mail.py` | The administrator's mail settings (providers, activation, test email, outbox summary) and the routes the mail actor calls. See [Mail](mail.md#admin-routes) and [Actor routes](mail.md#actor-routes). |
 | `live.py` | `LiveHub`: the in-memory latest live sample per source and the per-site subscriber queues. Never touches the database. |
 | `scheduler.py` | Builds the APScheduler instance. |
 | `actor_schemas.py`, `actor_capabilities.py`, `actor_schedule_validation.py` | Pydantic models for schedules, runs and capabilities, and the checks that tie a saved schedule to an instance's declared capabilities. See [Actors](actors.md). |
@@ -56,6 +58,7 @@ Authorization is in the dependencies, not in the function bodies. A router funct
 | `require_site_manager` | Owner or a `manager` grant | 404 `not_found` if the caller has no access, 403 `forbidden` for a viewer |
 | `require_site_owner` | Owner only. Use it for routes that add, change or remove a manager, or change `owner_user_id`. | 404 `not_found` if the caller has no access, 403 `forbidden` for a manager or viewer |
 | `require_actor_key` | `X-Actor-Key` equals `ACTOR_KEY` (constant-time compare) | 401 `invalid_actor_key` |
+| `require_mail_actor` | The key, and `X-Actor-Provider` equals `mail`. For the `/actor/mail` routes, which have no instance. | 401 `invalid_actor_key` for a missing, wrong or mismatched header |
 | `get_actor_instance` | The key, and the instance's `provider` equals `X-Actor-Provider`; the instance and its site are enabled unless an action run still needs its restore | 401 `invalid_actor_key` (also for an unknown id), 403 `instance_disabled` / `site_disabled` |
 | `get_source_by_collector_key` | Correct key for the source's kind, matching provider header if sent, source enabled, site enabled, and within its effective dates | 401 `invalid_collector_key`, 403 `source_disabled` / `site_disabled` / `source_expired` |
 | `require_source_kind(kind)` | The above, and the source is that kind | 403 `wrong_source_kind` |
@@ -90,7 +93,7 @@ Invitation rules ([`routers/invites.py`](../core-api/core_api/routers/invites.py
 
 ### Admin endpoints
 
-Every route under `/admin/users` has the `require_admin` dependency on the router, so a caller without `is_admin` gets 403 `admin_required`. `users.is_admin` is set on the account the bootstrap creates, and migration `d5f7b9c1e3a2` sets it on the lowest user id in an existing database. `GET /users/me` returns it as `is_admin`.
+Every route under `/admin/users` has the `require_admin` dependency on the router, so a caller without `is_admin` gets 403 `admin_required`. `users.is_admin` is set on the account the bootstrap creates, and migration `d5f7b9c1e3a2` sets it on the lowest user id in an existing database. `GET /users/me` returns it as `is_admin`. The mail settings routes under `/admin/mail` have the same dependency and are described in [Mail](mail.md#admin-routes).
 
 | Endpoint | Purpose |
 |---|---|
@@ -156,7 +159,7 @@ All collector endpoints send `X-Collector-Key`. Per-source endpoints may also se
 
 ### Actors
 
-The contract an actor follows is in [Actors](actors.md#the-contract). There are two surfaces.
+The contract an actor follows is in [Actors](actors.md#the-contract). There are two surfaces. The mail actor is the exception: it has no instances, and its four routes under `/actor/mail` (declare providers, read the active provider, claim queued mail, report a result) are described in [Mail](mail.md#actor-routes).
 
 | Surface | Prefix | Credential | Used by |
 |---|---|---|---|
@@ -184,7 +187,7 @@ Each service tells Core API which commit it was built from, and the About dialog
 | Endpoint | Credential | Behaviour |
 |---|---|---|
 | `POST /services/report` | `X-Collector-Key` or `X-Actor-Key` | Body `{"service": "...", "commit": "..."}`. Returns 204 and stores the commit with the current UTC time. |
-| `GET /services` | User token | Returns 7 rows in a fixed order: `core-api`, `webapp`, `envoy-collector`, `weatherlink-local-collector`, `amber-pricing-collector`, `local-pricing-collector`, `actron-neo-actor`. Each row has `service`, `commit`, `last_reported_at` and `reporting`. A service with no row yet has null `commit` and `last_reported_at`. |
+| `GET /services` | User token | Returns 8 rows in a fixed order: `core-api`, `webapp`, `envoy-collector`, `weatherlink-local-collector`, `amber-pricing-collector`, `local-pricing-collector`, `actron-neo-actor`, `mail-actor`. Each row has `service`, `commit`, `last_reported_at` and `reporting`. A service with no row yet has null `commit` and `last_reported_at`. |
 
 `POST /services/report` answers 401 `invalid_service_key` when the key matches none of `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` or `ACTOR_KEY`. It answers 403 `service_not_allowed` when the key is valid but not for the named service, and 422 when the body has extra fields or `commit` is not 7 to 40 lowercase hex characters, `unknown` or `dev`. Each key may report for these services:
 
@@ -193,7 +196,7 @@ Each service tells Core API which commit it was built from, and the About dialog
 | `ENVOY_COLLECTOR_KEY` | `envoy-collector` |
 | `WEATHER_COLLECTOR_KEY` | `weatherlink-local-collector` |
 | `PRICING_COLLECTOR_KEY` | `amber-pricing-collector`, `local-pricing-collector` |
-| `ACTOR_KEY` | `actron-neo-actor` |
+| `ACTOR_KEY` | `actron-neo-actor`, `mail-actor` |
 
 The two pricing collectors share a key, so either can report as the other. Core API accepts that.
 
@@ -274,6 +277,7 @@ Validation failures use code `validation_error` and HTTP 422. The `detail` list 
 | `retention_rollup` | Daily 00:20 | Moves readings older than 365 days into 5-minute rollups and deletes the raw rows | Upsert into rollups, delete after. Cutoff is floored to a bucket boundary. |
 | `actor_watchdog` | Every minute | Finds action runs that hold a unit off past the restore time plus the give-up allowance, or whose actor has been silent for 5 minutes, and finds failed or partial runs that no later run has cleared. It emails the site owner once per run if the schedule has email on | A conditional update sets `watchdog_notified_at` first, and only the job run that wins the update sends |
 | `service_status` | Every 60 seconds, and once at startup | Writes the `core-api` row, then fetches `<WEBAPP_VERSION_URL>/version` (5 second timeout) and writes the `webapp` row | Upsert on the service name. A failed fetch leaves the webapp row unchanged. |
+| `mail_outbox_cleanup` | Daily 00:30 | Deletes `sent` and `failed` outbox rows that finished more than 30 days ago | Deleting the same rows twice changes nothing |
 | `expire_admin_password_file` | Daily 03:17, and once at startup | Deletes `initial-admin-password.txt` if it is 5 days old or older | Does nothing when the file is missing. Not a database job: it takes the file path, not a session. |
 
 Times use the container's clock (UTC in the image).
@@ -295,7 +299,7 @@ Times use the container's clock (UTC in the image).
 | `FRONTEND_BASE_URL` | no | `http://localhost:5173` | CORS origin and the base of links in emails |
 | `WEBAPP_VERSION_URL` | no | `FRONTEND_BASE_URL` | Where the `service_status` job fetches the webapp's `/version`. Must be reachable from inside the core-api container. See [Operations](operations.md#build-commit). |
 | `ROOT_PATH` | no | empty | Prefix for the `/docs`, `/redoc` and `/openapi.json` pages, for example `/api` to reach them at `/api/docs` through a proxy that forwards `/api` unchanged. API routes always stay under `/api/v1` |
-| `SMTP_HOST`, `SMTP_PORT` | no | `mail-relay`, `25` | Outbound mail |
+| `SMTP_HOST`, `SMTP_PORT` | no | `mail-relay`, `25` | Outbound mail while no mail provider is active. See [Mail](mail.md). |
 | `SMTP_FROM` | no | `noreply@localhost` | Sender address |
 | `SMTP_USER`, `SMTP_PASSWORD` | no | unset | Only if the relay needs authentication |
 | `SCHEDULER_ENABLED` | no | `true` | `false`, `0` or `no` turns the jobs off. The core-api and webapp rows of the service status are then never written |
@@ -310,7 +314,7 @@ The rule, from the Storing Secrets section of [`CLAUDE.md`](../CLAUDE.md): never
 | Passwords | bcrypt hash (`hash_password`) | The app only checks them |
 | Password-reset, email-confirmation and email-change tokens | SHA-256 (`hash_token`) | 256-bit random values cannot be brute-forced, so a plain hash is enough |
 | TOTP recovery codes | Keyed HMAC-SHA256 (`hash_recovery_code`), 16 hex characters | Short enough that a plain hash could be guessed offline from a leaked database. The HMAC key is derived from `SECRETS_ENCRYPTION_KEY`. |
-| `sources.config` (Envoy token, Enlighten login, and the rest), `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret`, `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link) | Fernet encryption (`EncryptedJSON`, `EncryptedString` in `encrypted_types.py`) | The app has to send these on, so a hash would be useless |
+| `sources.config` (Envoy token, Enlighten login, and the rest), `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret`, `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link), `mail_providers.settings` (the mail provider's API key and sender address), `email_outbox.body` (queued mail, which holds reset and confirmation links) | Fernet encryption (`EncryptedJSON`, `EncryptedString` in `encrypted_types.py`) | The app has to send these on, so a hash would be useless |
 
 Consequences to know about:
 

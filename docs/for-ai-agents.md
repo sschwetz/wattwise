@@ -4,7 +4,7 @@ This page is a dense orientation for an automated agent (or a human in a hurry) 
 
 ## What this is
 
-Home-energy monitor. Collectors poll devices and push time series to one API. The API stores them in SQLite and computes electricity cost on request. A React app displays it. An actor does the reverse of a collector: it runs owner-defined schedules that command a device (today an Actron Neo air conditioner). Single household scale, single process, no queue.
+Home-energy monitor. Collectors poll devices and push time series to one API. The API stores them in SQLite and computes electricity cost on request. A React app displays it. An actor does the reverse of a collector: it runs owner-defined schedules that command a device (today an Actron Neo air conditioner). A second kind of actor, `mail-actor`, sends queued email through an administrator-chosen provider. Single household scale, single process, no message broker.
 
 ## Services and entry points
 
@@ -16,9 +16,10 @@ Home-energy monitor. Collectors poll devices and push time series to one API. Th
 | `local-pricing-collector/` | `local_pricing_collector.main` | `uv run python -m local_pricing_collector.main` | `uv run pytest` |
 | `weatherlink-local-collector/` | `weatherlink_local_collector.main` | `uv run python -m weatherlink_local_collector.main` | `uv run pytest` |
 | `actron-neo-actor/` | `actron_neo_actor.main` | `uv run python -m actron_neo_actor.main` | `uv run pytest -q`, `uv run ruff check .`, `uv run mypy` |
+| `mail-actor/` | `mail_actor.main` | `uv run python -m mail_actor.main` | `uv run pytest -q`, `uv run ruff check .`, `uv run mypy` |
 | `webapp/` | `src/main.tsx`, routes in `src/App.tsx` | `npm run dev` | `npm test`, `npm run lint`, `npm run build` |
 
-Run Python commands from the project directory. Collectors need `CORE_API_URL` and `COLLECTOR_KEY`. The actor needs `CORE_API_URL` and `ACTOR_KEY`. Core API needs `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (a Fernet key), `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` and `ACTOR_KEY`.
+Run Python commands from the project directory. Collectors need `CORE_API_URL` and `COLLECTOR_KEY`. Both actors need `CORE_API_URL` and `ACTOR_KEY`. Core API needs `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (a Fernet key), `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` and `ACTOR_KEY`.
 
 ## Invariants (do not break)
 
@@ -51,6 +52,7 @@ Run Python commands from the project directory. Collectors need `CORE_API_URL` a
 | Which providers does the UI offer? | `PROVIDERS_BY_KIND` in `webapp/src/pages/SourcesPage.tsx` |
 | What does the user see described? | `webapp/src/docs/*.md` (also shown in-app) |
 | How do actors, schedules and runs work? | `docs/actors.md`; `core_api/routers/actor.py` (actor side), `routers/actors.py` (owner side), `actor_failures.py`, `sun.py`, `jobs/actor_watchdog_job.py` |
+| How does email get sent? Which provider, and how do I add one? | `docs/mail.md`; `core_api/outbox.py`, `email_sender.py` (`OutboxEmailSender`), `admin_mail.py`, `routers/actor_mail.py`, `routers/admin_mail.py`; `mail-actor/mail_actor/worker.py` and `providers/` |
 | How does the Actron actor decide and act? | `actron-neo-actor/actron_neo_actor/worker.py` (tick), `schedule_eval.py`, `actions.py`, `restores.py`, `device.py` |
 | How does the Schedule tab work? | `webapp/src/pages/SchedulePage.tsx`, `webapp/src/actors/` |
 | How does the Envoy collector handle expiry and certificates? | `envoy-collector/envoy_collector/main.py` |
@@ -94,6 +96,18 @@ GET   /sites/{id}/actors/failures                   (people, JWT)
 GET   /sites/{id}/sun                               (people, JWT) today's {estimated, sunrise, sunset}
 DELETE /sites/{id}/actors/alerts/{alert_id}         (any user with site access; dismisses a sticky alert)
 
+Mail actor (same key, X-Actor-Provider: mail; no instance id):
+PUT   /actor/mail/providers                         declare the providers it implements, 204
+GET   /actor/mail/active                            {provider, settings}, or 204 when none is active
+POST  /actor/mail/outbox/claim?limit=1..50          queued messages, marked sending
+PATCH /actor/mail/outbox/{id}                       {"outcome": "sent"|"failed", "error"}, 204
+
+Admin mail settings (JWT of an administrator):
+GET   /admin/mail/providers | /admin/mail/outbox/summary
+PUT   /admin/mail/providers/{provider}              {"settings": {...}}, a blank secret keeps the stored one
+POST  /admin/mail/providers/{provider}/activate | /deactivate
+POST  /admin/mail/test                              202 queued
+
 Alerts (collector key, or actor key under /actor/instances/{id}):
 PUT    /sources/{id}/alerts/{code}                  {"message", "severity"?, "sticky"?}
 DELETE /sources/{id}/alerts/{code}
@@ -107,6 +121,7 @@ DELETE /sources/{id}/alerts/{code}
 - Weather metrics: `temp_c`, `humidity_pct`, `wind_speed_kph`, `wind_direction_deg`, `rain_mm`, `solar_radiation_wm2`, `barometric_pressure_hpa`.
 - Price channels: `buy`, `sell`, `controlled_load` (`demand` exists but nothing uses it).
 - Actor providers: `actron_neo`. Run kinds: `action`, `restore`, `test`. Run outcomes: `pending`, `running`, `ok`, `skipped`, `partial`, `failed`, `overridden`. Failure kinds: `run_failed`, `run_ok`, `still_off`, `actor_silent`, `needs_sign_in`, `alert`. Alert severities: `failure`, `partial`, `notice`. Trigger types: `window_start`, `window_end`, `time`, `sun`, `price_above`, `temperature`. Condition kinds: `reading` (no `kind` key), `months`, `days`, `week`, `demand_window`, `time_of_day`. Time reference kinds: `clock`, `sun`.
+- Mail: outbox status `pending`, `sending`, `sent`, `failed`. Mail provider keys: `smtp2go`. Mail error codes: `unknown_field`, `field_required`, `settings_incomplete`, `provider_unavailable`, `no_active_provider`, `too_many_tests`, `not_sending`.
 
 ## Working in this repository
 
@@ -132,7 +147,8 @@ DELETE /sources/{id}/alerts/{code}
 - Actor runs are unique on (`schedule_id`, `kind`, `trigger_at`). For a window trigger the actor sets an action run's `trigger_at` to the window's start instant, and `actor_failures.py` finds the restore time by matching on it.
 - `actor_instances.config` holds the Actron refresh token and is `EncryptedJSON`. The owner API (`ActorInstanceView`) must never return it. The actor must never log the unit's raw status, which holds the wall controller PIN.
 - Deleting a schedule or instance deletes its run history, and returns 409 `unit_held_off` while an action run owes a restore.
+- Mail: `email_outbox.body` and `mail_providers.settings` are encrypted, and the mail actor logs no address, subject, body or setting value. `OutboxEmailSender` commits through its own session, so commit your own writes before you send. With no active provider it falls back to SMTP. Delivery is at-least-once. See `docs/mail.md`.
 
 ## Pages
 
-[Architecture](architecture.md) · [How it works](how-it-works.md) · [Data model](data-model.md) · [Core API](core-api.md) · [Collectors](collectors.md) · [Actors](actors.md) · [Web app](webapp.md) · [Adding a provider](adding-a-provider.md) · [Operations](operations.md) · [Development](development.md)
+[Architecture](architecture.md) · [How it works](how-it-works.md) · [Data model](data-model.md) · [Core API](core-api.md) · [Collectors](collectors.md) · [Actors](actors.md) · [Mail](mail.md) · [Web app](webapp.md) · [Adding a provider](adding-a-provider.md) · [Operations](operations.md) · [Development](development.md)

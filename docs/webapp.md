@@ -29,14 +29,14 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 | `/sites/new` | `AddSitePage` | Create a site and pick its time zone |
 | `/account` | `AccountPage` | Name, photo, password, email, authenticator, Amber key |
 | `/help/:slug?` | `HelpPage` | The user guide |
-| `/admin`, `/admin/:tab` | `AdminSettingsPage` | Admin Settings, with a side rail from `admin/tabs.ts`. `:tab` is `users`; an unknown tab goes to `users`. The header menu shows the **Admin Settings** item only when `GET /users/me` returns `is_admin`. |
+| `/admin`, `/admin/:tab` | `AdminSettingsPage` | Admin Settings, with a side rail from `admin/tabs.ts`. `:tab` is `email` or `users`, in that order, and `/admin` or an unknown tab goes to `email`. The header menu shows the **Admin Settings** item only when `GET /users/me` returns `is_admin`. |
 | `/admin/users/:userId` | `UserDetailPage` | One user: **Details**, **Site access**, **Security** and **Administrator** sections, each a component in `src/admin/`. |
 | `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts, and the schedule log (`FailuresTile`) when it has something to show |
 | `/sites/:siteId/reporting` | `ReportingPage` | Month picker, Net/Gross option, a chart (`TotalsChart`) and a sortable totals table (`TotalsTable`) with a total row (`totalsSummary.ts`) at the bottom. Clicking a day, on the chart or in the table, lists its hours, and clicking an hour lists its minutes. While totals load, a spinner shows, over the dimmed previous rows when the level stays the same. The level is in the URL as `?month=&day=&hour=` (see `reportingView.ts`), so the browser back button works. |
 | `/settings`, `/settings/sites/:siteId`, `/settings/sites/:siteId/:tab` | `SettingsPage` | Site chips and a tab rail. `:tab` is `general`, `collectors`, `tariffs`, `billing`, `schedule` or `sharing`. The `schedule` tab (`ScheduleTab`) adds an air conditioner, builds schedules, tests them and shows the run history. See [The Schedule tab](#the-schedule-tab). `/settings` goes to the first enabled site's `general` tab. An unknown site goes to the first enabled site and keeps a valid tab. An unknown or missing tab keeps the site and goes to `general`. Viewers see every tab read-only. `useSiteAccess` reads `site.my_role`; owners and managers can edit. If a background refresh of the sites fails, the page stays and shows a **Retry** alert. |
 | `/sites/:siteId/sources`, `/sites/:siteId/billing`, `/sites/:siteId/schedule` | Redirects | Go to the `collectors`, `billing` and `schedule` settings tabs |
 
-`AdminRoute` wraps both admin routes and redirects a non-admin to `/`. It is a convenience, since Core API enforces `require_admin` on every `/admin/users` call.
+`AdminRoute` wraps both admin routes and redirects a non-admin to `/`. It is a convenience, since Core API enforces `require_admin` on every `/admin/users` and `/admin/mail` call.
 
 <table>
 <tr>
@@ -58,7 +58,7 @@ The Schedule tab and the dashboard log are shown in the user guide chapter [Sche
 | `src/api/` | `client.ts` (fetch wrapper, `ApiError`), `config.ts` (API base URL, `toWebSocketUrl`) |
 | `src/auth/` | `AuthContext` (token in `localStorage` under `access_token`), `ProtectedRoute` |
 | `src/layout/` | Header, site chips and side rail, avatar |
-| `src/admin/` | Admin Settings: `AdminRoute`, `AdminSettingsPage`, `UsersTab`, `UserDetailPage` with its section components, `ConfirmAction`, and the `useAdminUsers` and `useAdminUserMutations` hooks. Tabs are listed in `tabs.ts`. |
+| `src/admin/` | Admin Settings: `AdminRoute`, `AdminSettingsPage`, `UsersTab`, `EmailTab` with its parts (`ProviderPicker`, `ProviderFieldsForm`, `ProviderActivation`, `TestEmailRow`, `MailSummaryLine`), `UserDetailPage` with its section components, `ConfirmAction`, and the `useAdminUsers`, `useAdminUserMutations` and `useAdminMail` hooks. Tabs are listed in `tabs.ts`. |
 | `src/pages/` | One component per route, with its test beside it |
 | `src/dashboard/` | Hooks for live readings and history, and pure helpers for charts (`historyChart.ts`, `priceChart.ts`, `compass.ts`) |
 | `src/actors/` | The Schedule tab's parts and hooks. `useActors.ts` has the TanStack Query hooks. `scheduleForm.ts` turns a schedule into form state and back (and holds the client-side checks that mirror Core API). `runFormat.ts` formats run times and outcomes. `types.ts` mirrors the API shapes. |
@@ -141,6 +141,16 @@ The editor counts as changed while its form differs from the schedule as last sa
 | `location.ts` | Converts between the saved site and the form text, rounds a picked point to 5 decimal places, and builds the patch. It checks the ranges the API checks. |
 | `SunToday.tsx` | Today's sunrise and sunset from `GET /sites/{id}/sun` (`useSiteSun` in `sites/useSites.ts`), in the site's time zone, with a note when `estimated` is true. The query key includes the point and time zone, so a save fetches new times. |
 
+## The Email tab
+
+The first tab of Admin Settings (`src/admin/EmailTab.tsx`) edits the mail provider settings described in [Mail](mail.md). It calls `/api/v1/admin/mail` through `useAdminMail.ts`.
+
+- **Nothing is hard-coded per provider.** `ProviderPicker` lists what `GET /admin/mail/providers` returns, and `ProviderFieldsForm` draws one input per declared field. A secret field shows "set" or "not set" with a **Change** button, and the form sends only the fields that differ from the stored values, so the server never sends a secret back and the browser never holds one it did not just type.
+- **Activation.** `ProviderActivation` shows **Activate** (with a confirmation when it replaces another provider) or **Deactivate** (always confirmed). **Activate** is disabled while the provider's `available` is false.
+- **Test email.** `TestEmailRow` posts to `/admin/mail/test`. It says "queued" because Core API only queues the message.
+- **Summary line.** `MailSummaryLine` shows the pending, sent and failed counts and the last error from `/admin/mail/outbox/summary`. It refreshes every 30 seconds and when the window regains focus.
+- **No declared provider.** The tab tells the administrator to start the `mail-actor` container.
+
 ## Runtime configuration
 
 The API address is not compiled in. `public/config.js` sets `window.__APP_CONFIG__.apiBaseUrl`, and `src/api/config.ts` reads it (falling back to `http://localhost:8000`). In the container, [`docker-entrypoint.sh`](../webapp/docker-entrypoint.sh) rewrites `config.js` from the `API_BASE_URL` environment variable each time it starts. So one image works for any deployment, and changing the address needs a restart, not a rebuild.
@@ -153,7 +163,7 @@ The entrypoint also writes `/etc/nginx/security-headers.conf`, which `nginx.conf
 
 **About** sits in the account menu above **Log off** (`src/layout/Header.tsx`). It opens a dialog with two tabs.
 
-- **Containers** lists the 7 services from `GET /api/v1/services`. A reporting service shows its commit as a link to the GitHub commit page. A service that is not reporting shows "not reporting" and either its last-reported time or "never reported". See [Service status](core-api.md#service-status) for how the data arrives.
+- **Containers** lists the 8 services from `GET /api/v1/services`. A reporting service shows its commit as a link to the GitHub commit page. A service that is not reporting shows "not reporting" and either its last-reported time or "never reported". See [Service status](core-api.md#service-status) for how the data arrives.
 - **Licences** is a filterable list of npm and Python packages. Selecting a package shows its licence name and licence text. The data is the static file `public/licences.json`, served by nginx. The page makes no registry calls.
 
 Commits show as 7 characters. The webapp's own commit comes from `GET /version`, which returns `{"commit": "<7 characters or unknown>"}`. [`write-version.sh`](../webapp/write-version.sh) writes that file from `GIT_COMMIT` each time the container starts (the entrypoint calls it), and nginx serves it with `Cache-Control: no-store`. The container healthcheck requests `/version`, so a container that cannot serve it is unhealthy. Core API fetches the same URL to fill the webapp's row.

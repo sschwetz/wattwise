@@ -22,6 +22,7 @@ Update `core-api` first, then the collectors and the actor, then the web app. A 
 - **Collectors.** They send `severity` and `sticky` with each alert, and an older `core-api` rejects those fields with 422.
 - **Actor.** It sends `steps` and the `partial` outcome on multi-action runs. An older `core-api` refuses them with 422, so the run stays `running` and the unit stays held with no restore until `core-api` is upgraded.
 - **Web app.** It reads `schedule.actions`, which an older `core-api` does not return.
+- **Mail actor.** An older `core-api` has no `/actor/mail` routes, so the mail actor retries its declaration every 5 seconds until the new `core-api` runs. Queued mail is not lost meanwhile.
 - **Sun times and limits.** The actor reads `sun` from the context and `limits` and `armed` from each schedule, and it clears `armed` with `PATCH /actor/instances/{id}/schedules/{schedule_id}`. An older `core-api` has none of these, so a price or temperature trigger cannot record that it fired. The web app's General tab calls `GET /sites/{id}/sun`, which an older `core-api` also lacks.
 
 With a new `core-api` and an older actor, the actor reads `action` (the first entry of `actions`), so a multi-action schedule runs only its first action and reports `ok`. Its single-entry snapshot restores through the new code.
@@ -75,11 +76,11 @@ Edit `.env`:
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `SECRETS_ENCRYPTION_KEY` | `openssl rand -base64 32 \| tr '+/' '-_'`. Encrypts stored device credentials and Amber keys. **Copy it somewhere off this machine.** Without it the encrypted data in a backup cannot be read. |
 | `ENVOY_COLLECTOR_KEY`, `WEATHER_COLLECTOR_KEY`, `PRICING_COLLECTOR_KEY` | A different `openssl rand -hex 32` for each |
-| `ACTOR_KEY` | `openssl rand -hex 32`. Shared by `core-api` and `actron-neo-actor`. Compose refuses to start without it. |
+| `ACTOR_KEY` | `openssl rand -hex 32`. Shared by `core-api`, `actron-neo-actor` and `mail-actor`. Compose refuses to start without it. |
 | `FRONTEND_BASE_URL` | Where users open the web app. Default `http://localhost`. Also the CORS origin and the base of email links. |
 | `API_BASE_URL` | Where the **browser** reaches Core API. Default `http://localhost:8000`. |
 | `SMTP_FROM` | Sender address for system mail |
-| `RELAY_DOMAIN`, `RELAY_SMARTHOST` | Required by Compose even if you never send mail. `RELAY_SMARTHOST` looks like `[smtp.example.com]:587`. |
+| `RELAY_DOMAIN`, `RELAY_SMARTHOST` | Required by Compose even if you never send mail, or send it through a mail provider (see [Mail](mail.md)). `RELAY_SMARTHOST` looks like `[smtp.example.com]:587`. |
 | `RELAY_USERNAME`, `RELAY_PASSWORD` | If the smarthost needs a login |
 
 Then:
@@ -115,7 +116,7 @@ The file exists only if the database had no users at first start. If you don't d
 | Containers up | `docker compose ps` | All `running`, `core-api` `healthy` |
 | API answering | `curl http://localhost:8000/health` | `{"status":"ok"}` |
 | Data flowing | Dashboard live tiles | Values change within a minute or two |
-| Services reporting | **About** in the user menu, Containers tab | Each of the 7 services shows a commit, not "not reporting" (the webapp row needs `FRONTEND_BASE_URL` to be reachable from core-api, see below) |
+| Services reporting | **About** in the user menu, Containers tab | Each of the 8 services shows a commit, not "not reporting" (the webapp row needs `FRONTEND_BASE_URL` to be reachable from core-api, see below) |
 | Per-source problems | Dashboard log, then logs (below) | No alerts, no repeating errors |
 
 If a site's data stops and its sources look healthy, check whether the site was disabled: open **Site settings** in the webapp and look at **Enabled** on the **General** tab. A disabled site is dimmed in the site chips and its collectors log 403 `site_disabled` if they still hold the old source list. The data is kept. Turning **Enabled** on resumes collection within one discovery refresh (`DISCOVERY_REFRESH_SECONDS`).
@@ -128,7 +129,7 @@ docker compose logs -f --tail=100 core-api
 docker compose logs --since=1h amber-pricing-collector local-pricing-collector
 ```
 
-Collectors log one line per failure and carry on. A repeating line is the symptom to look for. Postfix logs to stdout, so `docker compose logs mail-relay` shows delivery failures.
+Collectors log one line per failure and carry on. A repeating line is the symptom to look for. Postfix logs to stdout, so `docker compose logs mail-relay` shows delivery failures. With a mail provider active, `docker compose logs mail-actor` shows them instead, and the **Email** tab of Admin Settings shows the last error.
 
 ### Restart one service
 
@@ -205,6 +206,17 @@ The General tab's map loads its tiles in the user's browser from `tile.openstree
 ### Stopping the actor
 
 `docker compose stop actron-neo-actor` sends SIGTERM, which the actor handles. It can take up to about 65 seconds if a test run is mid-way, because the actor puts the unit back first. The service sets `stop_grace_period: 90s` so Docker waits that long. An unfinished window action is not touched on a stop. The next start carries on to the restore.
+
+## Email and the mail actor
+
+How mail is queued and delivered is in [Mail](mail.md). The `mail-actor` container sends email through the provider an administrator has activated on the **Email** tab of Admin Settings. With no provider active, email keeps going through `mail-relay`.
+
+- **First set-up.** Start the stack, sign in as an administrator, open **Admin Settings**, then **Email**. The [admin guide](../webapp/src/docs/13-admin-email.md) lists the steps. If the tab says no provider has been declared, `mail-actor` is not running: check `docker compose ps` and `docker compose logs mail-actor`.
+- **Logs.** `docker compose logs -f --tail=100 mail-actor`. It logs one line when it declares its providers, one per failed message (an id and a status, never an address or a value), and a warning when the active provider is one it does not implement.
+- **Queued mail.** Mail waits as `pending` while the actor is down and goes out when it returns. The Email tab's summary line shows the count.
+- **Published image.** The publish workflow builds `ghcr.io/sschwetz/wattwise-mail-actor`, tagged `WATTWISE_VERSION` or `latest`, and the production override pulls it. The image appears with the first publish run that includes the `mail-actor` matrix entry, so run that before the first production deploy. A new GitHub Container Registry package can be private by default. If the pull is refused, make the package visible to the host's login or sign in to `ghcr.io` on the host.
+- **Stopping.** `docker compose stop mail-actor` sends SIGTERM. The actor finishes the message it is sending and stops. Messages it had claimed but not started are claimed again once their 2 minute claim expires.
+- **Network.** `mail-actor` is on the `app` network only and needs outbound internet access to the provider's API.
 
 ## Backups
 
@@ -288,16 +300,17 @@ Every service keeps the first 7 characters. A service shows "not reporting" in t
 | `JWT_SECRET` | `.env` | Every user is logged out | Edit `.env`, `docker compose up -d` |
 | `SECRETS_ENCRYPTION_KEY` | `.env` | Stored device credentials, Amber keys and authenticator secrets become unreadable, and all recovery codes stop working | **Do not rotate.** No tool re-encrypts existing rows under a new key. |
 | `*_COLLECTOR_KEY` (3) | `.env`, used by `core-api` and that kind's collectors | Collectors get 401 until both sides match | Edit `.env`, then `docker compose up -d` so both sides restart together |
-| `ACTOR_KEY` | `.env`, used by `core-api` and `actron-neo-actor` | The actor gets 401 `invalid_actor_key` until both sides match | Edit `.env`, then `docker compose up -d` |
+| `ACTOR_KEY` | `.env`, used by `core-api`, `actron-neo-actor` and `mail-actor` | An actor gets 401 `invalid_actor_key` until both sides match | Edit `.env`, then `docker compose up -d` |
 | Admin password | Database (bcrypt) | n/a | Change it in Account settings |
 | Envoy token, Enlighten login | `sources.config` in the database | Readings stop if wrong | Edit the source in the web app |
 | Actron refresh token | `actor_instances.config` in the database (encrypted) | Schedules stop and the page shows **needs sign-in** | **Sign in again** on the Schedule tab |
 | Amber API key | `users.amber_api_key` | Prices stop if wrong | Account settings |
-| SMTP login | `.env` (`RELAY_USERNAME`, `RELAY_PASSWORD`) | Email stops | Edit `.env`, restart `mail-relay` |
+| SMTP login | `.env` (`RELAY_USERNAME`, `RELAY_PASSWORD`) | Email stops while no mail provider is active | Edit `.env`, restart `mail-relay` |
+| Mail provider settings (smtp2go API key) | `mail_providers.settings` in the database (encrypted) | Email stops while that provider is active | **Change** the key on the Email tab of Admin Settings |
 
 Never commit `.env`. The repository ignores it, and only `.env.example` is tracked.
 
-Stored credentials are encrypted. `sources.config` (Envoy token, Enlighten login), `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link), `users.amber_api_key` and the authenticator secrets are Fernet-encrypted with `SECRETS_ENCRYPTION_KEY`. Passwords are bcrypt hashes and recovery codes are keyed hashes. A stolen database file does not expose these values without the key. The full list and the reasoning are in [Core API](core-api.md#where-secrets-are-stored).
+Stored credentials are encrypted. `sources.config` (Envoy token, Enlighten login), `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link), `mail_providers.settings`, `email_outbox.body` (queued mail holding reset links), `users.amber_api_key` and the authenticator secrets are Fernet-encrypted with `SECRETS_ENCRYPTION_KEY`. Passwords are bcrypt hashes and recovery codes are keyed hashes. A stolen database file does not expose these values without the key. The full list and the reasoning are in [Core API](core-api.md#where-secrets-are-stored).
 
 The consequences for you:
 
@@ -334,7 +347,7 @@ Fill this in once and keep it with the backups, in a password manager rather tha
 | Backup location and last successful backup date | | |
 | GitHub repository and who owns it | | |
 | Domain name and where its DNS is managed (if any) | | |
-| SMTP provider account used by `mail-relay` | | |
+| SMTP provider account used by `mail-relay`, and the mail provider account (such as smtp2go) set on the Email tab | | |
 | Enphase Enlighten account (owns the Envoy token) | | |
 | Amber account and API key | | |
 | `SECRETS_ENCRYPTION_KEY` (a copy kept apart from the backups) | | |

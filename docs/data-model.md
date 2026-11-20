@@ -101,7 +101,7 @@ erDiagram
 | `recovery_codes` | One-time TOTP recovery codes, stored as a keyed HMAC (not reversible, and useless without `SECRETS_ENCRYPTION_KEY`). Ten 16-character codes are issued at enrolment. |
 | `password_reset_tokens`, `email_confirmation_tokens`, `email_change_tokens` | Single-use, expiring tokens. Only the SHA-256 hash is stored. The raw token exists in the email and nowhere else. |
 
-Columns holding credentials are stored as Fernet tokens (`gAAAA...` text) and decrypted by the ORM on read: `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret`, `sources.config` and `actor_instances.config`. They cannot be filtered in SQL. See [Core API](core-api.md#where-secrets-are-stored).
+Columns holding credentials, or reset and confirmation links, are stored as Fernet tokens (`gAAAA...` text) and decrypted by the ORM on read: `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret`, `sources.config`, `actor_instances.config`, `mail_providers.settings` and `email_outbox.body`. They cannot be filtered in SQL. See [Core API](core-api.md#where-secrets-are-stored).
 
 ### Invitations
 
@@ -241,6 +241,37 @@ Window patterns (`months`, `days_of_week`, `start_time`, `end_time`) share one r
 | `reported_at` | timestamp with time zone | When Core API stored the report |
 
 The table holds no secrets. `GET /services` adds the `reporting` flag at read time; it is not stored. See [Service status](core-api.md#service-status).
+
+## Mail tables
+
+Migration `f1a3c5e7b9d2` adds both tables. How they are used is in [Mail](mail.md).
+
+`mail_providers` has one row per provider the mail actor has declared.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `provider` | string(64), primary key | The provider key, such as `smtp2go` |
+| `label` | string(200) | Display name from the declaration |
+| `fields` | JSON | The declared fields: a list of `{name, label, secret, required}` |
+| `settings` | `EncryptedJSON`, nullable | Field name to value. Null until an administrator saves settings. |
+| `is_active` | boolean, default false | The partial unique index `ix_mail_providers_one_active` allows one true row |
+| `declared_at` | timestamp with time zone | Set on each declaration. A provider is `available` when this equals the newest `declared_at` in the table. |
+| `updated_at` | timestamp with time zone | Last declaration, save, activation or deactivation |
+
+`email_outbox` has one row per message queued while a provider is active.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | integer, primary key | |
+| `to_address` | string(320) | Recipient |
+| `subject` | string(998) | |
+| `body` | `EncryptedString` | The message text. It holds reset and confirmation links, so it is encrypted. An empty string once the row is finished. |
+| `status` | string(16) | `pending`, `sending`, `sent` or `failed`, limited by the check constraint `ck_email_outbox_status` |
+| `attempts` | integer | Claims so far |
+| `last_error` | text, nullable | The actor's error text, at most 500 characters. Cleared when the message is sent. |
+| `created_at`, `claimed_at`, `next_attempt_at`, `finished_at` | timestamp with time zone | `next_attempt_at` is when a `pending` row becomes due. `finished_at` is set on `sent` and `failed`. |
+
+An index on (`status`, `next_attempt_at`) serves the claim query. The daily job `mail_outbox_cleanup` deletes finished rows after 30 days.
 
 ## Alerts
 

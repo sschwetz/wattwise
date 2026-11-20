@@ -6,16 +6,17 @@ WattWise records and displays energy data for a home solar and battery system: p
 
 | Directory | What it is |
 |---|---|
-| `core-api/` | FastAPI + SQLAlchemy + Alembic on SQLite. The only service that touches the database. Serves the REST API under `/api/v1` and runs the periodic jobs (demand intervals, demand charges, retention rollup, the actor watchdog, service status, and expiry of the first-login password file). |
+| `core-api/` | FastAPI + SQLAlchemy + Alembic on SQLite. The only service that touches the database. Serves the REST API under `/api/v1` and runs the periodic jobs (demand intervals, demand charges, retention rollup, the actor watchdog, service status, outbox cleanup, and expiry of the first-login password file). |
 | `envoy-collector/` | Polls the Envoy local API every minute and pushes readings to core-api. Renews the Envoy token from stored Enlighten credentials. |
 | `amber-pricing-collector/` | Polls Amber prices, with live polling and backfill. |
 | `local-pricing-collector/` | Turns rate windows entered in the webapp into price intervals, for suppliers with a fixed tariff. At 23:59 in each site's time zone it pushes the next local day's prices. Within a minute of a new source, a restart or a change to the rate windows, and on the first check of each new day, it also fills what is missing, back to the site's first data. A change to a rate window reprices from where it takes effect, within a minute. |
 | `weatherlink-local-collector/` | Polls the WeatherLink Live. |
 | `actron-neo-actor/` | An actor: runs schedules built on the webapp's Schedule page and commands an Actron Neo air conditioner, for example turning it off for a demand window and back on afterwards. See [`docs/actors.md`](docs/actors.md). |
+| `mail-actor/` | Sends queued email through the mail provider an administrator activates on the Email tab of Admin Settings (smtp2go first). Not a device actor. See [`docs/mail.md`](docs/mail.md). |
 | `webapp/` | React single-page app (Vite, Tailwind, TanStack Query, Recharts). Includes an in-app Help viewer. |
-| `mail-relay/` | Postfix relay that sends password-reset and email-confirmation mail for core-api. |
+| `mail-relay/` | Postfix relay that sends password-reset and email-confirmation mail for core-api while no mail provider is active. |
 
-The webapp, the collectors and the actor only talk to core-api over HTTP. Each collector kind authenticates with one shared key and discovers its sources from core-api, so adding a site in the webapp needs no collector restart.
+The webapp, the collectors and the actors only talk to core-api over HTTP, and the mail actor also calls its mail provider. Each collector kind authenticates with one shared key and discovers its sources from core-api, so adding a site in the webapp needs no collector restart.
 
 Both pricing collectors use `PRICING_COLLECTOR_KEY`. Each one asks for its own provider's sources with `GET /api/v1/collector/sources?kind=pricing&provider=<name>` and sends an `X-Collector-Provider: <name>` header. The filter keeps the Amber collector off local sources and the reverse, and core-api rejects a per-source request whose header names a different provider from the source's. Neither is a security boundary: any process holding the shared key can name another provider.
 
@@ -25,7 +26,7 @@ Documentation for owners, maintainers and AI agents is in [`docs/`](docs/README.
 
 ## Start a development instance
 
-You need Python 3.11 or later (3.12 for `actron-neo-actor`) with [uv](https://docs.astral.sh/uv/), and Node 24 or later. The steps below run core-api and the webapp natively with hot reload. Docker is only needed for the full-stack option further down.
+You need Python 3.11 or later (3.12 for `actron-neo-actor` and `mail-actor`) with [uv](https://docs.astral.sh/uv/), and Node 24 or later. The steps below run core-api and the webapp natively with hot reload. Docker is only needed for the full-stack option further down.
 
 ### 1. Start core-api
 
@@ -92,6 +93,8 @@ CORE_API_URL=http://localhost:8000 COLLECTOR_KEY=dev-envoy-key \
 The other collectors work the same way. The Amber and local pricing collectors both take `PRICING_COLLECTOR_KEY` as their `COLLECTOR_KEY` and run as `amber_pricing_collector.main` and `local_pricing_collector.main`. The WeatherLink collector takes `WEATHER_COLLECTOR_KEY` and runs as `weatherlink_local_collector.main`. The Envoy and weather collectors must run on a machine that can reach the device's LAN address.
 
 The air conditioner actor runs the same way with `ACTOR_KEY`: `cd actron-neo-actor && uv sync && CORE_API_URL=http://localhost:8000 ACTOR_KEY=dev-actor-key uv run python -m actron_neo_actor.main`. Add the air conditioner on the webapp's **Schedule** page, then approve the Actron sign-in code it shows. See [`docs/actors.md`](docs/actors.md).
+
+The mail actor runs the same way: `cd mail-actor && uv sync && CORE_API_URL=http://localhost:8000 ACTOR_KEY=dev-actor-key uv run python -m mail_actor.main`. It declares its providers at start. Pick one on the **Email** tab of Admin Settings. See [`docs/mail.md`](docs/mail.md).
 
 ## Run the full stack in Docker
 
@@ -178,7 +181,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
 ```
 
-Migrations run when core-api starts.
+Migrations run when core-api starts. The override also pulls `ghcr.io/sschwetz/wattwise-mail-actor`. [Operations](docs/operations.md#email-and-the-mail-actor) says what that image needs to exist and be readable.
 
 ### HTTPS and access from outside
 
