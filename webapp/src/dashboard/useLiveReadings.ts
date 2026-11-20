@@ -55,13 +55,22 @@ export interface LatestReadingTime {
   ts: string | null;
 }
 
-/** When the site's energy collectors last wrote a reading (null if never). */
-export function useLatestEnergyTime(siteId: number) {
+function useLatestTime(siteId: number, kind: "energy" | "weather") {
   return useQuery({
-    queryKey: ["energy-latest", siteId],
-    queryFn: () => apiFetch<LatestReadingTime>(`/api/v1/sites/${siteId}/readings/energy/latest`),
+    queryKey: [`${kind}-latest`, siteId],
+    queryFn: () => apiFetch<LatestReadingTime>(`/api/v1/sites/${siteId}/readings/${kind}/latest`),
     refetchInterval: LIVE_POLL_MS,
   });
+}
+
+/** When the site's energy collectors last wrote a reading (null if never). */
+export function useLatestEnergyTime(siteId: number) {
+  return useLatestTime(siteId, "energy");
+}
+
+/** When the site's weather collector last wrote a reading (null if never). */
+export function useLatestWeatherTime(siteId: number) {
+  return useLatestTime(siteId, "weather");
 }
 
 export interface LiveReadingsResult {

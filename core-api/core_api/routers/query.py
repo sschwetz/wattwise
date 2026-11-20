@@ -137,6 +137,20 @@ def get_weather_readings(
     )
 
 
+@router.get("/readings/weather/latest", response_model=LatestReadingOut)
+def get_latest_weather_reading_time(
+    site: Site = Depends(require_site_access),
+    db: Session = Depends(get_db_session),
+) -> LatestReadingOut:
+    """When the site's weather collector last wrote a reading, for the dashboard's
+    freshness line. Read from raw readings only, like the energy one."""
+    source_ids = weather_source_ids_for_site(db, site.id)
+    if not source_ids:
+        return LatestReadingOut(ts=None)
+    latest = db.execute(select(func.max(WeatherReading.ts)).where(WeatherReading.source_id.in_(source_ids))).scalar()
+    return LatestReadingOut(ts=latest)
+
+
 def _price_rows(db: Session, source_ids: list[int], channel: PriceChannel, start: datetime.datetime, end: datetime.datetime) -> list:
     rows: list = []
     for source_id in source_ids:

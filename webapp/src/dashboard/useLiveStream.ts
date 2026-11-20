@@ -74,6 +74,8 @@ export interface LiveStream {
   weather: Reading[];
   /** When the newest fresh energy value arrived, or null when live energy data is not flowing. */
   energyReceivedAt: number | null;
+  /** When the newest fresh weather value arrived, or null when live weather data is not flowing. */
+  weatherReceivedAt: number | null;
 }
 
 export function useLiveStream(siteId: number): LiveStream {
@@ -103,5 +105,6 @@ export function useLiveStream(siteId: number): LiveStream {
     energy: freshLiveReadings(state.energy, now),
     weather: freshLiveReadings(state.weather, now),
     energyReceivedAt: latestFreshReceivedAt(state.energy, now),
+    weatherReceivedAt: latestFreshReceivedAt(state.weather, now),
   };
 }

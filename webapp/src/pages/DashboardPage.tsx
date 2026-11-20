@@ -606,7 +606,7 @@ export function DashboardPage() {
           <h1 className="font-display text-2xl font-semibold text-ink">Dashboard</h1>
           <DemandWindowNotice siteId={parsedSiteId} />
         </div>
-        <DataFreshness siteId={parsedSiteId} liveReceivedAt={live.energyReceivedAt} />
+        <DataFreshness siteId={parsedSiteId} energyReceivedAt={live.energyReceivedAt} weatherReceivedAt={live.weatherReceivedAt} />
       </div>
       <LiveTiles siteId={parsedSiteId} live={live} />
       <PricingCharts siteId={parsedSiteId} zoom={zoom} />

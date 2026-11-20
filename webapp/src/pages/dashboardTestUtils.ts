@@ -28,6 +28,8 @@ export function mockApi(
   billingBounds: { start: string; end: string } | null = null,
   // When the energy collectors last wrote, for the dashboard heading's freshness line.
   latestEnergyTs: string | null = null,
+  // When the weather collector last wrote, for the same line's weather half.
+  latestWeatherTs: string | null = null,
 ) {
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (path.endsWith("/billing-period")) {
@@ -37,6 +39,9 @@ export function mockApi(
     }
     if (path.endsWith("/readings/energy/latest")) {
       return Promise.resolve({ ts: latestEnergyTs });
+    }
+    if (path.endsWith("/readings/weather/latest")) {
+      return Promise.resolve({ ts: latestWeatherTs });
     }
     if (path.includes("/readings/energy")) {
       const metric = queryParams(path).get("metric");
@@ -79,7 +84,7 @@ export function weatherCallPaths(): string[] {
   return vi
     .mocked(apiFetch)
     .mock.calls.map(([path]) => path as string)
-    .filter((path) => path.includes("/readings/weather"));
+    .filter((path) => path.includes("/readings/weather") && !path.endsWith("/latest"));
 }
 
 export function pricePaths(): string[] {

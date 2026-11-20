@@ -80,6 +80,7 @@ Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadin
 `useLiveStream` (`src/dashboard/useLiveStream.ts`) opens `/api/v1/sites/{siteId}/live` on the dashboard and sends the access token as its first message. The URL is `API_BASE_URL` with the scheme changed to `ws` or `wss` (`toWebSocketUrl` in `src/api/config.ts`). `LiveTiles` in `DashboardPage.tsx` overlays the streamed values on the polled ones, per metric.
 
 - **Freshness.** A streamed value counts for 15 seconds (`LIVE_FRESH_MS` in `src/dashboard/liveStream.ts`). After that the tile shows the polled value again. Streamed values are shown as received; the averaging in `liveAverages.ts` applies only to the polled fallback.
+- **Freshness lines.** `DataFreshness` shows one line for energy and one for weather under the dashboard heading. Each reads its own `.../readings/{energy,weather}/latest` endpoint every 60 seconds. `useLiveStream` returns `energyReceivedAt` and `weatherReceivedAt`, when the newest fresh value of each kind arrived. A line switches to its live form (`Energy DB last updated ... · live data received ...`) while its own value is set, so the two switch independently.
 - **Back-off.** After a close, the hook reconnects after 1 second, doubling each attempt up to 30 seconds. A received message resets the count.
 - **Fallback.** Polling keeps running. If the socket never connects, the tiles behave as before.
 - **Rain today** comes from stored data only, because Core API does not accept `rain_mm` as a live value.

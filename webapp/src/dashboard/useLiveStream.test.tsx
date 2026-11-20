@@ -6,6 +6,7 @@ import { FakeWebSocket } from "./fakeWebSocket";
 import { useLiveStream } from "./useLiveStream";
 
 const energyMsg = (ts: string, value = 5) => ({ kind: "energy", ts, values: { production_w: value } });
+const weatherMsg = (ts: string, value = 21) => ({ kind: "weather", ts, values: { temp_c: value } });
 const last = () => FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
 
 describe("useLiveStream", () => {
@@ -74,6 +75,20 @@ describe("useLiveStream", () => {
       vi.advanceTimersByTime(15_000);
     });
     expect(result.current.energyReceivedAt).toBeNull();
+  });
+
+  it("reports when the newest weather value arrived, separately from energy", () => {
+    vi.setSystemTime(new Date("2026-10-25T01:00:00Z"));
+    const { result } = renderHook(() => useLiveStream(7));
+    expect(result.current.weatherReceivedAt).toBeNull();
+    act(() => last().open());
+    act(() => last().message(weatherMsg(new Date().toISOString())));
+    expect(result.current.weatherReceivedAt).toBe(Date.parse("2026-10-25T01:00:00Z"));
+    expect(result.current.energyReceivedAt).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(15_000);
+    });
+    expect(result.current.weatherReceivedAt).toBeNull();
   });
 
   it("stops re-rendering once values have expired", () => {

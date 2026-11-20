@@ -102,6 +102,7 @@ Tariffs, billing cycles and the three dated window types take `effective_from` a
 | Endpoint | Returns |
 |---|---|
 | `GET /sites/{id}/readings/energy`, `/readings/weather`, `/prices` | Time series for a range. Reads raw rows for the last 365 days and rollups before that. |
+| `GET /sites/{id}/readings/energy/latest`, `/readings/weather/latest` | When the newest reading was written, as `{"ts": ...}`. `{"ts": null}` when there is none, or the site has no source of that kind. The dashboard's freshness lines read these. |
 | `GET /sites/{id}/cost?start&end&method=net\|gross[&prorate_fees]` | Total cost in cents, import and export kWh, minutes missing a price |
 | `GET /sites/{id}/cost/billing-period?method=` | Running cost for the current billing period, plus monthly fee discounts. 404 `no_active_billing_cycle` when none. |
 | `GET /sites/{id}/billing-period` | Start and end of the current billing period. 404 `no_active_billing_cycle` when none. |
