@@ -10,7 +10,8 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `config.py` | `get_settings()` reads environment variables. Missing required values raise at startup. |
 | `db.py` | Engine and session factory. Turns on `PRAGMA foreign_keys=ON` for SQLite. |
 | `bootstrap.py` | `python -m core_api.bootstrap` runs Alembic to `head`. Safe to repeat. |
-| `admin_user.py` | Creates the first user on an empty database and writes the one-time password file. |
+| `admin_user.py` | Creates the first user on an empty database, as an administrator, and writes the one-time password file. |
+| `admin_users.py`, `admin_schemas.py`, `user_profile.py`, `routers/admin_users.py` | The administrator's user endpoints: the queries and rules, the response models, the avatar and Amber key changes shared with the account routes, and the router. See [Admin endpoints](#admin-endpoints). |
 | `deps.py` | FastAPI dependencies: current user, setup and MFA tokens, site access, collector-key checks, and `require_actor_key` and `get_actor_instance` for actors. |
 | `security.py` | bcrypt, JWT creation and decoding, TOTP, token hashing, keyed recovery-code hashing. |
 | `encrypted_types.py` | `EncryptedString` and `EncryptedJSON` column types. Fernet encryption on write, decryption on read. |
@@ -36,7 +37,7 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 ```mermaid
 flowchart LR
     R["HTTP request"] --> CORS["CORS middleware"] --> ROUTE["Router function"]
-    ROUTE --> DEP["Dependencies:<br/>get_db_session,<br/>get_current_user or<br/>get_source_by_collector_key,<br/>require_site_access / owner"]
+    ROUTE --> DEP["Dependencies:<br/>get_db_session,<br/>get_current_user or<br/>get_source_by_collector_key,<br/>require_site_access /<br/>require_site_manager /<br/>require_site_owner / require_admin"]
     DEP --> LOGIC["Query or business logic<br/>(cost.py, jobs, SQLAlchemy)"]
     LOGIC --> OUT["Pydantic response model"]
     DEP -. "AppError" .-> ERR["JSON {code, message, detail}"]
@@ -50,6 +51,7 @@ Authorization is in the dependencies, not in the function bodies. A router funct
 | `get_current_user` | A valid access JWT whose user still exists | 401 `missing_token` or `invalid_token` |
 | `require_setup_token` | A valid `totp_setup` scoped token | 401 |
 | `require_mfa_token` | A valid `mfa` scoped token and the user is not locked out | 401 `too_many_attempts` |
+| `require_admin` | The current user has `is_admin` | 403 `admin_required` |
 | `require_site_access` | Owner or `site_access` row | 404 `not_found` (also for sites the caller cannot access) |
 | `require_site_manager` | Owner or a `manager` grant | 404 `not_found` if the caller has no access, 403 `forbidden` for a viewer |
 | `require_site_owner` | Owner only. Use it for routes that add, change or remove a manager, or change `owner_user_id`. | 404 `not_found` if the caller has no access, 403 `forbidden` for a manager or viewer |
@@ -80,11 +82,30 @@ Invitation rules ([`routers/invites.py`](../core-api/core_api/routers/invites.py
 - Statuses are `invited`, `accepted`, `declined` and `revoked`. `declined` and `revoked` are final. Only the recipient can decline, and only while the invite is `invited`.
 - Accepting inserts the `site_access` row. Revoking an accepted invite deletes that row. The invite row stays. Nothing deletes invite rows.
 - Addresses are lowercased on create and matched case-insensitively. The recipient needs `email_confirmed`. `GET /invites/pending` returns an empty list for an unconfirmed account.
-- Errors: 400 `cannot_invite_self`, 409 `already_invited` (an `invited` or `accepted` invite for that address exists), 409 `invite_limit` (20 `invited` invites on the site, or 20 invites of any status created for the site in the last 24 hours, so revoking and re-inviting cannot send unlimited email), 409 `invite_final` (revoking a declined or revoked invite), 409 `invite_not_pending` (accepting or declining an answered invite), 404 `invite_not_found`.
+- Errors: 400 `cannot_invite_self`, 400 `cannot_invite_owner` (the address is the site owner's), 409 `already_invited` (an `invited` or `accepted` invite for that address exists), 409 `invite_limit` (20 `invited` invites on the site, or 20 invites of any status created for the site in the last 24 hours, so revoking and re-inviting cannot send unlimited email), 409 `invite_final` (revoking a declined or revoked invite), 409 `invite_not_pending` (accepting or declining an answered invite), 404 `invite_not_found`.
 - Every site-side and accept/decline response is an `InviteOut`: `id`, `site_id`, `email`, `status`, `created_at`, `accepted_at`, `declined_at`, `revoked_at`, `inviter_user_id` and `inviter_email` (the address of the owner or manager who sent it).
 - The create response is the invite row and the email text is the same for every address, so neither shows whether an account exists.
 - CR and LF in the inviter's name and the site name become spaces in the email subject and body, so a site name with a line break cannot stop the email.
 - A disabled site (`sites.enabled = false`) keeps its reads and its invite routes. Only collector routes change: `GET /collector/sources` leaves its sources out, and every collector write returns 403 `site_disabled`.
+
+### Admin endpoints
+
+Every route under `/admin/users` has the `require_admin` dependency on the router, so a caller without `is_admin` gets 403 `admin_required`. `users.is_admin` is set on the account the bootstrap creates, and migration `d5f7b9c1e3a2` sets it on the lowest user id in an existing database. `GET /users/me` returns it as `is_admin`.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /admin/users`, `GET /admin/users/{id}` | An `AdminUserOut`: `id`, `email`, `display_name`, `is_admin`, `has_avatar`, `totp_enabled`, `email_confirmed`, `has_amber_api_key` and `sites`. Each `sites` entry is `site_id`, `site_name` and `role` (`owner`, `manager` or `viewer`), ordered by role then name. The list is not paginated. 404 `not_found` for an unknown id. |
+| `PATCH /admin/users/{id}` | Body fields `display_name`, `email` and `is_admin`. A field left out is unchanged, `display_name: null` clears the name, and `null` for the other two is 422. A changed address is stored lowercased, keeps `email_confirmed` as it is, and deletes the user's outstanding email-change and password-reset tokens. 409 `email_taken` when another account has the address. 409 `last_admin` when `is_admin: false` would leave no administrator. |
+| `DELETE /admin/users/{id}/avatar` | Removes the user's photo. |
+| `PUT /admin/users/{id}/amber-key`, `DELETE /admin/users/{id}/amber-key` | Sets or clears the user's Amber API key. The key is never returned; `has_amber_api_key` shows whether one is set. |
+| `PUT /admin/users/{id}/sites/{site_id}` | Body `{"role": "manager" or "viewer"}`. Creates the grant or changes its role. 404 `not_found` for an unknown site. 409 `is_owner` when the user owns the site. |
+| `DELETE /admin/users/{id}/sites/{site_id}` | Deletes the grant and marks the user's accepted invites for that site `revoked`. 404 `not_found` when the user has no grant. 409 `is_owner` for the owner. |
+| `POST /admin/users/{id}/password-reset` | Stores a reset token and emails the standard reset link to the user's address. Returns 204 whether or not the email was sent, so a 204 does not show delivery. It does not set a password. |
+| `POST /admin/users/{id}/totp/reset` | Clears the user's TOTP secret and recovery codes. At the next login the user goes through two-factor enrolment again. |
+
+Every write returns the updated `AdminUserOut`, except the password reset. Each one logs a single line with the admin's id, the target's id and the action name, for example `action=reset_totp`. The log holds no values, so it shows that an email was changed but not the old or new address, and it is not stored in the database.
+
+An administrator who can change a user's email, send a reset link and reset their two-factor sign-in can take over that account. Treat `is_admin` as full control of every account. The audit line records the action only, so it is not a defence against a misused admin account. Admins read membership, not site data: no admin route returns readings, prices or device credentials.
 
 ### Site configuration
 

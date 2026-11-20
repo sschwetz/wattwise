@@ -19,6 +19,7 @@ This guide covers every screen in the web app. Use the contents below, or the **
 | [9. Account settings](09-account-settings.md) | Name, photo, password, email, authenticator, Amber API key |
 | [10. Troubleshooting](10-troubleshooting.md) | Fixes for missing tiles, wrong costs, sign-in problems and access from outside your home |
 | [11. Glossary](11-glossary.md) | Plain-language definitions of the terms used in the app |
+| [12. Admin users](12-admin-users.md) | For administrators: finding a user, changing their details and site access, resetting a password or two-factor sign-in, the Administrator toggle |
 
 ## Where to start
 
@@ -28,6 +29,7 @@ This guide covers every screen in the web app. Use the contents below, or the **
 - **Running the server yourself?** See [Installing with Docker Compose](01-installing-with-docker.md).
 - **Want to use WattWise away from home?** The API must be reachable from the internet over HTTPS. See [Using it outside your home network](01-installing-with-docker.md#using-it-outside-your-home-network).
 - **Air conditioner or the dashboard log?** See [Schedules and the air conditioner](08-schedules.md).
+- **Administrator managing other people's accounts?** See [Admin users](12-admin-users.md).
 - **Lost your phone?** See [Lost your authenticator device](03-signing-in.md#lost-your-authenticator-device).
 
 ## Conventions in this guide

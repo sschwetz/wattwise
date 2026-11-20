@@ -89,7 +89,13 @@ Turn **Enabled** back on to resume collecting. Readings and prices for the time 
 
 ## Sharing a site
 
-Open the **Sharing** tab to give someone read-only access.
+Open the **Sharing** tab to give someone read-only access. The site's owner and its managers can send invitations. Everyone who accepts an invitation becomes a viewer.
+
+| Role on a site | What they can do |
+|----------------|------------------|
+| **Owner** | Everything on the site. Owns the site and cannot be removed from it. |
+| **Manager** | The same as the owner for the site's collectors, tariffs, billing, schedule, settings and invitations. A manager cannot remove another manager. Only an administrator gives someone the manager role, in [Admin Settings](12-admin-users.md#site-access). |
+| **Viewer** | Sees the site, read-only. Sees only their own invitation on the **Sharing** tab. |
 
 ![The Sharing tab with the invitation form and no invitations yet](images/settings-sharing.png)
 
@@ -106,7 +112,7 @@ Open the **Sharing** tab to give someone read-only access.
 
 Each row shows who sent the invite and the date its status last changed, in your own time zone. Invitations are never deleted. To invite the same address again after a decline or revoke, send a new invite.
 
-Limits: you cannot invite your own address, an address that already has an invited or accepted invite for the site is refused (*already invited*), a site can have at most 20 pending invitations, and a site can send at most 20 invitations in any 24 hours, counting revoked and declined ones. Past that, wait and try again later. People you share with see only their own invitation on the **Sharing** tab, with a **Revoke** button.
+Limits: you cannot invite your own address or the site owner's address, an address that already has an invited or accepted invite for the site is refused (*already invited*), a site can have at most 20 pending invitations, and a site can send at most 20 invitations in any 24 hours, counting revoked and declined ones. Past that, wait and try again later. People you share with see only their own invitation on the **Sharing** tab, with a **Revoke** button.
 
 ## Next
 

@@ -1,10 +1,12 @@
 # 11. Glossary
 
-[Contents](index.md) · Previous: [Troubleshooting](10-troubleshooting.md)
+[Contents](index.md) · Previous: [Troubleshooting](10-troubleshooting.md) · Next: [Admin users](12-admin-users.md)
 
 | Term | Definition |
 |------|-----------|
 | **Actor** | A background program that sends commands to a device, such as an air conditioner, from your schedules. See [Schedules](08-schedules.md). |
+| **Admin Settings** | The pages where an administrator manages other users. The menu item shows only for administrators. See [Admin users](12-admin-users.md). |
+| **Administrator** | A user who can open Admin Settings. The first account is one. See [The Administrator section](12-admin-users.md#administrator). |
 | **Alert** | A problem or notice a collector or actor raises for you. It shows in the dashboard log. See [The log](08-schedules.md#the-log). |
 | **Amber Electric** | An Australian electricity retailer that charges a wholesale-linked price that changes every 5 minutes. WattWise reads its prices through the Amber API. See [Connecting Amber Electric](05-sources.md#connecting-amber-electric). |
 | **Armed** | A price or temperature schedule is armed when it can fire. It becomes disarmed when it fires, and armed again when the reading is back past its re-arm value. See [When](08-schedules.md#when-sunrise-and-sunset-price-and-temperature). |
@@ -38,6 +40,7 @@
 | **Invitation** | An emailed offer of read-only access to a site. Its status is invited, accepted, declined or revoked. See [Sharing a site](04-sites.md#sharing-a-site). |
 | **kW / kWh** | Kilowatt (power, a rate) and kilowatt-hour (energy, an amount). 1 kW for 1 hour is 1 kWh. |
 | **Label** | An optional name on a source, for your own use. |
+| **Manager** | A role on one site. A manager has the owner's rights on that site, except over other managers and who owns it. An administrator grants it. See [Sharing a site](04-sites.md#sharing-a-site). |
 | **Minimum gap** | The **Minutes between runs** setting: how long a schedule waits after it was put back, or last ran, before it can run again. See [How often](08-schedules.md#how-often). |
 | **Monthly fee** | A fixed monthly account charge on a tariff. See [Tariffs](07-billing.md#tariffs). |
 | **Monthly fee discount** | A temporary lower monthly fee for a range of dates. See [Monthly fee discounts](07-billing.md#monthly-fee-discounts). |
@@ -61,6 +64,7 @@
 | **Time of day** | An **Only if** row that passes between two times, each a clock time or sunrise or sunset. See [Only if](08-schedules.md#only-if). |
 | **Tariff** | The fixed charges and rules your retailer applies. See [Tariffs](07-billing.md#tariffs). |
 | **Token** | A secret that lets WattWise read your Envoy. See [Getting the token](05-sources.md#getting-the-token). |
+| **Viewer** | A role on one site: read-only access, usually from an accepted [invitation](04-sites.md#sharing-a-site). |
 | **W / kW** | Watt and kilowatt: units of power. 1 kW is 1,000 W. |
 
 [Back to the contents](index.md)

@@ -111,7 +111,7 @@ The web app and Core API are separate addresses, and your browser calls both. Se
 | Reset link says it is invalid or expired | Reset links last 1 hour and work once. Request a [new one](03-signing-in.md#forgotten-password). |
 | Authenticator code is rejected | Check that your phone's clock is set automatically. A code can be used only once, so wait for the next one. |
 | Too many failed attempts | After 5 failures in 15 minutes, further attempts are refused until the older failures age out. Wait, then try again. |
-| Phone lost | Use a [recovery code](03-signing-in.md#lost-your-authenticator-device). |
+| Phone lost | Use a [recovery code](03-signing-in.md#lost-your-authenticator-device). With none left, an administrator can [reset your two-factor sign-in](12-admin-users.md#reset-two-factor-sign-in). |
 | **Session expired** on the setup or code page | Go back to the login page and sign in again. |
 | Signed out unexpectedly | Sessions last 24 hours by default. |
 | No email arrives | Check spam. Then ask your administrator whether outgoing email is configured. |
@@ -119,6 +119,17 @@ The web app and Core API are separate addresses, and your browser calls both. Se
 ## Times or days look wrong
 
 Check the [site's time zone](04-sites.md#creating-a-site). The Reporting page and dashboard days use your device's clock for midnight, while tariffs, demand windows and billing cycles use the site's time zone. If you view a site from a different time zone, the two can differ by hours.
+
+## Admin Settings problems
+
+| Symptom | Fix |
+|---------|-----|
+| There is no **Admin Settings** item in the menu | Only administrators see it. Ask an existing administrator to [make you one](12-admin-users.md#administrator). If you opened `/admin` by its address, WattWise sends you to the home page. |
+| *The last administrator cannot lose the admin flag* | WattWise needs at least one administrator. [Make another user an administrator](12-admin-users.md#administrator) first, then remove the flag. |
+| **Remove administrator** is greyed out | The user is the only administrator. The same fix applies. |
+| *An account with this email already exists* | Another user has that address. Pick a different one, or change the other account first. |
+| A user says the password reset email did not arrive | **Send password reset email** only requests the email, and WattWise cannot see whether it was delivered. Ask them to check spam, then ask the server's administrator whether [outgoing email](01-installing-with-docker.md) is set up. Reset links last 1 hour. |
+| A site's manager cannot remove another manager | Only the site's owner can remove a manager. A manager can remove their own access. |
 
 ## Still stuck
 

@@ -59,3 +59,4 @@ WattWise stores the key securely and never shows it again. To replace it, paste 
 - [Sources](05-sources.md)
 - [Signing in and account security](03-signing-in.md)
 - [Troubleshooting](10-troubleshooting.md#sign-in-problems)
+- [Admin users](12-admin-users.md): for administrators, who can change another user's account

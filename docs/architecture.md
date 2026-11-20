@@ -107,6 +107,7 @@ flowchart LR
 |---|---|---|---|
 | Site owner | JWT after password and TOTP | Everything on their sites, including device credentials | Touch other users' sites |
 | Manager (a `manager` grant on the site) | JWT | Everything the owner sees on that site | Add, change or remove a manager. Change who owns the site. |
+| Administrator (`users.is_admin`) | JWT | Every user's profile, site membership and security state through `/admin/users`. Not site readings or device credentials. | Set a password. See [Admin endpoints](core-api.md#admin-endpoints) for what an admin can still do to an account. |
 | Viewer (accepted an owner's or manager's emailed invitation) | JWT | Site data, with device credentials and the Actron sign-in code and link hidden | Change anything |
 | Collector | One shared key per kind (`energy`, `weather`, `pricing`) | Sources of its own kind; pushes readings or prices | Read user data. Push readings to a source of another kind. |
 | Actor | One shared key for all actors (`ACTOR_KEY`) plus the provider header | Instances, schedules and site context for its own provider; creates and updates runs; reports readings | Read user data. Touch an instance of another provider. |

@@ -29,10 +29,14 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 | `/sites/new` | `AddSitePage` | Create a site and pick its time zone |
 | `/account` | `AccountPage` | Name, photo, password, email, authenticator, Amber key |
 | `/help/:slug?` | `HelpPage` | The user guide |
+| `/admin`, `/admin/:tab` | `AdminSettingsPage` | Admin Settings, with a side rail from `admin/tabs.ts`. `:tab` is `users` today; an unknown tab goes to `users`. The header menu shows the **Admin Settings** item only when `GET /users/me` returns `is_admin`. |
+| `/admin/users/:userId` | `UserDetailPage` | One user: **Details**, **Site access**, **Security** and **Administrator** sections, each a component in `src/admin/`. |
 | `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts, and the schedule log (`FailuresTile`) when it has something to show |
 | `/sites/:siteId/reporting` | `ReportingPage` | Month picker, Net/Gross option, a chart (`TotalsChart`) and a sortable totals table (`TotalsTable`) with a total row (`totalsSummary.ts`) at the bottom. Clicking a day, on the chart or in the table, lists its hours, and clicking an hour lists its minutes. While totals load, a spinner shows, over the dimmed previous rows when the level stays the same. The level is in the URL as `?month=&day=&hour=` (see `reportingView.ts`), so the browser back button works. |
 | `/settings`, `/settings/sites/:siteId`, `/settings/sites/:siteId/:tab` | `SettingsPage` | Site chips and a tab rail. `:tab` is `general`, `collectors`, `tariffs`, `billing`, `schedule` or `sharing`. The `schedule` tab (`ScheduleTab`) adds an air conditioner, builds schedules, tests them and shows the run history. See [The Schedule tab](#the-schedule-tab). `/settings` goes to the first enabled site's `general` tab. An unknown site goes to the first enabled site and keeps a valid tab. An unknown or missing tab keeps the site and goes to `general`. Viewers see every tab read-only. `useSiteAccess` reads `site.my_role`; owners and managers can edit. If a background refresh of the sites fails, the page stays and shows a **Retry** alert. |
 | `/sites/:siteId/sources`, `/sites/:siteId/billing`, `/sites/:siteId/schedule` | Redirects | Go to the `collectors`, `billing` and `schedule` settings tabs |
+
+`AdminRoute` wraps both admin routes and redirects a non-admin to `/`. It is a convenience, since Core API enforces `require_admin` on every `/admin/users` call.
 
 <table>
 <tr>
@@ -54,6 +58,7 @@ The Schedule tab and the dashboard log are shown in the user guide chapter [Sche
 | `src/api/` | `client.ts` (fetch wrapper, `ApiError`), `config.ts` (API base URL, `toWebSocketUrl`) |
 | `src/auth/` | `AuthContext` (token in `localStorage` under `access_token`), `ProtectedRoute` |
 | `src/layout/` | Header, site chips and side rail, avatar |
+| `src/admin/` | Admin Settings: `AdminRoute`, `AdminSettingsPage`, `UsersTab`, `UserDetailPage` with its section components, `ConfirmAction`, and the `useAdminUsers` and `useAdminUserMutations` hooks. Each slice that adds a tab appends it to `tabs.ts`. |
 | `src/pages/` | One component per route, with its test beside it |
 | `src/dashboard/` | Hooks for live readings and history, and pure helpers for charts (`historyChart.ts`, `priceChart.ts`, `compass.ts`) |
 | `src/actors/` | The Schedule tab's parts and hooks. `useActors.ts` has the TanStack Query hooks. `scheduleForm.ts` turns a schedule into form state and back (and holds the client-side checks that mirror Core API). `runFormat.ts` formats run times and outcomes. `types.ts` mirrors the API shapes. |
@@ -94,7 +99,7 @@ Live data polls every 60 seconds (`LIVE_POLL_MS` in `src/dashboard/useLiveReadin
 | Component | Shows |
 |---|---|
 | `AddInstanceForm` | The empty state. The owner names the air conditioner (provider `actron_neo`). A viewer sees "No device is set up for this site yet." |
-| `SignInPanel` | The Actron code, its link and the expiry while the actor waits for approval, for the site owner only. A viewer gets `auth_state` as `{signing_in: true}` from Core API and sees "The owner is signing the air conditioner in to Actron." The page polls every 10 seconds (`INSTANCES_SIGN_IN_POLL_MS`) while either shape is present. |
+| `SignInPanel` | The Actron code, its link and the expiry while the actor waits for approval, for the site owner and managers (`canEdit`). A viewer gets `auth_state` as `{signing_in: true}` from Core API and sees "The owner is signing the air conditioner in to Actron." The page polls every 10 seconds (`INSTANCES_SIGN_IN_POLL_MS`) while either shape is present. |
 | `NeedsSignInNotice` | "The Actron account needs to sign in again." with **Sign in again**, which calls `POST .../instances/{id}/sign-in/reset`. A 409 `unit_held_off` shows as the error. |
 | `DisabledNotice` | Shown when the instance is disabled, with **Turn on** |
 | `ScheduleList` | The schedules per instance with an On or Off pill and the last run. **New schedule**. |

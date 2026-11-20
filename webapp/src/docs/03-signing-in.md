@@ -70,7 +70,7 @@ You get 10 recovery codes when you finish setting up two-factor authentication. 
 3. Open [Account settings](09-account-settings.md#two-factor-authentication) and use **Replace authenticator**. You can type a recovery code where it asks for the authenticator code.
 4. Scan the new QR code, confirm with a new 6-digit code, and save the new recovery codes.
 
-If you have no recovery codes left, ask your WattWise administrator for help. WattWise cannot reset two-factor authentication by email.
+If you have no recovery codes left, ask your WattWise administrator for help. WattWise cannot reset two-factor authentication by email. An administrator can [reset it](12-admin-users.md#reset-two-factor-sign-in) from Admin Settings, and you set it up again at your next sign-in.
 
 ## Forgotten password
 

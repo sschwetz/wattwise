@@ -94,7 +94,7 @@ erDiagram
 
 | Table | Purpose |
 |---|---|
-| `users` | Email, bcrypt password hash, TOTP secret, optional Amber API key. The Amber key belongs to the user, not a site. The TOTP secrets and the Amber key are encrypted at rest. |
+| `users` | Email, bcrypt password hash, TOTP secret, optional Amber API key, and `is_admin` (boolean, default false, migration `d5f7b9c1e3a2`; see [Admin endpoints](core-api.md#admin-endpoints)). The Amber key belongs to the user, not a site. The TOTP secrets and the Amber key are encrypted at rest. |
 | `sites` | A property. Has one owner and an IANA time zone that all local-time rules use. `enabled` (default true) switches collection off; see [Disabled sites](#disabled-sites). `latitude` and `longitude` (nullable floats, migration `a9c3e5f7b1d4`) are the point used for sunrise and sunset. Both are set or both are null. Core API checks -90 to 90 and -180 to 180 on write. With no point, [`sun.py`](../core-api/core_api/sun.py) estimates from the time zone's reference city. |
 | `site_access` | Grants to users other than the owner. `role` is `viewer` (read-only) or `manager` (the owner's rights on the site, except over managers and ownership); a check constraint limits it to these two, widened to add `manager` in migration `e7a9c1d3f5b8`. Ownership is `sites.owner_user_id` and nowhere else. Permission checks read this table. Accepting an invite writes a `viewer` row and revoking the invite deletes the row. |
 | `site_invites` | Emailed invitations to view a site. Append-only record, see [Invitations](#invitations). |
