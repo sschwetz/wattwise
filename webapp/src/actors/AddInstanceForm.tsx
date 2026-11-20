@@ -6,7 +6,7 @@ import { cardClass, inputClass, primaryButtonClass } from "./styles";
 
 const PROVIDER = "actron_neo";
 
-/** Empty state: the owner names the air conditioner to set up; a viewer is told none exists. */
+/** Empty state: the owner or a manager names the air conditioner to set up; a viewer is told none exists. */
 export function AddInstanceForm({ siteId, canEdit }: { siteId: number; canEdit: boolean }) {
   const create = useCreateInstance(siteId);
   const [name, setName] = useState("");

@@ -75,7 +75,7 @@ describe("App routing", () => {
     vi.mocked(apiFetch).mockImplementation((path: string) =>
       Promise.resolve(
         path.endsWith("/api/v1/sites")
-          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]
+          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, my_role: "owner" }]
           : path.endsWith("/users/me")
             ? { id: 1 }
             : [],
@@ -90,7 +90,7 @@ describe("App routing", () => {
     vi.mocked(apiFetch).mockImplementation((path: string) =>
       Promise.resolve(
         path.endsWith("/api/v1/sites")
-          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]
+          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, my_role: "owner" }]
           : [],
       ),
     );
@@ -103,7 +103,7 @@ describe("App routing", () => {
     vi.mocked(apiFetch).mockImplementation((path: string) =>
       Promise.resolve(
         path.endsWith("/api/v1/sites")
-          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]
+          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, my_role: "owner" }]
           : [],
       ),
     );
@@ -116,7 +116,7 @@ describe("App routing", () => {
     vi.mocked(apiFetch).mockImplementation((path: string) =>
       Promise.resolve(
         path.endsWith("/api/v1/sites")
-          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }]
+          ? [{ id: 5, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, my_role: "owner" }]
           : [],
       ),
     );
@@ -155,7 +155,7 @@ describe("App routing", () => {
       path === "/api/v1/users/me"
         ? Promise.resolve({ id: 1, email: "me@example.com", display_name: null, has_avatar: false, has_amber_api_key: false })
         : path === "/api/v1/sites"
-          ? Promise.resolve([{ id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true }])
+          ? Promise.resolve([{ id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, my_role: "owner" }])
           : resolveEmpty(path),
     );
     renderAt("/sites/7");

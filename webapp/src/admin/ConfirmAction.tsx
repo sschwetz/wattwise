@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { buttonClass, secondaryButtonClass } from "../actors/styles";
 
 interface PromptProps {
@@ -22,6 +22,7 @@ interface ConfirmActionProps {
 
 function ConfirmPrompt({ title, body, confirmLabel, onCancel, onConfirm }: PromptProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const bodyId = useId();
   useEffect(() => {
     cancelRef.current?.focus();
     function onKeyDown(e: KeyboardEvent) {
@@ -31,9 +32,9 @@ function ConfirmPrompt({ title, body, confirmLabel, onCancel, onConfirm }: Promp
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onCancel]);
   return (
-    <div role="alertdialog" aria-label={title} className="rounded-md border border-line bg-surface-2 p-4">
+    <div role="alertdialog" aria-label={title} aria-describedby={bodyId} className="rounded-md border border-line bg-surface-2 p-4">
       <h3 className="font-medium text-ink">{title}</h3>
-      <p className="mt-1 text-sm text-ink-muted">{body}</p>
+      <p id={bodyId} className="mt-1 text-sm text-ink-muted">{body}</p>
       <div className="mt-3 flex gap-2">
         <button type="button" ref={cancelRef} onClick={onCancel} className={secondaryButtonClass}>Cancel</button>
         <button type="button" onClick={onConfirm} className={`${buttonClass} bg-danger text-white`}>{confirmLabel}</button>

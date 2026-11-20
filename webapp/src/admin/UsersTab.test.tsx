@@ -38,6 +38,7 @@ const USERS: AdminUser[] = [
     ],
   }),
   user(2, { display_name: "Bob Builder", email: "bob@example.com" }),
+  user(3, { email: "carol@example.com", sites: [{ site_id: 3, site_name: "Office", role: "viewer" }] }),
 ];
 
 function renderTab() {
@@ -81,6 +82,38 @@ describe("UsersTab", () => {
     expect(within(manages).queryByText("Office")).toBeNull();
     const views = alice.getAllByRole("cell")[2];
     expect(within(views).getByText("Office")).toBeInTheDocument();
+  });
+
+  it("shows only the email for a user with no display name", async () => {
+    renderTab();
+    const link = await screen.findByRole("link", { name: /carol@example\.com/ });
+    expect(within(link).getByText("carol@example.com")).toBeInTheDocument();
+    expect(link.querySelector(".font-medium")).toBeNull();
+    expect(link).not.toHaveTextContent(/null|undefined/);
+  });
+
+  it("shows None in a column where the user has no sites", async () => {
+    renderTab();
+    await screen.findByText("Bob Builder");
+    const bob = within(row("bob@example.com")).getAllByRole("cell");
+    expect(within(bob[1]).getByText("None")).toBeInTheDocument();
+    expect(within(bob[2]).getByText("None")).toBeInTheDocument();
+    const carol = within(row("carol@example.com")).getAllByRole("cell");
+    expect(within(carol[1]).getByText("None")).toBeInTheDocument();
+    expect(within(carol[2]).queryByText("None")).toBeNull();
+  });
+
+  it("keeps the Admin badge from shrinking or wrapping", async () => {
+    renderTab();
+    const badge = await screen.findByText("Admin");
+    expect(badge).toHaveClass("shrink-0", "whitespace-nowrap");
+  });
+
+  it("shows a loading hint while the list loads", () => {
+    vi.mocked(apiFetch).mockImplementation(() => new Promise(() => {}));
+    renderTab();
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
   });
 
   it("filters by name or email as you type, ignoring case", async () => {

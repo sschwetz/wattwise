@@ -9,11 +9,19 @@ import {
 } from "./useAdminUserMutations";
 import type { AdminUser } from "./useAdminUsers";
 
-function PasswordReset({ userId }: { userId: number }) {
+/** The action that started last. Success text for an earlier action is hidden. */
+type SecurityAction = "password" | "totp" | "amber";
+type OnStart = (action: SecurityAction) => void;
+
+function PasswordReset({ userId, onStart }: { userId: number; onStart: OnStart }) {
   const reset = useSendPasswordReset(userId);
+  function handleClick() {
+    onStart("password");
+    reset.mutate();
+  }
   return (
     <div className="space-y-2">
-      <button type="button" disabled={reset.isPending} onClick={() => reset.mutate()} className={outlineButtonClass}>
+      <button type="button" disabled={reset.isPending} onClick={handleClick} className={outlineButtonClass}>
         {reset.isSuccess ? "Reset email requested" : "Send password reset email"}
       </button>
       {reset.isSuccess && (
@@ -24,8 +32,12 @@ function PasswordReset({ userId }: { userId: number }) {
   );
 }
 
-function TotpReset({ userId }: { userId: number }) {
-  const reset = useResetUserTotp(userId);
+function TotpReset({ user, showDone, onStart }: { user: AdminUser; showDone: boolean; onStart: OnStart }) {
+  const reset = useResetUserTotp(user.id);
+  function handleConfirm() {
+    onStart("totp");
+    reset.mutate();
+  }
   return (
     <div className="space-y-2">
       <ConfirmAction
@@ -33,21 +45,23 @@ function TotpReset({ userId }: { userId: number }) {
         title="Reset two-factor sign-in?"
         body="The user's authenticator and recovery codes are removed. They set up two-factor sign-in again at their next login."
         confirmLabel="Reset two-factor"
-        disabled={reset.isPending}
-        onConfirm={() => reset.mutate()}
+        disabled={reset.isPending || !user.totp_enabled}
+        onConfirm={handleConfirm}
       />
-      {reset.isSuccess && <p className={mutedClass}>Two-factor sign-in was reset.</p>}
+      {!user.totp_enabled && <p className={mutedClass}>Two-factor sign-in is not set up.</p>}
+      {reset.isSuccess && showDone && <p className={mutedClass}>Two-factor sign-in was reset.</p>}
       <MutationError error={reset.error} fallback="Could not reset two-factor sign-in. Please try again." />
     </div>
   );
 }
 
-function AmberKeyForm({ userId, onDone }: { userId: number; onDone: () => void }) {
+function AmberKeyForm({ userId, onStart, onDone }: { userId: number; onStart: OnStart; onDone: () => void }) {
   const [value, setValue] = useState("");
   const setKey = useSetUserAmberKey(userId);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    onStart("amber");
     setKey.mutate(value, { onSuccess: onDone });
   }
 
@@ -76,14 +90,18 @@ function AmberKeyForm({ userId, onDone }: { userId: number; onDone: () => void }
   );
 }
 
-function AmberKey({ user }: { user: AdminUser }) {
+function AmberKey({ user, onStart }: { user: AdminUser; onStart: OnStart }) {
   const [editing, setEditing] = useState(false);
   const clear = useClearUserAmberKey(user.id);
+  function handleClear() {
+    onStart("amber");
+    clear.mutate();
+  }
   return (
     <div className="space-y-2">
       <p className="text-sm text-ink">Amber API key: {user.has_amber_api_key ? "set" : "not set"}</p>
       {editing ? (
-        <AmberKeyForm userId={user.id} onDone={() => setEditing(false)} />
+        <AmberKeyForm userId={user.id} onStart={onStart} onDone={() => setEditing(false)} />
       ) : (
         <div className="flex gap-2">
           <button type="button" onClick={() => setEditing(true)} className={outlineButtonClass}>
@@ -93,10 +111,10 @@ function AmberKey({ user }: { user: AdminUser }) {
             <ConfirmAction
               label="Clear"
               title="Clear the Amber API key?"
-              body="Price data stops loading for this user's sites until a new key is set."
+              body="Price data stops loading for the sites this user owns until a new key is set."
               confirmLabel="Clear key"
               disabled={clear.isPending}
-              onConfirm={() => clear.mutate()}
+              onConfirm={handleClear}
             />
           )}
         </div>
@@ -107,12 +125,13 @@ function AmberKey({ user }: { user: AdminUser }) {
 }
 
 export function SecuritySection({ user }: { user: AdminUser }) {
+  const [lastAction, setLastAction] = useState<SecurityAction | null>(null);
   return (
     <section className={sectionClass}>
       <h2 className={headingClass}>Security</h2>
-      <PasswordReset userId={user.id} />
-      <TotpReset userId={user.id} />
-      <AmberKey user={user} />
+      <PasswordReset userId={user.id} onStart={setLastAction} />
+      <TotpReset user={user} showDone={lastAction === "totp"} onStart={setLastAction} />
+      <AmberKey user={user} onStart={setLastAction} />
     </section>
   );
 }

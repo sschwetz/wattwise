@@ -201,6 +201,13 @@ describe("SharingTab", () => {
     expect(within(row("p1@example.com")).queryByRole("button")).toBeNull();
   });
 
+  it("treats a missing role as read-only", async () => {
+    renderTab({ ...site, my_role: undefined } as unknown as Site);
+    await screen.findByText("p1@example.com");
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(within(row("p1@example.com")).queryByRole("button")).toBeNull();
+  });
+
   it("shows an error with Retry when the list fails to load", async () => {
     let fail = true;
     vi.mocked(apiFetch).mockImplementation(async (_path: string) => {

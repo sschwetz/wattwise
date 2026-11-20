@@ -26,9 +26,15 @@ export function useAdminUsers() {
   });
 }
 
+/** False for NaN, zero and negative ids, which never name a user. */
+export function isUserId(id: number): boolean {
+  return Number.isInteger(id) && id > 0;
+}
+
 export function useAdminUser(id: number) {
   return useQuery({
     queryKey: ["admin", "users", id],
+    enabled: isUserId(id),
     queryFn: () => apiFetch<AdminUser>(`/api/v1/admin/users/${id}`),
   });
 }

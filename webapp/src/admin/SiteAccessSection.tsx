@@ -22,9 +22,22 @@ function sitesFrom(users: AdminUser[]): SiteOption[] {
   return [...byId.values()].sort((a, b) => a.site_name.localeCompare(b.site_name));
 }
 
-function RoleSelect({ label, value, onChange }: { label: string; value: GrantRole; onChange: (role: GrantRole) => void }) {
+interface RoleSelectProps {
+  label: string;
+  value: GrantRole;
+  onChange: (role: GrantRole) => void;
+  disabled?: boolean;
+}
+
+function RoleSelect({ label, value, onChange, disabled = false }: RoleSelectProps) {
   return (
-    <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value as GrantRole)} className={selectClass}>
+    <select
+      aria-label={label}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value as GrantRole)}
+      className={selectClass}
+    >
       <option value="manager">Manager</option>
       <option value="viewer">Viewer</option>
     </select>
@@ -46,6 +59,7 @@ function SiteRow({ userId, site }: { userId: number; site: AdminUserSite }) {
             <RoleSelect
               label={`Role for ${site.site_name}`}
               value={site.role as GrantRole}
+              disabled={grant.isPending}
               onChange={(role) => grant.mutate({ siteId: site.site_id, role })}
             />
             <ConfirmAction
@@ -85,7 +99,7 @@ function AddToSite({ userId, options }: { userId: number; options: SiteOption[] 
             </option>
           ))}
         </select>
-        <RoleSelect label="Role for new site" value={role} onChange={setRole} />
+        <RoleSelect label="Role for new site" value={role} onChange={setRole} disabled={grant.isPending} />
         <button type="button" disabled={siteId === "" || grant.isPending} onClick={handleAdd} className={outlineButtonClass}>
           Add
         </button>

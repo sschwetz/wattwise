@@ -61,7 +61,7 @@ function install() {
   });
 }
 
-function renderPage(id = 2) {
+function renderPage(id: number | string = 2) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -77,6 +77,7 @@ function renderPage(id = 2) {
 async function loaded(id = 2) {
   renderPage(id);
   await screen.findByRole("heading", { name: "Details" });
+  await screen.findByRole("heading", { name: "Administrator" });
 }
 
 function siteRow(name: string) {
@@ -276,6 +277,106 @@ describe("UserDetailPage", () => {
     await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove admin" }));
     expect(await screen.findByText("The last administrator cannot lose the admin flag")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove administrator" })).toBeDisabled();
+  });
+
+  it("names the sites this user owns in the Amber key clear prompt", async () => {
+    await loaded();
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(within(screen.getByRole("alertdialog")).getByText(/sites this user owns/)).toBeInTheDocument();
+  });
+
+  it("disables Reset two-factor sign-in when it is not set up", async () => {
+    users = [ALICE, user(2, { totp_enabled: false }), CAROL];
+    await loaded();
+    expect(screen.getByRole("button", { name: "Reset two-factor sign-in" })).toBeDisabled();
+    expect(screen.getByText("Two-factor sign-in is not set up.")).toBeInTheDocument();
+  });
+
+  it("offers the two-factor reset when it is set up", async () => {
+    await loaded();
+    expect(screen.getByRole("button", { name: "Reset two-factor sign-in" })).toBeEnabled();
+    expect(screen.queryByText("Two-factor sign-in is not set up.")).toBeNull();
+  });
+
+  it("drops the two-factor success text when another action starts", async () => {
+    await loaded();
+    await userEvent.click(screen.getByRole("button", { name: "Reset two-factor sign-in" }));
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Reset two-factor" }));
+    expect(await screen.findByText("Two-factor sign-in was reset.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Send password reset email" }));
+    expect(screen.queryByText("Two-factor sign-in was reset.")).toBeNull();
+  });
+
+  it("shows User not found for an id the API does not know", async () => {
+    failWith["GET /api/v1/admin/users/99"] = new ApiError(404, "user_not_found", "User not found", null);
+    renderPage(99);
+    expect(await screen.findByText("User not found")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("shows User not found for a non-numeric id without requesting it", async () => {
+    renderPage("abc");
+    expect(await screen.findByText("User not found")).toBeInTheDocument();
+    expect(vi.mocked(apiFetch).mock.calls.some(([path]) => path.includes("NaN"))).toBe(false);
+    expect(calls("GET", "/admin/users/")).toHaveLength(0);
+  });
+
+  it("shows a loading hint while the user loads", () => {
+    vi.mocked(apiFetch).mockImplementation(() => new Promise(() => {}));
+    renderPage();
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+  });
+
+  it("shows an error with Retry in place of Site access when the user list fails", async () => {
+    failWith["GET /api/v1/admin/users"] = new ApiError(500, "server_error", "list down", null);
+    renderPage();
+    await screen.findByRole("heading", { name: "Details" });
+    expect(await screen.findByText("list down")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Add to site")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove administrator" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("disables a role select while its change is pending", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
+      if (options?.method === "PUT") return new Promise(() => {});
+      if (path === "/api/v1/admin/users") return users;
+      if (path === "/api/v1/admin/users/2") return BOB;
+      return { id: 1, is_admin: true };
+    });
+    await loaded();
+    const select = screen.getByLabelText("Role for Shed");
+    await userEvent.selectOptions(select, "viewer");
+    await waitFor(() => expect(select).toBeDisabled());
+    expect(screen.getByLabelText("Role for Office")).toBeEnabled();
+  });
+
+  it("refetches the user after a mutation", async () => {
+    await loaded();
+    const userGets = () => vi.mocked(apiFetch).mock.calls.filter(([p, o]) => p === "/api/v1/admin/users/2" && !o?.method).length;
+    const before = userGets();
+    await userEvent.click(screen.getByRole("button", { name: "Make administrator" }));
+    await waitFor(() => expect(userGets()).toBeGreaterThan(before));
+  });
+
+  it("refreshes the signed-in profile when a mutation targets the signed-in admin", async () => {
+    users = [ALICE, user(2, { is_admin: true }), CAROL];
+    await loaded(1);
+    const meCalls = () => vi.mocked(apiFetch).mock.calls.filter(([p]) => p === "/api/v1/users/me").length;
+    const before = meCalls();
+    await userEvent.click(screen.getByRole("button", { name: "Remove administrator" }));
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove admin" }));
+    await waitFor(() => expect(calls("PATCH", "/admin/users/1")).toHaveLength(1));
+    await waitFor(() => expect(meCalls()).toBeGreaterThan(before));
+  });
+
+  it("leaves the signed-in profile alone when a mutation targets someone else", async () => {
+    await loaded();
+    const meCalls = () => vi.mocked(apiFetch).mock.calls.filter(([p]) => p === "/api/v1/users/me").length;
+    const before = meCalls();
+    await userEvent.click(screen.getByRole("button", { name: "Make administrator" }));
+    await waitFor(() => expect(calls("PATCH", "/admin/users/2")).toHaveLength(1));
+    expect(meCalls()).toBe(before);
   });
 
   it("shows QueryError when the load fails", async () => {

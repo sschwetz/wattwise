@@ -50,7 +50,7 @@ The section lists the user's sites with their role.
 | Control | What it does |
 |---------|--------------|
 | **Send password reset email** | Asks WattWise to email the user a password reset link, the same email a user gets from the [forgotten password](03-signing-in.md#forgotten-password) page. It does not set a password or show you one. The button then reads **Reset email requested** and says delivery is not confirmed, because WattWise reports success even when the email could not be sent. The link lasts 1 hour. |
-| **Reset two-factor sign-in** | After you confirm, removes the user's authenticator and all their recovery codes. At the next sign-in they set up two-factor sign-in again. Use it when someone has lost their phone and has no recovery codes. |
+| **Reset two-factor sign-in** | After you confirm, removes the user's authenticator and all their recovery codes. At the next sign-in they set up two-factor sign-in again. Use it when someone has lost their phone and has no recovery codes. The button is disabled, with the note "Two-factor sign-in is not set up.", when the user has no two-factor sign-in to reset. |
 | **Amber API key** | Shows whether a key is set, never the key. **Change** saves a new key. **Clear** removes it, after which price data stops loading for the sites the user owns until a new key is set. Sites they only manage or view use their owner's key. |
 
 #### Reset two-factor sign-in

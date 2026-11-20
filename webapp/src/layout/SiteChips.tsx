@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
+import { chipBase } from "../components/chipStyles";
 import type { Site } from "../sites/useSites";
-
-const chipBase = "shrink-0 rounded-full border px-3 py-1 text-sm transition-colors";
 
 function chipClass(selected: boolean, enabled: boolean): string {
   const state = selected

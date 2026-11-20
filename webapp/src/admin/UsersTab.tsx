@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMe } from "../account/useAccount";
 import { useAvatarImage } from "../account/useAvatarImage";
+import { chipBase } from "../components/chipStyles";
 import { QueryError } from "../components/QueryError";
 import { Avatar } from "../layout/Avatar";
 import { useAdminUsers, type AdminUser, type AdminUserSite } from "./useAdminUsers";
 
-const chipClass = "shrink-0 rounded-full border border-line px-3 py-1 text-sm text-ink-muted";
+const chipClass = `${chipBase} border-line text-ink-muted`;
 const cellClass = "px-2 py-2 align-top";
 
 function matches(user: AdminUser, query: string): boolean {
@@ -28,32 +29,72 @@ function Chips({ sites }: { sites: AdminUserSite[] }) {
   );
 }
 
+function UserCell({ user, avatarUrl }: { user: AdminUser; avatarUrl: string | null }) {
+  return (
+    <div className="flex items-center gap-3">
+      <Link to={`/admin/users/${user.id}`} className="flex min-w-0 items-center gap-3 hover:underline">
+        <Avatar name={user.display_name} email={user.email} imageUrl={avatarUrl} />
+        <span className="min-w-0">
+          {user.display_name && <span className="block truncate font-medium text-ink">{user.display_name}</span>}
+          <span className="block truncate text-sm text-ink-muted">{user.email}</span>
+        </span>
+      </Link>
+      {user.is_admin && (
+        <span className="shrink-0 whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink">
+          Admin
+        </span>
+      )}
+    </div>
+  );
+}
+
 function UserRow({ user, avatarUrl }: { user: AdminUser; avatarUrl: string | null }) {
-  const manages = user.sites.filter((site) => site.role !== "viewer");
-  const views = user.sites.filter((site) => site.role === "viewer");
   return (
     <tr className="border-t border-line">
       <td className={cellClass}>
-        <div className="flex items-center gap-3">
-          <Link to={`/admin/users/${user.id}`} className="flex min-w-0 items-center gap-3 hover:underline">
-            <Avatar name={user.display_name} email={user.email} imageUrl={avatarUrl} />
-            <span className="min-w-0">
-              {user.display_name && <span className="block truncate font-medium text-ink">{user.display_name}</span>}
-              <span className="block truncate text-sm text-ink-muted">{user.email}</span>
-            </span>
-          </Link>
-          {user.is_admin && (
-            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink">Admin</span>
-          )}
-        </div>
+        <UserCell user={user} avatarUrl={avatarUrl} />
       </td>
       <td className={cellClass}>
-        <Chips sites={manages} />
+        <Chips sites={user.sites.filter((site) => site.role !== "viewer")} />
       </td>
       <td className={cellClass}>
-        <Chips sites={views} />
+        <Chips sites={user.sites.filter((site) => site.role === "viewer")} />
       </td>
     </tr>
+  );
+}
+
+function SearchInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <input
+      type="search"
+      aria-label="Search users"
+      placeholder="Search by name or email"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="w-full max-w-sm rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+    />
+  );
+}
+
+function UserTable({ users, meId, myAvatarUrl }: { users: AdminUser[]; meId: number | undefined; myAvatarUrl: string | null }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="text-ink-muted">
+            <th className="px-2 py-2 font-medium">User</th>
+            <th className="px-2 py-2 font-medium">Manages</th>
+            <th className="px-2 py-2 font-medium">Views</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((user) => (
+            <UserRow key={user.id} user={user} avatarUrl={user.id === meId ? myAvatarUrl : null} />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -72,33 +113,11 @@ export function UsersTab() {
   const shown = users.filter((user) => matches(user, query));
   return (
     <div className="space-y-4">
-      <input
-        type="search"
-        aria-label="Search users"
-        placeholder="Search by name or email"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        className="w-full max-w-sm rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
-      />
+      <SearchInput value={query} onChange={setQuery} />
       {shown.length === 0 ? (
         <p className="text-sm text-ink-muted">No users match your search.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-ink-muted">
-                <th className="px-2 py-2 font-medium">User</th>
-                <th className="px-2 py-2 font-medium">Manages</th>
-                <th className="px-2 py-2 font-medium">Views</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((user) => (
-                <UserRow key={user.id} user={user} avatarUrl={user.id === me?.id ? myAvatarUrl : null} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <UserTable users={shown} meId={me?.id} myAvatarUrl={myAvatarUrl} />
       )}
     </div>
   );

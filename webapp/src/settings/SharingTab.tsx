@@ -153,7 +153,7 @@ function InviteList({ siteId, canInvite }: { siteId: number; canInvite: boolean 
 }
 
 export function SharingTab({ site }: { site: Site }) {
-  const canInvite = site.my_role !== "viewer";
+  const canInvite = site.my_role === "owner" || site.my_role === "manager";
 
   return (
     <div className="space-y-6">
