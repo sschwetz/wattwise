@@ -100,32 +100,38 @@ function withEdit(edits: Edits, name: string, value: string | null): Edits {
   return next;
 }
 
-export function ProviderFieldsForm({ provider }: { provider: MailProvider }) {
+/** The pending edits, plus a counter that changes on reset so a secret input returns to its "set" display. */
+function useFieldEdits() {
   const [edits, setEdits] = useState<Edits>({});
-  // Keys the fields so a secret input returns to its "set" display after a save.
-  const [saves, setSaves] = useState(0);
+  const [resets, setResets] = useState(0);
+  const onEdit: SetEdit = (name, value) => setEdits((prev) => withEdit(prev, name, value));
+  const reset = () => {
+    setEdits({});
+    setResets((n) => n + 1);
+  };
+  return { edits, resets, onEdit, reset };
+}
+
+function FieldRow({ field, control }: FieldProps) {
+  return field.secret ? <SecretField field={field} control={control} /> : <TextField field={field} control={control} />;
+}
+
+export function ProviderFieldsForm({ provider }: { provider: MailProvider }) {
+  const { edits, resets, onEdit, reset } = useFieldEdits();
   const save = useSaveProviderSettings(provider.provider);
   const changed = changedSettings(provider.fields, edits);
-  const onEdit: SetEdit = (name, value) => setEdits((prev) => withEdit(prev, name, value));
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    save.mutate(changed, {
-      onSuccess: () => {
-        setEdits({});
-        setSaves((n) => n + 1);
-      },
-    });
+    save.mutate(changed, { onSuccess: reset });
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       {provider.fields.length === 0 && <p className={mutedClass}>This provider has no settings.</p>}
-      {provider.fields.map((field) => {
-        const Field = field.secret ? SecretField : TextField;
-        const control = { edit: edits[field.name], disabled: save.isPending, onEdit };
-        return <Field key={`${field.name}:${saves}`} field={field} control={control} />;
-      })}
+      {provider.fields.map((f) => (
+        <FieldRow key={`${f.name}:${resets}`} field={f} control={{ edit: edits[f.name], disabled: save.isPending, onEdit }} />
+      ))}
       <MutationError error={save.error} fallback="Could not save the settings. Please try again." />
       <button type="submit" disabled={save.isPending || Object.keys(changed).length === 0} className={primaryButtonClass}>
         Save
