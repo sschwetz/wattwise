@@ -12,7 +12,7 @@ WattWise records and displays energy data for a home solar and battery system: p
 | `local-pricing-collector/` | Turns rate windows entered in the webapp into price intervals, for suppliers with a fixed tariff. At 23:59 in each site's time zone it pushes the next local day's prices. Within a minute of a new source, a restart or a change to the rate windows, and on the first check of each new day, it also fills what is missing, back to the site's first data. A change to a rate window reprices from where it takes effect, within a minute. |
 | `weatherlink-local-collector/` | Polls the WeatherLink Live. |
 | `actron-neo-actor/` | An actor: runs schedules built on the webapp's Schedule page and commands an Actron Neo air conditioner, for example turning it off for a demand window and back on afterwards. See [`docs/actors.md`](docs/actors.md). |
-| `mail-actor/` | Sends queued email through the mail provider an administrator activates on the Email tab of Admin Settings (smtp2go first). Not a device actor. See [`docs/mail.md`](docs/mail.md). |
+| `mail-actor/` | Sends queued email through the mail provider an administrator activates on the Email tab of Admin Settings (for example smtp2go). Not a device actor. See [`docs/mail.md`](docs/mail.md). |
 | `webapp/` | React single-page app (Vite, Tailwind, TanStack Query, Recharts). Includes an in-app Help viewer. |
 | `mail-relay/` | Postfix relay that sends password-reset and email-confirmation mail for core-api while no mail provider is active. |
 

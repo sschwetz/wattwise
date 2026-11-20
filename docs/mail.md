@@ -26,7 +26,7 @@ flowchart LR
 Two rules follow from the design:
 
 - **Queued mail waits for the actor.** It never diverts to the relay. With the actor stopped, mail piles up as `pending` and goes out when the actor returns.
-- **A failed queue write loses that email.** The failure is logged with fixed text and the request carries on, as an SMTP failure did before. The schedule-failure email raises its `notify_email` alert (see [Alerts](collectors.md#alerts)) in that case.
+- **A failed queue write loses that email.** The log message has fixed text, followed by the exception traceback. A database error's traceback can include the statement's parameters, such as the address and subject. The request carries on, as an SMTP failure did before. The schedule-failure email raises its `notify_email` alert (see [Alerts](collectors.md#alerts)) in that case.
 
 ## Tables
 
@@ -88,7 +88,7 @@ A 202 from `/test` means the message is queued. It does not show delivery.
 | Start | Declares its providers with `PUT /actor/mail/providers`, retrying every 5 seconds until Core API accepts. |
 | Poll | Every 5 seconds it claims up to 10 messages and sends each one in turn. |
 | Active provider | Cached for 30 seconds. A 401 or 403 from the provider drops the cache and the next message refetches the settings. If they are unchanged, the rest of that batch fails without a send. |
-| No usable provider | When the provider went away mid-batch, or the settings fetch fails, the message is reported `failed` with "no usable mail provider", so it returns to the queue at once. |
+| No usable provider | When the provider went away mid-batch, or the settings fetch fails, the message is reported `failed` with "no usable mail provider", so Core API puts it back to `pending` with the normal retry delay (30, 60, 120 or 240 seconds, by attempt). The report counts as an attempt. |
 | Active provider it does not implement | Logs one warning a minute and claims nothing. Queued mail waits. |
 | Send fails | Reported `failed` once. Core API schedules the retry. |
 | Stop | Handles SIGTERM and SIGINT, and stops between messages. Messages it had claimed but not started are reclaimed when their claim expires. |
@@ -122,6 +122,7 @@ A new provider is one module and one list entry, in the actor only. The form on 
 Running, updating, publishing and stopping the container are in [Operations](operations.md#email-and-the-mail-actor).
 
 - **Secrets.** Provider settings and message bodies are encrypted with `SECRETS_ENCRYPTION_KEY`, like the other stored credentials. See [Where secrets are stored](core-api.md#where-secrets-are-stored). The actor holds a provider's settings in memory only.
+- **Logs.** Treat core-api log retention as sensitive, because of the traceback described under [How a message travels](#how-a-message-travels).
 - **Limits.** Run one actor container. The compose file starts one, and nothing is tested with two.
 
 For what an administrator sees when mail does not arrive, see [Admin email](../webapp/src/docs/13-admin-email.md#when-email-does-not-arrive).
