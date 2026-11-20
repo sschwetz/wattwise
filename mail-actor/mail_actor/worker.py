@@ -25,6 +25,9 @@ ACTIVE_TTL = 30.0
 UNKNOWN_WARNING_INTERVAL = 60.0
 AUTH_STATUSES = frozenset({401, 403})
 REDACTED = "[redacted]"
+MIN_REDACTED_LENGTH = 4  # a shorter value would garble text such as "HTTP 401"
+REPORT_ATTEMPTS = 3  # for a `sent` report; the PATCH is idempotent
+REPORT_RETRY_DELAY = 0.5
 NO_PROVIDER_ERROR = "no usable mail provider"
 
 
@@ -45,6 +48,8 @@ class WorkerState:
         self._active: ActiveProvider | None = None
         self._fetched_at: float | None = None
         self._warned_at: float | None = None
+        # The settings a provider refused in the current batch, if any.
+        self.refused: dict[str, str] | None = None
 
     def active(self, client: CoreApi) -> ActiveProvider | None:
         now = self._clock()
@@ -63,15 +68,14 @@ class WorkerState:
             _LOG.warning("The active mail provider is not one this actor implements; no mail is sent")
 
 
-_DEFAULT_STATE = WorkerState()
-
-
 def _resolve(
     client: CoreApi, providers: Sequence[MailProvider], state: WorkerState
 ) -> tuple[MailProvider, dict[str, str]] | None:
     active = state.active(client)
     if active is None:
         return None
+    if state.refused is not None and active.settings == state.refused:
+        return None  # the refetch returned the key the provider just refused
     provider = next((p for p in providers if p.KEY == active.provider), None)
     if provider is None:
         state.warn_unknown()
@@ -81,7 +85,7 @@ def _resolve(
 
 def redact(text: str, settings: dict[str, str]) -> str:
     for value in sorted(settings.values(), key=len, reverse=True):
-        if value:
+        if len(value) >= MIN_REDACTED_LENGTH:
             text = text.replace(value, REDACTED)
     return text
 
@@ -101,10 +105,18 @@ def _send(
 
 
 def _report(client: CoreApi, message: OutboxMessage, error: str | None) -> None:
-    try:
-        client.report(message.id, "failed" if error else "sent", error)
-    except CoreApiError:
-        _LOG.warning("Could not report the result of outbox message %d", message.id)
+    """A `sent` report is retried: losing it makes core-api resend the message
+    after the claim expires. A `failed` report is sent once, since the claim
+    expiring costs only a delay. The send itself is never retried."""
+    attempts = 1 if error else REPORT_ATTEMPTS
+    for attempt in range(attempts):
+        try:
+            client.report(message.id, "failed" if error else "sent", error)
+            return
+        except CoreApiError:
+            if attempt + 1 < attempts:
+                time.sleep(REPORT_RETRY_DELAY)
+    _LOG.warning("Could not report the result of outbox message %d", message.id)
 
 
 def _handle(
@@ -122,6 +134,7 @@ def _handle(
     provider, settings = resolved
     error, refused = _send(provider, settings, message, http)
     if refused:
+        state.refused = settings
         state.invalidate()
     if error is not None:
         error = redact(error, settings)
@@ -130,12 +143,27 @@ def _handle(
 
 
 def run_once(
-    client: CoreApi, providers: Sequence[MailProvider], http: httpx.Client, state: WorkerState = _DEFAULT_STATE
+    client: CoreApi,
+    providers: Sequence[MailProvider],
+    http: httpx.Client,
+    state: WorkerState | None = None,
+    should_stop: Callable[[], bool] = lambda: False,
 ) -> int:
-    """Claim and send up to BATCH_SIZE messages. Returns how many were handled."""
+    """Claim and send up to BATCH_SIZE messages. Returns how many were handled.
+
+    A provider that refuses the credentials makes the next message refetch the
+    settings. If they are unchanged, the rest of the batch fails without a send.
+    `should_stop` is checked between messages; the ones left stay claimed and
+    are reclaimed when the claim expires."""
+    state = WorkerState() if state is None else state
+    state.refused = None
     if _resolve(client, providers, state) is None:
         return 0
     messages = client.claim(BATCH_SIZE)
+    handled = 0
     for message in messages:
+        if should_stop():
+            break
         _handle(client, providers, http, state, message)
-    return len(messages)
+        handled += 1
+    return handled

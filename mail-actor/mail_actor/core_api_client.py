@@ -10,7 +10,7 @@ import httpx
 from mail_actor.providers.base import MailProvider, OutboxMessage
 
 PROVIDER = "mail"
-_TIMEOUT = 29
+TIMEOUT = 29
 
 
 class CoreApiError(Exception):
@@ -66,7 +66,7 @@ class CoreApiClient:
     def __init__(self, base_url: str, actor_key: str, http: httpx.Client | None = None) -> None:
         self._base = f"{base_url.rstrip('/')}/api/v1/actor/mail"
         self._headers = {"X-Actor-Key": actor_key, "X-Actor-Provider": PROVIDER}
-        self._http = http or httpx.Client(timeout=_TIMEOUT)
+        self._http = http or httpx.Client(timeout=TIMEOUT)
 
     def _request(
         self, method: str, path: str, what: str, *, json: object = None, params: dict[str, int] | None = None

@@ -5,11 +5,11 @@ import httpx
 import pytest
 from fake_core import FakeCore
 
-from mail_actor import main
+from mail_actor import main, worker
 from mail_actor.core_api_client import ActiveProvider, CoreApiError
 from mail_actor.providers import PROVIDERS, smtp2go
 from mail_actor.providers.base import Field, MailProvider, OutboxMessage, SendError
-from mail_actor.worker import BATCH_SIZE, WorkerState, run_once
+from mail_actor.worker import BATCH_SIZE, WorkerState, redact, run_once
 
 KEY = "api-SECRET123"
 SETTINGS = {"api_key": KEY, "from_address": "mail@example.com"}
@@ -41,6 +41,11 @@ class FakeProvider:
 
 def _message(id: int) -> OutboxMessage:
     return OutboxMessage(id=id, to_address=f"u{id}@example.com", subject=f"subject {id}", body=f"body {id}")
+
+
+@pytest.fixture(autouse=True)
+def no_report_retry_delay(monkeypatch):
+    monkeypatch.setattr(worker, "REPORT_RETRY_DELAY", 0)
 
 
 @pytest.fixture
@@ -150,8 +155,12 @@ def test_auth_failure_refetches_the_active_provider_before_the_next_send(core, p
     state = WorkerState(clock=clock)
     provider.failures = [SendError(f"HTTP {status}", retryable=False, status=status)]
     core.add(_message(1), _message(2))
+    refreshed = ActiveProvider(provider="fake", settings={**SETTINGS, "api_key": "api-ROTATED456"})
+    fetched = [core.active, refreshed]
+    core.get_active = lambda: (setattr(core, "active_calls", core.active_calls + 1), fetched.pop(0))[1]  # type: ignore[method-assign]
     _run(core, provider, clock, state)
     assert core.active_calls == 2
+    assert provider.sent[0][0]["api_key"] == "api-ROTATED456"
     assert core.reports == [(1, "failed", f"fake send failed: HTTP {status}"), (2, "sent", None)]
 
 
@@ -189,13 +198,6 @@ def test_unknown_active_provider_claims_nothing_and_warns_once_a_minute(core, pr
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2
     assert all("mailgun" not in w for w in warnings)
-
-
-def test_report_failure_does_not_stop_the_batch(core, provider, clock):
-    core.errors["report"] = [CoreApiError("Failed to report outbox result: 500")]
-    core.add(_message(1), _message(2))
-    assert _run(core, provider, clock) == 2
-    assert core.reports == [(2, "sent", None)]
 
 
 def test_logs_never_carry_settings_or_message_content(core, provider, clock, caplog):
@@ -257,3 +259,122 @@ def test_loop_runs_every_5_seconds_and_survives_errors(core, provider, caplog):
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert "KeyError" in text
     assert KEY not in text
+
+
+def test_an_unchanged_key_after_a_refusal_fails_the_rest_of_the_batch_without_sending(core, provider, clock):
+    provider.failures = [SendError("HTTP 401", retryable=False, status=401)]
+    core.add(*[_message(i) for i in range(10)])
+    assert _run(core, provider, clock) == 10
+    assert provider.sent == []
+    assert core.active_calls == 2
+    assert core.reports[0] == (0, "failed", "fake send failed: HTTP 401")
+    assert core.reports[1:] == [(i, "failed", "no usable mail provider") for i in range(1, 10)]
+
+
+def test_the_refusal_is_forgotten_by_the_next_poll(core, provider, clock):
+    provider.failures = [SendError("HTTP 401", retryable=False, status=401)]
+    state = WorkerState(clock=clock)
+    core.add(_message(1))
+    _run(core, provider, clock, state)
+    core.add(_message(2))
+    assert _run(core, provider, clock, state) == 1
+    assert core.reports[-1] == (2, "sent", None)
+
+
+def test_the_sent_report_is_retried_twice_and_the_message_is_sent_once(core, provider, clock):
+    core.errors["report"] = [CoreApiError("500")] * 2
+    core.add(_message(1))
+    calls: list[int] = []
+    real_report = core.report
+    core.report = lambda id, outcome, error: (calls.append(id), real_report(id, outcome, error))[1]  # type: ignore[method-assign]
+    _run(core, provider, clock)
+    assert len(provider.sent) == 1
+    assert calls == [1, 1, 1]
+    assert core.reports == [(1, "sent", None)]
+
+
+def test_report_failure_does_not_stop_the_batch(core, provider, clock):
+    core.errors["report"] = [CoreApiError("500")] * 3
+    core.add(_message(1), _message(2))
+    assert _run(core, provider, clock) == 2
+    assert [m.id for _, m in provider.sent] == [1, 2]
+    assert core.reports == [(2, "sent", None)]
+
+
+def test_a_failed_report_is_attempted_once(core, provider, clock):
+    provider.failures = [SendError("HTTP 400", retryable=False, status=400)]
+    core.errors["report"] = [CoreApiError("500")]
+    core.add(_message(1))
+    _run(core, provider, clock)
+    assert core.reports == []
+    assert core.errors["report"] == []  # only the one queued error was consumed, no second report call
+
+
+def test_run_once_without_a_state_does_not_share_a_cache(core, provider):
+    core.add(_message(1))
+    run_once(core, [provider], HTTP)
+    core.add(_message(2))
+    run_once(core, [provider], HTTP)
+    assert core.active_calls == 2
+
+
+def test_redact_ignores_values_shorter_than_four_characters():
+    assert redact("HTTP 401 key api-SECRET123", {"port": "4", "ab": "ab", "api_key": KEY}) == (
+        "HTTP 401 key [redacted]"
+    )
+
+
+def test_stop_between_messages_leaves_the_rest_claimed(core, provider, clock):
+    core.add(_message(1), _message(2), _message(3))
+    stops = iter([False, True])
+    assert run_once(core, [provider], HTTP, WorkerState(clock=clock), lambda: next(stops)) == 1
+    assert core.reports == [(1, "sent", None)]
+
+
+# StopFlag and the process wiring
+
+
+def test_stop_flag_wait_returns_early_once_set(monkeypatch):
+    flag = main.StopFlag()
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        flag.set()
+
+    monkeypatch.setattr(main.time, "sleep", sleep)
+    assert flag.is_set() is False
+    assert flag.wait(5) is True
+    assert sleeps == [0.5]
+
+
+def test_stop_flag_wait_ends_when_the_timeout_passes(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(main.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(main.time, "sleep", lambda seconds: now.__setitem__(0, now[0] + seconds))
+    assert main.StopFlag().wait(1.2) is False
+    assert now[0] == pytest.approx(1.2)
+
+
+def test_install_stop_handlers_sets_the_flag_for_sigterm_and_sigint(monkeypatch):
+    handlers = {}
+    monkeypatch.setattr(main.signal, "signal", lambda sig, handler: handlers.__setitem__(sig, handler))
+    flag = main.StopFlag()
+    main.install_stop_handlers(flag)
+    assert set(handlers) == {main.signal.SIGTERM, main.signal.SIGINT}
+    handlers[main.signal.SIGTERM](main.signal.SIGTERM, None)
+    assert flag.is_set()
+
+
+def test_loop_stops_mid_batch_when_the_flag_is_set(core, provider):
+    flag = main.StopFlag()
+    core.add(_message(1), _message(2))
+    real_send = provider.send
+
+    def send_then_stop(settings, message, http):
+        real_send(settings, message, http)
+        flag.set()
+
+    provider.send = send_then_stop  # type: ignore[method-assign]
+    main.run_forever(core, [provider], HTTP, flag, WorkerState(clock=Clock()))
+    assert [m.id for _, m in provider.sent] == [1]
