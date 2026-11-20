@@ -17,6 +17,7 @@ from mail_actor.config import get_settings
 from mail_actor.core_api_client import CoreApiClient, CoreApiError
 from mail_actor.providers import PROVIDERS
 from mail_actor.providers.base import MailProvider
+from mail_actor.service_report import start_commit_reporter
 from mail_actor.worker import CoreApi, WorkerState, run_once
 
 _LOG = logging.getLogger(__name__)
@@ -79,7 +80,7 @@ def main() -> None:
     install_stop_handlers(stop)
     with httpx.Client() as http:
         client = CoreApiClient(settings.core_api_url, settings.actor_key)
-        # Background reporters (service status) start here, before the loop.
+        start_commit_reporter(settings.core_api_url, "X-Actor-Key", settings.actor_key, "mail-actor")
         if declare_until_ready(client, PROVIDERS, stop):
             run_forever(client, PROVIDERS, http, stop, WorkerState())
     _LOG.info("Stopped")
