@@ -1,5 +1,6 @@
 import { Navigate, useParams } from "react-router-dom";
 import { SideRail } from "../layout/SideRail";
+import { EmailTab } from "./EmailTab";
 import { ADMIN_TABS } from "./tabs";
 import { UsersTab } from "./UsersTab";
 
@@ -19,6 +20,7 @@ export function AdminSettingsPage() {
           items={ADMIN_TABS.map(({ id, label }) => ({ to: `/admin/${id}`, label }))}
         />
         <div data-testid="admin-tab" className="min-w-0 flex-1 space-y-4">
+          {tab === "email" && <EmailTab />}
           {tab === "users" && <UsersTab />}
         </div>
       </div>

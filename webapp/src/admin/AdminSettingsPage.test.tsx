@@ -29,15 +29,21 @@ describe("AdminSettingsPage", () => {
     vi.mocked(apiFetch).mockResolvedValue([]);
   });
 
-  it("opens the Users tab at /admin", async () => {
+  it("opens the Email tab at /admin", async () => {
     renderAt("/admin");
     expect(screen.getByRole("heading", { name: "Admin Settings" })).toBeInTheDocument();
+    expect(await screen.findByText(/No email provider has been declared yet/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Email" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("shows the Users tab at /admin/users", async () => {
+    renderAt("/admin/users");
     expect(await screen.findByRole("searchbox", { name: "Search users" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("falls back to the Users tab for an unknown tab", async () => {
+  it("falls back to the Email tab for an unknown tab", async () => {
     renderAt("/admin/nope");
-    expect(await screen.findByRole("searchbox", { name: "Search users" })).toBeInTheDocument();
+    expect(await screen.findByText(/No email provider has been declared yet/)).toBeInTheDocument();
   });
 });
