@@ -39,10 +39,30 @@ def enqueue_email(db: Session, to: str, subject: str, body: str) -> EmailOutbox:
     return row
 
 
+def _stale(now: datetime.datetime) -> ColumnElement[bool]:
+    return and_(EmailOutbox.status == OutboxStatus.SENDING, EmailOutbox.claimed_at < now - CLAIM_TIMEOUT)
+
+
 def _claimable(now: datetime.datetime) -> ColumnElement[bool]:
     return or_(
         and_(EmailOutbox.status == OutboxStatus.PENDING, EmailOutbox.next_attempt_at <= now),
-        and_(EmailOutbox.status == OutboxStatus.SENDING, EmailOutbox.claimed_at < now - CLAIM_TIMEOUT),
+        and_(_stale(now), EmailOutbox.attempts < MAX_ATTEMPTS),
+    )
+
+
+def _fail_expired_claims(db: Session, now: datetime.datetime) -> None:
+    """End rows whose last allowed claim expired without a result. Without
+    this, a message that crashes the actor would be reclaimed forever. The
+    SELECT first means a poll with nothing expired takes no write lock."""
+    expired = and_(_stale(now), EmailOutbox.attempts >= MAX_ATTEMPTS)
+    ids = list(db.scalars(select(EmailOutbox.id).where(expired)))
+    if not ids:
+        return
+    db.execute(
+        update(EmailOutbox)
+        .where(EmailOutbox.id.in_(ids), expired)
+        .values(status=OutboxStatus.FAILED, finished_at=now, body="", last_error="claim expired")
+        .execution_options(synchronize_session=False)
     )
 
 
@@ -57,6 +77,7 @@ def claim_outbox(db: Session, limit: int, now: datetime.datetime) -> list[EmailO
     """Mark up to `limit` due rows `sending` and return them. Each row is taken
     with its own conditional UPDATE that repeats the claimable test, so when
     two actors read the same due rows only one of them gets each row."""
+    _fail_expired_claims(db, now)
     claimed = []
     for row_id in _due_ids(db, limit, now):
         result = db.execute(

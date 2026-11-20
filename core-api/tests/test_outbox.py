@@ -104,6 +104,55 @@ def test_a_stale_sending_row_is_claimable_again_and_a_fresh_one_is_not(db):
     assert _reload(db, stale).attempts == 2
 
 
+@pytest.mark.parametrize("attempts", [1, 2, 3, 4])
+def test_a_stale_row_under_the_attempt_cap_is_reclaimed(db, attempts):
+    row_id = _row(db, status=OutboxStatus.SENDING, attempts=attempts, claimed_at=NOW - datetime.timedelta(minutes=3))
+    assert [r.id for r in outbox.claim_outbox(db, 10, NOW)] == [row_id]
+    assert _reload(db, row_id).attempts == attempts + 1
+
+
+def test_a_stale_row_at_the_attempt_cap_ends_failed(db):
+    row_id = _row(db, status=OutboxStatus.SENDING, attempts=5, claimed_at=NOW - datetime.timedelta(minutes=3))
+    assert outbox.claim_outbox(db, 10, NOW) == []
+    db.commit()
+    row = _reload(db, row_id)
+    assert row.status is OutboxStatus.FAILED
+    assert row.attempts == 5
+    assert row.body == ""
+    assert as_utc(row.finished_at) == NOW
+    assert row.last_error == "claim expired"
+
+
+def test_a_fresh_sending_row_at_the_attempt_cap_is_untouched(db):
+    claimed_at = NOW - datetime.timedelta(minutes=1)
+    row_id = _row(db, status=OutboxStatus.SENDING, attempts=5, claimed_at=claimed_at)
+    assert outbox.claim_outbox(db, 10, NOW) == []
+    db.commit()
+    row = _reload(db, row_id)
+    assert row.status is OutboxStatus.SENDING
+    assert row.body == BODY
+    assert row.finished_at is None and row.last_error is None
+    assert as_utc(row.claimed_at) == claimed_at
+
+
+def test_a_row_whose_claim_keeps_expiring_ends_failed(db):
+    row_id = _row(db)
+    now = NOW
+    for attempt in range(1, 6):
+        assert [r.id for r in outbox.claim_outbox(db, 10, now)] == [row_id]
+        db.commit()
+        assert _reload(db, row_id).attempts == attempt
+        now += datetime.timedelta(minutes=3)
+
+    assert outbox.claim_outbox(db, 10, now) == []
+    db.commit()
+    row = _reload(db, row_id)
+    assert row.status is OutboxStatus.FAILED
+    assert row.body == ""
+    assert row.last_error == "claim expired"
+    assert outbox.claim_outbox(db, 10, now + datetime.timedelta(minutes=3)) == []
+
+
 def test_finished_rows_are_not_claimable(db):
     _row(db, status=OutboxStatus.SENT, finished_at=NOW)
     _row(db, status=OutboxStatus.FAILED, finished_at=NOW)
