@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import event
 
 from core_api.db import make_engine, make_session_factory
@@ -150,20 +153,35 @@ def test_no_secret_names_or_values_in_the_response(client, app_and_db_url):
             assert value not in text
 
 
-def test_non_admin_gets_403(client, app_and_db_url):
-    _, db_url = app_and_db_url
+def _admin_routes(app) -> list[tuple[str, str]]:
+    """Every (method, path) on the admin users router, read from the app so a
+    route added later is covered without editing this test."""
+    routes = []
+    for route in iter_route_contexts(app.routes):
+        if route.path and route.methods and route.path.startswith(USERS_URL):
+            routes.extend((method, route.path) for method in sorted(route.methods))
+    return routes
+
+
+def _fill(path: str, user_id: int, site_id: int) -> str:
+    path = path.replace("{user_id}", str(user_id)).replace("{site_id}", str(site_id))
+    assert not re.search(r"\{\w+\}", path), f"unfilled path parameter in {path}"
+    return path
+
+
+def test_every_route_needs_a_token_and_an_admin(client, app_and_db_url):
+    app, db_url = app_and_db_url
     plain = _user(db_url, "plain@example.com")
-    for url in (USERS_URL, f"{USERS_URL}/{plain}"):
-        got = client.get(url, headers=auth(plain))
-        assert got.status_code == 403
+    site = _site(db_url, plain, "Home")
+    routes = _admin_routes(app)
+    assert {"GET", "PATCH", "PUT", "DELETE"} <= {method for method, _ in routes}
+
+    for method, path in routes:
+        url = _fill(path, plain, site)
+        assert client.request(method, url).status_code == 401, (method, path)
+        got = client.request(method, url, headers=auth(plain))
+        assert got.status_code == 403, (method, path)
         assert got.json()["code"] == "admin_required"
-
-
-def test_no_token_gets_401(client, app_and_db_url):
-    _, db_url = app_and_db_url
-    plain = _user(db_url, "plain@example.com")
-    for url in (USERS_URL, f"{USERS_URL}/{plain}"):
-        assert client.get(url).status_code == 401
 
 
 def test_unknown_user_is_404(client, app_and_db_url):

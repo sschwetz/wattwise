@@ -49,6 +49,9 @@ def _strip_and_require_nonblank(value: str) -> str:
     return stripped
 
 
+DisplayName = Annotated[str, Field(max_length=100), AfterValidator(_strip_and_require_nonblank)]
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -137,7 +140,7 @@ class UpdateAmberApiKeyIn(BaseModel):
 
 
 class UpdateDisplayNameIn(BaseModel):
-    display_name: Annotated[str, Field(max_length=100), AfterValidator(_strip_and_require_nonblank)]
+    display_name: DisplayName
 
 
 class ChangePasswordIn(BaseModel):

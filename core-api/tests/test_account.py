@@ -910,7 +910,7 @@ def test_upload_avatar_rejects_oversized_file(client, app_and_db_url):
 
 
 def test_upload_avatar_overwrites_existing_avatar(client, app_and_db_url):
-    from core_api.routers.account import _avatar_path
+    from core_api.user_profile import avatar_path
 
     _, db_url = app_and_db_url
     user_id = make_user(db_url)
@@ -932,7 +932,7 @@ def test_upload_avatar_overwrites_existing_avatar(client, app_and_db_url):
     user = session.get(User, user_id)
     session.close()
     assert user.avatar_content_type == "image/png"
-    assert _avatar_path(user_id).read_bytes() == b"new-png-bytes"
+    assert avatar_path(user_id).read_bytes() == b"new-png-bytes"
 
 
 def test_upload_avatar_requires_auth(client, app_and_db_url):
@@ -943,7 +943,7 @@ def test_upload_avatar_requires_auth(client, app_and_db_url):
 
 
 def test_remove_avatar_clears_content_type_and_deletes_file(client, app_and_db_url):
-    from core_api.routers.account import _avatar_path
+    from core_api.user_profile import avatar_path
 
     _, db_url = app_and_db_url
     user_id = make_user(db_url)
@@ -962,7 +962,7 @@ def test_remove_avatar_clears_content_type_and_deletes_file(client, app_and_db_u
     user = session.get(User, user_id)
     session.close()
     assert user.avatar_content_type is None
-    assert not _avatar_path(user_id).exists()
+    assert not avatar_path(user_id).exists()
 
 
 def test_remove_avatar_is_idempotent_when_none_exists(client, app_and_db_url):
@@ -1040,6 +1040,7 @@ def test_two_different_users_get_independent_avatars(client, app_and_db_url):
 
 def test_upload_avatar_removes_temp_file_if_install_fails(app_and_db_url, monkeypatch):
     import core_api.routers.account as account_module
+    from core_api.user_profile import avatar_path
 
     app, db_url = app_and_db_url
     user_id = make_user(db_url)
@@ -1060,7 +1061,7 @@ def test_upload_avatar_removes_temp_file_if_install_fails(app_and_db_url, monkey
     )
     assert response.status_code == 500
 
-    storage_dir = account_module._avatar_path(user_id).parent
+    storage_dir = avatar_path(user_id).parent
     leftover_temp_files = list(storage_dir.glob("*.tmp")) if storage_dir.exists() else []
     assert leftover_temp_files == []
 

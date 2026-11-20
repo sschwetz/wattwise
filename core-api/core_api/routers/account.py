@@ -4,7 +4,6 @@ import datetime
 import os
 import secrets
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from fastapi.responses import Response
@@ -43,6 +42,7 @@ from core_api.security import (
     verify_totp_code,
     verify_totp_code_once,
 )
+from core_api.user_profile import avatar_path, remove_avatar, set_amber_api_key
 
 router = APIRouter(prefix="/users/me", tags=["account"])
 
@@ -89,13 +89,6 @@ def _reject_oversized_content_length(request: Request) -> None:
         raise AppError(400, "file_too_large", "Avatar must be 2MB or smaller")
 
 
-def _avatar_path(user_id: int) -> Path:
-    """The caller's own avatar file, keyed only by the id already proven by
-    get_current_user -- no route in this feature accepts a user id as input,
-    so there is no way to name another account's file through this API."""
-    return Path(get_settings().avatar_storage_dir) / str(user_id)
-
-
 def _verify_step_up(db: Session, user: User, current_password: str, totp_code: str) -> None:
     """Re-auth gate shared by every security-sensitive account mutation: proves
     the caller still holds BOTH the password and a second factor, even though
@@ -135,7 +128,7 @@ def update_amber_api_key(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> UserMeOut:
-    current_user.amber_api_key = payload.amber_api_key
+    set_amber_api_key(current_user, payload.amber_api_key)
     db.commit()
     db.refresh(current_user)
     return _to_user_me_out(current_user)
@@ -171,7 +164,7 @@ async def upload_avatar(
     if len(content) > _MAX_AVATAR_BYTES:
         raise AppError(400, "file_too_large", "Avatar must be 2MB or smaller")
 
-    path = _avatar_path(current_user.id)
+    path = avatar_path(current_user.id)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Write-then-replace so a concurrent GET never observes a half-written file,
     # and so overwriting an existing avatar leaves no stale bytes behind. The
@@ -193,12 +186,11 @@ async def upload_avatar(
 
 
 @router.delete("/avatar", response_model=UserMeOut)
-def remove_avatar(
+def delete_avatar(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> UserMeOut:
-    _avatar_path(current_user.id).unlink(missing_ok=True)
-    current_user.avatar_content_type = None
+    remove_avatar(current_user)
     db.commit()
     db.refresh(current_user)
     return _to_user_me_out(current_user)
@@ -208,7 +200,7 @@ def remove_avatar(
 def get_avatar(current_user: User = Depends(get_current_user)) -> Response:
     if current_user.avatar_content_type is None:
         raise AppError(404, "no_avatar", "No avatar is set")
-    content = _avatar_path(current_user.id).read_bytes()
+    content = avatar_path(current_user.id).read_bytes()
     return Response(content=content, media_type=current_user.avatar_content_type)
 
 
