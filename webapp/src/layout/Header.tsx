@@ -132,6 +132,16 @@ export function Header() {
             >
               Site settings
             </NavLink>
+            {me?.is_admin && (
+              <NavLink
+                to="/admin"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className={menuItemClass}
+              >
+                Admin Settings
+              </NavLink>
+            )}
             <HelpMenuItem onSelect={() => setOpen(false)} />
             <button
               type="button"

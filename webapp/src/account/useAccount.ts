@@ -7,6 +7,7 @@ export interface Me {
   display_name: string | null;
   has_amber_api_key: boolean;
   has_avatar: boolean;
+  is_admin: boolean;
 }
 
 export function useMe() {

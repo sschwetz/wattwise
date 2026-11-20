@@ -10,6 +10,7 @@ export interface Site {
   enabled: boolean;
   latitude: number | null;
   longitude: number | null;
+  my_role: "owner" | "manager" | "viewer";
 }
 
 interface UpdateSiteInput {

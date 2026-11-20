@@ -157,6 +157,32 @@ describe("Header", () => {
     expect(await screen.findByAltText("")).toHaveAttribute("src", "blob:mock-url");
   });
 
+  describe("Admin Settings menu item", () => {
+    async function openMenuAs(isAdmin: boolean) {
+      vi.mocked(apiFetch).mockImplementation((path: string) =>
+        Promise.resolve(
+          path === "/api/v1/sites"
+            ? []
+            : { id: 1, email: "ada@example.com", display_name: "Ada Lovelace", has_avatar: false, has_amber_api_key: false, is_admin: isAdmin },
+        ),
+      );
+      renderHeader("/sites/7");
+      await userEvent.click(await screen.findByRole("button", { name: /ada lovelace/i }));
+    }
+
+    it("sits between Site settings and Help for an admin", async () => {
+      await openMenuAs(true);
+      const labels = screen.getAllByRole("menuitem").map((item) => item.textContent);
+      expect(labels).toEqual(["Account settings", "Site settings", "Admin Settings", "Help", "About", "Log off"]);
+      expect(screen.getByRole("menuitem", { name: "Admin Settings" })).toHaveAttribute("href", "/admin");
+    });
+
+    it("is hidden from a user who is not an admin", async () => {
+      await openMenuAs(false);
+      expect(screen.queryByRole("menuitem", { name: "Admin Settings" })).not.toBeInTheDocument();
+    });
+  });
+
   describe("Help menu item", () => {
     const sites = [
       { id: 4, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true },

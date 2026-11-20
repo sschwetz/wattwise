@@ -20,7 +20,7 @@ vi.mock("./SiteMap", () => ({
   ),
 }));
 
-const site: Site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, latitude: null, longitude: null };
+const site: Site = { id: 7, owner_user_id: 1, name: "Home", timezone: "Australia/Sydney", enabled: true, latitude: null, longitude: null, my_role: "owner" };
 
 function renderTab(s: Site = site) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
