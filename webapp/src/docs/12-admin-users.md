@@ -4,7 +4,7 @@
 
 This chapter is for administrators. An administrator can open **Admin Settings** to find any user, change their name and email, give them access to sites, send a password reset email, reset their two-factor sign-in and decide who else is an administrator. Other users never see these pages.
 
-The account WattWise creates on first start is an administrator. On a server that already had users when this feature was added, the oldest account became the administrator.
+The account WattWise creates on first start is an administrator. On a server that already had users when it first gained the Administrator role, the user with the lowest id became the administrator.
 
 > **Warning:** An administrator who can change an email address, send a password reset and reset two-factor sign-in can take over any account. Give the Administrator role only to people you trust with every account. WattWise logs which action an administrator took on which user, but not the values they entered.
 
@@ -51,7 +51,7 @@ The section lists the user's sites with their role.
 |---------|--------------|
 | **Send password reset email** | Asks WattWise to email the user a password reset link, the same email a user gets from the [forgotten password](03-signing-in.md#forgotten-password) page. It does not set a password or show you one. The button then reads **Reset email requested** and says delivery is not confirmed, because WattWise reports success even when the email could not be sent. The link lasts 1 hour. |
 | **Reset two-factor sign-in** | After you confirm, removes the user's authenticator and all their recovery codes. At the next sign-in they set up two-factor sign-in again. Use it when someone has lost their phone and has no recovery codes. |
-| **Amber API key** | Shows whether a key is set, never the key. **Change** saves a new key. **Clear** removes it, after which price data stops loading for the user's sites until a new key is set. |
+| **Amber API key** | Shows whether a key is set, never the key. **Change** saves a new key. **Clear** removes it, after which price data stops loading for the sites the user owns until a new key is set. Sites they only manage or view use their owner's key. |
 
 #### Reset two-factor sign-in
 
