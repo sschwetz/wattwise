@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { inputClass } from "../components/formStyles";
-import { hintClass, secondaryButtonClass } from "../actors/styles";
+import { buttonClass, hintClass } from "../actors/styles";
 import { type LocationText, parsePoint, pointText } from "./location";
 
 const SiteMap = lazy(() => import("./SiteMap"));
@@ -39,7 +39,7 @@ function UseMyLocation({ onFound }: { onFound: (value: LocationText) => void }) 
   return (
     <div className="space-y-2">
       <p className="text-sm text-ink">Select your location on the map or:</p>
-      <button type="button" onClick={ask} disabled={busy} className={secondaryButtonClass}>
+      <button type="button" onClick={ask} disabled={busy} className={`${buttonClass} bg-solar text-[#1a1203]`}>
         {busy ? "Finding your location..." : "Use my location"}
       </button>
       {message && <p role="alert" className="text-sm text-danger">{message}</p>}
