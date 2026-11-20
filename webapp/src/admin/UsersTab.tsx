@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMe } from "../account/useAccount";
 import { useAvatarImage } from "../account/useAvatarImage";
 import { chipBase } from "../components/chipStyles";
+import { inputClass } from "../components/formStyles";
 import { QueryError } from "../components/QueryError";
 import { Avatar } from "../layout/Avatar";
 import { useAdminUsers, type AdminUser, type AdminUserSite } from "./useAdminUsers";
@@ -72,7 +73,7 @@ function SearchInput({ value, onChange }: { value: string; onChange: (value: str
       placeholder="Search by name or email"
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full max-w-sm rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+      className={`${inputClass} max-w-sm text-sm`}
     />
   );
 }

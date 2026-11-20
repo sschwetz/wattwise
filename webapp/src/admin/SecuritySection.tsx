@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { ConfirmAction } from "./ConfirmAction";
-import { MutationError, headingClass, inputClass, mutedClass, outlineButtonClass, primaryButtonClass, sectionClass } from "./adminUi";
+import { inputClass } from "../components/formStyles";
+import { MutationError, headingClass, mutedClass, outlineButtonClass, primaryButtonClass, sectionClass } from "./adminUi";
 import {
   useClearUserAmberKey,
   useResetUserTotp,

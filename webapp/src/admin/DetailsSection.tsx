@@ -2,7 +2,8 @@ import { type FormEvent, useId, useState } from "react";
 import { ApiError } from "../api/client";
 import { SubmitButton } from "../components/SubmitButton";
 import { Avatar } from "../layout/Avatar";
-import { MutationError, headingClass, inputClass, outlineButtonClass, primaryButtonClass, sectionClass } from "./adminUi";
+import { inputClass } from "../components/formStyles";
+import { MutationError, headingClass, outlineButtonClass, primaryButtonClass, sectionClass } from "./adminUi";
 import { type AdminUserPatch, useRemoveUserAvatar, useUpdateAdminUser } from "./useAdminUserMutations";
 import type { AdminUser } from "./useAdminUsers";
 

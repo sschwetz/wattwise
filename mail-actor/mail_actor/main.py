@@ -6,6 +6,7 @@ value, address, subject or body reaches the container log."""
 from __future__ import annotations
 
 import logging
+import math
 import signal
 import time
 from collections.abc import Sequence
@@ -47,7 +48,8 @@ class StopFlag:
         return self._stopped
 
     def wait(self, timeout: float | None = None) -> bool:
-        deadline = time.monotonic() + (timeout or 0)
+        """Sleep until the flag is set or `timeout` seconds pass. None waits until set."""
+        deadline = math.inf if timeout is None else time.monotonic() + timeout
         while not self._stopped and (remaining := deadline - time.monotonic()) > 0:
             time.sleep(min(STOP_POLL_SECONDS, remaining))
         return self._stopped

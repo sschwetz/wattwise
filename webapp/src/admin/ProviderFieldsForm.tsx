@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
-import { MutationError, inputClass, mutedClass, outlineButtonClass, primaryButtonClass } from "./adminUi";
+import { inputClass } from "../components/formStyles";
+import { MutationError, mutedClass, outlineButtonClass, primaryButtonClass } from "./adminUi";
 import { useSaveProviderSettings, type MailProvider, type ProviderField } from "./useAdminMail";
 
 type Edits = Record<string, string>;

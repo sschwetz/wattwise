@@ -356,6 +356,20 @@ def test_stop_flag_wait_ends_when_the_timeout_passes(monkeypatch):
     assert now[0] == pytest.approx(1.2)
 
 
+def test_stop_flag_wait_without_a_timeout_waits_until_stopped(monkeypatch):
+    flag = main.StopFlag()
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        if len(sleeps) == 3:
+            flag.set()
+
+    monkeypatch.setattr(main.time, "sleep", sleep)
+    assert flag.wait(None) is True
+    assert sleeps == [0.5, 0.5, 0.5]
+
+
 def test_install_stop_handlers_sets_the_flag_for_sigterm_and_sigint(monkeypatch):
     handlers = {}
     monkeypatch.setattr(main.signal, "signal", lambda sig, handler: handlers.__setitem__(sig, handler))

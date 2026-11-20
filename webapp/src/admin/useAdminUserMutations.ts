@@ -19,15 +19,18 @@ function send<T>(userId: number, path: string, method: string, body?: unknown): 
 }
 
 /** A mutation on one user. It refreshes the admin lists, and the signed-in
- * user's own profile when the target is that user. */
-function useUserMutation<V>(userId: number, request: (variables: V) => Promise<unknown>) {
+ * user's own profile when the target is that user. `changesSites` marks a
+ * site grant change, which also refreshes that user's own site list. */
+function useUserMutation<V>(userId: number, request: (variables: V) => Promise<unknown>, changesSites = false) {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
   return useMutation({
     mutationFn: request,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      if (me?.id === userId) void queryClient.invalidateQueries({ queryKey: ["me"] });
+      if (me?.id !== userId) return;
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
+      if (changesSites) void queryClient.invalidateQueries({ queryKey: ["sites"] });
     },
   });
 }
@@ -51,13 +54,15 @@ export function useClearUserAmberKey(userId: number) {
 }
 
 export function useGrantSiteAccess(userId: number) {
-  return useUserMutation(userId, ({ siteId, role }: { siteId: number; role: GrantRole }) =>
-    send<AdminUser>(userId, `/sites/${siteId}`, "PUT", { role }),
+  return useUserMutation(
+    userId,
+    ({ siteId, role }: { siteId: number; role: GrantRole }) => send<AdminUser>(userId, `/sites/${siteId}`, "PUT", { role }),
+    true,
   );
 }
 
 export function useRemoveSiteAccess(userId: number) {
-  return useUserMutation(userId, (siteId: number) => send<AdminUser>(userId, `/sites/${siteId}`, "DELETE"));
+  return useUserMutation(userId, (siteId: number) => send<AdminUser>(userId, `/sites/${siteId}`, "DELETE"), true);
 }
 
 export function useSendPasswordReset(userId: number) {

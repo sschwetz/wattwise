@@ -4,8 +4,6 @@ export const sectionClass = "space-y-4 rounded-xl border border-line bg-surface 
 export const headingClass = "font-display text-lg font-semibold text-ink";
 export const errorClass = "rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger";
 export const mutedClass = "text-sm text-ink-muted";
-export const inputClass =
-  "rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60";
 export const selectClass =
   "rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 disabled:opacity-50";
 export const outlineButtonClass =
