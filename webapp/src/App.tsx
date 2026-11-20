@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { AdminRoute } from "./admin/AdminRoute";
 import { AdminSettingsPage } from "./admin/AdminSettingsPage";
+import { UserDetailPage } from "./admin/UserDetailPage";
 import { HelpPage } from "./help/HelpPage";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { ProtectedLayout } from "./layout/ProtectedLayout";
@@ -46,6 +47,7 @@ export function App() {
           <Route path="/settings/sites/:siteId" element={<SettingsPage />} />
           <Route path="/settings/sites/:siteId/:tab" element={<SettingsPage />} />
           <Route element={<AdminRoute />}>
+            <Route path="/admin/users/:userId" element={<UserDetailPage />} />
             <Route path="/admin/:tab?" element={<AdminSettingsPage />} />
           </Route>
           <Route path="/account" element={<AccountPage />} />
