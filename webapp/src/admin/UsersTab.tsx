@@ -34,16 +34,18 @@ function UserRow({ user, avatarUrl }: { user: AdminUser; avatarUrl: string | nul
   return (
     <tr className="border-t border-line">
       <td className={cellClass}>
-        <Link to={`/admin/users/${user.id}`} className="flex items-center gap-3 hover:underline">
-          <Avatar name={user.display_name} email={user.email} imageUrl={avatarUrl} />
-          <span className="min-w-0">
-            {user.display_name && <span className="block truncate font-medium text-ink">{user.display_name}</span>}
-            <span className="block truncate text-sm text-ink-muted">{user.email}</span>
-          </span>
+        <div className="flex items-center gap-3">
+          <Link to={`/admin/users/${user.id}`} className="flex min-w-0 items-center gap-3 hover:underline">
+            <Avatar name={user.display_name} email={user.email} imageUrl={avatarUrl} />
+            <span className="min-w-0">
+              {user.display_name && <span className="block truncate font-medium text-ink">{user.display_name}</span>}
+              <span className="block truncate text-sm text-ink-muted">{user.email}</span>
+            </span>
+          </Link>
           {user.is_admin && (
             <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink">Admin</span>
           )}
-        </Link>
+        </div>
       </td>
       <td className={cellClass}>
         <Chips sites={manages} />

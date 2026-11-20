@@ -51,8 +51,8 @@ function renderTab() {
   );
 }
 
-function row(name: string) {
-  return screen.getByRole("link", { name: new RegExp(name) }).closest("tr") as HTMLElement;
+function row(email: string) {
+  return screen.getByRole("link", { name: (name) => name.includes(email) }).closest("tr") as HTMLElement;
 }
 
 describe("UsersTab", () => {
@@ -70,10 +70,11 @@ describe("UsersTab", () => {
   it("shows each user's name, email, Admin badge and site chips", async () => {
     renderTab();
     expect(await screen.findByText("Bob Builder")).toBeInTheDocument();
-    const alice = within(row("Alice Admin"));
+    const alice = within(row("user1@example.com"));
     expect(alice.getByText("user1@example.com")).toBeInTheDocument();
     expect(alice.getByText("Admin")).toBeInTheDocument();
-    expect(within(row("Bob Builder")).queryByText("Admin")).toBeNull();
+    expect(alice.getByRole("link")).not.toContainElement(alice.getByText("Admin"));
+    expect(within(row("bob@example.com")).queryByText("Admin")).toBeNull();
     const manages = alice.getAllByRole("cell")[1];
     expect(within(manages).getByText("Home")).toBeInTheDocument();
     expect(within(manages).getByText("Shed")).toBeInTheDocument();
@@ -104,7 +105,7 @@ describe("UsersTab", () => {
 
   it("links each row to the user's detail page", async () => {
     renderTab();
-    const link = await screen.findByRole("link", { name: /Bob Builder/ });
+    const link = await screen.findByRole("link", { name: /bob@example\.com/ });
     expect(link).toHaveAttribute("href", "/admin/users/2");
   });
 
