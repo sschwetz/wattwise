@@ -335,6 +335,7 @@ describe("UserDetailPage", () => {
     expect(screen.queryByLabelText("Add to site")).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove administrator" })).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Security" })).toBeInTheDocument();
   });
 
   it("disables a role select while its change is pending", async () => {

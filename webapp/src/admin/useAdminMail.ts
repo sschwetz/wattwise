@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
 
 export interface ProviderField {
@@ -28,6 +28,7 @@ export interface OutboxSummary {
 
 const PROVIDERS_KEY = ["admin", "mail", "providers"] as const;
 const SUMMARY_KEY = ["admin", "mail", "summary"] as const;
+const SAVE_KEY = ["admin", "mail", "save"] as const;
 const BASE = "/api/v1/admin/mail";
 
 export function useMailProviders() {
@@ -46,21 +47,29 @@ export function useOutboxSummary() {
   });
 }
 
-function useProviderMutation<V>(request: (variables: V) => Promise<MailProvider>) {
+function useProviderMutation<V>(request: (variables: V) => Promise<MailProvider>, mutationKey?: readonly string[]) {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey,
     mutationFn: request,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: PROVIDERS_KEY }),
   });
 }
 
 export function useSaveProviderSettings(provider: string) {
-  return useProviderMutation((settings: Record<string, string>) =>
-    apiFetch<MailProvider>(`${BASE}/providers/${provider}`, {
-      method: "PUT",
-      body: JSON.stringify({ settings }),
-    }),
+  return useProviderMutation(
+    (settings: Record<string, string>) =>
+      apiFetch<MailProvider>(`${BASE}/providers/${provider}`, {
+        method: "PUT",
+        body: JSON.stringify({ settings }),
+      }),
+    SAVE_KEY,
   );
+}
+
+/** True while any settings save is in flight; the controls that act on the provider wait for it. */
+export function useIsSavingSettings(): boolean {
+  return useIsMutating({ mutationKey: SAVE_KEY }) > 0;
 }
 
 export function useActivateProvider(provider: string) {

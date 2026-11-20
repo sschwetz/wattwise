@@ -5,65 +5,76 @@ import { useSaveProviderSettings, type MailProvider, type ProviderField } from "
 type Edits = Record<string, string>;
 type SetEdit = (name: string, value: string | null) => void;
 
-interface FieldProps {
-  field: ProviderField;
+/** What a field needs from the form: its pending edit, whether the form is busy, and how to change the edit. */
+interface FieldControl {
   edit: string | undefined;
   disabled: boolean;
   onEdit: SetEdit;
+}
+
+interface FieldProps {
+  field: ProviderField;
+  control: FieldControl;
 }
 
 function labelText(field: ProviderField): string {
   return field.required ? `${field.label} (required)` : field.label;
 }
 
-function SecretField({ field, edit, disabled, onEdit }: FieldProps) {
-  const [editing, setEditing] = useState(false);
-  if (!editing) {
-    return (
-      <div className="space-y-1">
-        <p className="text-sm text-ink">
-          {labelText(field)}: {field.is_set ? "set" : "not set"}
-        </p>
-        <button type="button" disabled={disabled} onClick={() => setEditing(true)} className={outlineButtonClass}>
-          Change
-        </button>
-      </div>
-    );
-  }
-  function cancel() {
-    onEdit(field.name, null);
-    setEditing(false);
-  }
+function SecretDisplay({ field, control, onChange }: FieldProps & { onChange: () => void }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-sm text-ink">
+        {labelText(field)}: {field.is_set ? "set" : "not set"}
+      </p>
+      <button type="button" disabled={control.disabled} onClick={onChange} className={outlineButtonClass}>
+        Change
+      </button>
+    </div>
+  );
+}
+
+function SecretEditor({ field, control, onCancel }: FieldProps & { onCancel: () => void }) {
   return (
     <div className="space-y-1">
       <label className="flex flex-col gap-1 text-sm text-ink">
         {`New ${labelText(field)}`}
         <input
           type="password"
-          value={edit ?? ""}
-          disabled={disabled}
-          onChange={(e) => onEdit(field.name, e.target.value)}
+          value={control.edit ?? ""}
+          disabled={control.disabled}
+          onChange={(e) => control.onEdit(field.name, e.target.value)}
           autoComplete="off"
           spellCheck={false}
           className={inputClass}
         />
       </label>
-      <button type="button" disabled={disabled} onClick={cancel} className={outlineButtonClass}>
+      <button type="button" disabled={control.disabled} onClick={onCancel} className={outlineButtonClass}>
         Cancel
       </button>
     </div>
   );
 }
 
-function TextField({ field, edit, disabled, onEdit }: FieldProps) {
+function SecretField({ field, control }: FieldProps) {
+  const [editing, setEditing] = useState(false);
+  if (!editing) return <SecretDisplay field={field} control={control} onChange={() => setEditing(true)} />;
+  function cancel() {
+    control.onEdit(field.name, null);
+    setEditing(false);
+  }
+  return <SecretEditor field={field} control={control} onCancel={cancel} />;
+}
+
+function TextField({ field, control }: FieldProps) {
   return (
     <label className="flex flex-col gap-1 text-sm text-ink">
       {labelText(field)}
       <input
         type="text"
-        value={edit ?? field.value ?? ""}
-        disabled={disabled}
-        onChange={(e) => onEdit(field.name, e.target.value)}
+        value={control.edit ?? field.value ?? ""}
+        disabled={control.disabled}
+        onChange={(e) => control.onEdit(field.name, e.target.value)}
         autoComplete="off"
         className={inputClass}
       />
@@ -91,13 +102,20 @@ function withEdit(edits: Edits, name: string, value: string | null): Edits {
 
 export function ProviderFieldsForm({ provider }: { provider: MailProvider }) {
   const [edits, setEdits] = useState<Edits>({});
+  // Keys the fields so a secret input returns to its "set" display after a save.
+  const [saves, setSaves] = useState(0);
   const save = useSaveProviderSettings(provider.provider);
   const changed = changedSettings(provider.fields, edits);
   const onEdit: SetEdit = (name, value) => setEdits((prev) => withEdit(prev, name, value));
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    save.mutate(changed, { onSuccess: () => setEdits({}) });
+    save.mutate(changed, {
+      onSuccess: () => {
+        setEdits({});
+        setSaves((n) => n + 1);
+      },
+    });
   }
 
   return (
@@ -105,7 +123,8 @@ export function ProviderFieldsForm({ provider }: { provider: MailProvider }) {
       {provider.fields.length === 0 && <p className={mutedClass}>This provider has no settings.</p>}
       {provider.fields.map((field) => {
         const Field = field.secret ? SecretField : TextField;
-        return <Field key={field.name} field={field} edit={edits[field.name]} disabled={save.isPending} onEdit={onEdit} />;
+        const control = { edit: edits[field.name], disabled: save.isPending, onEdit };
+        return <Field key={`${field.name}:${saves}`} field={field} control={control} />;
       })}
       <MutationError error={save.error} fallback="Could not save the settings. Please try again." />
       <button type="submit" disabled={save.isPending || Object.keys(changed).length === 0} className={primaryButtonClass}>

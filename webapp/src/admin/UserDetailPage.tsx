@@ -9,21 +9,33 @@ import { SiteAccessSection } from "./SiteAccessSection";
 import { mutedClass } from "./adminUi";
 import { isUserId, useAdminUser, useAdminUsers, type AdminUser } from "./useAdminUsers";
 
-/** Site access and the administrator toggle both read the full user list. */
-function ListDependentSections({ user }: { user: AdminUser }) {
+function ListStatus({ listQuery }: { listQuery: ReturnType<typeof useAdminUsers> }) {
+  if (listQuery.isError) {
+    return <QueryError error={listQuery.error} fallback="Could not load the user list." onRetry={() => void listQuery.refetch()} />;
+  }
+  return <p className={mutedClass}>Loading...</p>;
+}
+
+/**
+ * Site access and the administrator toggle read the full user list. Security
+ * does not, so it renders in the same position whether or not the list loaded.
+ */
+function UserSections({ user }: { user: AdminUser }) {
   const listQuery = useAdminUsers();
   const allUsers = listQuery.data;
+  const security = <SecuritySection user={user} />;
   if (!allUsers) {
-    return listQuery.isError ? (
-      <QueryError error={listQuery.error} fallback="Could not load the user list." onRetry={() => void listQuery.refetch()} />
-    ) : (
-      <p className={mutedClass}>Loading...</p>
+    return (
+      <>
+        <ListStatus listQuery={listQuery} />
+        {security}
+      </>
     );
   }
   return (
     <>
       <SiteAccessSection user={user} allUsers={allUsers} />
-      <SecuritySection user={user} />
+      {security}
       <AdministratorSection user={user} allUsers={allUsers} />
     </>
   );
@@ -36,7 +48,7 @@ function UserBody({ id }: { id: number }) {
     return (
       <>
         <DetailsSection user={user} />
-        <ListDependentSections user={user} />
+        <UserSections user={user} />
       </>
     );
   }

@@ -1,6 +1,6 @@
 import { ConfirmAction } from "./ConfirmAction";
 import { MutationError, mutedClass, primaryButtonClass } from "./adminUi";
-import { useActivateProvider, useDeactivateProvider, type MailProvider } from "./useAdminMail";
+import { useActivateProvider, useDeactivateProvider, useIsSavingSettings, type MailProvider } from "./useAdminMail";
 
 interface Props {
   provider: MailProvider;
@@ -11,7 +11,8 @@ interface Props {
 function ActivateButton({ provider, active }: Props) {
   const activate = useActivateProvider(provider.provider);
   const replaces = active && active.provider !== provider.provider ? active : undefined;
-  const disabled = !provider.available || activate.isPending;
+  const saving = useIsSavingSettings();
+  const disabled = !provider.available || activate.isPending || saving;
   return (
     <div className="space-y-2">
       {replaces ? (
@@ -36,6 +37,7 @@ function ActivateButton({ provider, active }: Props) {
 
 function DeactivateButton({ provider }: { provider: MailProvider }) {
   const deactivate = useDeactivateProvider(provider.provider);
+  const saving = useIsSavingSettings();
   return (
     <div className="space-y-2">
       <ConfirmAction
@@ -43,7 +45,7 @@ function DeactivateButton({ provider }: { provider: MailProvider }) {
         title={`Deactivate ${provider.label}?`}
         body="Email goes back through the built-in mail relay."
         confirmLabel="Deactivate"
-        disabled={deactivate.isPending}
+        disabled={deactivate.isPending || saving}
         onConfirm={() => deactivate.mutate()}
       />
       <MutationError error={deactivate.error} fallback="Could not deactivate the provider. Please try again." />

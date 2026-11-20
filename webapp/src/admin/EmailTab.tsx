@@ -27,7 +27,8 @@ function ProviderSection({ providers }: { providers: MailProvider[] }) {
       <ProviderPicker providers={providers} selected={provider.provider} onSelect={setChoice} />
       <ProviderFieldsForm key={provider.provider} provider={provider} />
       <ProviderActivation provider={provider} active={active} />
-      <TestEmailRow hasActive={active !== undefined} />
+      {/* Keyed so the last test result does not follow a change of provider. */}
+      <TestEmailRow key={`test-${provider.provider}`} hasActive={active !== undefined} />
     </section>
   );
 }

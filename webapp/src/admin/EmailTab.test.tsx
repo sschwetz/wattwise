@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "../api/client";
 import { EmailTab } from "./EmailTab";
 import type { MailProvider, OutboxSummary } from "./useAdminMail";
@@ -66,6 +66,25 @@ describe("EmailTab", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
   });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Make the PUT never finish, so the save stays pending. */
+  function holdSave() {
+    const base = vi.mocked(apiFetch).getMockImplementation()!;
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) =>
+      init?.method === "PUT" ? new Promise(() => {}) : base(path, init),
+    );
+  }
+
+  async function startSave() {
+    const sender = await screen.findByLabelText("Sender address (required)");
+    await userEvent.clear(sender);
+    await userEvent.type(sender, "new@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  }
 
   it("names the mail-actor container when no provider is declared", async () => {
     setup({ providers: [] });
@@ -242,5 +261,64 @@ describe("EmailTab", () => {
     renderTab();
     await screen.findByText("Pending: 2 · Sent (24 h): 10 · Failed (24 h): 1");
     expect(screen.queryByText(/Last error/)).not.toBeInTheDocument();
+  });
+
+  it("returns a secret input to its set display after a successful save", async () => {
+    setup();
+    renderTab();
+    await userEvent.click(await screen.findByRole("button", { name: "Change" }));
+    await userEvent.type(screen.getByLabelText("New API key (required)"), "s3cret");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/API key \(required\): set/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/New API key/)).not.toBeInTheDocument();
+  });
+
+  it("disables the picker, Activate and Send test email while a save is pending", async () => {
+    setup();
+    renderTab();
+    await screen.findByLabelText("Sender address (required)");
+    holdSave();
+    await startSave();
+    expect(screen.getByLabelText("Provider")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Activate" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send test email" })).toBeDisabled();
+  });
+
+  it("disables Deactivate and Send test email for the active provider while a save is pending", async () => {
+    setup({ providers: [{ ...SMTP, is_active: true }, OTHER] });
+    renderTab();
+    await screen.findByLabelText("Sender address (required)");
+    expect(screen.getByRole("button", { name: "Send test email" })).toBeEnabled();
+    holdSave();
+    await startSave();
+    expect(screen.getByRole("button", { name: "Deactivate" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send test email" })).toBeDisabled();
+  });
+
+  it("announces the queued test email as a status", async () => {
+    setup({ providers: [{ ...SMTP, is_active: true }, OTHER] });
+    renderTab();
+    await userEvent.click(await screen.findByRole("button", { name: "Send test email" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Test email queued.");
+  });
+
+  it("clears the test result when another provider is selected", async () => {
+    setup({ providers: [{ ...SMTP, is_active: true }, OTHER] });
+    renderTab();
+    await userEvent.click(await screen.findByRole("button", { name: "Send test email" }));
+    await screen.findByRole("status");
+    await userEvent.selectOptions(screen.getByLabelText("Provider"), "other");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("refetches the outbox summary after 30 seconds", async () => {
+    vi.useFakeTimers();
+    setup();
+    renderTab();
+    const summaryCalls = () => vi.mocked(apiFetch).mock.calls.filter(([path]) => path.endsWith("/outbox/summary"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(summaryCalls()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(summaryCalls()).toHaveLength(2);
   });
 });
