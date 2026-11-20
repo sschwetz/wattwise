@@ -75,8 +75,12 @@ def admin_user_out(db: Session, user: User) -> AdminUserOut:
     return _to_out(user, _sites_by_user(db, [user.id]).get(user.id, []))
 
 
-def log_admin_action(admin: User, target_user_id: int, action: str) -> None:
-    """One line per admin write: who, on whom, which action. Never pass values."""
+def log_admin_action(admin: User, target_user_id: int | None, action: str) -> None:
+    """One line per admin write: who, on whom, which action. Never pass values.
+    A write with no target user (mail settings) logs `target=none`."""
+    if target_user_id is None:
+        logger.info("admin action: admin_user_id=%s target=none action=%s", admin.id, action)
+        return
     logger.info("admin action: admin_user_id=%s target_user_id=%s action=%s", admin.id, target_user_id, action)
 
 
