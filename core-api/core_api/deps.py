@@ -225,6 +225,27 @@ def require_actor_key(presented: str) -> None:
         raise AppError(401, "invalid_actor_key", "Invalid actor key for this instance")
 
 
+MAIL_ACTOR_PROVIDER = "mail"
+
+
+def require_mail_actor(
+    x_actor_key: str | None = Header(None),
+    x_actor_provider: str | None = Header(None),
+) -> None:
+    """Gate for the mail actor routes, which have no instance. A missing,
+    wrong or mismatched header all give the same 401, so the response does
+    not say which one failed."""
+    refused = AppError(401, "invalid_actor_key", "Invalid actor key")
+    if x_actor_key is None or x_actor_provider is None:
+        raise refused
+    try:
+        require_actor_key(x_actor_key)
+    except AppError:
+        raise refused from None
+    if x_actor_provider != MAIL_ACTOR_PROVIDER:
+        raise refused
+
+
 def get_actor_instance(
     instance_id: int,
     x_actor_key: str = Header(...),
