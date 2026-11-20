@@ -17,6 +17,15 @@ class SiteAccessRole(str, enum.Enum):
     VIEWER = "viewer"
 
 
+class SiteRole(str, enum.Enum):
+    """A user's role on a site as the API reports it: the owner, plus every
+    SiteAccessRole value. Not stored; the owner comes from Site.owner_user_id."""
+
+    OWNER = "owner"
+    MANAGER = "manager"
+    VIEWER = "viewer"
+
+
 class InviteStatus(str, enum.Enum):
     INVITED = "invited"
     ACCEPTED = "accepted"

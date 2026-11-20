@@ -261,3 +261,39 @@ def test_site_sun_is_hidden_from_strangers(client, app_and_db_url):
     _, site_id = _site(client, db_url, "sun3@example.com")
     stranger = make_user(db_url, "sun3-stranger@example.com")
     assert client.get(f"/api/v1/sites/{site_id}/sun", headers=auth(stranger)).status_code == 404
+
+
+def _invite_and_accept(client, owner_id: int, viewer_id: int, site_id: int, email: str) -> None:
+    invite = client.post(f"/api/v1/sites/{site_id}/invites", json={"email": email}, headers=auth(owner_id))
+    assert invite.status_code == 201, invite.text
+    accept = client.post(f"/api/v1/invites/{invite.json()['id']}/accept", headers=auth(viewer_id))
+    assert accept.status_code == 200, accept.text
+
+
+def test_site_out_my_role_owner(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "role-owner@example.com")
+    created = client.post("/api/v1/sites", json={"name": "Home", "timezone": "UTC"}, headers=auth(owner_id))
+    assert created.json()["my_role"] == "owner"
+    site_id = created.json()["id"]
+
+    assert client.get(f"/api/v1/sites/{site_id}", headers=auth(owner_id)).json()["my_role"] == "owner"
+    listed = client.get("/api/v1/sites", headers=auth(owner_id)).json()
+    assert [s["my_role"] for s in listed] == ["owner"]
+    patched = client.patch(f"/api/v1/sites/{site_id}", json={"name": "Renamed"}, headers=auth(owner_id))
+    assert patched.json()["my_role"] == "owner"
+
+
+def test_site_out_my_role_viewer(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    owner_id = make_user(db_url, "role-owner2@example.com")
+    viewer_id = make_user(db_url, "role-viewer2@example.com")
+    site_id = client.post(
+        "/api/v1/sites", json={"name": "Home", "timezone": "UTC"}, headers=auth(owner_id)
+    ).json()["id"]
+    _invite_and_accept(client, owner_id, viewer_id, site_id, "role-viewer2@example.com")
+
+    assert client.get(f"/api/v1/sites/{site_id}", headers=auth(viewer_id)).json()["my_role"] == "viewer"
+    listed = client.get("/api/v1/sites", headers=auth(viewer_id)).json()
+    assert [s["my_role"] for s in listed] == ["viewer"]
+    assert client.get(f"/api/v1/sites/{site_id}", headers=auth(owner_id)).json()["my_role"] == "owner"

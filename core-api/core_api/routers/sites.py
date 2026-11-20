@@ -6,7 +6,14 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core_api.deps import get_current_user, get_db_session, require_site_access, require_site_owner
+from core_api.deps import (
+    get_current_user,
+    get_db_session,
+    require_site_access,
+    require_site_owner,
+    site_role_for,
+)
+from core_api.errors import AppError
 from core_api.models.identity import Site, SiteAccess, User
 from core_api.schemas import SiteCreate, SiteOut, SiteSunOut, SiteUpdate
 from core_api.sun import site_location, sun_times
@@ -15,23 +22,32 @@ from core_api.time_utils import site_tz
 router = APIRouter(prefix="/sites", tags=["sites"])
 
 
+def site_out(db: Session, site: Site, user_id: int) -> SiteOut:
+    """The site as the API returns it, with the caller's role on it."""
+    role = site_role_for(db, site, user_id)
+    if role is None:
+        raise AppError(404, "not_found", f"Site {site.id} not found")
+    fields = {name: getattr(site, name) for name in SiteOut.model_fields if name != "my_role"}
+    return SiteOut(**fields, my_role=role)
+
+
 @router.post("", response_model=SiteOut, status_code=status.HTTP_201_CREATED)
 def create_site(
     payload: SiteCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> Site:
+) -> SiteOut:
     site = Site(owner_user_id=current_user.id, name=payload.name, timezone=payload.timezone)
     db.add(site)
     db.commit()
     db.refresh(site)
-    return site
+    return site_out(db, site, current_user.id)
 
 
 @router.get("", response_model=list[SiteOut])
 def list_sites(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db_session)
-) -> list[Site]:
+) -> list[SiteOut]:
     owned = select(Site).where(Site.owner_user_id == current_user.id)
     shared = (
         select(Site)
@@ -41,12 +57,16 @@ def list_sites(
     owned_sites = db.execute(owned).scalars().all()
     shared_sites = db.execute(shared).scalars().all()
     by_id = {s.id: s for s in (*owned_sites, *shared_sites)}
-    return list(by_id.values())
+    return [site_out(db, site, current_user.id) for site in by_id.values()]
 
 
 @router.get("/{site_id}", response_model=SiteOut)
-def get_site(site: Site = Depends(require_site_access)) -> Site:
-    return site
+def get_site(
+    site: Site = Depends(require_site_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> SiteOut:
+    return site_out(db, site, current_user.id)
 
 
 @router.get("/{site_id}/sun", response_model=SiteSunOut)
@@ -63,8 +83,9 @@ def get_site_sun(site: Site = Depends(require_site_access)) -> SiteSunOut:
 def update_site(
     payload: SiteUpdate,
     site: Site = Depends(require_site_owner),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> Site:
+) -> SiteOut:
     if payload.name is not None:
         site.name = payload.name
     if payload.timezone is not None:
@@ -75,4 +96,4 @@ def update_site(
         site.latitude, site.longitude = payload.latitude, payload.longitude
     db.commit()
     db.refresh(site)
-    return site
+    return site_out(db, site, current_user.id)

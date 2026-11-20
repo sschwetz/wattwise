@@ -15,7 +15,7 @@ from core_api.email_sender import EmailSender
 from core_api.errors import AppError
 from core_api.mfa_attempts import is_locked
 from core_api.models.actors import ActorInstance
-from core_api.models.identity import Site, SiteAccess, User
+from core_api.models.identity import Site, SiteAccess, SiteRole, User
 from core_api.models.sources import Source, SourceKind
 from core_api.security import decode_access_token, decode_scoped_token, keys_match
 
@@ -98,6 +98,17 @@ def require_mfa_token(
 ) -> User:
     user, _jti = _resolve_user_from_token(credentials, db, _decode_mfa_token_and_check_lockout)
     return user
+
+
+def site_role_for(db: Session, site: Site, user_id: int) -> SiteRole | None:
+    """The owner role if `user_id` owns the site, else the role of their
+    SiteAccess grant (mapped by value), else None."""
+    if site.owner_user_id == user_id:
+        return SiteRole.OWNER
+    access = db.get(SiteAccess, (site.id, user_id))
+    if access is None:
+        return None
+    return SiteRole(access.role.value)
 
 
 def site_visible_to(db: Session, site_id: int, user_id: int) -> Site | None:

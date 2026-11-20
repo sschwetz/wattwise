@@ -10,7 +10,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, field_validator, model_validator
 
 from core_api.live import ENERGY_LIVE_METRICS, MAX_LIVE_VALUES, WEATHER_LIVE_METRICS
-from core_api.models.identity import InviteStatus
+from core_api.models.identity import InviteStatus, SiteRole
 from core_api.models.local_rates import LOCAL_RATE_CHANNELS
 from core_api.models.pricing import PriceChannel, SpikeStatus
 from core_api.models.readings import EnergyMetric, WeatherMetric
@@ -203,6 +203,7 @@ class SiteOut(BaseModel):
     enabled: bool
     latitude: float | None
     longitude: float | None
+    my_role: SiteRole
 
     model_config = {"from_attributes": True}
 
