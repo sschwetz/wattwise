@@ -14,6 +14,7 @@ from core_api.errors import install_error_handlers
 from core_api.live import LiveHub
 from core_api.routers.account import router as account_router
 from core_api.routers.actor import router as actor_router
+from core_api.routers.admin_users import router as admin_users_router
 from core_api.routers.actors import router as actors_router
 from core_api.routers.auth import router as auth_router
 from core_api.routers.billing import router as billing_router
@@ -128,4 +129,5 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
     app.include_router(services_router, prefix=api_prefix)
     app.include_router(totp_router, prefix=api_prefix)
     app.include_router(password_reset_router, prefix=api_prefix)
+    app.include_router(admin_users_router, prefix=api_prefix)
     return app
