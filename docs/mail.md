@@ -4,7 +4,7 @@ WattWise sends email for registration, password reset, invitations, email change
 
 | Path | When | How it sends |
 |---|---|---|
-| Built-in relay | No mail provider is active | Core API opens SMTP to `SMTP_HOST` (default `mail-relay`, a Postfix container that forwards to your SMTP account). See [Architecture](architecture.md#how-the-services-connect). |
+| Built-in relay | No mail provider is active | Core API opens SMTP to `SMTP_HOST` (default `mail-relay`, a Postfix container that forwards to your SMTP account), with a 20 second timeout (`SMTP_TIMEOUT_SECONDS` in [`email_sender.py`](../core-api/core_api/email_sender.py)). See [Architecture](architecture.md#how-the-services-connect). |
 | Mail provider | A provider is active | Core API writes the message to the `email_outbox` table. The `mail-actor` container takes it from there and sends it through the provider's HTTP API. |
 
 The user guide chapter for administrators is [Admin email](../webapp/src/docs/13-admin-email.md).
@@ -83,15 +83,18 @@ A 202 from `/test` means the message is queued. It does not show delivery.
 
 ### Deactivate
 
-When a deactivation leaves no provider active, Core API commits it and then sends the oldest 200 `pending` and `sending` rows through the relay, one at a time, before it answers (`relay_queued` in [`outbox.py`](../core-api/core_api/outbox.py)). Each row ends at once, with its body cleared:
+When a deactivation leaves no provider active, Core API commits it and then sends the oldest 200 `pending` and `sending` rows through the relay, one at a time, before it answers (`relay_queued` in [`outbox.py`](../core-api/core_api/outbox.py)).
+
+Before it sends a row, the drain claims it with a conditional update that matches the `status` and `claimed_at` it read, and commits. A row the actor claimed, or the cleanup job deleted, after the drain read it is skipped. Only one drain runs at a time in the Core API process: a second Deactivate during a drain returns without sending. Each claimed row then ends, with its body cleared:
 
 | Result | Row |
 |---|---|
 | The relay accepts it | `sent` |
-| The relay send raises | `failed`, `last_error` "relay send failed". The log line names only the row id. |
+| The relay send raises | `failed`, `last_error` "relay send failed". The log line names the row id and the exception class. |
 | The body cannot be decrypted | `failed`, `last_error` "undecryptable body" |
+| A database error | The row is rolled back and skipped, and the drain goes on to the next one. The log line names the row id and the exception class. |
 
-Rows past the first 200 stay queued, and the cleanup job deletes them after 7 days (see Retention under [Delivery](#delivery)). A `sending` row may be mid-send in the actor, so its recipient can get the email twice. The actor's later report on such a row gets 409 `not_sending`.
+No error in the drain changes the answer: Deactivate returns the provider, because the deactivation is already committed. Rows past the first 200 stay queued, and the cleanup job deletes them after 7 days (see Retention under [Delivery](#delivery)). A `sending` row may be mid-send in the actor, so its recipient can get the email twice. The actor's later report on such a row gets 409 `not_sending`.
 
 ## The mail actor
 

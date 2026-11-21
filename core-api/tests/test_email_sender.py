@@ -73,6 +73,28 @@ def test_create_app_wraps_the_given_sender(tmp_path, fake_email_sender):
     assert app.state.email_sender.fallback is fake_email_sender
 
 
+def test_smtp_sender_passes_a_timeout(monkeypatch):
+    opened: list[tuple[str, int, float]] = []
+
+    class RecordingSMTP:
+        def __init__(self, host: str, port: int, timeout: float) -> None:
+            opened.append((host, port, timeout))
+
+        def __enter__(self) -> RecordingSMTP:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            pass
+
+        def send_message(self, msg: object) -> None:
+            pass
+
+    monkeypatch.setattr(email_sender.smtplib, "SMTP", RecordingSMTP)
+    email_sender.SmtpEmailSender().send(to="a@example.com", subject="Subject", body="Body")
+    assert email_sender.SMTP_TIMEOUT_SECONDS == 20
+    assert [timeout for _, _, timeout in opened] == [20]
+
+
 def test_fake_email_sender_records_sends():
     sender = FakeEmailSender()
     sender.send(to="a@example.com", subject="Subject", body="Body")

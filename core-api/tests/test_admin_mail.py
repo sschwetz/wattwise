@@ -8,6 +8,7 @@ import pytest
 import sqlalchemy as sa
 from fastapi.routing import iter_route_contexts
 
+from core_api import outbox
 from core_api.db import make_engine, make_session_factory
 from core_api.models.identity import User
 from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
@@ -425,3 +426,56 @@ def test_deactivating_while_another_provider_stays_active_keeps_the_queue(client
     assert _deactivate(client, admin, "alpha").status_code == 200
     assert fake_email_sender.sent == []
     assert _reloaded(session, row_id).status is OutboxStatus.PENDING
+
+
+def test_a_relay_failure_logs_the_row_id_and_the_exception_class(client, admin, session, fake_email_sender, caplog):
+    _activate_alpha(client, admin)
+    row_id = _queue(session, to="private@example.com")
+    caplog.set_level(logging.WARNING, logger="core_api.outbox")
+
+    def refuse(to: str, subject: str, body: str) -> None:
+        raise ConnectionRefusedError(f"refused {to}")
+
+    fake_email_sender.send = refuse
+    assert _deactivate(client, admin).status_code == 200
+    messages = [record.getMessage() for record in caplog.records if record.name == "core_api.outbox"]
+    assert messages == [f"Relay send failed for outbox message {row_id}: ConnectionRefusedError"]
+    assert "private@example.com" not in caplog.text and "refused" not in caplog.text
+
+
+def _database_error() -> sa.exc.OperationalError:
+    return sa.exc.OperationalError("UPDATE email_outbox", {}, Exception("database is locked"))
+
+
+def test_a_database_error_on_one_row_still_answers_with_the_provider(
+    client, admin, session, fake_email_sender, monkeypatch
+):
+    _activate_alpha(client, admin)
+    broken = _queue(session, to="broken@example.com")
+    _queue(session, to="good@example.com")
+    real_claim = outbox._claim_for_relay
+
+    def claim_or_fail(db, candidate, now):
+        if candidate.id == broken:
+            raise _database_error()
+        return real_claim(db, candidate, now)
+
+    monkeypatch.setattr(outbox, "_claim_for_relay", claim_or_fail)
+    got = _deactivate(client, admin)
+    assert got.status_code == 200
+    assert got.json()["provider"] == "alpha" and got.json()["is_active"] is False
+    assert [to for to, _, _ in fake_email_sender.sent] == ["good@example.com"]
+
+
+def test_a_failed_drain_still_answers_with_the_provider(client, admin, session, fake_email_sender, monkeypatch):
+    _activate_alpha(client, admin)
+    _queue(session)
+
+    def fail(db):
+        raise _database_error()
+
+    monkeypatch.setattr(outbox, "_relay_candidates", fail)
+    got = _deactivate(client, admin)
+    assert got.status_code == 200
+    assert got.json()["provider"] == "alpha" and got.json()["is_active"] is False
+    assert fake_email_sender.sent == []

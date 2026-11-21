@@ -9,6 +9,7 @@ import sqlalchemy as sa
 from core_api import outbox
 from core_api.bootstrap import run_migrations
 from core_api.db import make_engine, make_session_factory
+from core_api.email_sender import FakeEmailSender
 from core_api.errors import AppError
 from core_api.models.mail import EmailOutbox, OutboxStatus
 from core_api.time_utils import as_utc
@@ -318,3 +319,135 @@ def test_claim_fails_a_row_with_an_undecryptable_body_and_returns_the_others(db)
     assert row.body == ""
     assert row.last_error == "undecryptable body"
     assert outbox.claim_outbox(db, 10, NOW) == []
+
+
+class _NoLock:
+    """Stands in for the drain lock, so two drains in one process overlap
+    and only the per-row claim keeps them apart."""
+
+    def acquire(self, blocking: bool = True) -> bool:
+        return True
+
+    def release(self) -> None:
+        pass
+
+
+class _HookedSender(FakeEmailSender):
+    """Records sends and runs `hook` once, during the first send."""
+
+    def __init__(self, hook) -> None:
+        super().__init__()
+        self._hook = hook
+
+    def send(self, to: str, subject: str, body: str) -> None:
+        hook, self._hook = self._hook, None
+        if hook is not None:
+            hook()
+        super().send(to, subject, body)
+
+
+def _drain(factory, sender) -> None:
+    session = factory()
+    try:
+        outbox.relay_queued(session, sender, NOW)
+    finally:
+        session.close()
+
+
+def test_two_overlapping_drains_send_each_row_once(factory, monkeypatch):
+    seed = factory()
+    ids = [_row(seed, to_address=f"user{n}@example.com") for n in range(10)]
+    seed.close()
+    monkeypatch.setattr(outbox, "_DRAIN_LOCK", _NoLock())
+    # Both drains read the same rows before either claims one.
+    barrier = threading.Barrier(2, timeout=10)
+    real_candidates = outbox._relay_candidates
+
+    def candidates_then_wait(db):
+        found = real_candidates(db)
+        barrier.wait()
+        return found
+
+    monkeypatch.setattr(outbox, "_relay_candidates", candidates_then_wait)
+    sender = FakeEmailSender()
+    threads = [threading.Thread(target=_drain, args=(factory, sender)) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert sorted(to for to, _, _ in sender.sent) == sorted(f"user{n}@example.com" for n in range(10))
+    check = factory()
+    assert {_reload(check, row_id).status for row_id in ids} == {OutboxStatus.SENT}
+    check.close()
+
+
+def test_a_drain_started_while_another_runs_sends_nothing(factory, db):
+    _row(db, to_address="first@example.com")
+    _row(db, to_address="second@example.com")
+    inner = FakeEmailSender()
+    outer = _HookedSender(lambda: _drain(factory, inner))
+    _drain(factory, outer)
+    assert inner.sent == []
+    assert [to for to, _, _ in outer.sent] == ["first@example.com", "second@example.com"]
+
+
+def test_a_row_the_actor_claims_mid_drain_is_skipped(factory, db):
+    first = _row(db, to_address="first@example.com")
+    second = _row(db, to_address="second@example.com")
+
+    def actor_claims_the_second():
+        actor = factory()
+        claimed = [row.id for row in outbox.claim_outbox(actor, 10, NOW)]
+        actor.commit()
+        actor.close()
+        assert claimed == [second]
+
+    sender = _HookedSender(actor_claims_the_second)
+    _drain(factory, sender)
+    assert [to for to, _, _ in sender.sent] == ["first@example.com"]
+    assert _reload(db, first).status is OutboxStatus.SENT
+    row = _reload(db, second)
+    assert (row.status, row.attempts, row.body) == (OutboxStatus.SENDING, 1, BODY)
+
+
+def test_a_stale_sending_row_is_drained(factory, db):
+    row_id = _row(db, status=OutboxStatus.SENDING, attempts=1, claimed_at=NOW - datetime.timedelta(minutes=10))
+    sender = FakeEmailSender()
+    _drain(factory, sender)
+    assert len(sender.sent) == 1
+    assert _reload(db, row_id).status is OutboxStatus.SENT
+
+
+def test_a_row_deleted_mid_drain_is_skipped_and_the_others_still_go(factory, db):
+    _row(db, to_address="first@example.com")
+    doomed = _row(db, to_address="doomed@example.com")
+    _row(db, to_address="third@example.com")
+
+    def purge_the_second():
+        other = factory()
+        other.execute(sa.delete(EmailOutbox).where(EmailOutbox.id == doomed))
+        other.commit()
+        other.close()
+
+    sender = _HookedSender(purge_the_second)
+    _drain(factory, sender)
+    assert [to for to, _, _ in sender.sent] == ["first@example.com", "third@example.com"]
+
+
+def test_a_database_error_on_one_row_does_not_stop_the_drain(factory, db, monkeypatch):
+    broken = _row(db, to_address="broken@example.com")
+    good = _row(db, to_address="good@example.com")
+    real_claim = outbox._claim_for_relay
+
+    def claim_or_fail(session, candidate, now):
+        if candidate.id == broken:
+            raise sa.exc.OperationalError("UPDATE email_outbox", {}, Exception("database is locked"))
+        return real_claim(session, candidate, now)
+
+    monkeypatch.setattr(outbox, "_claim_for_relay", claim_or_fail)
+    sender = FakeEmailSender()
+    _drain(factory, sender)
+    assert [to for to, _, _ in sender.sent] == ["good@example.com"]
+    assert _reload(db, broken).status is OutboxStatus.PENDING
+    assert _reload(db, good).status is OutboxStatus.SENT

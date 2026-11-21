@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import datetime
+import logging
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core_api import admin_mail, admin_users
@@ -12,6 +14,8 @@ from core_api.email_sender import EmailSender
 from core_api.models.identity import User
 from core_api.models.mail import MailProvider
 from core_api.outbox import has_active_provider, relay_queued
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/mail", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -60,13 +64,24 @@ def deactivate_provider(
     relay_sender: EmailSender = Depends(get_relay_sender),
 ) -> ProviderOut:
     """With no provider left active, queued mail goes out through the relay
-    now, after the deactivation is committed."""
+    now, after the deactivation is committed. A relay problem never changes
+    the answer: the deactivation has already happened."""
     row = admin_mail.get_provider_or_404(db, provider)
     admin_mail.deactivate(row)
     out = _commit_and_report(db, admin, row, "deactivate_mail_provider")
-    if not has_active_provider(db):
-        relay_queued(db, relay_sender, datetime.datetime.now(datetime.UTC))
+    _relay_if_no_provider(db, relay_sender)
     return out
+
+
+def _relay_if_no_provider(db: Session, relay_sender: EmailSender) -> None:
+    try:
+        if has_active_provider(db):
+            return
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.warning("Relay of queued mail skipped: %s", type(exc).__name__)
+        return
+    relay_queued(db, relay_sender, datetime.datetime.now(datetime.UTC))
 
 
 @router.post("/test", response_model=TestQueuedOut, status_code=status.HTTP_202_ACCEPTED)

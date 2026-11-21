@@ -12,6 +12,10 @@ from core_api.outbox import enqueue_email, has_active_provider
 
 logger = logging.getLogger(__name__)
 
+# The Deactivate drain sends up to 200 messages inside one request, so a
+# relay that stops answering must not hold each one forever.
+SMTP_TIMEOUT_SECONDS = 20
+
 
 class EmailSender(Protocol):
     def send(self, to: str, subject: str, body: str) -> None: ...
@@ -30,7 +34,7 @@ class SmtpEmailSender:
         msg["From"] = settings.smtp_from
         msg["To"] = to
         msg.set_content(body)
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as client:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=SMTP_TIMEOUT_SECONDS) as client:
             if settings.smtp_user and settings.smtp_password:
                 client.starttls()
                 client.login(settings.smtp_user, settings.smtp_password)
