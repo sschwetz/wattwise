@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+from collections.abc import Callable
 from email.message import EmailMessage
 from typing import Protocol
 
@@ -65,24 +66,36 @@ class OutboxEmailSender:
         self.fallback = fallback
 
     def send(self, to: str, subject: str, body: str) -> None:
-        """When the outbox write fails, the email goes through `fallback`
-        instead. The log line names only the exception class: a database
-        error's text can hold the address and subject."""
-        with self._session_factory() as db:
-            if has_active_provider(db) and self._enqueued(db, to, subject, body):
-                return
-        self.fallback.send(to=to, subject=subject, body=body)
+        """When the provider check or the outbox write fails, the email goes
+        through `fallback` instead. The log line names only the exception
+        class: a database error's text can hold the address and subject."""
+        if not self._enqueued(to, subject, body):
+            self.fallback.send(to=to, subject=subject, body=body)
 
-    @staticmethod
-    def _enqueued(db: Session, to: str, subject: str, body: str) -> bool:
+    def _enqueued(self, to: str, subject: str, body: str) -> bool:
+        """True when the message is in the outbox. False when no provider is
+        active or the outbox cannot be used; nothing here raises."""
+        db = self._session_factory()
         try:
+            if not has_active_provider(db):
+                return False
             enqueue_email(db, to, subject, body)
             db.commit()
+            return True
         except Exception as exc:
-            db.rollback()
-            logger.warning("Outbox write failed, sending through the relay: %s", type(exc).__name__)
+            logger.warning("Outbox unavailable, sending through the relay: %s", type(exc).__name__)
+            _quietly(db.rollback)
             return False
-        return True
+        finally:
+            _quietly(db.close)
+
+
+def _quietly(step: Callable[[], object]) -> None:
+    """Run a session cleanup step whose failure must not stop the fallback send."""
+    try:
+        step()
+    except Exception as exc:
+        logger.warning("Outbox session cleanup failed: %s", type(exc).__name__)
 
 
 def try_send_email(email_sender: EmailSender, to: str, subject: str, body: str, description: str) -> bool:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from core_api import email_sender
 from core_api.bootstrap import run_migrations
@@ -74,7 +75,39 @@ def test_a_failed_outbox_write_sends_through_the_fallback(session_factory, monke
     OutboxEmailSender(session_factory, fallback).send(to="a@example.com", subject="Subject", body="Body")
     assert fallback.sent == [("a@example.com", "Subject", "Body")]
     assert _outbox(session_factory) == []
-    assert warnings == [(("Outbox write failed, sending through the relay: %s", "OperationalError"), {})]
+    assert warnings == [(("Outbox unavailable, sending through the relay: %s", "OperationalError"), {})]
+
+
+def test_a_failed_rollback_still_sends_through_the_fallback(session_factory, monkeypatch):
+    _add_provider(session_factory, active=True)
+    _break_enqueue(monkeypatch)
+    warnings = _record_logs(monkeypatch, "warning")
+
+    def broken_rollback(self):
+        raise OperationalError("ROLLBACK", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(Session, "rollback", broken_rollback)
+    fallback = FakeEmailSender()
+    OutboxEmailSender(session_factory, fallback).send(to="a@example.com", subject="Subject", body="Body")
+    monkeypatch.undo()
+    assert fallback.sent == [("a@example.com", "Subject", "Body")]
+    assert warnings[0] == (("Outbox unavailable, sending through the relay: %s", "OperationalError"), {})
+    assert _outbox(session_factory) == []
+
+
+def test_a_failed_provider_check_sends_through_the_fallback(session_factory, monkeypatch):
+    _add_provider(session_factory, active=True)
+    warnings = _record_logs(monkeypatch, "warning")
+
+    def broken_check(db):
+        raise OperationalError("SELECT mail_providers", {}, Exception("a@example.com"))
+
+    monkeypatch.setattr(email_sender, "has_active_provider", broken_check)
+    fallback = FakeEmailSender()
+    OutboxEmailSender(session_factory, fallback).send(to="a@example.com", subject="Subject", body="Body")
+    assert fallback.sent == [("a@example.com", "Subject", "Body")]
+    assert warnings == [(("Outbox unavailable, sending through the relay: %s", "OperationalError"), {})]
+    assert _outbox(session_factory) == []
 
 
 def test_a_failed_outbox_write_log_holds_no_message_text(session_factory, monkeypatch):

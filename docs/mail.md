@@ -83,9 +83,9 @@ A 202 from `/test` means the message is queued. It does not show delivery.
 
 ### Deactivate
 
-When a deactivation leaves no provider active, Core API commits it and then sends the oldest 200 `pending` and `sending` rows through the relay, one at a time, before it answers (`relay_queued` in [`outbox.py`](../core-api/core_api/outbox.py)).
+When a deactivation leaves no provider active, Core API commits it and then sends the oldest 200 queued rows through the relay, one at a time, before it answers (`relay_queued` in [`outbox.py`](../core-api/core_api/outbox.py)). It takes `pending` rows and `sending` rows whose claim has expired (see Claim lifetime under [Delivery](#delivery)). A `sending` row with a live claim is left to whoever holds it: the actor, which caches the provider for 30 seconds and can still finish its batch, or another drain.
 
-Before it sends a row, the drain claims it with a conditional update that matches the `status` and `claimed_at` it read, and commits. A row the actor claimed, or the cleanup job deleted, after the drain read it is skipped. Only one drain runs at a time in the Core API process: a second Deactivate during a drain returns without sending. Each claimed row then ends, with its body cleared:
+Before it sends a row, the drain claims it with a conditional update that matches the `status` and `claimed_at` it read, stamps `claimed_at` with the time of that claim, and commits. A row the actor or another drain claimed, or the cleanup job deleted, after the drain read it is skipped. This holds across any number of Core API processes. A fresh stamp per row means a drain that runs longer than the claim lifetime never writes a claim that is already expired. The finish matches the drain's own stamp, so a row someone else has claimed since keeps their state. Each claimed row then ends, with its body cleared:
 
 | Result | Row |
 |---|---|
@@ -94,7 +94,7 @@ Before it sends a row, the drain claims it with a conditional update that matche
 | The body cannot be decrypted | `failed`, `last_error` "undecryptable body" |
 | A database error | The row is rolled back and skipped, and the drain goes on to the next one. The log line names the row id and the exception class. |
 
-No error in the drain changes the answer: Deactivate returns the provider, because the deactivation is already committed. Rows past the first 200 stay queued, and the cleanup job deletes them after 7 days (see Retention under [Delivery](#delivery)). A `sending` row may be mid-send in the actor, so its recipient can get the email twice. The actor's later report on such a row gets 409 `not_sending`.
+No error in the drain changes the answer: Deactivate returns the provider, because the deactivation is already committed. Rows past the first 200 stay queued, and so do rows the actor hands back as `pending` after the drain has finished (it reports "no usable mail provider" once the provider is gone). They go out when a provider is active again, or the cleanup job deletes them after 7 days (see Retention under [Delivery](#delivery)). An actor that is still sending a row after its claim expired can race the drain, so that recipient can get the email twice. The actor's later report on such a row gets 409 `not_sending`.
 
 ## The mail actor
 

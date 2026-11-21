@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import datetime
 import logging
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core_api import admin_mail, admin_users
@@ -74,14 +72,12 @@ def deactivate_provider(
 
 
 def _relay_if_no_provider(db: Session, relay_sender: EmailSender) -> None:
+    """Never raises: logs only the exception class, since its text can hold an address."""
     try:
-        if has_active_provider(db):
-            return
-    except SQLAlchemyError as exc:
-        db.rollback()
+        if not has_active_provider(db):
+            relay_queued(db, relay_sender)
+    except Exception as exc:
         logger.warning("Relay of queued mail skipped: %s", type(exc).__name__)
-        return
-    relay_queued(db, relay_sender, datetime.datetime.now(datetime.UTC))
 
 
 @router.post("/test", response_model=TestQueuedOut, status_code=status.HTTP_202_ACCEPTED)

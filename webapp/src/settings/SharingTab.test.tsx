@@ -118,6 +118,9 @@ describe("SharingTab", () => {
     it("hides Revoke from a manager on another manager's accepted invite", async () => {
       me = { ...me, id: 5, email: "me@example.com" };
       renderTab({ ...site, my_role: "manager" });
+      // The people list and the signed-in user are both loaded once the
+      // list shows and the manager's own Revoke is there.
+      expect(await screen.findByText("Boss")).toBeInTheDocument();
       await waitFor(() => expect(revokeButton("me@example.com")).toBeInTheDocument());
       expect(revokeButton("boss@example.com")).toBeNull();
     });

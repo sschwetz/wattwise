@@ -321,17 +321,6 @@ def test_claim_fails_a_row_with_an_undecryptable_body_and_returns_the_others(db)
     assert outbox.claim_outbox(db, 10, NOW) == []
 
 
-class _NoLock:
-    """Stands in for the drain lock, so two drains in one process overlap
-    and only the per-row claim keeps them apart."""
-
-    def acquire(self, blocking: bool = True) -> bool:
-        return True
-
-    def release(self) -> None:
-        pass
-
-
 class _HookedSender(FakeEmailSender):
     """Records sends and runs `hook` once, during the first send."""
 
@@ -346,10 +335,10 @@ class _HookedSender(FakeEmailSender):
         super().send(to, subject, body)
 
 
-def _drain(factory, sender) -> None:
+def _drain(factory, sender, clock=lambda: NOW) -> None:
     session = factory()
     try:
-        outbox.relay_queued(session, sender, NOW)
+        outbox.relay_queued(session, sender, clock)
     finally:
         session.close()
 
@@ -358,13 +347,12 @@ def test_two_overlapping_drains_send_each_row_once(factory, monkeypatch):
     seed = factory()
     ids = [_row(seed, to_address=f"user{n}@example.com") for n in range(10)]
     seed.close()
-    monkeypatch.setattr(outbox, "_DRAIN_LOCK", _NoLock())
     # Both drains read the same rows before either claims one.
     barrier = threading.Barrier(2, timeout=10)
     real_candidates = outbox._relay_candidates
 
-    def candidates_then_wait(db):
-        found = real_candidates(db)
+    def candidates_then_wait(db, now):
+        found = real_candidates(db, now)
         barrier.wait()
         return found
 
@@ -382,14 +370,15 @@ def test_two_overlapping_drains_send_each_row_once(factory, monkeypatch):
     check.close()
 
 
-def test_a_drain_started_while_another_runs_sends_nothing(factory, db):
+def test_a_drain_started_during_another_skips_its_claimed_row(factory, db):
     _row(db, to_address="first@example.com")
     _row(db, to_address="second@example.com")
     inner = FakeEmailSender()
     outer = _HookedSender(lambda: _drain(factory, inner))
     _drain(factory, outer)
-    assert inner.sent == []
-    assert [to for to, _, _ in outer.sent] == ["first@example.com", "second@example.com"]
+    # The inner drain reads the first row as freshly claimed and leaves it.
+    assert [to for to, _, _ in inner.sent] == ["second@example.com"]
+    assert [to for to, _, _ in outer.sent] == ["first@example.com"]
 
 
 def test_a_row_the_actor_claims_mid_drain_is_skipped(factory, db):
@@ -411,12 +400,79 @@ def test_a_row_the_actor_claims_mid_drain_is_skipped(factory, db):
     assert (row.status, row.attempts, row.body) == (OutboxStatus.SENDING, 1, BODY)
 
 
-def test_a_stale_sending_row_is_drained(factory, db):
-    row_id = _row(db, status=OutboxStatus.SENDING, attempts=1, claimed_at=NOW - datetime.timedelta(minutes=10))
+def test_a_pending_row_is_drained(factory, db):
+    row_id = _row(db)
     sender = FakeEmailSender()
     _drain(factory, sender)
     assert len(sender.sent) == 1
     assert _reload(db, row_id).status is OutboxStatus.SENT
+
+
+@pytest.mark.parametrize(
+    ("claimed_ago", "drained"), [(datetime.timedelta(seconds=10), False), (datetime.timedelta(minutes=3), True)]
+)
+def test_only_a_stale_sending_row_is_drained(factory, db, claimed_ago, drained):
+    row_id = _row(db, status=OutboxStatus.SENDING, attempts=1, claimed_at=NOW - claimed_ago)
+    sender = FakeEmailSender()
+    _drain(factory, sender)
+    assert len(sender.sent) == (1 if drained else 0)
+    row = _reload(db, row_id)
+    if drained:
+        assert row.status is OutboxStatus.SENT
+    else:
+        assert (row.status, as_utc(row.claimed_at), row.body) == (OutboxStatus.SENDING, NOW - claimed_ago, BODY)
+
+
+class _Clock:
+    """A clock the test moves by hand."""
+
+    def __init__(self, start: datetime.datetime) -> None:
+        self.now = start
+
+    def __call__(self) -> datetime.datetime:
+        return self.now
+
+
+def test_each_claim_is_stamped_with_the_time_of_that_claim(factory, db):
+    ids = [_row(db, to_address=f"user{n}@example.com") for n in range(3)]
+    clock = _Clock(NOW)
+    seen: list[tuple[datetime.datetime, datetime.datetime]] = []
+
+    class SlowRelay(FakeEmailSender):
+        """Each send takes 3 minutes, longer than a claim lasts."""
+
+        def send(self, to: str, subject: str, body: str) -> None:
+            check = factory()
+            row = check.scalars(sa.select(EmailOutbox).where(EmailOutbox.to_address == to)).one()
+            seen.append((as_utc(row.claimed_at), clock.now))
+            check.close()
+            super().send(to, subject, body)
+            clock.now += datetime.timedelta(minutes=3)
+
+    _drain(factory, SlowRelay(), clock)
+
+    stamps = [stamp for stamp, _ in seen]
+    assert len(set(stamps)) == 3
+    for stamp, clock_at_send in seen:
+        assert clock_at_send - stamp < outbox.CLAIM_TIMEOUT
+    assert {_reload(db, row_id).status for row_id in ids} == {OutboxStatus.SENT}
+
+
+def test_a_row_the_actor_reclaims_before_the_finish_keeps_the_actor_state(factory, db):
+    row_id = _row(db)
+    actor_time = NOW + datetime.timedelta(minutes=3)
+
+    def actor_reclaims():
+        actor = factory()
+        claimed = [row.id for row in outbox.claim_outbox(actor, 10, actor_time)]
+        actor.commit()
+        actor.close()
+        assert claimed == [row_id]
+
+    _drain(factory, _HookedSender(actor_reclaims))
+    row = _reload(db, row_id)
+    assert (row.status, as_utc(row.claimed_at), row.attempts) == (OutboxStatus.SENDING, actor_time, 1)
+    assert row.body == BODY and row.finished_at is None
 
 
 def test_a_row_deleted_mid_drain_is_skipped_and_the_others_still_go(factory, db):

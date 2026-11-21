@@ -244,7 +244,7 @@ The table holds no secrets. `GET /services` adds the `reporting` flag at read ti
 
 ## Mail tables
 
-Migration `f1a3c5e7b9d2` adds both tables, and `a7c9e1b3d5f2` changes `email_outbox.body` to a `Text` column. How they are used is in [Mail](mail.md).
+Migration `f1a3c5e7b9d2` adds both tables, and `a7c9e1b3d5f2` changes `email_outbox.body` to a `Text` column. Its downgrade narrows `body` back to 1024 characters, which fails on Postgres while any stored body is longer. How they are used is in [Mail](mail.md).
 
 `mail_providers` has one row per provider the mail actor has declared.
 

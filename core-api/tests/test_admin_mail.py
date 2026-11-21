@@ -336,8 +336,18 @@ def test_every_route_needs_a_token_and_an_admin(client, app_and_db_url, session)
         assert got.json()["code"] == "admin_required"
 
 
-def _queue(session, status: OutboxStatus = OutboxStatus.PENDING, to: str = "a@example.com") -> int:
-    row = EmailOutbox(to_address=to, subject="Reset", body=f"link for {to}", status=status)
+STALE_CLAIM = datetime.timedelta(minutes=10)
+
+
+def _queue(
+    session,
+    status: OutboxStatus = OutboxStatus.PENDING,
+    to: str = "a@example.com",
+    claimed_at: datetime.datetime | None = None,
+) -> int:
+    if status is OutboxStatus.SENDING and claimed_at is None:
+        claimed_at = datetime.datetime.now(datetime.UTC) - STALE_CLAIM
+    row = EmailOutbox(to_address=to, subject="Reset", body=f"link for {to}", status=status, claimed_at=claimed_at)
     session.add(row)
     session.commit()
     return row.id
@@ -471,7 +481,7 @@ def test_a_failed_drain_still_answers_with_the_provider(client, admin, session, 
     _activate_alpha(client, admin)
     _queue(session)
 
-    def fail(db):
+    def fail(db, now):
         raise _database_error()
 
     monkeypatch.setattr(outbox, "_relay_candidates", fail)
@@ -479,3 +489,31 @@ def test_a_failed_drain_still_answers_with_the_provider(client, admin, session, 
     assert got.status_code == 200
     assert got.json()["provider"] == "alpha" and got.json()["is_active"] is False
     assert fake_email_sender.sent == []
+
+
+def test_a_failed_provider_check_after_deactivate_still_answers_with_the_provider(
+    client, admin, session, fake_email_sender, monkeypatch, caplog
+):
+    _activate_alpha(client, admin)
+    _queue(session)
+    caplog.set_level(logging.WARNING, logger="core_api.routers.admin_mail")
+
+    def fail(db):
+        raise RuntimeError("private@example.com")
+
+    monkeypatch.setattr("core_api.routers.admin_mail.has_active_provider", fail)
+    got = _deactivate(client, admin)
+    assert got.status_code == 200
+    assert got.json()["provider"] == "alpha" and got.json()["is_active"] is False
+    assert fake_email_sender.sent == []
+    assert "RuntimeError" in caplog.text and "private@example.com" not in caplog.text
+
+
+def test_deactivate_leaves_a_freshly_claimed_row_to_the_actor(client, admin, session, fake_email_sender):
+    _activate_alpha(client, admin)
+    fresh = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=10)
+    row_id = _queue(session, OutboxStatus.SENDING, claimed_at=fresh)
+    assert _deactivate(client, admin).status_code == 200
+    assert fake_email_sender.sent == []
+    row = _reloaded(session, row_id)
+    assert row.status is OutboxStatus.SENDING and row.body == "link for a@example.com"

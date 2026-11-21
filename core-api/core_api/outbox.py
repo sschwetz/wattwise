@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-import threading
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from cryptography.fernet import InvalidToken
@@ -179,20 +179,26 @@ class _Candidate(NamedTuple):
     claimed_at: datetime.datetime | None
 
 
-def _relay_candidates(db: Session) -> list[_Candidate]:
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC)
+
+
+def _relay_candidates(db: Session, now: datetime.datetime) -> list[_Candidate]:
+    """Pending rows and sending rows whose claim has expired, by the same rule
+    `claim_outbox` uses. A fresh claim belongs to the actor or another drain."""
     query = (
         select(EmailOutbox.id, EmailOutbox.status, EmailOutbox.claimed_at)
-        .where(EmailOutbox.status.in_(UNFINISHED))
+        .where(or_(EmailOutbox.status == OutboxStatus.PENDING, _stale(now)))
         .order_by(EmailOutbox.id)
         .limit(RELAY_LIMIT)
     )
     return [_Candidate(*row) for row in db.execute(query)]
 
 
-def _claim_for_relay(db: Session, candidate: _Candidate, now: datetime.datetime) -> bool:
-    """Take the row for this drain and commit, if it still has the status and
-    claim it had when the drain read it. False when the actor, another drain
-    or the purge got to it first."""
+def _claim_for_relay(db: Session, candidate: _Candidate, stamp: datetime.datetime) -> bool:
+    """Take the row for this drain with `stamp` as its claim time, and commit,
+    if it still has the status and claim it had when the drain read it. False
+    when the actor, another drain or the purge got to it first."""
     same_claim: ColumnElement[bool]
     if candidate.claimed_at is None:
         same_claim = EmailOutbox.claimed_at.is_(None)
@@ -201,7 +207,7 @@ def _claim_for_relay(db: Session, candidate: _Candidate, now: datetime.datetime)
     result = db.execute(
         update(EmailOutbox)
         .where(EmailOutbox.id == candidate.id, EmailOutbox.status == candidate.status, same_claim)
-        .values(status=OutboxStatus.SENDING, claimed_at=now)
+        .values(status=OutboxStatus.SENDING, claimed_at=stamp)
         .execution_options(synchronize_session=False)
     )
     if rows_affected(result) != 1:
@@ -211,68 +217,77 @@ def _claim_for_relay(db: Session, candidate: _Candidate, now: datetime.datetime)
     return True
 
 
-def _end_claimed(db: Session, row_id: int, now: datetime.datetime, values: dict[str, object]) -> None:
-    """End a row this drain claimed, unless someone has claimed it since."""
+class _Claim(NamedTuple):
+    """A row this drain claimed, the claim time it wrote, and the clock."""
+
+    row_id: int
+    stamp: datetime.datetime
+    clock: Callable[[], datetime.datetime]
+
+
+def _end_claimed(db: Session, claim: _Claim, values: dict[str, object]) -> None:
+    """End the row, unless someone has claimed it since this drain did."""
     db.execute(
         update(EmailOutbox)
-        .where(EmailOutbox.id == row_id, EmailOutbox.status == OutboxStatus.SENDING, EmailOutbox.claimed_at == now)
-        .values(body="", finished_at=now, **values)
+        .where(
+            EmailOutbox.id == claim.row_id,
+            EmailOutbox.status == OutboxStatus.SENDING,
+            EmailOutbox.claimed_at == claim.stamp,
+        )
+        .values(body="", finished_at=claim.clock(), **values)
         .execution_options(synchronize_session=False)
     )
 
 
-def _relay_one(db: Session, row_id: int, sender: EmailSender, now: datetime.datetime) -> None:
+def _relay_one(db: Session, claim: _Claim, sender: EmailSender) -> None:
     """Send one claimed row through `sender` and end it. Logs only the row id
     and the exception class: a relay error text can hold the address."""
-    query = select(EmailOutbox.to_address, EmailOutbox.subject, EmailOutbox.body).where(EmailOutbox.id == row_id)
+    query = select(EmailOutbox.to_address, EmailOutbox.subject, EmailOutbox.body).where(EmailOutbox.id == claim.row_id)
     try:
         message = db.execute(query).one_or_none()
     except InvalidToken:
-        _end_claimed(db, row_id, now, {"status": OutboxStatus.FAILED, "last_error": "undecryptable body"})
+        _end_claimed(db, claim, {"status": OutboxStatus.FAILED, "last_error": "undecryptable body"})
         return
     if message is None:
         return
     try:
         sender.send(to=message.to_address, subject=message.subject, body=message.body)
     except Exception as exc:
-        logger.warning("Relay send failed for outbox message %s: %s", row_id, type(exc).__name__)
-        _end_claimed(db, row_id, now, {"status": OutboxStatus.FAILED, "last_error": "relay send failed"})
+        logger.warning("Relay send failed for outbox message %s: %s", claim.row_id, type(exc).__name__)
+        _end_claimed(db, claim, {"status": OutboxStatus.FAILED, "last_error": "relay send failed"})
         return
-    _end_claimed(db, row_id, now, {"status": OutboxStatus.SENT, "last_error": None})
+    _end_claimed(db, claim, {"status": OutboxStatus.SENT, "last_error": None})
 
 
-def _relay_candidate(db: Session, candidate: _Candidate, sender: EmailSender, now: datetime.datetime) -> None:
-    """Claim, send and end one row. A database error rolls back and skips the row."""
+def _relay_candidate(
+    db: Session, candidate: _Candidate, sender: EmailSender, clock: Callable[[], datetime.datetime]
+) -> None:
+    """Claim, send and end one row. The claim is stamped with the time it is
+    taken, so a long drain never writes a claim that is already stale. A
+    database error rolls back and skips the row."""
     try:
-        if _claim_for_relay(db, candidate, now):
-            _relay_one(db, candidate.id, sender, now)
+        claim = _Claim(candidate.id, clock(), clock)
+        if _claim_for_relay(db, candidate, claim.stamp):
+            _relay_one(db, claim, sender)
             db.commit()
     except SQLAlchemyError as exc:
         db.rollback()
         logger.warning("Relay skipped outbox message %s: %s", candidate.id, type(exc).__name__)
 
 
-# One drain at a time in this process. A second drain would read the first
-# drain's claimed rows as `sending` and could take them again.
-_DRAIN_LOCK = threading.Lock()
-
-
-def relay_queued(db: Session, sender: EmailSender, now: datetime.datetime) -> None:
-    """Send the oldest RELAY_LIMIT pending and sending rows through `sender`,
-    for when no provider is left to send them. Unlike the rest of this module
-    it commits: each row is claimed and committed before it is sent, and ended
-    and committed after, so a row sent before a crash is not sent again. A
-    drain that starts while another runs returns at once. Never raises."""
-    if not _DRAIN_LOCK.acquire(blocking=False):
-        return
+def relay_queued(db: Session, sender: EmailSender, clock: Callable[[], datetime.datetime] = _utcnow) -> None:
+    """Send the oldest RELAY_LIMIT pending rows and expired `sending` claims
+    through `sender`, for when no provider is left to send them. Unlike the
+    rest of this module it commits: each row is claimed and committed before
+    it is sent, and ended and committed after, so a row sent before a crash is
+    not sent again. The conditional claim keeps two drains, in any number of
+    processes, and the actor off the same row. Never raises."""
     try:
-        for candidate in _relay_candidates(db):
-            _relay_candidate(db, candidate, sender, now)
+        for candidate in _relay_candidates(db, clock()):
+            _relay_candidate(db, candidate, sender, clock)
     except Exception as exc:
         db.rollback()
         logger.warning("Relay of queued mail stopped: %s", type(exc).__name__)
-    finally:
-        _DRAIN_LOCK.release()
 
 
 def purge_outbox(db: Session, now: datetime.datetime) -> int:
