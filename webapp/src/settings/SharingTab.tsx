@@ -1,7 +1,9 @@
 import { type FormEvent, useState } from "react";
+import { useMe } from "../account/useAccount";
 import { errorMessage } from "../api/client";
 import { type Invite, type InviteStatus, useCreateInvite, useRevokeInvite, useSiteInvites } from "../sites/useInvites";
 import { inputClass } from "../components/formStyles";
+import { useSitePeople } from "../sites/useSitePeople";
 import type { Site } from "../sites/useSites";
 import { SitePeople } from "./SitePeople";
 
@@ -109,11 +111,25 @@ function RevokeControl({ invite }: { invite: Invite }) {
   );
 }
 
-function canRevoke(status: InviteStatus, canInvite: boolean): boolean {
-  return status === "accepted" || (status === "invited" && canInvite);
+/**
+ * Lowercased emails of the site's managers other than the signed-in user, when that user is a manager.
+ * Only the owner or that manager may revoke a manager's accepted invite, so a manager gets no Revoke on one.
+ */
+function useOtherManagerEmails(site: Site): ReadonlySet<string> {
+  const isManager = site.my_role === "manager";
+  const people = useSitePeople(site.id, isManager);
+  const me = useMe();
+  if (!isManager || !people.data) return new Set();
+  const others = people.data.filter((person) => person.role === "manager" && person.user_id !== me.data?.id);
+  return new Set(others.map((person) => person.email.toLowerCase()));
 }
 
-function InviteRow({ invite, canInvite }: { invite: Invite; canInvite: boolean }) {
+function canRevoke(invite: Invite, canInvite: boolean, otherManagers: ReadonlySet<string>): boolean {
+  if (invite.status === "invited") return canInvite;
+  return invite.status === "accepted" && !otherManagers.has(invite.email.toLowerCase());
+}
+
+function InviteRow({ invite, revocable }: { invite: Invite; revocable: boolean }) {
   return (
     <li className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-line p-3">
       <div className="min-w-0">
@@ -125,13 +141,14 @@ function InviteRow({ invite, canInvite }: { invite: Invite; canInvite: boolean }
         </p>
         <p className="break-all text-sm text-ink-muted">Invited by {invite.inviter_email}</p>
       </div>
-      {canRevoke(invite.status, canInvite) && <RevokeControl invite={invite} />}
+      {revocable && <RevokeControl invite={invite} />}
     </li>
   );
 }
 
-function InviteList({ siteId, canInvite }: { siteId: number; canInvite: boolean }) {
-  const invites = useSiteInvites(siteId);
+function InviteList({ site, canInvite }: { site: Site; canInvite: boolean }) {
+  const invites = useSiteInvites(site.id);
+  const otherManagers = useOtherManagerEmails(site);
   if (invites.isPending) return <p className="text-sm text-ink-muted">Loading invitations...</p>;
   if (invites.isError) {
     return (
@@ -147,7 +164,7 @@ function InviteList({ siteId, canInvite }: { siteId: number; canInvite: boolean 
   return (
     <ul className="space-y-2">
       {invites.data.map((invite) => (
-        <InviteRow key={invite.id} invite={invite} canInvite={canInvite} />
+        <InviteRow key={invite.id} invite={invite} revocable={canRevoke(invite, canInvite, otherManagers)} />
       ))}
     </ul>
   );
@@ -166,7 +183,7 @@ export function SharingTab({ site }: { site: Site }) {
       )}
       <h2 className="text-lg font-medium text-ink">Invitations</h2>
       {canInvite && <InviteForm siteId={site.id} />}
-      <InviteList siteId={site.id} canInvite={canInvite} />
+      <InviteList site={site} canInvite={canInvite} />
     </div>
   );
 }

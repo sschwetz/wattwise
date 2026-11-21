@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Me } from "../account/useAccount";
 import { ApiError, apiFetch } from "../api/client";
 import type { Invite } from "../sites/useInvites";
 import type { SitePerson } from "../sites/useSitePeople";
@@ -45,8 +46,18 @@ const PEOPLE: SitePerson[] = [
   { user_id: 3, email: "watcher@example.com", display_name: null, role: "viewer" },
 ];
 
+const OWNER_ME: Me = {
+  id: 1,
+  email: "owner@example.com",
+  display_name: null,
+  has_amber_api_key: false,
+  has_avatar: false,
+  is_admin: false,
+};
+
 let invites: Invite[];
 let people: SitePerson[];
+let me: Me;
 
 const isPeoplePath = (path: string) => path === "/api/v1/sites/7/access";
 
@@ -71,12 +82,68 @@ describe("SharingTab", () => {
   beforeEach(() => {
     invites = INVITES;
     people = [OWNER];
+    me = OWNER_ME;
     vi.mocked(apiFetch).mockReset();
     vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
       if (init?.method === "POST") return invite(9, "invited") as never;
       if (init?.method === "DELETE") return undefined as never;
       if (isPeoplePath(path)) return people as never;
+      if (path === "/api/v1/users/me") return me as never;
       return invites as never;
+    });
+  });
+
+  describe("revoke on a manager's accepted invite", () => {
+    const SELF: SitePerson = { user_id: 5, email: "Me@Example.com", display_name: null, role: "manager" };
+
+    beforeEach(() => {
+      people = [...PEOPLE, SELF];
+      invites = [
+        invite(11, "accepted", { email: "boss@example.com", accepted_at: "2026-03-10T12:00:00Z" }),
+        invite(12, "accepted", { email: "me@example.com", accepted_at: "2026-03-10T12:00:00Z" }),
+        invite(13, "accepted", { email: "watcher@example.com", accepted_at: "2026-03-10T12:00:00Z" }),
+      ];
+    });
+
+    const revokeButton = (email: string) => screen.queryByRole("button", { name: `Revoke ${email}` });
+
+    it("gives the owner Revoke on every accepted invite", async () => {
+      renderTab();
+      await screen.findByText("Me@Example.com");
+      expect(revokeButton("boss@example.com")).toBeInTheDocument();
+      expect(revokeButton("me@example.com")).toBeInTheDocument();
+      expect(revokeButton("watcher@example.com")).toBeInTheDocument();
+    });
+
+    it("hides Revoke from a manager on another manager's accepted invite", async () => {
+      me = { ...me, id: 5, email: "me@example.com" };
+      renderTab({ ...site, my_role: "manager" });
+      await waitFor(() => expect(revokeButton("me@example.com")).toBeInTheDocument());
+      expect(revokeButton("boss@example.com")).toBeNull();
+    });
+
+    it("keeps Revoke for a manager on their own accepted invite", async () => {
+      me = { ...me, id: 5, email: "me@example.com" };
+      renderTab({ ...site, my_role: "manager" });
+      expect(await screen.findByRole("button", { name: "Revoke me@example.com" })).toBeInTheDocument();
+    });
+
+    it("keeps Revoke for a manager on a viewer's accepted invite", async () => {
+      me = { ...me, id: 5, email: "me@example.com" };
+      renderTab({ ...site, my_role: "manager" });
+      await waitFor(() => expect(revokeButton("me@example.com")).toBeInTheDocument());
+      expect(revokeButton("watcher@example.com")).toBeInTheDocument();
+    });
+
+    it("refreshes the people list after a revoke", async () => {
+      renderTab();
+      await userEvent.click(await screen.findByRole("button", { name: "Revoke watcher@example.com" }));
+      const peopleGets = () => vi.mocked(apiFetch).mock.calls.filter(([p, i]) => isPeoplePath(p) && !i?.method);
+      const before = peopleGets().length;
+      await userEvent.click(screen.getByRole("button", { name: "Confirm revoke" }));
+      await waitFor(() => expect(calls("POST")).toHaveLength(1));
+      expect(calls("POST")[0][0]).toBe("/api/v1/sites/7/invites/13/revoke");
+      await waitFor(() => expect(peopleGets().length).toBeGreaterThan(before));
     });
   });
 

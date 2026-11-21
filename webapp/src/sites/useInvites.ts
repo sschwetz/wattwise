@@ -57,12 +57,17 @@ export function useCreateInvite(siteId: number) {
   });
 }
 
+/** Revoking an accepted invite deletes the grant, so the people list refreshes too. */
 export function useRevokeInvite(siteId: number) {
-  const onSuccess = useInvalidateAfterInviteChange(siteId);
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateAfterInviteChange(siteId);
   return useMutation({
     mutationFn: (inviteId: number) =>
       apiFetch<Invite>(`/api/v1/sites/${siteId}/invites/${inviteId}/revoke`, { method: "POST" }),
-    onSuccess,
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["sitePeople", siteId] });
+    },
   });
 }
 
