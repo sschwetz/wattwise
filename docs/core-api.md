@@ -14,7 +14,7 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `admin_users.py`, `admin_schemas.py`, `user_profile.py`, `routers/admin_users.py` | The administrator's user endpoints: the queries and rules, the response models, the avatar and Amber key changes shared with the account routes, and the router. See [Admin endpoints](#admin-endpoints). |
 | `deps.py` | FastAPI dependencies: current user, setup and MFA tokens, site access, collector-key checks, and `require_actor_key`, `get_actor_instance` and `require_mail_actor` for actors. |
 | `security.py` | bcrypt, JWT creation and decoding, TOTP, token hashing, keyed recovery-code hashing. |
-| `encrypted_types.py` | `EncryptedString` and `EncryptedJSON` column types. Fernet encryption on write, decryption on read. |
+| `encrypted_types.py` | `EncryptedString`, `EncryptedText` and `EncryptedJSON` column types. Fernet encryption on write, decryption on read. |
 | `attempt_tracker.py`, `login_attempts.py`, `mfa_attempts.py` | In-memory sliding-window lockouts (5 failures in 15 minutes). |
 | `errors.py` | `AppError` and handlers. Every error returns `{code, message, detail}`. |
 | `schemas.py` | Pydantic request and response models, including `UtcDatetime`. |
@@ -317,7 +317,7 @@ The rule, from the Storing Secrets section of [`CLAUDE.md`](../CLAUDE.md): never
 | Passwords | bcrypt hash (`hash_password`) | The app only checks them |
 | Password-reset, email-confirmation and email-change tokens | SHA-256 (`hash_token`) | 256-bit random values cannot be brute-forced, so a plain hash is enough |
 | TOTP recovery codes | Keyed HMAC-SHA256 (`hash_recovery_code`), 16 hex characters | Short enough that a plain hash could be guessed offline from a leaked database. The HMAC key is derived from `SECRETS_ENCRYPTION_KEY`. |
-| `sources.config` (Envoy token, Enlighten login, and the rest), `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret`, `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link), `mail_providers.settings` (the mail provider's API key and sender address), `email_outbox.body` (queued mail, which holds reset and confirmation links) | Fernet encryption (`EncryptedJSON`, `EncryptedString` in `encrypted_types.py`) | The app has to send these on, so a hash would be useless |
+| `sources.config` (Envoy token, Enlighten login, and the rest), `users.amber_api_key`, `users.totp_secret`, `users.pending_totp_secret`, `actor_instances.config` (the Actron refresh token), `actor_instances.auth_state` (the Actron sign-in code and link), `mail_providers.settings` (the mail provider's API key and sender address), `email_outbox.body` (queued mail, which holds reset and confirmation links) | Fernet encryption (`EncryptedJSON`, `EncryptedString`, `EncryptedText` in `encrypted_types.py`) | The app has to send these on, so a hash would be useless |
 
 Consequences to know about:
 
@@ -326,7 +326,7 @@ Consequences to know about:
 - **Changing the key has no migration path.** Nothing in the repository re-encrypts existing rows under a new key, so treat the key as permanent. Changing it also invalidates every recovery code.
 - **Encrypted columns cannot be filtered or compared in SQL.** Each encryption uses a random IV, so the same value gives different ciphertext. Load the row and compare in Python, or test `IS NOT NULL`.
 - **Reading a row decrypts it.** A wrong or missing key makes reads of those rows fail rather than return blanks.
-- The `EncryptedString` column is 1024 characters wide because a Fernet token is about 1.4 times the plaintext plus 100 bytes.
+- The `EncryptedString` column is 1024 characters wide because a Fernet token is about 1.4 times the plaintext plus 100 bytes, so it holds about 650 characters of plaintext. `EncryptedText` is the same encryption in a `Text` column, for longer values such as `email_outbox.body`.
 
 Two migrations introduced this. `c5d8f1a3b6e2` encrypts existing plaintext rows in place and skips rows already encrypted, so a rerun after a failure is safe. `d3a7b9c1e4f8` deletes every existing recovery code, because the old unkeyed hashes cannot be converted. After upgrading, users with two-factor enabled have no recovery codes until they use **Replace authenticator** in Account settings, which issues a new set.
 

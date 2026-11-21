@@ -45,6 +45,14 @@ class EncryptedString(TypeDecorator):
         return None if value is None else decrypt_text(value)
 
 
+class EncryptedText(EncryptedString):
+    """`EncryptedString` in an unbounded `Text` column, for values such as
+    email bodies that can be longer than `EncryptedString` holds."""
+
+    impl = Text()
+    cache_ok = True
+
+
 class EncryptedJSON(TypeDecorator):
     """A JSON-serialisable value stored as a Fernet token. Not queryable in SQL."""
 

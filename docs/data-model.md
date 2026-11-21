@@ -244,7 +244,7 @@ The table holds no secrets. `GET /services` adds the `reporting` flag at read ti
 
 ## Mail tables
 
-Migration `f1a3c5e7b9d2` adds both tables. How they are used is in [Mail](mail.md).
+Migration `f1a3c5e7b9d2` adds both tables, and `a7c9e1b3d5f2` changes `email_outbox.body` to a `Text` column. How they are used is in [Mail](mail.md).
 
 `mail_providers` has one row per provider the mail actor has declared.
 
@@ -265,7 +265,7 @@ Migration `f1a3c5e7b9d2` adds both tables. How they are used is in [Mail](mail.m
 | `id` | integer, primary key | |
 | `to_address` | string(320) | Recipient |
 | `subject` | string(998) | |
-| `body` | `EncryptedString` | The message text. It holds reset and confirmation links, so it is encrypted. An empty string once the row is finished. |
+| `body` | `EncryptedText` | The message text. It holds reset and confirmation links, so it is encrypted. An empty string once the row is finished. |
 | `status` | string(16) | `pending`, `sending`, `sent` or `failed`, limited by the check constraint `ck_email_outbox_status` |
 | `attempts` | integer | Claims so far |
 | `last_error` | text, nullable | The actor's error text, at most 500 characters. Cleared when the message is sent. |

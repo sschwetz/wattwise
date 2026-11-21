@@ -86,7 +86,7 @@ These come from [`CLAUDE.md`](../CLAUDE.md) and the code itself.
 | The app... | Use |
 |---|---|
 | Only checks the value (passwords, reset tokens, recovery codes) | A one-way hash: `hash_password`, `hash_token` for 256-bit random tokens, `hash_recovery_code` for short codes. Never plain SHA-256 on a low-entropy value. |
-| Must send the value on (device tokens, third-party passwords, API keys, TOTP secrets) | The `EncryptedString` or `EncryptedJSON` column types in `core_api/encrypted_types.py` |
+| Must send the value on (device tokens, third-party passwords, API keys, TOTP secrets) | The `EncryptedString`, `EncryptedText` or `EncryptedJSON` column types in `core_api/encrypted_types.py` |
 
 A new credential column needs one of these and a migration that converts existing rows, in the same change. Encrypted columns cannot be filtered in SQL, so load the row and compare in Python. Never print secret values in logs, replies, commit messages or docs, and keep keys in environment variables, not files.
 

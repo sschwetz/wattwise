@@ -6,7 +6,7 @@ import enum
 from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, Text, false, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from core_api.encrypted_types import EncryptedJSON, EncryptedString
+from core_api.encrypted_types import EncryptedJSON, EncryptedText
 from core_api.models.base import Base, enum_check, str_enum
 
 
@@ -59,7 +59,7 @@ class EmailOutbox(Base):
     to_address: Mapped[str] = mapped_column(String(320), nullable=False)
     subject: Mapped[str] = mapped_column(String(998), nullable=False)
     # Encrypted at rest: bodies hold reset and confirmation links.
-    body: Mapped[str] = mapped_column(EncryptedString, nullable=False)
+    body: Mapped[str] = mapped_column(EncryptedText, nullable=False)
     status: Mapped[OutboxStatus] = mapped_column(
         str_enum(OutboxStatus, length=16), nullable=False, default=OutboxStatus.PENDING
     )

@@ -35,7 +35,7 @@ Run Python commands from the project directory. Collectors need `CORE_API_URL` a
 10. **One Uvicorn worker.** Jobs and lockouts are in-process.
 11. **Specs and plans in `docs/superpowers/` are history.** Do not rewrite them to match code.
 12. **Never put real credentials in files.** `.env` is ignored; use `.env.example` placeholders.
-13. **Never store a secret in plain text.** If the app only checks it, store a hash (`hash_password`, `hash_token`, `hash_recovery_code`). If the app must send it on, use `EncryptedString` or `EncryptedJSON` from `core_api/encrypted_types.py`, and ship a migration that converts existing rows. Encrypted columns cannot be filtered in SQL. Do not print secret values anywhere.
+13. **Never store a secret in plain text.** If the app only checks it, store a hash (`hash_password`, `hash_token`, `hash_recovery_code`). If the app must send it on, use `EncryptedString`, `EncryptedText` or `EncryptedJSON` from `core_api/encrypted_types.py`, and ship a migration that converts existing rows. Encrypted columns cannot be filtered in SQL. Do not print secret values anywhere.
 
 ## File map: where to look for X
 

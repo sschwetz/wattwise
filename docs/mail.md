@@ -33,7 +33,7 @@ Two rules follow from the design:
 Both tables are in [`models/mail.py`](../core-api/core_api/models/mail.py). Their columns are in the [Data model](data-model.md#mail-tables).
 
 - `mail_providers` has one row per provider the actor has declared. `settings` is `EncryptedJSON`. A partial unique index allows one row with `is_active` true.
-- `email_outbox` has one row per queued message. `body` is `EncryptedString`, because bodies hold password-reset and confirmation links.
+- `email_outbox` has one row per queued message. `body` is `EncryptedText`, because bodies hold password-reset and confirmation links.
 
 ## Delivery
 
