@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from core_api.deps import get_current_user, get_db_session, require_site_manager, require_site_owner
 from core_api.errors import AppError
-from core_api.models.identity import InviteStatus, Site, SiteAccess, SiteInvite, SiteRole, User
+from core_api.models.identity import Site, SiteAccess, SiteRole, User
 from core_api.schemas import SitePersonOut
+from core_api.site_removal import revoke_invites_of_removed_person
 
 router = APIRouter(prefix="/sites/{site_id}/access", tags=["sites"])
 
@@ -44,17 +45,14 @@ def remove_site_person(
     owner: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> Response:
-    """Delete the user's grant and revoke their accepted invitations to the site."""
+    """Delete the user's grant and revoke their invitations to the site."""
     if user_id == site.owner_user_id:
         raise AppError(409, "is_owner", "The site owner's access cannot be removed")
     grant = db.get(SiteAccess, (site.id, user_id))
     if grant is None:
         raise AppError(404, "not_found", "This person has no access to the site")
     db.delete(grant)
-    accepted = select(SiteInvite).where(
-        SiteInvite.site_id == site.id, SiteInvite.invitee_user_id == user_id, SiteInvite.status == InviteStatus.ACCEPTED
-    )
-    for invite in db.scalars(accepted):
-        invite.revoke(owner.id)
+    person = db.execute(select(User).where(User.id == user_id)).scalar_one()
+    revoke_invites_of_removed_person(db, site.id, person, owner.id)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -18,6 +18,7 @@ from core_api.models.identity import (
 from core_api.security import hash_token
 from tests.test_admin_users import USERS_URL, _add, _grant, _site, _user
 from tests.test_billing import auth
+from tests.test_site_access import assert_unanswered_invites_after_removal, seed_unanswered_invites
 
 AMBER_KEY = "psk_admin_set_amber_value_987"
 ADMIN_LOGGER = "core_api.admin_users"
@@ -442,3 +443,11 @@ def test_an_admin_can_demote_themselves_when_another_admin_remains(client, app_a
     last = client.patch(f"{USERS_URL}/{second}", json={"is_admin": False}, headers=auth(second))
     assert last.status_code == 409
     assert last.json()["code"] == "last_admin"
+
+
+def test_removing_access_revokes_the_unanswered_invites(client, app_and_db_url, admin):
+    _, db_url = app_and_db_url
+    seeded = seed_unanswered_invites(db_url)
+    got = client.delete(f"{USERS_URL}/{seeded['target']}/sites/{seeded['site']}", headers=auth(admin))
+    assert got.status_code == 200, got.text
+    assert_unanswered_invites_after_removal(db_url, seeded, admin)

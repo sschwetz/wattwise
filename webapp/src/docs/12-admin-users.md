@@ -42,7 +42,7 @@ The section lists the user's sites with their role.
 
 - The site's **Owner** is shown as text. Ownership cannot be changed here.
 - For other sites, choose **Manager** or **Viewer** in the role list. The change saves when you pick it. A [manager](04-sites.md#sharing-a-site) has the owner's rights on the site, except over other managers and who owns it. A viewer reads only.
-- **Remove** asks for confirmation, then ends the user's access. Any invitation they had accepted for that site is marked revoked.
+- **Remove** asks for confirmation, then ends the user's access. Their invitations to that site are revoked, as when the owner removes someone (see [People with access](04-sites.md#people-with-access)).
 - A grant made here has no invitation. The site's owner still sees the person under [People with access](04-sites.md#people-with-access) and can remove them.
 - To add the user to another site, pick it under **Add to site**, pick a role and click **Add**. Only sites that the user does not already have are listed.
 

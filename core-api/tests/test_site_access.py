@@ -4,7 +4,9 @@ import pytest
 from sqlalchemy import text
 
 from core_api.db import make_engine, make_session_factory
-from core_api.models.identity import InviteStatus, SiteAccess, SiteInvite
+from core_api.models.identity import InviteStatus, SiteAccess, SiteAccessRole, SiteInvite
+from tests.test_admin_users import _add, _site, _user
+from tests.test_admin_users import _grant as _admin_grant
 from tests.test_invites import make_site, share_site
 from tests.test_manager_role import _grant
 from tests.test_sites import auth, make_user
@@ -118,3 +120,51 @@ def test_only_the_owner_removes_access(client, people, caller, code):
     got = client.delete(_url(people, people["viewer_b"]), headers=auth(people[caller]))
     assert got.status_code == code
     assert _grant_row(people["db_url"], people["site"], people["viewer_b"]) is not None
+
+
+def seed_unanswered_invites(db_url: str) -> dict[str, int]:
+    """A site where `target` has viewer access. Unanswered invites: two for
+    the target (one by email in another case, one by invitee id), one for
+    someone else on the site, and one for the target on another site."""
+    owner = _user(db_url, "owner@example.com")
+    target = _user(db_url, "target@example.com")
+    site = _site(db_url, owner, "Home")
+    other_site = _site(db_url, owner, "Shed")
+    _admin_grant(db_url, site, target, SiteAccessRole.VIEWER)
+
+    def invited(site_id: int, email: str, invitee: int | None = None) -> int:
+        row = SiteInvite(
+            site_id=site_id, inviter_user_id=owner, email=email, status=InviteStatus.INVITED, invitee_user_id=invitee
+        )
+        return _add(db_url, row)
+
+    return {
+        "owner": owner,
+        "target": target,
+        "site": site,
+        "by_email": invited(site, "Target@Example.com"),
+        "by_id": invited(site, "old-address@example.com", target),
+        "someone_else": invited(site, "someone@example.com"),
+        "other_site": invited(other_site, "target@example.com"),
+    }
+
+
+def assert_unanswered_invites_after_removal(db_url: str, seeded: dict[str, int], by_user_id: int) -> None:
+    session = make_session_factory(make_engine(db_url))()
+    try:
+        for key in ("by_email", "by_id"):
+            invite = session.get(SiteInvite, seeded[key])
+            assert (invite.status, invite.revoked_by_user_id) == (InviteStatus.REVOKED, by_user_id), key
+            assert invite.revoked_at is not None
+        for key in ("someone_else", "other_site"):
+            assert session.get(SiteInvite, seeded[key]).status == InviteStatus.INVITED, key
+    finally:
+        session.close()
+
+
+def test_the_owner_removing_a_person_revokes_their_unanswered_invites(client, app_and_db_url):
+    _, db_url = app_and_db_url
+    seeded = seed_unanswered_invites(db_url)
+    got = client.delete(f"/api/v1/sites/{seeded['site']}/access/{seeded['target']}", headers=auth(seeded["owner"]))
+    assert got.status_code == 204
+    assert_unanswered_invites_after_removal(db_url, seeded, seeded["owner"])

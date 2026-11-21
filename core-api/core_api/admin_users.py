@@ -11,16 +11,15 @@ from core_api.db import rows_affected
 from core_api.errors import AppError
 from core_api.models.identity import (
     EmailChangeToken,
-    InviteStatus,
     PasswordResetToken,
     RecoveryCode,
     Site,
     SiteAccess,
     SiteAccessRole,
-    SiteInvite,
     SiteRole,
     User,
 )
+from core_api.site_removal import revoke_invites_of_removed_person
 
 logger = logging.getLogger(__name__)
 
@@ -160,23 +159,14 @@ def grant_site_access(db: Session, user: User, site_id: int, role: SiteAccessRol
 
 
 def remove_site_access(db: Session, admin: User, user: User, site_id: int) -> None:
-    """Deletes the user's grant on the site, or 404 if there is none, and marks
-    their accepted invites for the site revoked, as the owner's revoke does.
-    Does not commit."""
+    """Deletes the user's grant on the site, or 404 if there is none, and
+    revokes their invites to it, as the owner's removal does. Does not commit."""
     _grantable_site_or_404(db, user, site_id)
     grant = db.get(SiteAccess, (site_id, user.id))
     if grant is None:
         raise AppError(404, "not_found", "This user has no access to that site")
     db.delete(grant)
-    accepted = db.scalars(
-        select(SiteInvite).where(
-            SiteInvite.site_id == site_id,
-            SiteInvite.invitee_user_id == user.id,
-            SiteInvite.status == InviteStatus.ACCEPTED,
-        )
-    )
-    for invite in accepted:
-        invite.revoke(admin.id)
+    revoke_invites_of_removed_person(db, site_id, user, admin.id)
 
 
 def reset_totp(db: Session, user: User) -> None:

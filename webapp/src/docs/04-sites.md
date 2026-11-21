@@ -103,7 +103,7 @@ Open the **Sharing** tab to give someone read-only access. The site's owner and 
 
 The owner and managers see **People with access** at the top of the tab: everyone who can open the site, each with an **Owner**, **Manager** or **Viewer** badge. It includes people an administrator gave access to, who have no invitation in the list below.
 
-The owner sees **Remove** on every row except their own. WattWise asks first (*<email> will lose access to this site.*). Removing someone ends their access at once and marks their accepted invitation **Revoked**. Managers see the list without **Remove**.
+The owner sees **Remove** on every row except their own. WattWise asks first (*<email> will lose access to this site.*). Removing someone ends their access at once and marks their invitations to the site **Revoked**, both the one they accepted and any they have not answered yet, so they cannot accept an old invitation to get back in. To let them back, send a new invite. Managers see the list without **Remove**.
 
 ### Invitations
 
