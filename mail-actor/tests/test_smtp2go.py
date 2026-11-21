@@ -125,3 +125,18 @@ def test_error_reason_never_echoes_the_response_body():
     error = _send_error(_responding(401, {"data": {"error": f"bad key {SETTINGS['api_key']}"}}))
     assert SETTINGS["api_key"] not in str(error)
     assert SETTINGS["api_key"] not in error.reason
+
+
+def test_send_returns_the_provider_message_id():
+    assert smtp2go.send(SETTINGS, MESSAGE, _responding(200, OK_BODY)) == "e1"
+
+
+@pytest.mark.parametrize("email_id", [None, 5, "", "has space", "x" * 101, "line\nbreak"])
+def test_send_returns_none_for_a_missing_or_odd_message_id(email_id):
+    body = {"data": {"succeeded": 1, "failed": 0, "failures": [], "email_id": email_id}}
+    assert smtp2go.send(SETTINGS, MESSAGE, _responding(200, body)) is None
+
+
+def test_send_returns_none_when_the_response_has_no_message_id():
+    body = {"data": {"succeeded": 1, "failed": 0, "failures": []}}
+    assert smtp2go.send(SETTINGS, MESSAGE, _responding(200, body)) is None

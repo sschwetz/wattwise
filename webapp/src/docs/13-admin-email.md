@@ -77,6 +77,8 @@ When a send fails, WattWise tries again after 30, 60, 120 and 240 seconds. After
 | You got the same email twice | WattWise delivers each message at least once. If the actor could not report a success, the message goes out again after 2 minutes. |
 | **Activate** is greyed out and says the mail actor reports the provider as not available | The mail actor no longer lists it. Ask whoever runs the server to check that the `mail-actor` container is up to date. |
 
+Whoever runs the server can read the mail actor's log. It shows each send with the recipient, subject and smtp2go's id for the message. Search for that id on smtp2go's Activity page to find the message there.
+
 If everything on the tab looks healthy and one user still has no email, check that their address is correct on their [user page](12-admin-users.md#details).
 
 ## Next

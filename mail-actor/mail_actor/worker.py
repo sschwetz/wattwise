@@ -2,8 +2,10 @@
 each result. Core API retries a `failed` message with backoff, so a failure
 here is reported once and not retried locally.
 
-Nothing logged or reported carries a settings value, an address, a subject or
-a body. Error text is a fixed prefix plus a status or exception class name,
+Log lines name the recipient and the subject, as a mail server's log does, plus
+the outbox id, the provider and its own message id. They never carry a body or
+a settings value. The error text reported to Core API carries no address or
+subject either: it is a fixed prefix plus a status or exception class name,
 and any settings value that still appears in it is replaced."""
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable, Sequence
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 import httpx
 
@@ -29,6 +31,7 @@ MIN_REDACTED_LENGTH = 4  # a shorter value would garble text such as "HTTP 401"
 REPORT_ATTEMPTS = 3  # for a `sent` report; the PATCH is idempotent
 REPORT_RETRY_DELAY = 0.5
 NO_PROVIDER_ERROR = "no usable mail provider"
+LOG_TEXT_LIMIT = 200
 
 
 class CoreApi(Protocol):
@@ -90,18 +93,48 @@ def redact(text: str, settings: dict[str, str]) -> str:
     return text
 
 
-def _send(
-    provider: MailProvider, settings: dict[str, str], message: OutboxMessage, http: httpx.Client
-) -> tuple[str | None, bool]:
-    """Send one message. Returns the unredacted error text (None on success)
-    and whether the provider refused the credentials."""
+class _Result(NamedTuple):
+    error: str | None  # unredacted; None on success
+    refused: bool  # the provider refused the credentials
+    provider_id: str | None
+
+
+def _loggable(text: str) -> str:
+    """Text safe for one log line: control characters become spaces and long
+    text is cut."""
+    flat = "".join(char if char.isprintable() else " " for char in text)
+    return flat if len(flat) <= LOG_TEXT_LIMIT else flat[: LOG_TEXT_LIMIT - 1] + "…"
+
+
+def _send(provider: MailProvider, settings: dict[str, str], message: OutboxMessage, http: httpx.Client) -> _Result:
+    """Send one message."""
     try:
-        provider.send(settings, message, http)
+        provider_id = provider.send(settings, message, http)
     except SendError as exc:
-        return f"{provider.KEY} send failed: {exc.reason}", exc.status in AUTH_STATUSES
+        return _Result(f"{provider.KEY} send failed: {exc.reason}", exc.status in AUTH_STATUSES, None)
     except Exception as exc:
-        return f"{provider.KEY} send failed: {type(exc).__name__}", False
-    return None, False
+        return _Result(f"{provider.KEY} send failed: {type(exc).__name__}", False, None)
+    return _Result(None, False, provider_id if isinstance(provider_id, str) else None)
+
+
+def _recipient(message: OutboxMessage) -> str:
+    return f'to {_loggable(message.to_address)}, subject "{_loggable(message.subject)}"'
+
+
+def _log_result(
+    provider: MailProvider, message: OutboxMessage, error: str | None, provider_id: str | None, seconds: float
+) -> None:
+    if error is None:
+        _LOG.info(
+            "Sent outbox message %d via %s: %s, %.1f s, provider id %s",
+            message.id,
+            provider.KEY,
+            _recipient(message),
+            seconds,
+            _loggable(provider_id or "none"),
+        )
+    else:
+        _LOG.warning("Outbox message %d failed via %s: %s: %s", message.id, provider.KEY, _recipient(message), error)
 
 
 def _report(client: CoreApi, message: OutboxMessage, error: str | None) -> None:
@@ -129,16 +162,17 @@ def _handle(
     except CoreApiError:
         resolved = None
     if resolved is None:
+        _LOG.warning("Outbox message %d not sent: %s: %s", message.id, NO_PROVIDER_ERROR, _recipient(message))
         _report(client, message, NO_PROVIDER_ERROR)
         return
     provider, settings = resolved
-    error, refused = _send(provider, settings, message, http)
-    if refused:
+    started = time.monotonic()
+    result = _send(provider, settings, message, http)
+    if result.refused:
         state.refused = settings
         state.invalidate()
-    if error is not None:
-        error = redact(error, settings)
-        _LOG.warning("Outbox message %d failed: %s", message.id, error)
+    error = redact(result.error, settings) if result.error is not None else None
+    _log_result(provider, message, error, result.provider_id, time.monotonic() - started)
     _report(client, message, error)
 
 

@@ -1,4 +1,5 @@
 import logging
+import re
 import threading
 
 import httpx
@@ -32,11 +33,13 @@ class FakeProvider:
     def __init__(self) -> None:
         self.sent: list[tuple[dict[str, str], OutboxMessage]] = []
         self.failures: list[Exception] = []  # raised by the next sends, one each
+        self.provider_id: str | None = None  # what the next successful sends return
 
-    def send(self, settings: dict[str, str], message: OutboxMessage, http: httpx.Client) -> None:
+    def send(self, settings: dict[str, str], message: OutboxMessage, http: httpx.Client) -> str | None:
         if self.failures:
             raise self.failures.pop(0)
         self.sent.append((settings, message))
+        return self.provider_id
 
 
 def _message(id: int) -> OutboxMessage:
@@ -200,14 +203,73 @@ def test_unknown_active_provider_claims_nothing_and_warns_once_a_minute(core, pr
     assert all("mailgun" not in w for w in warnings)
 
 
-def test_logs_never_carry_settings_or_message_content(core, provider, clock, caplog):
-    provider.failures = [SendError(f"HTTP 401 {KEY}", retryable=False, status=401), RuntimeError(KEY)]
-    core.add(_message(1), _message(2), _message(3))
+def test_logs_never_carry_settings_values_or_the_body(core, provider, clock, caplog):
+    provider.failures = [SendError(f"rejected {KEY}", retryable=False, status=400)]
+    core.add(_message(1), _message(2))
     with caplog.at_level(logging.DEBUG):
         _run(core, provider, clock)
     text = "\n".join(r.getMessage() for r in caplog.records)
-    for secret in (KEY, "mail@example.com", "u1@example.com", "subject 1", "body 1"):
+    for secret in (KEY, "mail@example.com", "body 1", "body 2"):
         assert secret not in text
+
+
+def _worker_lines(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == "mail_actor.worker"]
+
+
+def test_a_sent_message_is_logged_with_its_address_subject_and_provider_id(core, provider, clock, caplog):
+    provider.provider_id = "pid-9"
+    core.add(_message(1))
+    with caplog.at_level(logging.INFO, logger="mail_actor.worker"):
+        _run(core, provider, clock)
+    [line] = _worker_lines(caplog)
+    assert line.startswith('Sent outbox message 1 via fake: to u1@example.com, subject "subject 1", ')
+    assert re.search(r", \d+\.\d s, provider id pid-9$", line)
+
+
+def test_the_sent_line_says_none_when_the_provider_gives_no_id(core, provider, clock, caplog):
+    core.add(_message(1))
+    with caplog.at_level(logging.INFO, logger="mail_actor.worker"):
+        _run(core, provider, clock)
+    assert _worker_lines(caplog)[0].endswith("provider id none")
+
+
+def test_a_failed_message_is_logged_with_its_address_subject_and_error(core, provider, clock, caplog):
+    provider.failures = [SendError("HTTP 503", retryable=True, status=503)]
+    core.add(_message(1))
+    with caplog.at_level(logging.INFO, logger="mail_actor.worker"):
+        _run(core, provider, clock)
+    assert _worker_lines(caplog) == [
+        'Outbox message 1 failed via fake: to u1@example.com, subject "subject 1": fake send failed: HTTP 503'
+    ]
+
+
+def test_a_message_with_no_usable_provider_is_logged_with_its_address_and_subject(core, provider, clock, caplog):
+    core.add(_message(1), _message(2))
+    state = WorkerState(clock=clock)
+    state.refused = SETTINGS  # the refetch returns the settings the provider just refused
+    provider.failures = [SendError("HTTP 401", retryable=False, status=401)]
+    with caplog.at_level(logging.INFO, logger="mail_actor.worker"):
+        _run(core, provider, clock, state)
+    lines = _worker_lines(caplog)
+    assert lines[-1] == 'Outbox message 2 not sent: no usable mail provider: to u2@example.com, subject "subject 2"'
+
+
+def test_control_characters_in_the_subject_cannot_split_a_log_line(core, provider, clock, caplog):
+    core.add(OutboxMessage(id=1, to_address="u1@example.com", subject="a\nINFO forged\r\n\tb", body="body"))
+    with caplog.at_level(logging.INFO, logger="mail_actor.worker"):
+        _run(core, provider, clock)
+    [line] = _worker_lines(caplog)
+    assert "\n" not in line and "\r" not in line and "\t" not in line
+    assert 'subject "a INFO forged   b"' in line
+
+
+def test_a_long_subject_is_cut_in_the_log(core, provider, clock, caplog):
+    core.add(OutboxMessage(id=1, to_address="u1@example.com", subject="s" * 500, body="body"))
+    with caplog.at_level(logging.INFO, logger="mail_actor.worker"):
+        _run(core, provider, clock)
+    [line] = _worker_lines(caplog)
+    assert "s" * 150 in line and "s" * 250 not in line
 
 
 # main.py

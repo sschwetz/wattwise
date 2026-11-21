@@ -147,7 +147,7 @@ DELETE /sources/{id}/alerts/{code}
 - Actor runs are unique on (`schedule_id`, `kind`, `trigger_at`). For a window trigger the actor sets an action run's `trigger_at` to the window's start instant, and `actor_failures.py` finds the restore time by matching on it.
 - `actor_instances.config` holds the Actron refresh token and is `EncryptedJSON`. The owner API (`ActorInstanceView`) must never return it. The actor must never log the unit's raw status, which holds the wall controller PIN.
 - Deleting a schedule or instance deletes its run history, and returns 409 `unit_held_off` while an action run owes a restore.
-- Mail: `email_outbox.body` and `mail_providers.settings` are encrypted, and the mail actor logs no address, subject, body or setting value. `OutboxEmailSender` commits through its own session, so commit your own writes before you send. With no active provider it falls back to SMTP. Delivery is at-least-once. See `docs/mail.md`.
+- Mail: `email_outbox.body` and `mail_providers.settings` are encrypted, and the mail actor logs the recipient and subject but never a body or setting value (see `docs/mail.md`, "Reading the mail actor log"); Core API logs carry neither. `OutboxEmailSender` commits through its own session, so commit your own writes before you send. With no active provider it falls back to SMTP. Delivery is at-least-once. See `docs/mail.md`.
 
 ## Pages
 

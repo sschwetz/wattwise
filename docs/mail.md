@@ -111,7 +111,24 @@ No error in the drain changes the answer: Deactivate returns the provider, becau
 | Stop | Handles SIGTERM and SIGINT, and stops between messages. Messages it had claimed but not started are reclaimed when their claim expires. |
 | Commit report | Posts its commit to `/services/report` as `mail-actor`, like the other services. See [Service status](core-api.md#service-status). |
 
-Error text reported to Core API is a fixed prefix plus an HTTP status or an exception class name, such as `smtp2go send failed: HTTP 401`. Any settings value in it is replaced with `[redacted]` first, and the container log carries no settings value, address, subject or body.
+Error text reported to Core API is a fixed prefix plus an HTTP status or an exception class name, such as `smtp2go send failed: HTTP 401`. Any settings value in it is replaced with `[redacted]` first, and it never reaches the log. The log does name the recipient and subject, as described under [Reading the mail actor log](#reading-the-mail-actor-log).
+
+### Reading the mail actor log
+
+The actor logs one line per message, as a mail server's log does. `docker compose logs mail-actor` shows them.
+
+| Outcome | Line |
+|---|---|
+| Sent | `Sent outbox message 12 via smtp2go: to user@example.com, subject "Reset your password", 0.4 s, provider id <id>` |
+| Failed | `Outbox message 12 failed via smtp2go: to user@example.com, subject "...": smtp2go send failed: HTTP 503` |
+| No provider | `Outbox message 12 not sent: no usable mail provider: to user@example.com, subject "..."` |
+
+- **Provider id.** For smtp2go this is `data.email_id` from the Send Email response. Search for it on smtp2go's Activity page to match a line to a message. It reads `none` when the provider gives no id or the id is not a plain token (letters, digits and `. _ : -`, up to 100 characters).
+- **Time.** The seconds are the time the provider took to answer.
+- **Escaping.** Control characters in the address and subject become spaces, and text over 200 characters is cut, so a subject cannot split or forge a log line.
+- **Never logged.** The message body, the API key and any settings value.
+
+The code is in [`worker.py`](../mail-actor/mail_actor/worker.py).
 
 ## smtp2go
 
@@ -130,7 +147,7 @@ A new provider is one module and one list entry, in the actor only. The form on 
 
 1. Copy [`providers/smtp2go.py`](../mail-actor/mail_actor/providers/smtp2go.py) to `providers/<name>.py`.
 2. Set `KEY` (lowercase letters, digits and underscores, up to 40), `LABEL` and `FIELDS`. Each `Field` has `name`, `label`, `secret` and `required`. Mark every credential `secret=True`.
-3. Write `send(settings, message, http)`. Return normally on success. Raise `SendError(reason, retryable=..., status=...)` otherwise. Build `reason` from an HTTP status or an exception class name, never from a response body or a settings value. Pass `status` so a 401 or 403 makes the worker refetch the settings.
+3. Write `send(settings, message, http)`. Return the provider's own id for the message, or `None` when it gives none. The worker writes the id in the "Sent" log line (see [Reading the mail actor log](#reading-the-mail-actor-log)) so an operator can find the message on the provider's activity page, so return only a plain token. Raise `SendError(reason, retryable=..., status=...)` otherwise. Build `reason` from an HTTP status or an exception class name, never from a response body or a settings value. Pass `status` so a 401 or 403 makes the worker refetch the settings.
 4. Add the module to `PROVIDERS` in [`providers/__init__.py`](../mail-actor/mail_actor/providers/__init__.py).
 5. Add tests next to `tests/test_smtp2go.py`, then restart the actor. It declares the new provider at start, and the Email tab lists it once Core API has stored the declaration.
 
@@ -139,7 +156,7 @@ A new provider is one module and one list entry, in the actor only. The form on 
 Running, updating, publishing and stopping the container are in [Operations](operations.md#email-and-the-mail-actor).
 
 - **Secrets.** Provider settings and message bodies are encrypted with `SECRETS_ENCRYPTION_KEY`, like the other stored credentials. See [Where secrets are stored](core-api.md#where-secrets-are-stored). The actor holds a provider's settings in memory only.
-- **Logs.** Treat core-api log retention as sensitive, because of the traceback described under [How a message travels](#how-a-message-travels).
+- **Logs.** Treat core-api log retention as sensitive, because of the traceback described under [How a message travels](#how-a-message-travels). Also treat mail actor logs as personal data: they hold each recipient's address and the subject (see [Reading the mail actor log](#reading-the-mail-actor-log)). Core API's own logs carry neither.
 - **Limits.** Run one actor container. The compose file starts one, and nothing is tested with two.
 
 For what an administrator sees when mail does not arrive, see [Admin email](../webapp/src/docs/13-admin-email.md#when-email-does-not-arrive).

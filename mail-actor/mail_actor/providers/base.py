@@ -48,6 +48,8 @@ class MailProvider(Protocol):
     LABEL: str
     FIELDS: list[Field]
 
-    def send(self, settings: dict[str, str], message: OutboxMessage, http: httpx.Client) -> None:
-        """Send one message or raise SendError."""
+    def send(self, settings: dict[str, str], message: OutboxMessage, http: httpx.Client) -> str | None:
+        """Send one message or raise SendError. Returns the provider's own id
+        for the message when it gives one, so a log line can be matched to the
+        provider's activity page."""
         ...
