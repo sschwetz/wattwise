@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from core_api import email_sender
 from core_api.bootstrap import run_migrations
@@ -50,20 +51,54 @@ def test_outbox_sender_uses_the_fallback_when_no_provider_is_active(session_fact
     assert _outbox(session_factory) == []
 
 
-def test_outbox_sender_failure_reaches_try_send_email(session_factory, monkeypatch):
-    _add_provider(session_factory, active=True)
-    logged = []
-    monkeypatch.setattr(email_sender.logger, "exception", lambda *args: logged.append(args))
-
-    def broken_enqueue(*args, **kwargs):
-        raise RuntimeError("disk full")
+def _break_enqueue(monkeypatch) -> None:
+    def broken_enqueue(db, to, subject, body):
+        raise OperationalError("INSERT INTO email_outbox", {"to": to, "subject": subject}, Exception("disk full"))
 
     monkeypatch.setattr(email_sender, "enqueue_email", broken_enqueue)
+
+
+def _record_logs(monkeypatch, method: str) -> list[tuple[tuple, dict]]:
+    # Patch the logger rather than use caplog: other tests run Alembic's
+    # fileConfig, which disables propagation for existing loggers.
+    logged: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(email_sender.logger, method, lambda *args, **kwargs: logged.append((args, kwargs)))
+    return logged
+
+
+def test_a_failed_outbox_write_sends_through_the_fallback(session_factory, monkeypatch):
+    _add_provider(session_factory, active=True)
+    _break_enqueue(monkeypatch)
+    warnings = _record_logs(monkeypatch, "warning")
     fallback = FakeEmailSender()
-    sender = OutboxEmailSender(session_factory, fallback)
+    OutboxEmailSender(session_factory, fallback).send(to="a@example.com", subject="Subject", body="Body")
+    assert fallback.sent == [("a@example.com", "Subject", "Body")]
+    assert _outbox(session_factory) == []
+    assert warnings == [(("Outbox write failed, sending through the relay: %s", "OperationalError"), {})]
+
+
+def test_a_failed_outbox_write_log_holds_no_message_text(session_factory, monkeypatch):
+    _add_provider(session_factory, active=True)
+    _break_enqueue(monkeypatch)
+    warnings = _record_logs(monkeypatch, "warning")
+    OutboxEmailSender(session_factory, FakeEmailSender()).send(to="a@example.com", subject="Subject", body="Body")
+    ((args, kwargs),) = warnings
+    text = args[0] % args[1:]
+    for secret in ("a@example.com", "Subject", "Body", "disk full", "INSERT", "Traceback"):
+        assert secret not in text
+    assert "exc_info" not in kwargs and "stack_info" not in kwargs
+
+
+def test_when_the_fallback_also_fails_the_error_reaches_try_send_email(session_factory, monkeypatch):
+    _add_provider(session_factory, active=True)
+    _break_enqueue(monkeypatch)
+    _record_logs(monkeypatch, "warning")
+    logged = _record_logs(monkeypatch, "exception")
+    sender = OutboxEmailSender(session_factory, _RaisingSender())
+    with pytest.raises(RuntimeError, match="relay down"):
+        sender.send(to="a@example.com", subject="Subject", body="Body")
     assert try_send_email(sender, "a@example.com", "Subject", "Body", "password-reset") is False
-    assert logged == [("Failed to send %s email", "password-reset")]
-    assert fallback.sent == []
+    assert logged == [(("Failed to send %s email", "password-reset"), {})]
     assert _outbox(session_factory) == []
 
 

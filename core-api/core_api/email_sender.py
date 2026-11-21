@@ -65,12 +65,24 @@ class OutboxEmailSender:
         self.fallback = fallback
 
     def send(self, to: str, subject: str, body: str) -> None:
+        """When the outbox write fails, the email goes through `fallback`
+        instead. The log line names only the exception class: a database
+        error's text can hold the address and subject."""
         with self._session_factory() as db:
-            if has_active_provider(db):
-                enqueue_email(db, to, subject, body)
-                db.commit()
+            if has_active_provider(db) and self._enqueued(db, to, subject, body):
                 return
         self.fallback.send(to=to, subject=subject, body=body)
+
+    @staticmethod
+    def _enqueued(db: Session, to: str, subject: str, body: str) -> bool:
+        try:
+            enqueue_email(db, to, subject, body)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("Outbox write failed, sending through the relay: %s", type(exc).__name__)
+            return False
+        return True
 
 
 def try_send_email(email_sender: EmailSender, to: str, subject: str, body: str, description: str) -> bool:

@@ -26,7 +26,7 @@ flowchart LR
 Two rules follow from the design:
 
 - **Queued mail waits for the actor while a provider is active.** With the actor stopped, mail piles up as `pending` and goes out when the actor returns. Queued mail goes to the relay only when an administrator deactivates the last active provider (see [Deactivate](#deactivate)).
-- **A failed queue write loses that email.** The log message has fixed text, followed by the exception traceback. A database error's traceback can include the statement's parameters, such as the address and subject. The request carries on, as an SMTP failure did before. The schedule-failure email raises its `notify_email` alert (see [Alerts](collectors.md#alerts)) in that case.
+- **A failed queue write sends that email through the relay.** The write is rolled back and one warning is logged with fixed text and the exception class name only, since a database error's text can hold the address and subject. If the relay send fails too, the email is lost: the log message has fixed text followed by the relay exception's traceback, which can include the address (an SMTP refusal names the recipient). The request carries on, as an SMTP failure did before. The schedule-failure email raises its `notify_email` alert (see [Alerts](collectors.md#alerts)) in that case.
 
 ## Tables
 
