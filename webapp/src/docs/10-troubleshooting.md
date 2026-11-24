@@ -68,6 +68,8 @@ Open the **Schedule** tab in [Site settings](04-sites.md#site-settings) and the 
 | The tab shows a code and a link | The air conditioner is waiting for you to approve it in Actron. [Open the link and enter the code](08-schedules.md#adding-the-air-conditioner). |
 | **Needs sign-in** | Actron rejected the stored sign-in. Click **Sign in again** and approve the new code. |
 | **New schedule** is missing | The actor has not yet reported what your unit can do. Wait a minute. If it stays missing, ask your administrator to check that the actor is running. |
+| **Could not load the saved order** above the list | The list shows your schedules in the order you made them, and dragging and **Add separator** are off until it loads, so nothing overwrites your saved order. Click **Retry**. If it keeps failing, ask your administrator to check Core API. |
+| **Could not save the order** | The change did not reach the server, so the list went back to the saved order. Try again. If the message stays, another person may have deleted a schedule: reload the page. |
 | The unit stayed off after the window | Look at **Still off** or **Not reporting** on the tile. Check an **Only restore if** row that never passes, then turn the unit on by hand. |
 | The page says **Not updating** | The actor has not reported for 2 minutes. Ask your administrator to check the actor's log. |
 | A run says **Skipped** | Read its message. Common causes are a condition that failed, a reading that was missing, or another schedule holding the unit. |

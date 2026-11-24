@@ -72,7 +72,8 @@ function ScheduleRow({ row, active, onClick }: {
 function Header({ view, ready, onAddSeparator }: {
   view: ScheduleListProps["view"];
   ready: boolean;
-  onAddSeparator: () => void;
+  /** Null until the saved order has loaded. */
+  onAddSeparator: (() => void) | null;
 }) {
   const { selected, onSelect, canEdit } = view;
   return (
@@ -80,7 +81,12 @@ function Header({ view, ready, onAddSeparator }: {
       <h2 className="text-lg font-medium text-ink">Schedules</h2>
       {canEdit && (
         <div className="flex items-center gap-2">
-          <button type="button" onClick={onAddSeparator} className={`${secondaryButtonClass} whitespace-nowrap`}>
+          <button
+            type="button"
+            disabled={!onAddSeparator}
+            onClick={onAddSeparator ?? undefined}
+            className={`${secondaryButtonClass} whitespace-nowrap`}
+          >
             Add separator
           </button>
           <button
@@ -111,8 +117,14 @@ export function ScheduleList(props: ScheduleListProps) {
   const ready = instances.some((i) => i.capabilities !== null);
   return (
     <section className={`${cardClass} space-y-3`}>
-      <Header view={view} ready={ready} onAddSeparator={arrangement.addSeparator} />
+      <Header view={view} ready={ready} onAddSeparator={arrangement.ready ? arrangement.addSeparator : null} />
       {schedules.length === 0 && <p className="text-sm text-ink-muted">No schedules yet.</p>}
+      {arrangement.loadFailed && (
+        <p role="alert" className={`${noticeClass} flex items-center justify-between gap-2`}>
+          <span>Could not load the saved order.</span>
+          <button type="button" onClick={arrangement.retryLoad} className="underline">Retry</button>
+        </p>
+      )}
       {arrangement.saveFailed && <p role="alert" className={noticeClass}>Could not save the order.</p>}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={arrangement.drop}>
         <SortableContext items={arrangement.rows.map(rowId)} strategy={verticalListSortingStrategy}>
@@ -137,18 +149,20 @@ function ListItem({ row, ctx }: {
   };
 }) {
   const { instances, view, arrangement, lastRunOf } = ctx;
-  const { selected, onSelect, canEdit } = view;
+  const { selected, onSelect } = view;
+  // Dragging and renaming wait for the saved order, or an edit would overwrite it with id order.
+  const canArrange = view.canEdit && arrangement.ready;
   if (row.kind === "separator") {
-    const edit = canEdit
+    const edit = canArrange
       ? { onRename: (label: string) => arrangement.renameSeparator(row.key, label), onRemove: () => arrangement.removeSeparator(row.key) }
       : null;
-    return <SortableItem id={rowId(row)} canEdit={canEdit}><SeparatorRow row={row} edit={edit} /></SortableItem>;
+    return <SortableItem id={rowId(row)} canEdit={canArrange}><SeparatorRow row={row} edit={edit} /></SortableItem>;
   }
   const instance = instances.find((i) => i.id === row.schedule.instance_id);
   if (!instance) return null;
   const { id } = row.schedule;
   return (
-    <SortableItem id={rowId(row)} canEdit={canEdit}>
+    <SortableItem id={rowId(row)} canEdit={canArrange}>
       <ScheduleRow
         row={{ schedule: row.schedule, instance, lastRun: lastRunOf(id) }}
         active={selected?.kind === "schedule" && selected.id === id}

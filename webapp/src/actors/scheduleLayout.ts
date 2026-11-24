@@ -48,6 +48,11 @@ export function moveRow(rows: ListRow[], activeId: string, overId: string): List
   return from < 0 || to < 0 || from === to ? rows : arrayMove(rows, from, to);
 }
 
+/** `crypto.randomUUID` is missing on a page served over plain http (a LAN address), so the key is built from random bytes. */
+function randomKey(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export function newSeparator(): ListRow {
-  return { kind: "separator", key: crypto.randomUUID(), label: "" };
+  return { kind: "separator", key: randomKey(), label: "" };
 }

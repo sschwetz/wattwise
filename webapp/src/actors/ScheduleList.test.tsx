@@ -98,10 +98,13 @@ describe("ScheduleList order and separators", () => {
   const three = [schedule(1, "Peak off"), schedule(2, "Old"), schedule(3, "Never")];
 
   /** Layout reads return `layout`, layout writes echo the body (or fail), everything else is the run list. */
-  function serve(layout: ScheduleLayoutItem[] | null, { failSave = false } = {}) {
+  function serve(layout: ScheduleLayoutItem[] | null, { failSave = false, failLoad = false } = {}) {
     vi.mocked(apiFetch).mockImplementation(async (path: string, init?: RequestInit) => {
       if (!String(path).includes("schedule-layout")) return [];
-      if (init?.method !== "PUT") return { items: layout };
+      if (init?.method !== "PUT") {
+        if (failLoad) throw new Error("down");
+        return { items: layout };
+      }
       if (failSave) throw new Error("no");
       return { items: JSON.parse(String(init.body)).items };
     });
@@ -118,6 +121,13 @@ describe("ScheduleList order and separators", () => {
         />
       </QueryClientProvider>,
     );
+  }
+
+  /** The Add separator button once the saved order has loaded and it is enabled. */
+  async function addSeparator() {
+    const button = await screen.findByRole("button", { name: "Add separator" });
+    await waitFor(() => expect(button).toBeEnabled());
+    return button;
   }
 
   const saved = () => vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method === "PUT");
@@ -166,7 +176,7 @@ describe("ScheduleList order and separators", () => {
   it("adds an unlabelled separator at the end, keeping the current order", async () => {
     serve([sched(2)]);
     renderWith();
-    await userEvent.click(await screen.findByRole("button", { name: "Add separator" }));
+    await userEvent.click(await addSeparator());
     await waitFor(() => expect(saved()).toHaveLength(1));
     expect(savedItems(0)).toEqual([sched(2), sched(1), sched(3), { type: "separator", key: expect.any(String), label: "" }]);
   });
@@ -207,10 +217,27 @@ describe("ScheduleList order and separators", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
+  it("turns editing off and offers a retry when the saved order does not load, so nothing overwrites it", async () => {
+    serve([sched(2), sep("k1", "Kids")], { failLoad: true });
+    renderWith();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the saved order.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add separator" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Drag to reorder" })).not.toBeInTheDocument();
+    expect(saved()).toHaveLength(0);
+  });
+
+  it("keeps Add separator off until the saved order has loaded", async () => {
+    vi.mocked(apiFetch).mockImplementation(() => new Promise(() => {}));
+    renderWith();
+    expect(await screen.findByRole("button", { name: "Add separator" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Drag to reorder" })).not.toBeInTheDocument();
+  });
+
   it("says so when a save fails, and shows the stored order again", async () => {
     serve([sched(1)], { failSave: true });
     renderWith();
-    await userEvent.click(await screen.findByRole("button", { name: "Add separator" }));
+    await userEvent.click(await addSeparator());
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not save the order.");
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Separator label" })).not.toBeInTheDocument());
   });

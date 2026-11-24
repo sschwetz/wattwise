@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { arrangeRows, layoutFromRows, moveRow, newSeparator, rowId } from "./scheduleLayout";
 import type { ActorSchedule, ScheduleLayoutItem } from "./types";
 
@@ -74,6 +74,16 @@ describe("moveRow", () => {
 });
 
 describe("newSeparator", () => {
+  it("works where crypto.randomUUID is missing, as on a page served over plain http", () => {
+    vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    try {
+      const separator = newSeparator();
+      expect(separator.kind === "separator" && separator.key.length).toBeGreaterThan(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("is an unlabelled separator with a fresh key each time", () => {
     const a = newSeparator();
     const b = newSeparator();
