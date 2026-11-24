@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import pathlib
 from collections.abc import Callable
 
@@ -12,7 +13,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core_api.admin_user import expire_password_file
 from core_api.email_sender import EmailSender
-from core_api.job_registry import JOBS, Timing, default_timing
+from core_api.errors import AppError
+from core_api.job_registry import JOBS, Timing, default_timing, validate_timing
 from core_api.jobs.actor_watchdog_job import run_actor_watchdog_job
 from core_api.jobs.demand_charge_job import run_demand_charge_job
 from core_api.jobs.demand_interval_job import run_demand_interval_job
@@ -20,6 +22,8 @@ from core_api.jobs.mail_outbox_cleanup_job import run_mail_outbox_cleanup_job
 from core_api.jobs.retention_rollup_job import run_retention_rollup_job
 from core_api.jobs.service_status_job import run_service_status_job
 from core_api.models.job_schedules import JobSchedule
+
+logger = logging.getLogger(__name__)
 
 # When each job last finished, success or failure. Cleared only on restart.
 LAST_RUNS: dict[str, datetime.datetime] = {}
@@ -43,11 +47,22 @@ def trigger_for(timing: Timing) -> IntervalTrigger | CronTrigger:
 
 
 def load_timings(db: Session) -> dict[str, Timing]:
-    """The effective timing per job id: the stored override if there is one, else the default."""
+    """The effective timing per job id: the stored override if it is valid, else the default.
+
+    A stored row that fails validation (hand-edited, or a limit tightened since) is ignored,
+    so it cannot stop startup or fire a job every minute."""
     timings = {job_id: default_timing(spec) for job_id, spec in JOBS.items()}
     for row in db.scalars(select(JobSchedule)):
-        if row.job_id in timings:
-            timings[row.job_id] = Timing(row.kind, row.interval_minutes, row.hour, row.minute)
+        spec = JOBS.get(row.job_id)
+        if spec is None:
+            continue
+        stored = Timing(row.kind, row.interval_minutes, row.hour, row.minute)
+        try:
+            validate_timing(spec, stored)
+        except AppError:
+            logger.warning("ignoring invalid stored schedule for job %s; using the default", row.job_id)
+            continue
+        timings[row.job_id] = stored
     return timings
 
 

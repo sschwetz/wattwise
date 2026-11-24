@@ -149,6 +149,10 @@ INVALID = [
     ("demand_charge", {"kind": "interval", "interval_minutes": 5}),
     ("demand_interval", {"kind": "daily", "hour": 1, "minute": 0}),
     ("demand_interval", {"kind": "weekly", "interval_minutes": 5}),
+    ("demand_interval", {"kind": "interval", "interval_minutes": 1441}),
+    ("demand_interval", {"kind": "interval", "interval_minutes": 5_000_000_000}),
+    ("demand_interval", {"kind": "interval", "interval_minutes": 10**16}),
+    ("service_status", {"kind": "interval", "interval_minutes": 3}),
 ]
 
 
@@ -169,6 +173,31 @@ def test_put_below_min_minutes_is_422(live, admin, session, monkeypatch):
                    headers=auth(admin))
     assert got.status_code == 422
     assert got.json()["code"] == "invalid_job_schedule"
+    assert _rows(session) == []
+    assert _interval(live, "demand_interval") == datetime.timedelta(minutes=5)
+
+
+def test_get_reports_max_minutes(live, admin):
+    jobs = {j["id"]: j for j in live.get(JOBS_URL, headers=auth(admin)).json()["jobs"]}
+    assert jobs["demand_interval"]["max_minutes"] == 1440
+    assert jobs["service_status"]["max_minutes"] == 2
+    assert jobs["demand_charge"]["max_minutes"] is None
+
+
+def test_put_the_default_value_stores_no_row(live, admin, session):
+    got = live.put(f"{JOBS_URL}/demand_interval", json={"kind": "interval", "interval_minutes": 5},
+                   headers=auth(admin))
+    assert got.status_code == 200 and got.json()["is_default"] is True
+    assert _rows(session) == []
+
+
+def test_put_the_default_after_an_override_deletes_the_row(live, admin, session):
+    live.put(f"{JOBS_URL}/demand_interval", json={"kind": "interval", "interval_minutes": 10},
+             headers=auth(admin))
+    assert len(_rows(session)) == 1
+    got = live.put(f"{JOBS_URL}/demand_interval", json={"kind": "interval", "interval_minutes": 5},
+                   headers=auth(admin))
+    assert got.status_code == 200 and got.json()["is_default"] is True
     assert _rows(session) == []
     assert _interval(live, "demand_interval") == datetime.timedelta(minutes=5)
 
@@ -222,7 +251,7 @@ def test_put_without_lifespan_stores_row(client, admin, session):
 
 def test_admin_action_log_has_no_values(live, admin, caplog):
     caplog.set_level(logging.DEBUG, logger="core_api.admin_users")
-    live.put(f"{JOBS_URL}/demand_interval", json={"kind": "interval", "interval_minutes": 7351},
+    live.put(f"{JOBS_URL}/demand_interval", json={"kind": "interval", "interval_minutes": 737},
              headers=auth(admin))
     live.delete(f"{JOBS_URL}/demand_interval", headers=auth(admin))
     lines = [r.getMessage() for r in caplog.records if r.name == "core_api.admin_users"]
@@ -230,4 +259,28 @@ def test_admin_action_log_has_no_values(live, admin, caplog):
         f"admin action: admin_user_id={admin} target=none action=save_job_schedule",
         f"admin action: admin_user_id={admin} target=none action=reset_job_schedule",
     ]
-    assert "7351" not in caplog.text
+    assert "737" not in caplog.text
+
+
+BAD_ROWS = [
+    ("demand_interval", {"kind": "interval", "interval_minutes": None}),
+    ("demand_interval", {"kind": "interval", "interval_minutes": 0}),
+    ("demand_interval", {"kind": "interval", "interval_minutes": 5_000_000_000}),
+    ("demand_charge", {"kind": "daily", "hour": 25, "minute": 0}),
+    ("retention_rollup", {"kind": "daily", "hour": None, "minute": None}),
+    ("demand_charge", {"kind": "interval", "interval_minutes": 5}),
+]
+
+
+@pytest.mark.parametrize(("job_id", "fields"), BAD_ROWS)
+def test_bad_stored_row_falls_back_to_the_default(app_and_db_url, monkeypatch, admin, session, caplog, job_id, fields):
+    monkeypatch.setenv("SCHEDULER_ENABLED", "true")
+    app, _ = app_and_db_url
+    session.add(JobSchedule(job_id=job_id, updated_at=datetime.datetime.now(datetime.UTC), **fields))
+    session.commit()
+    with TestClient(app) as client:
+        jobs = {j["id"]: j for j in client.get(JOBS_URL, headers=auth(admin)).json()["jobs"]}
+        assert jobs[job_id]["is_default"] is True
+        assert jobs[job_id]["timing"] == jobs[job_id]["default"]
+        assert client.app.state.scheduler.get_job(job_id) is not None
+    assert job_id in caplog.text

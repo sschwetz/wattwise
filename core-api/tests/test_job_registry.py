@@ -47,6 +47,10 @@ def test_registry_defaults_match_current_schedule():
         ("demand_charge", Timing("interval", 5, None, None)),
         ("demand_interval", Timing("daily", None, 1, 0)),
         ("demand_interval", Timing("cron", 5, None, None)),
+        ("demand_interval", Timing("interval", 1441, None, None)),
+        ("demand_interval", Timing("interval", 5_000_000_000, None, None)),
+        ("demand_interval", Timing("interval", 10**16, None, None)),
+        ("service_status", Timing("interval", 3, None, None)),
     ],
 )
 def test_validate_timing_rejects(job_id, timing):
@@ -54,6 +58,23 @@ def test_validate_timing_rejects(job_id, timing):
         validate_timing(JOBS[job_id], timing)
     assert err.value.status_code == 422
     assert err.value.code == "invalid_job_schedule"
+
+
+def test_registry_maximums():
+    for job_id, spec in JOBS.items():
+        expected = None if spec.kind == "daily" else 2 if job_id == "service_status" else 1440
+        assert spec.max_minutes == expected, job_id
+
+
+def test_validate_timing_accepts_the_maximum():
+    validate_timing(JOBS["demand_interval"], Timing("interval", 1440, None, None))
+    validate_timing(JOBS["service_status"], Timing("interval", 2, None, None))
+
+
+def test_validate_timing_names_the_maximum():
+    with pytest.raises(AppError) as err:
+        validate_timing(JOBS["service_status"], Timing("interval", 3, None, None))
+    assert "at most 2" in err.value.message
 
 
 @pytest.mark.parametrize("spec", list(JOBS.values()), ids=list(JOBS))

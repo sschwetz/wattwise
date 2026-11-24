@@ -28,6 +28,7 @@ class JobOut(BaseModel):
     default: TimingOut
     is_default: bool
     min_minutes: int | None
+    max_minutes: int | None
     next_run: datetime.datetime | None
     last_run: datetime.datetime | None
 

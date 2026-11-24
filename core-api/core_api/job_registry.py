@@ -24,6 +24,7 @@ class JobSpec:
     default_hour: int | None = None
     default_minute: int | None = None
     min_minutes: int | None = None
+    max_minutes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -34,8 +35,11 @@ class Timing:
     minute: int | None
 
 
-def _interval(job_id: str, label: str, minutes: int) -> JobSpec:
-    return JobSpec(job_id, label, "interval", default_minutes=minutes, min_minutes=1)
+MAX_INTERVAL_MINUTES = 1440
+
+
+def _interval(job_id: str, label: str, minutes: int, max_minutes: int = MAX_INTERVAL_MINUTES) -> JobSpec:
+    return JobSpec(job_id, label, "interval", default_minutes=minutes, min_minutes=1, max_minutes=max_minutes)
 
 
 def _daily(job_id: str, label: str, hour: int, minute: int) -> JobSpec:
@@ -50,7 +54,8 @@ JOBS: dict[str, JobSpec] = {
         _daily("retention_rollup", "Retention rollup", 0, 20),
         _interval("actor_watchdog", "Actor watchdog", 1),
         _daily("mail_outbox_cleanup", "Mail outbox cleanup", 0, 30),
-        _interval("service_status", "Service status report", 1),
+        # The About dialog marks a service stale after 3 x 60 s (STALE_AFTER in service_status.py).
+        _interval("service_status", "Service status report", 1, max_minutes=2),
     )
 }
 
@@ -77,6 +82,8 @@ def _validate_interval(spec: JobSpec, timing: Timing) -> None:
     floor = spec.min_minutes or 1
     if minutes < floor:
         raise _fail(f"interval_minutes must be at least {floor}")
+    if spec.max_minutes is not None and minutes > spec.max_minutes:
+        raise _fail(f"interval_minutes must be at most {spec.max_minutes}")
 
 
 def _validate_daily(timing: Timing) -> None:
