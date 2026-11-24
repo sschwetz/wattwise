@@ -62,7 +62,7 @@ def test_validate_timing_accepts_default(spec):
 
 
 def test_job_schedule_row_round_trips(session):
-    now = datetime.datetime(2026, 11, 24, 1, 2, tzinfo=datetime.timezone.utc)
+    now = datetime.datetime(2026, 11, 24, 1, 2, tzinfo=datetime.UTC)
     session.add(JobSchedule(job_id="demand_charge", kind="daily", hour=3, minute=15, updated_at=now))
     session.commit()
     row = session.get(JobSchedule, "demand_charge")

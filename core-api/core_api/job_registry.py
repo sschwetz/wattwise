@@ -7,7 +7,7 @@ imports the scheduler and would create a cycle.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypeGuard
 
 from core_api.errors import AppError
 
@@ -62,7 +62,7 @@ def default_timing(spec: JobSpec) -> Timing:
     return Timing("daily", None, spec.default_hour, spec.default_minute)
 
 
-def _is_int(value: object) -> bool:
+def _is_int(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
