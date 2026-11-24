@@ -27,3 +27,9 @@ dist-ssr/
 
 # Rockstor rock-on definition (local deployment only)
 deploy/rockstor/wattwise.json
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# Local record IDs written by the docs screenshot seed scripts
+scripts/docs-screenshots/ids.json
