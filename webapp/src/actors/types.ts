@@ -197,6 +197,16 @@ export interface ActorSchedule {
   notify_email: boolean;
 }
 
+/** One entry of the saved Schedules list order. A separator's `key` is made by the webapp and is never shown. */
+export type ScheduleLayoutItem =
+  | { type: "schedule"; id: number }
+  | { type: "separator"; key: string; label: string };
+
+/** `items` is null until a manager first arranges the list. */
+export interface ScheduleLayout {
+  items: ScheduleLayoutItem[] | null;
+}
+
 /** Create payload. Any field except instance_id, name, trigger and actions may be left out. */
 export interface ScheduleBody {
   instance_id: number;

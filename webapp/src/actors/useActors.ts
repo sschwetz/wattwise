@@ -11,6 +11,8 @@ import type {
   InstanceCreateBody,
   InstancePatchBody,
   ScheduleBody,
+  ScheduleLayout,
+  ScheduleLayoutItem,
   SchedulePatchBody,
 } from "./types";
 import { isSigningIn } from "./types";
@@ -25,6 +27,7 @@ export const actorKeys = {
   all: (siteId: number) => ["actors", siteId] as const,
   instances: (siteId: number) => ["actors", siteId, "instances"] as const,
   schedules: (siteId: number) => ["actors", siteId, "schedules"] as const,
+  layout: (siteId: number) => ["actors", siteId, "schedule-layout"] as const,
   runs: (siteId: number) => ["actors", siteId, "runs"] as const,
   failures: (siteId: number) => ["actors", siteId, "failures"] as const,
 };
@@ -50,6 +53,34 @@ export function useSchedules(siteId: number) {
     queryKey: actorKeys.schedules(siteId),
     queryFn: () => apiFetch<ActorSchedule[]>(`${base(siteId)}/schedules`),
     enabled: validSite(siteId),
+  });
+}
+
+export function useScheduleLayout(siteId: number) {
+  return useQuery({
+    queryKey: actorKeys.layout(siteId),
+    queryFn: () => apiFetch<ScheduleLayout>(`${base(siteId)}/schedule-layout`),
+    enabled: validSite(siteId),
+  });
+}
+
+/** Saves the list order. The cache takes the new order at once and goes back to the stored one if the save fails. */
+export function useSaveScheduleLayout(siteId: number) {
+  const queryClient = useQueryClient();
+  const key = actorKeys.layout(siteId);
+  return useMutation({
+    mutationFn: (items: ScheduleLayoutItem[]) =>
+      apiFetch<ScheduleLayout>(`${base(siteId)}/schedule-layout`, { method: "PUT", body: JSON.stringify({ items }) }),
+    onMutate: async (items) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<ScheduleLayout>(key);
+      queryClient.setQueryData<ScheduleLayout>(key, { items });
+      return { previous };
+    },
+    onError: (_error, _items, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
 }
 

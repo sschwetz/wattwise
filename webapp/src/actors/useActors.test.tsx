@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
-import type { ActorInstance, ActorRun } from "./types";
+import type { ActorInstance, ActorRun, ScheduleLayoutItem } from "./types";
 import {
   actorKeys,
   FAILURES_POLL_MS,
@@ -14,6 +14,8 @@ import {
   useDeleteInstance,
   useResetSignIn,
   useRuns,
+  useSaveScheduleLayout,
+  useScheduleLayout,
   useTestSchedule,
 } from "./useActors";
 
@@ -184,5 +186,56 @@ describe("actor hooks", () => {
   it("is disabled when the site id is not a number", () => {
     renderHook(() => useActorInstances(Number.NaN), { wrapper: wrapperFor(makeClient()) });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("schedule layout hooks", () => {
+  const stored: ScheduleLayoutItem[] = [{ type: "schedule", id: 1 }];
+  const next: ScheduleLayoutItem[] = [{ type: "schedule", id: 2 }, { type: "separator", key: "k1", label: "Kids" }];
+
+  it("useScheduleLayout reads the site's layout", async () => {
+    fetchMock.mockResolvedValue(json({ items: stored }));
+    const { result } = renderHook(() => useScheduleLayout(7), { wrapper: wrapperFor(makeClient()) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(urlOf(0)).toContain("/sites/7/actors/schedule-layout");
+    expect(result.current.data).toEqual({ items: stored });
+  });
+
+  it("useSaveScheduleLayout puts the items and refetches the layout", async () => {
+    const client = makeClient();
+    client.setQueryData(actorKeys.layout(7), { items: stored });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    fetchMock.mockResolvedValue(json({ items: next }));
+    const { result } = renderHook(() => useSaveScheduleLayout(7), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      await result.current.mutateAsync(next);
+    });
+    expect(urlOf(0)).toContain("/sites/7/actors/schedule-layout");
+    expect(fetchMock.mock.calls[0][1].method).toBe("PUT");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ items: next });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: actorKeys.layout(7) });
+  });
+
+  it("shows the new order at once, then restores the stored one when the save fails", async () => {
+    const client = makeClient();
+    client.setQueryData(actorKeys.layout(7), { items: stored });
+    fetchMock.mockResolvedValue(json({ code: "invalid_layout", message: "no" }, 422));
+    const { result } = renderHook(() => useSaveScheduleLayout(7), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      result.current.mutate(next);
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(client.getQueryData(actorKeys.layout(7))).toEqual({ items: stored });
+  });
+
+  it("updates the cache before the server answers", async () => {
+    const client = makeClient();
+    client.setQueryData(actorKeys.layout(7), { items: stored });
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useSaveScheduleLayout(7), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      result.current.mutate(next);
+    });
+    expect(client.getQueryData(actorKeys.layout(7))).toEqual({ items: next });
   });
 });
