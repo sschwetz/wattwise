@@ -4,7 +4,7 @@ Each section follows one process from start to finish. The code paths named in e
 
 ## 1. A meter reading reaches the dashboard
 
-Every 60 seconds the Envoy collector reads the solar system and sends the result to Core API.
+By default (`LIVE_BATTERY_SOURCE=livedata`) the Envoy collector samples the gateway's `/ivp/livedata/status` every `LIVE_SAMPLE_SECONDS` (3), averages the samples each minute and sends the result to Core API. When the feed is stale or returns nothing, that minute falls back to single polls of `/ivp/meters/readings` and `/ivp/ensemble/power`. With `LIVE_BATTERY_SOURCE=ensemble` the battery figures always come from `/ivp/ensemble/power`. [Live-data sampling](collectors.md#live-data-sampling) has the detail.
 
 ```mermaid
 sequenceDiagram
@@ -19,11 +19,10 @@ sequenceDiagram
     EC->>API: GET /collector/sources?kind=energy (X-Collector-Key)
     API-->>EC: [{source_id, site_id, config{host, token, ...}}]
 
-    Note over EC,ENV: Every 60 s: poll
-    EC->>ENV: GET /ivp/meters/readings (pinned TLS cert, bearer token)
-    EC->>ENV: GET /ivp/ensemble/power (battery)
+    Note over EC,ENV: Every 3 s (LIVE_SAMPLE_SECONDS): sample
+    EC->>ENV: GET /ivp/livedata/status (pinned TLS cert, bearer token)
     ENV-->>EC: watts now, battery watts and charge level
-    EC->>EC: map to metrics at minute boundary
+    EC->>EC: average the samples and map to metrics at the minute boundary
     EC->>API: POST /sources/{id}/readings/energy
     API->>DB: upsert (source, ts, metric)
     API-->>EC: 202 {"ingested": n}

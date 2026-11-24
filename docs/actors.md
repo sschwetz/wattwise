@@ -34,7 +34,7 @@ All paths are under `/api/v1/actor`.
 | Report readings | `PUT /instances/{id}/readings` | Replaces `latest_readings` with the body's `state` object and sets `last_seen_at`. Only the latest value is kept. |
 | List runs | `GET /instances/{id}/runs` | Needs exactly one of `unfinished=true`, `pending_test=true` or `since=<time>`; anything else is 422 `invalid_filter`. |
 | Create a run | `POST /instances/{id}/runs` | Creates a run in outcome `pending`. |
-| Update a run | `PATCH /instances/{id}/runs/{run_id}` | Moves a run to `running`, `ok`, `skipped`, `failed` or `overridden`, and can set `message`, `attempts` and `snapshot`. |
+| Update a run | `PATCH /instances/{id}/runs/{run_id}` | Moves a run to `running`, `ok`, `partial`, `skipped`, `failed` or `overridden`, and can set `message`, `attempts` and `snapshot`. |
 
 Every per-instance route returns 401 `invalid_actor_key` for a wrong key, a wrong provider or an unknown instance (the same code, so ids cannot be probed). Discovery returns the same 401 when the provider header is missing or differs from `?provider=`. A disabled instance or site gets 403 `instance_disabled` or `site_disabled`, unless an action run still needs its restore.
 

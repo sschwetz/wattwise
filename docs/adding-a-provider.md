@@ -69,7 +69,7 @@ Things that trip people up:
 - **Windows for the same direction must not overlap.** WattWise refuses the second one and names the clash.
 - **Gaps are allowed but cost you accuracy.** A minute with no price is left out of your cost totals. The panel tells you the first uncovered time it finds.
 - **Fix a typo with Edit rate.** Do not delete and re-add the window. Editing reprices from the window's start.
-- **To change a rate from today, End the old window, then add the new one with From set to today.** You cannot schedule a future change in advance.
+- **To change a rate on a given day, end the old window and add the new one with that day as its Start date.** A future date is allowed, so you can schedule the change in advance. See [Changing a rate](../webapp/src/docs/05-sources.md#changing-a-rate).
 - **One pricing source per site.** To switch from Amber to a local tariff, the Amber source must be deleted or ended first. Disabling it is not enough. If it already holds prices, ask a developer or AI agent to set its end date through the API.
 
 Prices appear within about a minute of saving.
@@ -95,7 +95,7 @@ Retail plans often add rules on top of the energy rates. All are on the **Tariff
 
 ### Path D: nothing above fits
 
-The provider has a live price feed (or a device) that WattWise does not know. Someone has to write a small program, a *collector*, for it. This is routine: the existing ones are between about 650 and 1,900 lines of Python. Give the person or AI agent this page and the [AI agent guide](for-ai-agents.md). Part 2 below is the checklist they need.
+The provider has a live price feed (or a device) that WattWise does not know. Someone has to write a small program, a *collector*, for it. This is routine: the existing ones are small Python programs. Give the person or AI agent this page and the [AI agent guide](for-ai-agents.md). Part 2 below is the checklist they need.
 
 ---
 
@@ -195,7 +195,7 @@ If the provider needs a credential that belongs to the user rather than a site (
 
 ### Step 4: wire it in
 
-1. **Collector code.** Copy the nearest collector directory. Keep `config.py` (two environment variables), `core_api_client.py` and the loop shape. Replace the provider client and `mapping.py`.
+1. **Collector code.** Copy the nearest collector directory. Keep `config.py` (the environment variables), `core_api_client.py` and the loop shape. Replace the provider client and `mapping.py`.
 2. **Docker.** Copy the service block of a similar collector in [`docker-compose.yml`](../docker-compose.yml). Set `CORE_API_URL: http://core-api:8000` and `COLLECTOR_KEY` to the kind's key. Add the service to the table in the root [README](../README.md).
 3. **Web app.** In `webapp/src/pages/SourcesPage.tsx`, add the provider name to `PROVIDERS_BY_KIND`, a display name, and a config form in `CONFIG_FORMS` (without one the owner gets a raw JSON editor, which works but is unfriendly).
 4. **User guide.** Add a section to [`05-sources.md`](../webapp/src/docs/05-sources.md) and the glossary if there are new terms. Tests fail on broken links.

@@ -24,7 +24,7 @@ The large tile at the top is **Production**. Below it are the other tiles. A til
 | **Consumption** | Power your home is using now. |
 | **Grid import** | Power you are drawing from the grid now. |
 | **Grid export** | Power you are sending to the grid now. |
-| **Battery charge** / **Battery discharge** | Power flowing into or out of the battery. |
+| **Battery Charging** / **Battery Discharging** | Power flowing into or out of the battery. |
 | **Battery** | The battery's charge level, as a percentage. |
 | **Today's cost** / **Today's credit** | What you have spent, or earned, since local midnight. |
 | **Grid import price** / **Grid export price** | The price per kWh that applies right now. |

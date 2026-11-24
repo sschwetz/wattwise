@@ -29,6 +29,7 @@ Defined in [`src/App.tsx`](../webapp/src/App.tsx). Routes under `ProtectedRoute`
 | `/sites/new` | `AddSitePage` | Create a site and pick its time zone |
 | `/account` | `AccountPage` | Name, photo, password, email, authenticator, Amber key |
 | `/help/:slug?` | `HelpPage` | The user guide |
+| `/sites/:siteId/help/:slug?` | `HelpPage` | The user guide, opened inside a site's layout |
 | `/admin`, `/admin/:tab` | `AdminSettingsPage` | Admin Settings, with a side rail from `admin/tabs.ts`. `:tab` is `email`, `users` or `schedule`, in that order, and `/admin` or an unknown tab goes to `email`. The header menu shows the **Admin Settings** item only when `GET /users/me` returns `is_admin`. |
 | `/admin/users/:userId` | `UserDetailPage` | One user: **Details**, **Site access**, **Security** and **Administrator** sections, each a component in `src/admin/`. |
 | `/sites/:siteId` | `DashboardPage` | Live tiles, pricing, grid and battery charts, and the schedule log (`FailuresTile`) when it has something to show |
@@ -59,7 +60,7 @@ The Schedule tab and the dashboard log are shown in the user guide chapter [Sche
 | `src/auth/` | `AuthContext` (token in `localStorage` under `access_token`), `ProtectedRoute` |
 | `src/layout/` | Header, site chips and side rail, avatar |
 | `src/admin/` | Admin Settings: `AdminRoute`, `AdminSettingsPage`, `UsersTab`, `ScheduleTab` with `JobRow` and the `useAdminJobs` hook, `EmailTab` with its parts (`ProviderPicker`, `ProviderFieldsForm`, `ProviderActivation`, `TestEmailRow`, `MailSummaryLine`), `UserDetailPage` with its section components, `ConfirmAction`, and the `useAdminUsers`, `useAdminUserMutations` and `useAdminMail` hooks. Tabs are listed in `tabs.ts`. |
-| `src/pages/` | One component per route, with its test beside it |
+| `src/pages/` | One component per route, with its test beside it. The exception is `HelpPage`, which is in `src/help/`. |
 | `src/dashboard/` | Hooks for live readings and history, and pure helpers for charts (`historyChart.ts`, `priceChart.ts`, `compass.ts`) |
 | `src/actors/` | The Schedule tab's parts and hooks. `useActors.ts` has the TanStack Query hooks. `scheduleForm.ts` turns a schedule into form state and back (and holds the client-side checks that mirror Core API). `runFormat.ts` formats run times and outcomes. `types.ts` mirrors the API shapes. |
 | `src/billing/` | `useBilling.ts` (all tariff and cycle calls), `ConditionalCredits.tsx`, `tariffHeading.ts` |

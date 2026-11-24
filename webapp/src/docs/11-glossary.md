@@ -28,7 +28,7 @@
 | **Daily allowance** | Part of an [export adjustment](07-billing.md#export-adjustments): kWh of exports per day, building up through the billing cycle, that are not adjusted. |
 | **Demand charge** | A charge based on your highest average power draw in a billing period, within a demand window. See [Demand charges](07-billing.md#demand-charges). |
 | **Demand window** | A repeating period (months, days, hours) when peak demand is measured. See [Demand windows](07-billing.md#demand-windows). |
-| **Disabled site** | A site whose collection is switched off. It is hidden from the site list and switcher, and its data stays readable. See [Disabling a site](04-sites.md#disabling-a-site). |
+| **Disabled site** | A site whose collection is switched off. It is hidden from the site list and switcher unless you are viewing it, and its data stays readable. See [Disabling a site](04-sites.md#disabling-a-site). |
 | **Dismiss** | The button that removes a sticky notice from the dashboard log. See [The log](08-schedules.md#the-log). |
 | **Envoy** | The Enphase gateway that talks to your solar inverters and battery. |
 | **Export** | Sending power to the grid. |

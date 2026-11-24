@@ -67,4 +67,4 @@ Design history lives in [`docs/superpowers/specs`](superpowers/specs) (why somet
 
 ## Accuracy
 
-Each page names the files and modules it describes, and `scripts/check_docs.py` (run by CI) checks links, anchors and table layout. Nothing checks the prose against the code, so when the two disagree, the code wins. Screenshots are shared with the in-app help and live in [`webapp/src/docs/images`](../webapp/src/docs/images). They were retaken together on 2026-11-14 from a demo site with generated data. `scripts/docs-screenshots/` rebuilds that site. Retake the whole set at once so the images stay consistent.
+Each page names the files and modules it describes, and `scripts/check_docs.py` (run by CI) checks links, anchors and table layout. Nothing checks the prose against the code, so when the two disagree, the code wins. Screenshots are shared with the in-app help and live in [`webapp/src/docs/images`](../webapp/src/docs/images). They show a demo site with generated data. Retake the whole set in one pass, so the images stay consistent, by following [`scripts/docs-screenshots/README.md`](../scripts/docs-screenshots/README.md).

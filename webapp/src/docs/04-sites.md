@@ -97,7 +97,7 @@ Open the **Sharing** tab to give someone read-only access. The site's owner and 
 | **Manager** | The same as the owner for the site's collectors, tariffs, billing, schedule, settings and invitations. Sees **People with access** but cannot remove anyone from it. A manager cannot remove another manager, so a manager sees no **Revoke** on another manager's accepted invitation. A manager can still revoke their own. Only an administrator gives someone the manager role, in [Admin Settings](12-admin-users.md#site-access). |
 | **Viewer** | Sees the site, read-only. Sees only their own invitation on the **Sharing** tab, and not **People with access**. |
 
-![The Sharing tab with the invitation form and no invitations yet](images/settings-sharing.png)
+![The Sharing tab with the owner under People with access, the invitation form and no invitations yet](images/settings-sharing.png)
 
 ### People with access
 

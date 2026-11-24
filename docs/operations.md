@@ -31,7 +31,7 @@ With a new `core-api` and an older actor, the actor reads `action` (the first en
 
 The browser calls `core-api` directly, so the API must be reachable from the internet at the address in `API_BASE_URL` whenever anyone uses WattWise away from home. Publishing only the web app is not enough: the page loads, then sign-in fails. The collectors do not need this. They reach `core-api` over the Docker network.
 
-`deploy/caddy/` holds a tested Compose override that adds Caddy, serves both the web app and the API from one hostname and gets the certificate itself.
+`deploy/caddy/` holds a Compose override that adds Caddy, serves both the web app and the API from one hostname and gets the certificate itself.
 
 ```bash
 # .env
@@ -81,6 +81,10 @@ Edit `.env`:
 | `FRONTEND_BASE_URL` | Where users open the web app. Default `http://localhost`. Also the CORS origin and the base of email links. |
 | `API_BASE_URL` | Where the **browser** reaches Core API. Default `http://localhost:8000`. |
 | `SMTP_FROM` | Sender address for system mail |
+| `ADMIN_EMAIL` | Optional. Email of the first user. Default `admin@example.com`. Read only when the database has no users, so set it before the first start. |
+| `JWT_EXPIRY_HOURS` | Optional. How long a sign-in lasts. Default `24`. |
+| `SCHEDULER_ENABLED` | Optional. `false`, `0` or `no` stops every [background job](core-api.md#background-jobs). Default `true`. |
+| `ROOT_PATH` | Optional. Prefix for the `/docs`, `/redoc` and `/openapi.json` pages behind a proxy. Default empty. See [Core API](core-api.md#configuration). |
 | `RELAY_DOMAIN`, `RELAY_SMARTHOST` | Required by Compose even if you never send mail, or send it through a mail provider (see [Mail](mail.md)). `RELAY_SMARTHOST` looks like `[smtp.example.com]:587`. |
 | `RELAY_USERNAME`, `RELAY_PASSWORD` | If the smarthost needs a login |
 
@@ -182,7 +186,7 @@ Each row has a coloured bulb: red for a failure, amber for a partial problem (pa
 | Ran OK | An action run finished OK in the last 24 hours. Test and restore runs are not listed. | Nothing. |
 | Run failed | An action or restore did not succeed after its tries. The message says why. | Check the unit and turn it on if a restore failed. A later good run clears the entry; a skipped run clears a failed action but not a failed restore. |
 | Still off | The unit is still off after its restore time and the schedule's give-up minutes. A restore set to happen only on a condition counts its restore time as 24 hours after the trigger. | Turn the unit on. Then check the restore settings. A "only restore if" condition that never passes causes this. |
-| Actor not reporting | The unit is held off and the actor has not reported for 5 minutes. The actor also stops reporting when it cannot reach the unit through the Actron cloud or its sign-in is lost. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. If it needs signing in, press **Sign in again**. |
+| Not reporting | The unit is held off and the actor has not reported for 5 minutes. The actor also stops reporting when it cannot reach the unit through the Actron cloud or its sign-in is lost. | `docker compose ps`, then the actor's logs. Start the container: it carries on to the restore. If it needs signing in, press **Sign in again**. |
 | Problem | A service raised an alert, such as an Envoy certificate it refused to pin or a source it cannot reach. The entry names the source, actor or `Site`. A source can show several. See [Alerts](collectors.md#alerts) for the codes. | Read the message and fix the cause. The service clears the alert when the cause goes away. For `cert`, see [Collectors](collectors.md#failure-behaviour-at-a-glance). A `Site` entry `notify_email` means a schedule notification email could not be sent; the next one that sends clears it. |
 | Notice (blue, sticky) | The Envoy collector re-pinned a certificate (`repinned`) or saw a new firmware version (`firmware`). Nothing is broken. A `repinned` notice raised because the firmware changed is red. | Read it, then press **Dismiss**. A sticky notice stays until someone dismisses it. |
 | Needs sign-in | Actron rejected the stored token. | Open **Schedule** in Site settings, press **Sign in again** and approve the code. This works while the unit is held off: the actor puts it back after the new sign-in. |
@@ -197,7 +201,7 @@ The General tab's map loads its tiles in the user's browser from `tile.openstree
 
 ### Known limits
 
-- The push (MQTT) path of the `actron-neo-api` library has not been tried on a real unit. Polling covers it: every 30 seconds while push is down, every 120 seconds while it works.
+- The push (MQTT) path of the `actron-neo-api` library is unverified on real hardware. Polling covers it: every 30 seconds while push is down, every 120 seconds while it works.
 - The library is unofficial and pinned to 0.5.16. A change on Actron's side can break it without notice. Check the logs after Actron updates its app.
 - Fan speeds `AUTO`, `LOW`, `MED` and `HIGH` are not confirmed on the owner's unit.
 - If the process is killed during a test run's pause, the unit stays as the test set it until the actor restarts. The next start finds the run and puts the unit back.
@@ -252,7 +256,7 @@ The backup holds credentials only in encrypted form, so it is useless without `S
 
 Also copy the avatars if you care about them: `docker compose cp core-api:/data/avatars ./avatars-backup`.
 
-Store backups somewhere other than this machine. The Python backup routine was tested here; the `docker compose cp` lines were not run against a live stack.
+Store backups somewhere other than this machine.
 
 **Restore:**
 
@@ -277,7 +281,7 @@ To run the published images instead of building from source, add `-f docker-comp
 
 Migrations run automatically when `core-api` starts. Take a backup first. Rolling back means checking out the previous commit and restoring the backup taken before the upgrade. The encryption migration has a downgrade that decrypts the columns again, but downgrades are otherwise untested in this project.
 
-**Upgrading to the encryption release (commit `79651e9` or later):**
+**Upgrading to the release that encrypts stored secrets:**
 
 1. Generate `SECRETS_ENCRYPTION_KEY` and add it to `.env` before running `docker compose up`. Compose refuses to start `core-api` without it.
 2. Back up the key as described under [Backups](#backups).

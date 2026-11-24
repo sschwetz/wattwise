@@ -320,16 +320,16 @@ Rules:
 | `MAIL_ACTOR_KEY` | yes | none | Shared secret for the mail actor. Must differ from `ACTOR_KEY`; see [Mail](mail.md#actor-routes). |
 | `DATABASE_URL` | no | `sqlite:///./core_api.db` | Compose sets `sqlite:////data/core_api.db` |
 | `AVATAR_STORAGE_DIR` | no | `./data/avatars` | Compose sets `/data/avatars` |
-| `JWT_EXPIRY_HOURS` | no | `24` | Access token lifetime |
+| `JWT_EXPIRY_HOURS` | no | `24` | Access token lifetime. Compose passes it from `.env` |
 | `GIT_COMMIT` | no | `unknown` | The build commit. Core API keeps the first 7 characters. The Dockerfile sets it from a build arg; see [Operations](operations.md#build-commit). |
 | `FRONTEND_BASE_URL` | no | `http://localhost:5173` | CORS origin and the base of links in emails |
 | `WEBAPP_VERSION_URL` | no | `FRONTEND_BASE_URL` | Where the `service_status` job fetches the webapp's `/version`. Must be reachable from inside the core-api container. See [Operations](operations.md#build-commit). |
-| `ROOT_PATH` | no | empty | Prefix for the `/docs`, `/redoc` and `/openapi.json` pages, for example `/api` to reach them at `/api/docs` through a proxy that forwards `/api` unchanged. API routes always stay under `/api/v1` |
+| `ROOT_PATH` | no | empty | Prefix for the `/docs`, `/redoc` and `/openapi.json` pages, for example `/api` to reach them at `/api/docs` through a proxy that forwards `/api` unchanged. API routes always stay under `/api/v1`. Compose passes it from `.env` |
 | `SMTP_HOST`, `SMTP_PORT` | no | `mail-relay`, `25` | Outbound mail while no mail provider is active. See [Mail](mail.md). |
 | `SMTP_FROM` | no | `noreply@localhost` | Sender address |
 | `SMTP_USER`, `SMTP_PASSWORD` | no | unset | Only if the relay needs authentication |
-| `SCHEDULER_ENABLED` | no | `true` | `false`, `0` or `no` turns the jobs off. The core-api and webapp rows of the service status are then never written. Schedule saves still go to the database. See [Job schedule endpoints](#job-schedule-endpoints) |
-| `ADMIN_EMAIL` | no | `admin@example.com` | Email of the first user, created on an empty database |
+| `SCHEDULER_ENABLED` | no | `true` | `false`, `0` or `no` turns the jobs off. The core-api and webapp rows of the service status are then never written. Schedule saves still go to the database. See [Job schedule endpoints](#job-schedule-endpoints). Compose passes it from `.env` |
+| `ADMIN_EMAIL` | no | `admin@example.com` | Email of the first user, created on an empty database. Compose passes it from `.env` |
 
 ## Where secrets are stored
 

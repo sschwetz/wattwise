@@ -28,6 +28,12 @@ services:
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost}
       # Where core-api fetches /version for the About dialog. Empty means FRONTEND_BASE_URL.
       WEBAPP_VERSION_URL: ${WEBAPP_VERSION_URL:-}
+      # Email of the first user, created on an empty database.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      JWT_EXPIRY_HOURS: ${JWT_EXPIRY_HOURS:-24}
+      # false, 0 or no stops every background job.
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      ROOT_PATH: ${ROOT_PATH:-}
     volumes:
       - core_api_data:/data
     ports:
