@@ -13,6 +13,7 @@ from core_api.models.identity import (
     SiteInvite,
     User,
 )
+from core_api.models.job_schedules import JobSchedule
 from core_api.models.local_rates import LocalRateWindow, LocalRepriceMarker
 from core_api.models.mail import EmailOutbox, MailProvider, OutboxStatus
 from core_api.models.pricing import (
@@ -74,6 +75,7 @@ __all__ = [
     "LocalRateWindow",
     "LocalRepriceMarker",
     "ServiceStatus",
+    "JobSchedule",
     "ActorInstance",
     "ActorSchedule",
     "ActorRun",
