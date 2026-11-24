@@ -25,8 +25,8 @@ function headingSlugs(markdown: string): Set<string> {
 const slugsByChapter = Object.fromEntries(Object.entries(chapters).map(([slug, md]) => [slug, headingSlugs(md)]));
 
 describe("help docs", () => {
-  it("loads the index and all thirteen chapters", () => {
-    expect(Object.keys(chapters)).toHaveLength(14);
+  it("loads the index and all fourteen chapters", () => {
+    expect(Object.keys(chapters)).toHaveLength(15);
   });
 
   for (const [slug, markdown] of Object.entries(chapters)) {

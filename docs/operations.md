@@ -225,7 +225,7 @@ An administrator retunes the core-api jobs without a rebuild or a restart. Open 
 
 - **Last run** is kept in memory, so it shows "never" after core-api restarts.
 - With `SCHEDULER_ENABLED=false` a save is stored and applies when the scheduler is enabled and core-api restarts.
-- Keep the `service_status` interval at 2 minutes or less. See [Service status](core-api.md#service-status).
+- Each interval job has a maximum. The limits are under [Job schedule endpoints](core-api.md#job-schedule-endpoints).
 - Core API runs one worker, so the change reaches the only scheduler there is. See [Known issues](#known-issues).
 
 ## Backups

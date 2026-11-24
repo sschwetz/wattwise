@@ -205,7 +205,7 @@ Each service tells Core API which commit it was built from, and the About dialog
 
 The two pricing collectors share a key, so either can report as the other. Core API accepts that.
 
-`reporting` is true while `last_reported_at` is at most 180 seconds old (three report intervals, `STALE_AFTER` in [`service_status.py`](../core-api/core_api/service_status.py)). Timestamps are UTC. The `core-api` and `webapp` rows depend on the `service_status` job, whose interval an administrator can change. An interval above about 2 minutes lets both rows age past 180 seconds, so the About dialog shows them as not reporting. The 180 seconds is fixed.
+`reporting` is true while `last_reported_at` is at most 180 seconds old (three report intervals, `STALE_AFTER` in [`service_status.py`](../core-api/core_api/service_status.py)). Timestamps are UTC. The 180 seconds is fixed. The `core-api` and `webapp` rows come from the `service_status` job, whose interval an administrator can change only up to the maximum under [Job schedule endpoints](#job-schedule-endpoints).
 
 Core API reports for itself and for the webapp. The `service_status` job (see [Background jobs](#background-jobs)) writes the `core-api` row from `GIT_COMMIT`, then fetches `<WEBAPP_VERSION_URL>/version` and stores the `commit` it returns as the `webapp` row. If the fetch fails or returns a bad body, the `webapp` row stays as it was and ages into `reporting: false`. `mail-relay` is not listed because it does not report.
 
@@ -273,7 +273,7 @@ Validation failures use code `validation_error` and HTTP 422. The `detail` list 
 
 ## Background jobs
 
-[`scheduler.py`](../core-api/core_api/scheduler.py) starts one `BackgroundScheduler` inside the process. Each job opens its own session, runs for every site, commits, and uses `coalesce=True, max_instances=1` so a slow run never overlaps itself. Each job except `expire_admin_password_file` runs on its default schedule from [`job_registry.py`](../core-api/core_api/job_registry.py), or on an override an administrator saved in the `job_schedules` table (see [Job schedule endpoints](#job-schedule-endpoints)). `build_scheduler` reads the overrides once at startup. Disable all jobs with `SCHEDULER_ENABLED=false`. The tests never start them, because `TestClient` is used without running the app lifespan, where the scheduler is created.
+[`scheduler.py`](../core-api/core_api/scheduler.py) starts one `BackgroundScheduler` inside the process. Each job opens its own session, runs for every site, commits, and uses `coalesce=True, max_instances=1` so a slow run never overlaps itself. Each job except `expire_admin_password_file` runs on its default schedule from [`job_registry.py`](../core-api/core_api/job_registry.py), or on an override an administrator saved in the `job_schedules` table (see [Job schedule endpoints](#job-schedule-endpoints)). `build_scheduler` reads the overrides once at startup. Disable all jobs with `SCHEDULER_ENABLED=false`. Most tests never start them. The scheduler is created in the app lifespan, so a test starts it with `with TestClient(app)` and `SCHEDULER_ENABLED=true`, as `test_scheduler.py` and `test_admin_jobs.py` do. `build_scheduler` ignores a stored override that fails validation and uses the default for that job.
 
 | Job | Default schedule | What it does | Idempotent because |
 |---|---|---|---|
@@ -293,14 +293,14 @@ An administrator retunes the jobs from the **Schedule** tab of Admin Settings. T
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /admin/jobs` | `timezone`, `scheduler_running` and one entry per editable job: `id`, `label`, `kind` (`interval` or `daily`), `timing`, `default`, `is_default`, `min_minutes`, `next_run` and `last_run`. A timing has `interval_minutes` for an interval job, or `hour` and `minute` for a daily job. `next_run` is null when the scheduler is off. `last_run` is null until the job has finished once since core-api started. |
-| `PUT /admin/jobs/{job_id}` | Body `{"kind": "interval", "interval_minutes": 10}` or `{"kind": "daily", "hour": 1, "minute": 30}`. Stores the override and moves the running job to it at once. Returns the job entry. |
+| `GET /admin/jobs` | `timezone`, `scheduler_running` and one entry per editable job: `id`, `label`, `kind` (`interval` or `daily`), `timing`, `default`, `is_default`, `min_minutes`, `max_minutes`, `next_run` and `last_run`. A timing has `interval_minutes` for an interval job, or `hour` and `minute` for a daily job. `next_run` is null when the scheduler is off. `last_run` is null until the job has finished once since core-api started. |
+| `PUT /admin/jobs/{job_id}` | Body `{"kind": "interval", "interval_minutes": 10}` or `{"kind": "daily", "hour": 1, "minute": 30}`. Stores the override and moves the running job to it at once. A value equal to the default stores no row and deletes any existing one. Returns the job entry. |
 | `DELETE /admin/jobs/{job_id}` | Deletes the override and puts the job back on its default. Returns the job entry. |
 
 Rules:
 
 - **Editable jobs.** The jobs in the table above, except `expire_admin_password_file`. An unknown id and `expire_admin_password_file` both return 404 `not_found`.
-- **Limits.** The `kind` must match the job's kind. An interval is a whole number of minutes, at least the job's `min_minutes` (1 for every job today). A daily time has `hour` 0 to 23 and `minute` 0 to 59. A value that fails returns 422 `invalid_job_schedule` with the limit in `message`. A body that is not whole numbers, such as `1.5` or `true`, is 422 `validation_error`.
+- **Limits.** The `kind` must match the job's kind. An interval is a whole number of minutes from `min_minutes` to `max_minutes`. Both are 1 and 1440 for `demand_interval` and `actor_watchdog`, and 1 and 2 for `service_status`, whose maximum keeps the About dialog from marking services stale (`STALE_AFTER` is 180 seconds). `max_minutes` is null for a daily job. A daily time has `hour` 0 to 23 and `minute` 0 to 59. A value that fails returns 422 `invalid_job_schedule` with the limit in `message`. A body that is not whole numbers, such as `1.5` or `true`, is 422 `validation_error`.
 - **Time zone.** A daily job fires at its time in the scheduler's zone, which is the zone of the core-api container. Neither the Dockerfile nor `docker-compose.yml` sets `TZ`, so it is UTC unless you add one. `timezone` in the list response is that zone.
 - **Last run.** `LAST_RUNS` in `scheduler.py` holds when each job last finished, whether it succeeded or failed. It is in memory and resets when core-api restarts.
 - **Scheduler off.** With `SCHEDULER_ENABLED=false` there is no scheduler. The list returns `scheduler_running: false` and no `next_run`, a save or reset still changes the table, and the override applies when the scheduler is enabled and core-api restarts.

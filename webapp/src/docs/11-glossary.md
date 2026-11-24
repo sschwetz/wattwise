@@ -37,8 +37,8 @@
 | **Gross cost** | Cost counted as if all consumption were imported and all production exported. See [Net and gross cost](06-dashboard.md#net-and-gross-cost). |
 | **Grid** | The public electricity network. |
 | **Import** | Drawing power from the grid. |
-| **Invitation** | An emailed offer of read-only access to a site. Its status is invited, accepted, declined or revoked. See [Sharing a site](04-sites.md#sharing-a-site). |
 | **Interval** | The time between two runs of a background job, in whole minutes. A job that runs once a day has a time of day instead. See [Changing a job](14-admin-schedule.md#changing-a-job). |
+| **Invitation** | An emailed offer of read-only access to a site. Its status is invited, accepted, declined or revoked. See [Sharing a site](04-sites.md#sharing-a-site). |
 | **Job** | A task WattWise runs by itself on a timer, such as calculating demand charges. An administrator sets when each one runs on the **Schedule** tab of Admin Settings. See [Admin schedule](14-admin-schedule.md). |
 | **kW / kWh** | Kilowatt (power, a rate) and kilowatt-hour (energy, an amount). 1 kW for 1 hour is 1 kWh. |
 | **Label** | An optional name on a source, for your own use. |

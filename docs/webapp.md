@@ -155,7 +155,7 @@ The first tab of Admin Settings (`src/admin/EmailTab.tsx`) edits the mail provid
 
 The third tab of Admin Settings (`src/admin/ScheduleTab.tsx`) retunes the core-api background jobs. It is not the site's [Schedule tab](#the-schedule-tab) for the air conditioner. `useAdminJobs.ts` calls `GET /api/v1/admin/jobs`, and `useSaveJob` and `useResetJob` call `PUT` and `DELETE` on `/admin/jobs/{job_id}`. The endpoints are in [Job schedule endpoints](core-api.md#job-schedule-endpoints).
 
-- **One `JobRow` per job.** An interval job has a number input in minutes with `min` set from `min_minutes`. A daily job has a time input followed by the `timezone` the response reports. **Save** sends the whole timing. **Reset to default** shows only while `is_default` is false, and it puts the input back to the default after the refetch.
+- **One `JobRow` per job.** An interval job has a number input in minutes with `min` and `max` set from `min_minutes` and `max_minutes`. A daily job has a time input followed by the `timezone` the response reports. **Save** sends the whole timing. **Reset to default** shows only while `is_default` is false, and it puts the input back to the default after the refetch.
 - **Run times.** Each row shows next and last run with `toLocaleString`, so they use the browser's zone, not the scheduler's.
 - **Scheduler off.** When `scheduler_running` is false the tab shows a line saying changes are saved and apply when it is enabled.
 - **Errors.** A 422 from the server shows under the row.

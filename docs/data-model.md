@@ -244,7 +244,7 @@ The table holds no secrets. `GET /services` adds the `reporting` flag at read ti
 
 ## Job schedules
 
-`job_schedules` holds an administrator's override of one background job's timing. A job with no row runs on its default from [`job_registry.py`](../core-api/core_api/job_registry.py), so the table never holds a copy of a default. The migration is `b2d4f6a8c0e1`.
+`job_schedules` holds an administrator's override of one background job's timing. A job with no row runs on its default from [`job_registry.py`](../core-api/core_api/job_registry.py), so the table never holds a copy of a default. Saving a value equal to the default deletes the row, and the scheduler ignores a stored row that fails the registry's limits. The migration is `b2d4f6a8c0e1`.
 
 | Column | Type | Meaning |
 |---|---|---|
