@@ -16,6 +16,7 @@ from core_api.routers.account import router as account_router
 from core_api.routers.actor import router as actor_router
 from core_api.routers.actor_mail import router as actor_mail_router
 from core_api.routers.actors import router as actors_router
+from core_api.routers.admin_jobs import router as admin_jobs_router
 from core_api.routers.admin_mail import router as admin_mail_router
 from core_api.routers.admin_users import router as admin_users_router
 from core_api.routers.auth import router as auth_router
@@ -138,4 +139,5 @@ def create_app(database_url: str | None = None, email_sender: EmailSender | None
     app.include_router(password_reset_router, prefix=api_prefix)
     app.include_router(admin_users_router, prefix=api_prefix)
     app.include_router(admin_mail_router, prefix=api_prefix)
+    app.include_router(admin_jobs_router, prefix=api_prefix)
     return app
