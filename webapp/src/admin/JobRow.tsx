@@ -56,26 +56,21 @@ function TimingInput({ field }: { field: TimingField }) {
   );
 }
 
-function ResetButton({ job, onReset }: { job: AdminJob; onReset: (value: string) => void }) {
-  const reset = useResetJob(job.id);
+function ResetButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
   return (
-    <>
-      <button
-        type="button"
-        disabled={reset.isPending}
-        onClick={() => reset.mutate(undefined, { onSuccess: () => onReset(initialValue({ ...job, timing: job.default })) })}
-        className={outlineButtonClass}
-      >
-        Reset to default
-      </button>
-      <MutationError error={reset.error} fallback="Could not reset the schedule. Please try again." />
-    </>
+    <button type="button" disabled={disabled} onClick={onClick} className={outlineButtonClass}>
+      Reset to default
+    </button>
   );
 }
 
 export function JobRow({ job, timezone }: { job: AdminJob; timezone: string }) {
   const [value, setValue] = useState(() => initialValue(job));
   const save = useSaveJob(job.id);
+  const reset = useResetJob(job.id);
+  // The mutation lives here, not in ResetButton: ResetButton unmounts once the refetch reports the default timing.
+  const resetToDefault = () =>
+    reset.mutate(undefined, { onSuccess: () => setValue(initialValue({ ...job, timing: job.default })) });
   return (
     <div role="group" aria-label={job.label} className="space-y-2 py-3">
       <p className="text-sm font-medium text-ink">{job.label}</p>
@@ -84,12 +79,12 @@ export function JobRow({ job, timezone }: { job: AdminJob; timezone: string }) {
         <button type="button" disabled={save.isPending} onClick={() => save.mutate(toInput(job, value))} className={primaryButtonClass}>
           Save
         </button>
-        {!job.is_default && <ResetButton job={job} onReset={setValue} />}
+        {!job.is_default && <ResetButton disabled={reset.isPending} onClick={resetToDefault} />}
       </div>
       <p className={mutedClass}>
         Next run: {formatRun(job.next_run, "not scheduled")}. Last run: {formatRun(job.last_run, "never")}.
       </p>
-      <MutationError error={save.error} fallback="Could not save the schedule. Please try again." />
+      <MutationError error={save.error ?? reset.error} fallback="Could not update the schedule. Please try again." />
     </div>
   );
 }
