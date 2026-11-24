@@ -94,6 +94,8 @@ def build_scheduler(
         "mail_outbox_cleanup": run_mail_outbox_cleanup_job,
         "service_status": run_service_status_job,
     }
+    if job_fns.keys() != JOBS.keys():
+        raise RuntimeError("scheduler job functions and the job registry list different jobs")
     with session_factory() as db:
         timings = load_timings(db)
     for job_id, job_fn in job_fns.items():

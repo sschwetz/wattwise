@@ -58,9 +58,8 @@ def list_jobs(db: Session, scheduler: BackgroundScheduler | None) -> JobListOut:
     )
 
 
-def _finish(db: Session, scheduler: BackgroundScheduler | None, spec: JobSpec) -> JobOut:
+def _finish(scheduler: BackgroundScheduler | None, spec: JobSpec, timing: Timing) -> JobOut:
     """Commit has already happened. Point the live trigger at the stored timing."""
-    timing = load_timings(db)[spec.id]
     if scheduler is not None:
         apply_timing(scheduler, spec.id, timing)
     return _job_out(spec, timing, scheduler)
@@ -92,10 +91,10 @@ def save_timing(db: Session, scheduler: BackgroundScheduler | None, job_id: str,
         _delete_row(db, job_id)  # the table never holds a copy of a default
     else:
         _upsert_row(db, job_id, timing)
-    return _finish(db, scheduler, spec)
+    return _finish(scheduler, spec, timing)
 
 
 def reset_timing(db: Session, scheduler: BackgroundScheduler | None, job_id: str) -> JobOut:
     spec = get_spec_or_404(job_id)
     _delete_row(db, job_id)
-    return _finish(db, scheduler, spec)
+    return _finish(scheduler, spec, default_timing(spec))
