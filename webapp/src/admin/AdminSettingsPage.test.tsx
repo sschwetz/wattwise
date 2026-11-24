@@ -42,6 +42,13 @@ describe("AdminSettingsPage", () => {
     expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("shows the Schedule tab at /admin/schedule", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ timezone: "UTC", scheduler_running: true, jobs: [] });
+    renderAt("/admin/schedule");
+    expect(await screen.findByTestId("admin-tab")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Schedule" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("falls back to the Email tab for an unknown tab", async () => {
     renderAt("/admin/nope");
     expect(await screen.findByText(/No email provider has been declared yet/)).toBeInTheDocument();

@@ -2,4 +2,5 @@
 export const ADMIN_TABS: readonly { id: string; label: string }[] = [
   { id: "email", label: "Email" },
   { id: "users", label: "Users" },
+  { id: "schedule", label: "Schedule" },
 ];
