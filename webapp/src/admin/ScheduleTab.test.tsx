@@ -19,6 +19,7 @@ const DEMAND: AdminJob = {
   default: { interval_minutes: 5, hour: null, minute: null },
   is_default: true,
   min_minutes: 1,
+  max_minutes: 1440,
   next_run: "2026-11-24T01:00:00Z",
   last_run: null,
 };
@@ -30,6 +31,7 @@ const DAILY: AdminJob = {
   default: { interval_minutes: null, hour: 3, minute: 0 },
   is_default: false,
   min_minutes: null,
+  max_minutes: null,
   next_run: null,
   last_run: "2026-11-23T02:30:00Z",
 };
@@ -72,6 +74,14 @@ describe("ScheduleTab", () => {
     expect(row("Daily rollup").getByLabelText("Time of day")).toHaveValue("02:30");
     expect(row("Daily rollup").getByText("Australia/Brisbane")).toBeInTheDocument();
     expect(row("Demand poll").queryByText("Australia/Brisbane")).not.toBeInTheDocument();
+  });
+
+  it("limits the interval input to the job's minimum and maximum", async () => {
+    setup();
+    renderTab();
+    const input = await screen.findByLabelText("Interval in minutes");
+    expect(input).toHaveAttribute("min", "1");
+    expect(input).toHaveAttribute("max", "1440");
   });
 
   it("saves a new interval", async () => {

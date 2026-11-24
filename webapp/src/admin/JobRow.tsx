@@ -47,6 +47,7 @@ function TimingInput({ field }: { field: TimingField }) {
         type="number"
         aria-label="Interval in minutes"
         min={job.min_minutes ?? 1}
+        max={job.max_minutes ?? undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={`${inputClass} w-24`}

@@ -20,6 +20,7 @@ export interface AdminJob {
   default: JobTiming;
   is_default: boolean;
   min_minutes: number | null;
+  max_minutes: number | null;
   next_run: string | null;
   last_run: string | null;
 }
