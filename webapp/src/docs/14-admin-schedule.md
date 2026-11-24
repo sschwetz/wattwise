@@ -47,20 +47,6 @@ A row whose timing differs from the default shows **Reset to default**. Click it
 
 If the tab says *The scheduler is off. Changes are saved and apply when it is enabled.*, whoever runs the server has set `SCHEDULER_ENABLED=false`, and no job runs. **Next run** shows *not scheduled*. A save is stored. It takes effect after they enable the scheduler and restart core-api.
 
-## Next run and last run
-
-**Next run** and **Last run** use your browser's time zone, so a daily job's **Next run** can differ from the time zone beside its time box.
-
-**Last run** shows *never* after WattWise starts, until the job has run once. WattWise keeps it in memory, not in the database, so it resets whenever the server restarts. A failed run counts as a run.
-
-## When the scheduler is off
-
-If the tab says *The scheduler is off. Changes are saved and apply when it is enabled.*, whoever runs the server has set `SCHEDULER_ENABLED=false`, and no job runs. **Next run** shows *not scheduled*. A save is stored. It takes effect after they enable the scheduler and restart core-api.
-
-## Keep the service status report frequent
-
-The About dialog marks a service **not reporting** when its last report is more than 3 minutes old. The **Service status report** job writes the reports for core-api and the web app. If you set its interval above 2 minutes, those two rows go stale between runs, and the dialog shows them as not reporting even though they work. Leave it at 1 or 2 minutes. See [Getting started](02-getting-started.md#the-screens) for the About dialog.
-
 ## Next
 
 - [Troubleshooting Admin Settings](10-troubleshooting.md#admin-settings-problems)
