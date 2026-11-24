@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import datetime
 
+import pytest
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -9,7 +11,9 @@ from sqlalchemy import select
 from core_api import scheduler as scheduler_module
 from core_api.db import make_engine, make_session_factory
 from core_api.email_sender import OutboxEmailSender
+from core_api.job_registry import Timing
 from core_api.main import create_app
+from core_api.models.job_schedules import JobSchedule
 from core_api.models.mail import EmailOutbox, OutboxStatus
 
 
@@ -72,3 +76,70 @@ def test_mail_outbox_cleanup_runs_daily_and_purges_old_finished_rows(app_and_db_
         job.func(*job.args)
     with session_factory() as db:
         assert list(db.scalars(select(EmailOutbox.subject))) == ["recent"]
+
+
+@pytest.fixture(autouse=True)
+def _clear_last_runs():
+    scheduler_module.LAST_RUNS.clear()
+    yield
+    scheduler_module.LAST_RUNS.clear()
+
+
+def test_build_scheduler_uses_stored_override(app_and_db_url, monkeypatch):
+    monkeypatch.setenv("SCHEDULER_ENABLED", "true")
+    app, db_url = app_and_db_url
+    session_factory = make_session_factory(make_engine(db_url))
+    with session_factory() as db:
+        db.add(JobSchedule(job_id="demand_interval", kind="interval", interval_minutes=10,
+                           updated_at=datetime.datetime.now(datetime.UTC)))
+        db.commit()
+    with TestClient(app) as client:
+        job = client.app.state.scheduler.get_job("demand_interval")
+        assert job.trigger.interval == datetime.timedelta(minutes=10)
+
+
+def test_build_scheduler_uses_default_without_row(app_and_db_url, monkeypatch):
+    monkeypatch.setenv("SCHEDULER_ENABLED", "true")
+    app, _ = app_and_db_url
+    with TestClient(app) as client:
+        job = client.app.state.scheduler.get_job("demand_interval")
+        assert job.trigger.interval == datetime.timedelta(minutes=5)
+
+
+def test_apply_timing_reschedules_running_job(app_and_db_url, monkeypatch):
+    monkeypatch.setenv("SCHEDULER_ENABLED", "true")
+    app, _ = app_and_db_url
+    with TestClient(app) as client:
+        scheduler: BackgroundScheduler = client.app.state.scheduler
+        scheduler_module.apply_timing(scheduler, "actor_watchdog", Timing("interval", 3, None, None))
+        job = scheduler.get_job("actor_watchdog")
+        assert job.trigger.interval == datetime.timedelta(minutes=3)
+        assert job.max_instances == 1
+        assert job.coalesce is True
+
+
+def test_apply_timing_daily(app_and_db_url, monkeypatch):
+    monkeypatch.setenv("SCHEDULER_ENABLED", "true")
+    app, _ = app_and_db_url
+    with TestClient(app) as client:
+        scheduler = client.app.state.scheduler
+        scheduler_module.apply_timing(scheduler, "demand_charge", Timing("daily", None, 4, 15))
+        trigger = scheduler.get_job("demand_charge").trigger
+        assert isinstance(trigger, CronTrigger)
+        fields = {f.name: str(f) for f in trigger.fields}
+        assert (fields["hour"], fields["minute"]) == ("4", "15")
+
+
+def test_last_run_recorded_even_when_job_raises(app_and_db_url, monkeypatch):
+    monkeypatch.setenv("SCHEDULER_ENABLED", "true")
+
+    def boom(db, now):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(scheduler_module, "run_demand_interval_job", boom)
+    app, _ = app_and_db_url
+    with TestClient(app) as client:
+        job = client.app.state.scheduler.get_job("demand_interval")
+        with pytest.raises(RuntimeError):
+            job.func(*job.args)
+    assert "demand_interval" in scheduler_module.LAST_RUNS
