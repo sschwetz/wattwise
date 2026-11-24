@@ -18,6 +18,8 @@ from core_api.actor_schemas import (
     RunListItem,
     RunOut,
     ScheduleCreate,
+    ScheduleLayoutBody,
+    ScheduleLayoutView,
     SchedulePatch,
     ScheduleView,
     instance_view,
@@ -185,6 +187,38 @@ def list_schedules(site: Site = Depends(require_site_access), db: Session = Depe
         .order_by(ActorSchedule.id)
     )
     return list(db.scalars(stmt))
+
+
+def _check_layout(db: Session, site: Site, items: list) -> None:
+    """Every schedule on an actor of this site, once, and every separator key once."""
+    own = set(
+        db.scalars(
+            select(ActorSchedule.id)
+            .join(ActorInstance, ActorInstance.id == ActorSchedule.instance_id)
+            .where(ActorInstance.site_id == site.id)
+        )
+    )
+    schedule_ids = [i.id for i in items if i.type == "schedule"]
+    keys = [i.key for i in items if i.type == "separator"]
+    if not set(schedule_ids) <= own:
+        raise AppError(422, "invalid_layout", "The layout names a schedule that is not on this site")
+    if len(set(schedule_ids)) != len(schedule_ids) or len(set(keys)) != len(keys):
+        raise AppError(422, "invalid_layout", "The layout repeats a schedule or a separator")
+
+
+@router.get("/schedule-layout", response_model=ScheduleLayoutView)
+def get_schedule_layout(site: Site = Depends(require_site_access)):
+    return ScheduleLayoutView(items=site.schedule_layout)
+
+
+@router.put("/schedule-layout", response_model=ScheduleLayoutView)
+def put_schedule_layout(
+    body: ScheduleLayoutBody, site: Site = Depends(require_site_manager), db: Session = Depends(get_db_session)
+):
+    _check_layout(db, site, body.items)
+    site.schedule_layout = [item.model_dump() for item in body.items]
+    db.commit()
+    return ScheduleLayoutView(items=site.schedule_layout)
 
 
 @router.post("/schedules", response_model=ScheduleView, status_code=status.HTTP_201_CREATED)

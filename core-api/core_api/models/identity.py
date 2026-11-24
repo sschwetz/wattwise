@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import enum
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, String, false, func, true
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, String, false, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core_api.encrypted_types import EncryptedString
@@ -80,6 +80,8 @@ class Site(Base):
     # Where the site is, for sunrise and sunset. Both set or both null.
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The order of the Schedules list: schedule and separator items. Null means never arranged (id order).
+    schedule_layout: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class SiteAccess(Base):
