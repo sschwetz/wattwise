@@ -219,6 +219,15 @@ How mail is queued and delivered is in [Mail](mail.md). The `mail-actor` contain
 - **Stopping.** `docker compose stop mail-actor` sends SIGTERM. The actor finishes the message it is sending and stops. Messages it had claimed but not started are claimed again once their claim expires (see [Delivery](mail.md#delivery)).
 - **Network.** `mail-actor` is on the `app` network only and needs outbound internet access to the provider's API.
 
+## Changing when background jobs run
+
+An administrator retunes the core-api jobs without a rebuild or a restart. Open **Admin Settings**, then **Schedule**, edit a job's minutes or time of day, and click **Save**. The running scheduler picks the change up at once and the override stays across restarts. **Reset to default** deletes it. The [admin guide](../webapp/src/docs/14-admin-schedule.md) has the steps, and [Job schedule endpoints](core-api.md#job-schedule-endpoints) has the limits and the time zone daily jobs use.
+
+- **Last run** is kept in memory, so it shows "never" after core-api restarts.
+- With `SCHEDULER_ENABLED=false` a save is stored and applies when the scheduler is enabled and core-api restarts.
+- Keep the `service_status` interval at 2 minutes or less. See [Service status](core-api.md#service-status).
+- Core API runs one worker, so the change reaches the only scheduler there is. See [Known issues](#known-issues).
+
 ## Backups
 
 All state is in the `core_api_data` volume, mounted at `/data` in `core-api`: the database (`core_api.db`) and uploaded profile photos (`avatars/`). Nothing else holds data.

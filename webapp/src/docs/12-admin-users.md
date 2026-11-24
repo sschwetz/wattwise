@@ -70,5 +70,6 @@ WattWise keeps at least one administrator. When the user is the only one, **Remo
 - [Sharing a site](04-sites.md#sharing-a-site): roles on a site, as owners and managers see them
 - [Account settings](09-account-settings.md): your own password, email and authenticator
 - [Admin email](13-admin-email.md): the **Email** tab, where you choose how WattWise sends email
+- [Admin schedule](14-admin-schedule.md): the **Schedule** tab, where you change when background jobs run
 
 [Back to the contents](index.md)

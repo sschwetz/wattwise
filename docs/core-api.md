@@ -28,7 +28,8 @@ FastAPI application in [`core-api/`](../core-api). It is the only service that r
 | `outbox.py` | The `email_outbox` rules: enqueue, claim, finish, purge, and `relay_queued`, which sends queued rows through the relay on deactivation. Only `relay_queued` commits. |
 | `admin_mail.py`, `admin_mail_schemas.py`, `routers/admin_mail.py`, `routers/actor_mail.py` | The administrator's mail settings (providers, activation, test email, outbox summary) and the routes the mail actor calls. See [Mail](mail.md#admin-routes) and [Actor routes](mail.md#actor-routes). |
 | `live.py` | `LiveHub`: the in-memory latest live sample per source and the per-site subscriber queues. Never touches the database. |
-| `scheduler.py` | Builds the APScheduler instance. |
+| `scheduler.py`, `job_registry.py`, `models/job_schedules.py` | `scheduler.py` builds the APScheduler instance and keeps the in-memory last-run times. `job_registry.py` lists the editable jobs with their default timing and limits, and validates a timing. `JobSchedule` is the table of overrides. See [Background jobs](#background-jobs). |
+| `admin_jobs.py`, `admin_jobs_schemas.py`, `routers/admin_jobs.py` | The administrator's job schedule endpoints. See [Job schedule endpoints](#job-schedule-endpoints). |
 | `actor_schemas.py`, `actor_capabilities.py`, `actor_schedule_validation.py` | Pydantic models for schedules, runs and capabilities, and the checks that tie a saved schedule to an instance's declared capabilities. See [Actors](actors.md). |
 | `sun.py` | Sunrise and sunset from the NOAA solar equations, good to about a minute away from the poles. It estimates from `/usr/share/zoneinfo/zone.tab` when a site has no point. |
 | `actor_context.py`, `actor_runs.py`, `actor_failures.py` | The site context an actor fetches (window occurrences and sun times as UTC instants), the one definition of an unfinished action run, and the current-failures rules the Dashboard log and the watchdog share. |
@@ -204,7 +205,7 @@ Each service tells Core API which commit it was built from, and the About dialog
 
 The two pricing collectors share a key, so either can report as the other. Core API accepts that.
 
-`reporting` is true while `last_reported_at` is at most 180 seconds old (three report intervals). Timestamps are UTC.
+`reporting` is true while `last_reported_at` is at most 180 seconds old (three report intervals, `STALE_AFTER` in [`service_status.py`](../core-api/core_api/service_status.py)). Timestamps are UTC. The `core-api` and `webapp` rows depend on the `service_status` job, whose interval an administrator can change. An interval above about 2 minutes lets both rows age past 180 seconds, so the About dialog shows them as not reporting. The 180 seconds is fixed.
 
 Core API reports for itself and for the webapp. The `service_status` job (see [Background jobs](#background-jobs)) writes the `core-api` row from `GIT_COMMIT`, then fetches `<WEBAPP_VERSION_URL>/version` and stores the `commit` it returns as the `webapp` row. If the fetch fails or returns a bad body, the `webapp` row stays as it was and ages into `reporting: false`. `mail-relay` is not listed because it does not report.
 
@@ -272,9 +273,9 @@ Validation failures use code `validation_error` and HTTP 422. The `detail` list 
 
 ## Background jobs
 
-[`scheduler.py`](../core-api/core_api/scheduler.py) starts one `BackgroundScheduler` inside the process. Each job opens its own session, runs for every site, commits, and uses `coalesce=True, max_instances=1` so a slow run never overlaps itself. Disable all jobs with `SCHEDULER_ENABLED=false`. The tests never start them, because `TestClient` is used without running the app lifespan, where the scheduler is created.
+[`scheduler.py`](../core-api/core_api/scheduler.py) starts one `BackgroundScheduler` inside the process. Each job opens its own session, runs for every site, commits, and uses `coalesce=True, max_instances=1` so a slow run never overlaps itself. Each job except `expire_admin_password_file` runs on its default schedule from [`job_registry.py`](../core-api/core_api/job_registry.py), or on an override an administrator saved in the `job_schedules` table (see [Job schedule endpoints](#job-schedule-endpoints)). `build_scheduler` reads the overrides once at startup. Disable all jobs with `SCHEDULER_ENABLED=false`. The tests never start them, because `TestClient` is used without running the app lifespan, where the scheduler is created.
 
-| Job | Schedule | What it does | Idempotent because |
+| Job | Default schedule | What it does | Idempotent because |
 |---|---|---|---|
 | `demand_interval` | Every 5 minutes | Derives `demand_intervals` for each 5-minute slot | Upsert on (site, interval_start). Recomputes the last 3 hours. |
 | `demand_charge` | Daily 00:10 | Computes `demand_charges` for each billing period | Finalized rows are skipped. Estimated rows are recomputed. |
@@ -285,6 +286,26 @@ Validation failures use code `validation_error` and HTTP 422. The `detail` list 
 | `expire_admin_password_file` | Daily 03:17, and once at startup | Deletes `initial-admin-password.txt` if it is 5 days old or older | Does nothing when the file is missing. Not a database job: it takes the file path, not a session. |
 
 Times use the container's clock (UTC in the image).
+
+### Job schedule endpoints
+
+An administrator retunes the jobs from the **Schedule** tab of Admin Settings. The routes under `/admin/jobs` have the `require_admin` dependency, so a caller without `is_admin` gets 403 `admin_required`. Code is in [`admin_jobs.py`](../core-api/core_api/admin_jobs.py) and [`routers/admin_jobs.py`](../core-api/core_api/routers/admin_jobs.py).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /admin/jobs` | `timezone`, `scheduler_running` and one entry per editable job: `id`, `label`, `kind` (`interval` or `daily`), `timing`, `default`, `is_default`, `min_minutes`, `next_run` and `last_run`. A timing has `interval_minutes` for an interval job, or `hour` and `minute` for a daily job. `next_run` is null when the scheduler is off. `last_run` is null until the job has finished once since core-api started. |
+| `PUT /admin/jobs/{job_id}` | Body `{"kind": "interval", "interval_minutes": 10}` or `{"kind": "daily", "hour": 1, "minute": 30}`. Stores the override and moves the running job to it at once. Returns the job entry. |
+| `DELETE /admin/jobs/{job_id}` | Deletes the override and puts the job back on its default. Returns the job entry. |
+
+Rules:
+
+- **Editable jobs.** The jobs in the table above, except `expire_admin_password_file`. An unknown id and `expire_admin_password_file` both return 404 `not_found`.
+- **Limits.** The `kind` must match the job's kind. An interval is a whole number of minutes, at least the job's `min_minutes` (1 for every job today). A daily time has `hour` 0 to 23 and `minute` 0 to 59. A value that fails returns 422 `invalid_job_schedule` with the limit in `message`. A body that is not whole numbers, such as `1.5` or `true`, is 422 `validation_error`.
+- **Time zone.** A daily job fires at its time in the scheduler's zone, which is the zone of the core-api container. Neither the Dockerfile nor `docker-compose.yml` sets `TZ`, so it is UTC unless you add one. `timezone` in the list response is that zone.
+- **Last run.** `LAST_RUNS` in `scheduler.py` holds when each job last finished, whether it succeeded or failed. It is in memory and resets when core-api restarts.
+- **Scheduler off.** With `SCHEDULER_ENABLED=false` there is no scheduler. The list returns `scheduler_running: false` and no `next_run`, a save or reset still changes the table, and the override applies when the scheduler is enabled and core-api restarts.
+- **Audit line.** A save or reset logs `action=save_job_schedule` or `action=reset_job_schedule` with the admin's id, as the user routes do. The log holds no timing values.
+- **Single process.** The change reaches only the scheduler in the process that handled the request. See [Operations](operations.md#known-issues).
 
 ## Configuration
 
@@ -307,7 +328,7 @@ Times use the container's clock (UTC in the image).
 | `SMTP_HOST`, `SMTP_PORT` | no | `mail-relay`, `25` | Outbound mail while no mail provider is active. See [Mail](mail.md). |
 | `SMTP_FROM` | no | `noreply@localhost` | Sender address |
 | `SMTP_USER`, `SMTP_PASSWORD` | no | unset | Only if the relay needs authentication |
-| `SCHEDULER_ENABLED` | no | `true` | `false`, `0` or `no` turns the jobs off. The core-api and webapp rows of the service status are then never written |
+| `SCHEDULER_ENABLED` | no | `true` | `false`, `0` or `no` turns the jobs off. The core-api and webapp rows of the service status are then never written. Schedule saves still go to the database. See [Job schedule endpoints](#job-schedule-endpoints) |
 | `ADMIN_EMAIL` | no | `admin@example.com` | Email of the first user, created on an empty database |
 
 ## Where secrets are stored

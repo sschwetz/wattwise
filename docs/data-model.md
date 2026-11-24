@@ -242,6 +242,20 @@ Window patterns (`months`, `days_of_week`, `start_time`, `end_time`) share one r
 
 The table holds no secrets. `GET /services` adds the `reporting` flag at read time; it is not stored. See [Service status](core-api.md#service-status).
 
+## Job schedules
+
+`job_schedules` holds an administrator's override of one background job's timing. A job with no row runs on its default from [`job_registry.py`](../core-api/core_api/job_registry.py), so the table never holds a copy of a default. The migration is `b2d4f6a8c0e1`.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `job_id` | string(64), primary key | The job's id, such as `demand_charge`. Rows for an id the registry no longer lists are ignored. |
+| `kind` | string(16) | `interval` or `daily` |
+| `interval_minutes` | integer, nullable | Minutes between runs. Set for `interval`. |
+| `hour`, `minute` | integer, nullable | Time of day in the scheduler's zone. Set for `daily`. |
+| `updated_at` | timestamp with time zone | When the row was last saved |
+
+The table holds no secrets and has no foreign keys. Resetting a job deletes its row. See [Job schedule endpoints](core-api.md#job-schedule-endpoints).
+
 ## Mail tables
 
 Migration `f1a3c5e7b9d2` adds both tables, and `a7c9e1b3d5f2` changes `email_outbox.body` to a `Text` column. Its downgrade narrows `body` back to 1024 characters, which fails on Postgres while any stored body is longer. How they are used is in [Mail](mail.md).

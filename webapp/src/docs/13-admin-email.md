@@ -1,6 +1,6 @@
 # 13. Admin email
 
-[Contents](index.md) · Previous: [Admin users](12-admin-users.md)
+[Contents](index.md) · Previous: [Admin users](12-admin-users.md) · Next: [Admin schedule](14-admin-schedule.md)
 
 This chapter is for administrators. WattWise sends email for sign-up confirmation, password reset, site invitations, email changes and schedule failures. The **Email** tab of Admin Settings chooses how that email leaves the server.
 
@@ -13,7 +13,7 @@ Using a provider needs no change to the server's `.env` file and no restart. Wat
 
 ## Opening the Email tab
 
-Click your name in the top right corner, then **Admin Settings**. **Email** is the first tab on the left, so it is the one that opens. **Users** is the second. See [Admin users](12-admin-users.md) for that tab.
+Click your name in the top right corner, then **Admin Settings**. **Email** is the first tab on the left, so it is the one that opens. **Users** is the second and **Schedule** is the third. See [Admin users](12-admin-users.md) and [Admin schedule](14-admin-schedule.md) for those tabs.
 
 At the top, a line shows **Pending**, **Sent (24 h)** and **Failed (24 h)**. Below it, a line says where email goes now: *No provider is active. Email goes through the built-in mail relay.* or *Email goes through* the active provider's name.
 
@@ -84,7 +84,8 @@ If everything on the tab looks healthy and one user still has no email, check th
 ## Next
 
 - [Troubleshooting](10-troubleshooting.md#admin-settings-problems)
-- [Admin users](12-admin-users.md): the other Admin Settings tab
+- [Admin users](12-admin-users.md): the **Users** tab
+- [Admin schedule](14-admin-schedule.md): the **Schedule** tab, where you change when background jobs run
 - [Glossary](11-glossary.md): mail provider and outbox
 
 [Back to the contents](index.md)

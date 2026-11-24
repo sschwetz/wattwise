@@ -5,7 +5,7 @@
 | Term | Definition |
 |------|-----------|
 | **Actor** | A background program that sends commands to a device, such as an air conditioner, from your schedules. See [Schedules](08-schedules.md). |
-| **Admin Settings** | The pages where an administrator manages other users and chooses how email is sent. The menu item shows only for administrators. See [Admin users](12-admin-users.md) and [Admin email](13-admin-email.md). |
+| **Admin Settings** | The pages where an administrator manages other users, chooses how email is sent and changes when background jobs run. The menu item shows only for administrators. See [Admin users](12-admin-users.md), [Admin email](13-admin-email.md) and [Admin schedule](14-admin-schedule.md). |
 | **Administrator** | A user who can open Admin Settings. The first account is one. See [The Administrator section](12-admin-users.md#administrator). |
 | **Alert** | A problem or notice a collector or actor raises for you. It shows in the dashboard log. See [The log](08-schedules.md#the-log). |
 | **Amber Electric** | An Australian electricity retailer that charges a wholesale-linked price that changes every 5 minutes. WattWise reads its prices through the Amber API. See [Connecting Amber Electric](05-sources.md#connecting-amber-electric). |
@@ -38,6 +38,8 @@
 | **Grid** | The public electricity network. |
 | **Import** | Drawing power from the grid. |
 | **Invitation** | An emailed offer of read-only access to a site. Its status is invited, accepted, declined or revoked. See [Sharing a site](04-sites.md#sharing-a-site). |
+| **Interval** | The time between two runs of a background job, in whole minutes. A job that runs once a day has a time of day instead. See [Changing a job](14-admin-schedule.md#changing-a-job). |
+| **Job** | A task WattWise runs by itself on a timer, such as calculating demand charges. An administrator sets when each one runs on the **Schedule** tab of Admin Settings. See [Admin schedule](14-admin-schedule.md). |
 | **kW / kWh** | Kilowatt (power, a rate) and kilowatt-hour (energy, an amount). 1 kW for 1 hour is 1 kWh. |
 | **Label** | An optional name on a source, for your own use. |
 | **Mail provider** | An outside service, such as smtp2go, that WattWise sends its email through when an administrator has activated it. With none active, email goes through the built-in mail relay. See [Admin email](13-admin-email.md). |

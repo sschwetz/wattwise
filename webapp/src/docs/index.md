@@ -21,6 +21,7 @@ This guide covers every screen in the web app. Use the contents below, or the **
 | [11. Glossary](11-glossary.md) | Plain-language definitions of the terms used in the app |
 | [12. Admin users](12-admin-users.md) | For administrators: finding a user, changing their details and site access, resetting a password or two-factor sign-in, the Administrator toggle |
 | [13. Admin email](13-admin-email.md) | For administrators: choosing a mail provider such as smtp2go, entering its API key, activating it, sending a test email, and fixing email that does not arrive |
+| [14. Admin schedule](14-admin-schedule.md) | For administrators: changing how often or when the background jobs run, resetting a job to its default, and what the last run and scheduler-off messages mean |
 
 ## Where to start
 
@@ -32,6 +33,7 @@ This guide covers every screen in the web app. Use the contents below, or the **
 - **Air conditioner or the dashboard log?** See [Schedules and the air conditioner](08-schedules.md).
 - **Administrator managing other people's accounts?** See [Admin users](12-admin-users.md).
 - **Administrator setting up outgoing email?** See [Admin email](13-admin-email.md).
+- **Administrator changing when background jobs run?** See [Admin schedule](14-admin-schedule.md).
 - **Lost your phone?** See [Lost your authenticator device](03-signing-in.md#lost-your-authenticator-device).
 
 ## Conventions in this guide
