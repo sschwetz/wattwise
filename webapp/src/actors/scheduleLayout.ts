@@ -1,3 +1,4 @@
+import { arrayMove } from "@dnd-kit/sortable";
 import type { ActorSchedule, ScheduleLayoutItem } from "./types";
 
 export type ListRow =
@@ -44,11 +45,7 @@ export function layoutFromRows(rows: ListRow[]): ScheduleLayoutItem[] {
 export function moveRow(rows: ListRow[], activeId: string, overId: string): ListRow[] {
   const from = rows.findIndex((r) => rowId(r) === activeId);
   const to = rows.findIndex((r) => rowId(r) === overId);
-  if (from < 0 || to < 0 || from === to) return rows;
-  const moved = [...rows];
-  const [row] = moved.splice(from, 1);
-  moved.splice(to, 0, row);
-  return moved;
+  return from < 0 || to < 0 || from === to ? rows : arrayMove(rows, from, to);
 }
 
 export function newSeparator(): ListRow {

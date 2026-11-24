@@ -15,6 +15,8 @@ from core_api.actor_schemas import (
     ActorInstanceCreate,
     ActorInstancePatch,
     ActorInstanceView,
+    LayoutSchedule,
+    LayoutSeparator,
     RunListItem,
     RunOut,
     ScheduleCreate,
@@ -189,7 +191,7 @@ def list_schedules(site: Site = Depends(require_site_access), db: Session = Depe
     return list(db.scalars(stmt))
 
 
-def _check_layout(db: Session, site: Site, items: list) -> None:
+def _check_layout(db: Session, site: Site, items: list[LayoutSchedule | LayoutSeparator]) -> None:
     """Every schedule on an actor of this site, once, and every separator key once."""
     own = set(
         db.scalars(
@@ -218,7 +220,7 @@ def put_schedule_layout(
     _check_layout(db, site, body.items)
     site.schedule_layout = [item.model_dump() for item in body.items]
     db.commit()
-    return ScheduleLayoutView(items=site.schedule_layout)
+    return ScheduleLayoutView(items=body.items)
 
 
 @router.post("/schedules", response_model=ScheduleView, status_code=status.HTTP_201_CREATED)

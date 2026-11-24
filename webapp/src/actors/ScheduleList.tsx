@@ -15,7 +15,7 @@ import { SortableItem } from "./SortableItem";
 import type { ActorInstance, ActorRunListItem, ActorSchedule } from "./types";
 import { useArrangement } from "./useArrangement";
 import { useRuns } from "./useActors";
-import { buttonClass, cardClass, noticeClass, primaryButtonClass } from "./styles";
+import { cardClass, noticeClass, primaryButtonClass, secondaryButtonClass } from "./styles";
 
 export type Selection = { kind: "schedule"; id: number } | { kind: "new" } | null;
 
@@ -80,14 +80,14 @@ function Header({ view, ready, onAddSeparator }: {
       <h2 className="text-lg font-medium text-ink">Schedules</h2>
       {canEdit && (
         <div className="flex items-center gap-2">
-          <button type="button" onClick={onAddSeparator} className={`${buttonClass} whitespace-nowrap border border-line text-ink`}>
+          <button type="button" onClick={onAddSeparator} className={`${secondaryButtonClass} whitespace-nowrap`}>
             Add separator
           </button>
           <button
             type="button"
             disabled={!ready}
             onClick={() => onSelect({ kind: "new" })}
-            className={`whitespace-nowrap ${selected?.kind === "new" ? `${buttonClass} border border-line text-ink` : primaryButtonClass}`}
+            className={`whitespace-nowrap ${selected?.kind === "new" ? secondaryButtonClass : primaryButtonClass}`}
           >
             New schedule
           </button>

@@ -12,6 +12,7 @@ import {
   useActorInstances,
   useCreateSchedule,
   useDeleteInstance,
+  usePrefetchScheduleLayout,
   useResetSignIn,
   useRuns,
   useSaveScheduleLayout,
@@ -199,6 +200,16 @@ describe("schedule layout hooks", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(urlOf(0)).toContain("/sites/7/actors/schedule-layout");
     expect(result.current.data).toEqual({ items: stored });
+  });
+
+  it("usePrefetchScheduleLayout fills the layout query without re-rendering its caller", async () => {
+    const client = makeClient();
+    fetchMock.mockResolvedValue(json({ items: stored }));
+    let renders = 0;
+    renderHook(() => { renders += 1; usePrefetchScheduleLayout(7); }, { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(client.getQueryData(actorKeys.layout(7))).toEqual({ items: stored }));
+    expect(urlOf(0)).toContain("/sites/7/actors/schedule-layout");
+    expect(renders).toBe(1);
   });
 
   it("useSaveScheduleLayout puts the items and refetches the layout", async () => {

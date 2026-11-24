@@ -225,6 +225,7 @@ The sign-in code and link are shown to the site owner and managers only. Every r
 | `GET /schedules`, `POST /schedules` | List and create. Both take `actions` and reject an `action` key. `POST` takes the body as a raw dict and validates it as `PATCH` does, so the create body does not show in OpenAPI. |
 | `PATCH /schedules/{id}` | Merges the fields sent into the stored schedule, then validates the whole. A change to `trigger` sets `armed` back to true. While this schedule holds the unit off, a change to `trigger`, `actions` or `restore` is refused with 409 `unit_held_off`. |
 | `DELETE /schedules/{id}` | Delete the schedule and its run history |
+| `GET /schedule-layout`, `PUT /schedule-layout` | The order of the webapp's Schedules list, with separators. `PUT` needs the site owner or a manager. The actor does not read it. See [Core API](core-api.md#actors). |
 | `POST /schedules/{id}/test` | Queue a test run |
 | `GET /runs?limit=` | The site's newest runs with `schedule_name` (1 to 200, default 50) |
 | `GET /schedules/{id}/runs?limit=` | One schedule's newest runs |

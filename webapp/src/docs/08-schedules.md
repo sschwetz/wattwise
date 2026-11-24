@@ -98,7 +98,7 @@ Use **Minutes between runs** and the re-arm field together for a temperature tri
 
 ## Arranging the list
 
-The list starts in the order you made the schedules. To group them, click **Add separator**. It adds a separator at the bottom of the list. Type a label such as "Kids", or leave it empty for a plain line. Drag a schedule by the dots at its left to move it. Drag a separator the same way. To move with the keyboard, tab to the dots, press Space, use the arrow keys, then press Space again. The **×** on a separator removes it.
+The list starts in the order you made the schedules. To group them, click **Add separator**. It adds a separator at the bottom of the list. Type a label of up to 60 characters, such as "Kids", or leave it empty for a plain line. The label saves when you press Enter or click away. Drag a schedule by the dots at its left to move it. Drag a separator the same way. To move with the keyboard, tab to the dots, press Space, use the arrow keys, then press Space again. The **×** on a separator removes it.
 
 A schedule you make later appears at the end of the list. Everyone with access to the site sees the same order, and only the owner and managers can change it. The order changes how the list looks, not when schedules run. If the site has more than one device, all their schedules share one list, and each row names its device.
 

@@ -922,7 +922,7 @@ def _layout_url(site) -> str:
 
 
 def _schedule_id(http, site, instance) -> int:
-    return http.post(f"{_base(site)}/schedules", json=_body(instance)).json()["id"]
+    return _create(http, site, instance).json()["id"]
 
 
 def test_layout_is_null_until_saved(http, site):

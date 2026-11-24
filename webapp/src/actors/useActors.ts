@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { apiFetch } from "../api/client";
 import { LIVE_POLL_MS } from "../dashboard/useLiveReadings";
 import { hasActiveRun } from "./runFormat";
@@ -56,12 +57,24 @@ export function useSchedules(siteId: number) {
   });
 }
 
+const layoutQuery = (siteId: number) => ({
+  queryKey: actorKeys.layout(siteId),
+  queryFn: () => apiFetch<ScheduleLayout>(`${base(siteId)}/schedule-layout`),
+});
+
 export function useScheduleLayout(siteId: number) {
-  return useQuery({
-    queryKey: actorKeys.layout(siteId),
-    queryFn: () => apiFetch<ScheduleLayout>(`${base(siteId)}/schedule-layout`),
-    enabled: validSite(siteId),
-  });
+  return useQuery({ ...layoutQuery(siteId), enabled: validSite(siteId) });
+}
+
+/**
+ * Starts the layout request next to the schedules request, so the list does not wait for a second round trip.
+ * It does not subscribe: a later change to the layout must not re-render the caller, which holds the open editor.
+ */
+export function usePrefetchScheduleLayout(siteId: number) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (validSite(siteId)) void queryClient.prefetchQuery(layoutQuery(siteId));
+  }, [queryClient, siteId]);
 }
 
 /** Saves the list order. The cache takes the new order at once and goes back to the stored one if the save fails. */
