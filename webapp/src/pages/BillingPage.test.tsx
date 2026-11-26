@@ -182,6 +182,19 @@ describe("Billing tabs", () => {
     expect(screen.getByText(/until/)).toBeInTheDocument();
   });
 
+  it("shows a daily service charge of 100c or more as dollars", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/api/v1/sites/7/tariffs") {
+        return Promise.resolve([
+          { id: 1, site_id: 7, effective_from: "2026-01-01T00:00:00Z", effective_to: null, service_availability_c_per_day: "121" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    renderPage();
+    expect(await screen.findByText("$1.21/day")).toBeInTheDocument();
+  });
+
   it("shows an ended tariff disabled with strikethrough, but still visible", async () => {
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path === "/api/v1/sites/7/tariffs") {

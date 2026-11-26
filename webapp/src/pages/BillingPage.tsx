@@ -59,6 +59,12 @@ function formatCentsAsDollars(value: string): string {
   return `$${(Number(value) / 100).toFixed(2)}`;
 }
 
+// The daily service charge shows as dollars from 100c up ($1.21/day) and as
+// cents below that (47.20c/day).
+function formatServiceCharge(value: string): string {
+  return Number(value) >= 100 ? `${formatCentsAsDollars(value)}/day` : `${formatCents(value)}c/day`;
+}
+
 function dollarsToCents(value: string): number {
   return Math.round(Number(value) * 100);
 }
@@ -472,7 +478,7 @@ function TariffSection({ siteId }: { siteId: number }) {
             <li key={tariff.id} className="space-y-2 rounded-md border border-line p-3">
               <div className="flex items-center justify-between">
                 <span className="text-ink">
-                  <span className="font-display tabular-nums">{formatCents(tariff.service_availability_c_per_day)}c/day</span>
+                  <span className="font-display tabular-nums">{formatServiceCharge(tariff.service_availability_c_per_day)}</span>
                   {hasMonthlyFee && (
                     <>
                       {" · "}
@@ -510,7 +516,7 @@ function TariffSection({ siteId }: { siteId: number }) {
                 className="w-full px-3 py-1.5 text-left"
               >
                 <span className="font-display tabular-nums line-through">
-                  {formatCents(tariff.service_availability_c_per_day)}c/day
+                  {formatServiceCharge(tariff.service_availability_c_per_day)}
                 </span>{" "}
                 from {new Date(tariff.effective_from).toLocaleDateString()} until{" "}
                 {tariff.effective_to && formatDay(displayEndDate(tariff.effective_to, timeZone))}

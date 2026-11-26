@@ -12,7 +12,7 @@ The **Tariffs** tab holds the [Tariffs](#tariffs) card. The **Billing** tab hold
 
 Have a recent bill or your retailer's tariff sheet open. You need:
 
-- The daily supply (service availability) charge, in cents per day.
+- The daily supply (service availability) charge, in cents per day. The Billing tab shows 100 cents or more as dollars, so 121 cents is `$1.21/day`.
 - The monthly account fee, if you have one, in dollars.
 - Any demand charge: its time window, days, months and rate in cents per kW per day.
 - Any time-based feed-in bonus or penalty.
