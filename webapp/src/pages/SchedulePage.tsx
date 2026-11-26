@@ -5,7 +5,7 @@ import { ScheduleList, type Selection } from "../actors/ScheduleList";
 import { DisabledNotice, NeedsSignInNotice, SignInPanel } from "../actors/SignInPanel";
 import { type ActorInstance, type ActorSchedule, isSigningIn } from "../actors/types";
 import { useGuardedSelection } from "../actors/unsavedEdits";
-import { useActorInstances, useSchedules } from "../actors/useActors";
+import { useActorInstances, usePrefetchScheduleLayout, useSchedules } from "../actors/useActors";
 import { QueryError } from "../components/QueryError";
 import { Spinner } from "../components/Spinner";
 import { AccessNote } from "../settings/AccessNote";
@@ -72,6 +72,7 @@ export function ScheduleTab({ site }: { site: Site }) {
   const { readOnly, note } = useSiteAccess(site);
   const instances = useActorInstances(site.id);
   const schedules = useSchedules(site.id);
+  usePrefetchScheduleLayout(site.id);
   const failed = instances.isError ? instances : schedules.isError ? schedules : null;
   let body;
   if (failed) body = <QueryError error={failed.error} fallback="Could not load the schedule." onRetry={() => void failed.refetch()} />;

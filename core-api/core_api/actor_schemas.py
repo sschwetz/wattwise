@@ -476,5 +476,30 @@ class ScheduleView(BaseModel):
         return self.actions[0]
 
 
+MAX_LAYOUT_ITEMS = 200
+
+
+class LayoutSchedule(_Strict):
+    type: Literal["schedule"]
+    id: int
+
+
+class LayoutSeparator(_Strict):
+    type: Literal["separator"]
+    key: str = Field(min_length=1, max_length=64)
+    label: str = Field(default="", max_length=60)
+
+
+ScheduleLayoutItem = Annotated[LayoutSchedule | LayoutSeparator, Field(discriminator="type")]
+
+
+class ScheduleLayoutBody(_Strict):
+    items: list[ScheduleLayoutItem] = Field(max_length=MAX_LAYOUT_ITEMS)
+
+
+class ScheduleLayoutView(BaseModel):
+    items: list[ScheduleLayoutItem] | None
+
+
 class RunListItem(RunOut):
     schedule_name: str

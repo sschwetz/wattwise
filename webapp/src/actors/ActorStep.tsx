@@ -16,7 +16,7 @@ export function ActorStep({ model, instance }: { model: EditorModel; instance: A
       </label>
       <FieldError id={errorId} message={errors.name} />
       <p className={hintClass}>
-        Device: <span className="text-ink">{instance.name ?? "Air conditioner"}</span>
+        Device: <span className="text-ink">{instance.name ?? "Device"}</span>
       </p>
     </Step>
   );

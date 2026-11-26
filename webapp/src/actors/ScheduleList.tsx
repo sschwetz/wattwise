@@ -1,8 +1,21 @@
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { actionLabeler, formatRunTime, outcomeLabel } from "./runFormat";
 import { useNow } from "../dashboard/useNow";
+import { rowId, type ListRow } from "./scheduleLayout";
+import { SeparatorRow } from "./SeparatorRow";
+import { SortableItem } from "./SortableItem";
 import type { ActorInstance, ActorRunListItem, ActorSchedule } from "./types";
+import { useArrangement } from "./useArrangement";
 import { useRuns } from "./useActors";
-import { buttonClass, cardClass, primaryButtonClass } from "./styles";
+import { cardClass, noticeClass, primaryButtonClass, secondaryButtonClass } from "./styles";
 
 export type Selection = { kind: "schedule"; id: number } | { kind: "new" } | null;
 
@@ -39,45 +52,53 @@ function ScheduleRow({ row, active, onClick }: {
 }) {
   const { schedule, instance, lastRun } = row;
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-current={active ? "true" : undefined}
-        className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 ${active ? "bg-surface-2" : ""}`}
-      >
-        <span className="min-w-0">
-          <span className="block truncate text-ink">{schedule.name}</span>
-          <span className="block truncate text-xs text-ink-muted">{instance.name ?? "Air conditioner"}</span>
-          <span className="block truncate text-xs text-ink-muted">{actionsText(schedule, instance)}</span>
-          {lastRun && <span className="block truncate text-xs text-ink-muted">{lastRun}</span>}
-        </span>
-        <OnOffPill on={schedule.enabled} />
-      </button>
-    </li>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "true" : undefined}
+      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-solar/60 ${active ? "bg-surface-2" : ""}`}
+    >
+      <span className="min-w-0">
+        <span className="block truncate text-ink">{schedule.name}</span>
+        <span className="block truncate text-xs text-ink-muted">{instance.name ?? "Device"}</span>
+        <span className="block truncate text-xs text-ink-muted">{actionsText(schedule, instance)}</span>
+        {lastRun && <span className="block truncate text-xs text-ink-muted">{lastRun}</span>}
+      </span>
+      <OnOffPill on={schedule.enabled} />
+    </button>
   );
 }
 
-function InstanceGroup({ group, view, lastRunOf }: {
-  group: { instance: ActorInstance; rows: ActorSchedule[]; showName: boolean };
+function Header({ view, ready, onAddSeparator }: {
   view: ScheduleListProps["view"];
-  lastRunOf: (scheduleId: number) => string | null;
+  ready: boolean;
+  /** Null until the saved order has loaded. */
+  onAddSeparator: (() => void) | null;
 }) {
-  const { instance, rows, showName } = group;
-  const { selected, onSelect } = view;
+  const { selected, onSelect, canEdit } = view;
   return (
-    <div className="space-y-1">
-      {showName && <h3 className="px-3 text-xs font-medium uppercase text-ink-muted">{instance.name}</h3>}
-      <ul className="space-y-1">
-        {rows.map((s) => (
-          <ScheduleRow
-            key={s.id}
-            row={{ schedule: s, instance, lastRun: lastRunOf(s.id) }}
-            active={selected?.kind === "schedule" && selected.id === s.id}
-            onClick={() => onSelect({ kind: "schedule", id: s.id })}
-          />
-        ))}
-      </ul>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h2 className="text-lg font-medium text-ink">Schedules</h2>
+      {canEdit && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!onAddSeparator}
+            onClick={onAddSeparator ?? undefined}
+            className={`${secondaryButtonClass} whitespace-nowrap`}
+          >
+            Add separator
+          </button>
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => onSelect({ kind: "new" })}
+            className={`whitespace-nowrap ${selected?.kind === "new" ? secondaryButtonClass : primaryButtonClass}`}
+          >
+            New schedule
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -85,35 +106,68 @@ function InstanceGroup({ group, view, lastRunOf }: {
 export function ScheduleList(props: ScheduleListProps) {
   const { site, data, view } = props;
   const { instances, schedules } = data;
-  const { selected, onSelect, canEdit } = view;
   const runs = useRuns(site.id, RUN_WINDOW);
   const now = useNow(60_000);
+  const arrangement = useArrangement(site.id, schedules);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const lastRunOf = (id: number) => (runs.data ? lastRunText(runs.data.find((r) => r.schedule_id === id), site.timezone, now) : null);
   const ready = instances.some((i) => i.capabilities !== null);
   return (
     <section className={`${cardClass} space-y-3`}>
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-medium text-ink">Schedules</h2>
-        {canEdit && (
-          <button
-            type="button"
-            disabled={!ready}
-            onClick={() => onSelect({ kind: "new" })}
-            className={selected?.kind === "new" ? `${buttonClass} border border-line text-ink` : primaryButtonClass}
-          >
-            New schedule
-          </button>
-        )}
-      </div>
+      <Header view={view} ready={ready} onAddSeparator={arrangement.ready ? arrangement.addSeparator : null} />
       {schedules.length === 0 && <p className="text-sm text-ink-muted">No schedules yet.</p>}
-      {instances.map((instance) => (
-        <InstanceGroup
-          key={instance.id}
-          group={{ instance, rows: schedules.filter((s) => s.instance_id === instance.id), showName: instances.length > 1 }}
-          view={view}
-          lastRunOf={lastRunOf}
-        />
-      ))}
+      {arrangement.loadFailed && (
+        <p role="alert" className={`${noticeClass} flex items-center justify-between gap-2`}>
+          <span>Could not load the saved order.</span>
+          <button type="button" onClick={arrangement.retryLoad} className="underline">Retry</button>
+        </p>
+      )}
+      {arrangement.saveFailed && <p role="alert" className={noticeClass}>Could not save the order.</p>}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={arrangement.drop}>
+        <SortableContext items={arrangement.rows.map(rowId)} strategy={verticalListSortingStrategy}>
+          <ul className="space-y-1">
+            {arrangement.rows.map((row) => (
+              <ListItem key={rowId(row)} row={row} ctx={{ instances, view, arrangement, lastRunOf }} />
+            ))}
+          </ul>
+        </SortableContext>
+      </DndContext>
     </section>
+  );
+}
+
+function ListItem({ row, ctx }: {
+  row: ListRow;
+  ctx: {
+    instances: ActorInstance[];
+    view: ScheduleListProps["view"];
+    arrangement: ReturnType<typeof useArrangement>;
+    lastRunOf: (scheduleId: number) => string | null;
+  };
+}) {
+  const { instances, view, arrangement, lastRunOf } = ctx;
+  const { selected, onSelect } = view;
+  // Dragging and renaming wait for the saved order, or an edit would overwrite it with id order.
+  const canArrange = view.canEdit && arrangement.ready;
+  if (row.kind === "separator") {
+    const edit = canArrange
+      ? { onRename: (label: string) => arrangement.renameSeparator(row.key, label), onRemove: () => arrangement.removeSeparator(row.key) }
+      : null;
+    return <SortableItem id={rowId(row)} canEdit={canArrange}><SeparatorRow row={row} edit={edit} /></SortableItem>;
+  }
+  const instance = instances.find((i) => i.id === row.schedule.instance_id);
+  if (!instance) return null;
+  const { id } = row.schedule;
+  return (
+    <SortableItem id={rowId(row)} canEdit={canArrange}>
+      <ScheduleRow
+        row={{ schedule: row.schedule, instance, lastRun: lastRunOf(id) }}
+        active={selected?.kind === "schedule" && selected.id === id}
+        onClick={() => onSelect({ kind: "schedule", id })}
+      />
+    </SortableItem>
   );
 }

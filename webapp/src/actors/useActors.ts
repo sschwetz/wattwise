@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { apiFetch } from "../api/client";
 import { LIVE_POLL_MS } from "../dashboard/useLiveReadings";
 import { hasActiveRun } from "./runFormat";
@@ -11,6 +12,8 @@ import type {
   InstanceCreateBody,
   InstancePatchBody,
   ScheduleBody,
+  ScheduleLayout,
+  ScheduleLayoutItem,
   SchedulePatchBody,
 } from "./types";
 import { isSigningIn } from "./types";
@@ -25,6 +28,7 @@ export const actorKeys = {
   all: (siteId: number) => ["actors", siteId] as const,
   instances: (siteId: number) => ["actors", siteId, "instances"] as const,
   schedules: (siteId: number) => ["actors", siteId, "schedules"] as const,
+  layout: (siteId: number) => ["actors", siteId, "schedule-layout"] as const,
   runs: (siteId: number) => ["actors", siteId, "runs"] as const,
   failures: (siteId: number) => ["actors", siteId, "failures"] as const,
 };
@@ -50,6 +54,46 @@ export function useSchedules(siteId: number) {
     queryKey: actorKeys.schedules(siteId),
     queryFn: () => apiFetch<ActorSchedule[]>(`${base(siteId)}/schedules`),
     enabled: validSite(siteId),
+  });
+}
+
+const layoutQuery = (siteId: number) => ({
+  queryKey: actorKeys.layout(siteId),
+  queryFn: () => apiFetch<ScheduleLayout>(`${base(siteId)}/schedule-layout`),
+});
+
+export function useScheduleLayout(siteId: number) {
+  return useQuery({ ...layoutQuery(siteId), enabled: validSite(siteId) });
+}
+
+/**
+ * Starts the layout request next to the schedules request, so the list does not wait for a second round trip.
+ * It does not subscribe: a later change to the layout must not re-render the caller, which holds the open editor.
+ */
+export function usePrefetchScheduleLayout(siteId: number) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (validSite(siteId)) void queryClient.prefetchQuery(layoutQuery(siteId));
+  }, [queryClient, siteId]);
+}
+
+/** Saves the list order. The cache takes the new order at once and goes back to the stored one if the save fails. */
+export function useSaveScheduleLayout(siteId: number) {
+  const queryClient = useQueryClient();
+  const key = actorKeys.layout(siteId);
+  return useMutation({
+    mutationFn: (items: ScheduleLayoutItem[]) =>
+      apiFetch<ScheduleLayout>(`${base(siteId)}/schedule-layout`, { method: "PUT", body: JSON.stringify({ items }) }),
+    onMutate: async (items) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<ScheduleLayout>(key);
+      queryClient.setQueryData<ScheduleLayout>(key, { items });
+      return { previous };
+    },
+    onError: (_error, _items, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
 }
 

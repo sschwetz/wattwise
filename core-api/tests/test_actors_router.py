@@ -912,3 +912,72 @@ def test_clock_times_need_no_site_location(http, db, site):
     row = {"kind": "time_of_day", "start": {"kind": "clock", "time": "18:00"}, "end": CLOCK_23, "enabled": True}
     limits = {"run_again_after": CLOCK_23}
     assert _create(http, site, instance, conditions=[row], limits=limits).status_code == 201
+
+
+# Schedule list layout
+
+
+def _layout_url(site) -> str:
+    return f"{_base(site)}/schedule-layout"
+
+
+def _schedule_id(http, site, instance) -> int:
+    return _create(http, site, instance).json()["id"]
+
+
+def test_layout_is_null_until_saved(http, site):
+    r = http.get(_layout_url(site))
+    assert (r.status_code, r.json()) == (200, {"items": None})
+
+
+def test_manager_saves_and_reads_layout(http, db, site):
+    inst = _instance(db, site)
+    a, b = _schedule_id(http, site, inst), _schedule_id(http, site, inst)
+    items = [
+        {"type": "schedule", "id": b},
+        {"type": "separator", "key": "k1", "label": "Kids"},
+        {"type": "schedule", "id": a},
+    ]
+    r = http.put(_layout_url(site), json={"items": items})
+    assert (r.status_code, r.json()) == (200, {"items": items})
+    assert http.get(_layout_url(site)).json() == {"items": items}
+
+
+def test_separator_label_defaults_to_empty(http, site):
+    r = http.put(_layout_url(site), json={"items": [{"type": "separator", "key": "k1"}]})
+    assert r.json() == {"items": [{"type": "separator", "key": "k1", "label": ""}]}
+
+
+def test_layout_rejects_schedule_of_another_site(http, db, site, user):
+    other = Site(owner_user_id=user.id, name="Other", timezone="Australia/Sydney")
+    db.add(other)
+    db.commit()
+    foreign = _schedule_id(http, other, _instance(db, other))
+    r = http.put(_layout_url(site), json={"items": [{"type": "schedule", "id": foreign}]})
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_layout")
+    assert http.get(_layout_url(site)).json() == {"items": None}
+
+
+def test_layout_rejects_repeats_and_long_labels(http, db, site):
+    a = _schedule_id(http, site, _instance(db, site))
+    sep = {"type": "separator", "key": "k1", "label": ""}
+    bad = {
+        "repeated schedule": [{"type": "schedule", "id": a}, {"type": "schedule", "id": a}],
+        "repeated key": [sep, sep],
+        "long label": [{**sep, "label": "x" * 61}],
+        "empty key": [{**sep, "key": ""}],
+        "too many": [{"type": "separator", "key": f"k{i}", "label": ""} for i in range(201)],
+    }
+    for name, items in bad.items():
+        assert http.put(_layout_url(site), json={"items": items}).status_code == 422, name
+    assert http.get(_layout_url(site)).json() == {"items": None}
+
+
+def test_viewer_reads_layout_but_cannot_save_it(http, site, viewer):
+    assert http.get(_layout_url(site)).status_code == 200
+    assert http.put(_layout_url(site), json={"items": []}).status_code == 403
+
+
+def test_empty_layout_is_stored_as_empty_list(http, site):
+    assert http.put(_layout_url(site), json={"items": []}).status_code == 200
+    assert http.get(_layout_url(site)).json() == {"items": []}

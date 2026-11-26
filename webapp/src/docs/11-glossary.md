@@ -59,6 +59,7 @@
 | **Site** | One monitored property. See [Sites](04-sites.md). |
 | **Site settings** | The page for a site's name, collectors, tariffs, billing, schedule and sharing. See [Site settings](04-sites.md#site-settings). |
 | **Schedule** | A rule that runs actions on a device at a trigger, such as turning the air conditioner off when a demand window starts. See [Schedules](08-schedules.md). |
+| **Separator** | A line, with an optional label, that you place in the list of schedules to group them. See [Arranging the list](08-schedules.md#arranging-the-list). |
 | **Source** | A connection from a site to a device or service. See [Sources](05-sources.md). |
 | **Run again after** | The **Do not run again until** setting: a time the schedule waits for after a run. See [How often](08-schedules.md#how-often). |
 | **Reverse proxy** | A program such as Caddy or nginx that sits in front of WattWise, provides HTTPS and passes requests to the web app and Core API. See [Setup with Caddy](01-installing-with-docker.md#setup-with-caddy-and-docker-compose). |
